@@ -63,6 +63,22 @@ Object input order never affects canonical bytes or identity. Field order in the
 record remains the roadmap order for schema inspection, while serialization sorts keys
 to make hashing deterministic.
 
+Records are compared by `content_hash`. Python `hash()` is not supported when
+`expected_value` contains an object because object values are stored as immutable
+mappings; this is deliberate, and `content_hash` remains the stable identity mechanism.
+
+## Evidence-store policy
+
+The evidence store intentionally verifies the complete index chain and re-hashes every
+referenced object before each append. This gives the current small store a simple,
+strong integrity check, with O(n^2) total work as the index grows. Before asset count
+grows in Phase 2, the planned performance mode is incremental verification of the chain
+tail plus spot-checking stored objects; the complete verifier remains the audit path.
+
+The store accepts absolute `http://` and `https://` source URLs because it is a
+permissive persistence boundary, not a network client. All production fetchers enforce
+HTTPS and a per-source allowlist in the adapter layer introduced in task 3.
+
 ## Evaluation results
 
 Evaluation results apply only to controls accepted by the approval gate:
