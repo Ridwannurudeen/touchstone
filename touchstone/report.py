@@ -10,7 +10,7 @@ digest is the root published in reports and onchain.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 import hashlib
 import re
 from typing import TYPE_CHECKING
@@ -86,8 +86,6 @@ def build_observation_report(
     epoch_id: str,
     sequence: int,
     publisher_kid: str,
-    observed_at: datetime,
-    valid_until: datetime,
     compiler_provenance_digests: Iterable[str],
     previous_state: AssetState = AssetState.UNVERIFIABLE,
     event: OperationalEvent = OperationalEvent.RECONFIRMED,
@@ -107,11 +105,6 @@ def build_observation_report(
     if not isinstance(event, OperationalEvent):
         raise TypeError("event must be an OperationalEvent")
 
-    observed_text = _utc_timestamp(observed_at, "observed_at")
-    valid_text = _utc_timestamp(valid_until, "valid_until")
-    if valid_until.astimezone(timezone.utc) < observed_at.astimezone(timezone.utc):
-        raise ValueError("valid_until must not precede observed_at")
-
     controls_by_id = {record.control_id: record for record in records}
     if len(controls_by_id) != len(records):
         raise ValueError("control_id values must be unique")
@@ -120,6 +113,8 @@ def build_observation_report(
         raise ValueError("epoch control_id values must be unique")
     if set(controls_by_id) != set(evaluations_by_id):
         raise ValueError("epoch evaluations do not match the control set")
+    if any(record.asset_key != epoch.asset_key for record in records):
+        raise ValueError("each control must identify the report asset")
 
     expected_state = transition_state(
         previous_state,
@@ -135,6 +130,15 @@ def build_observation_report(
         {"sha256": source.evidence_sha256, "source_id": source.source_id}
         for source in epoch.sources
     ]
+    if not epoch.sources:
+        raise ValueError("epoch must contain source observations")
+    observed_at = max(source.retrieved_at for source in epoch.sources)
+    observed_text = _utc_timestamp(observed_at, "source retrieved_at")
+    valid_until = datetime.combine(
+        epoch.evidence_deadline, time(23, 59, 59), tzinfo=timezone.utc
+    )
+    valid_until = max(valid_until, observed_at.astimezone(timezone.utc))
+    valid_text = _utc_timestamp(valid_until, "evidence deadline")
     provenance = tuple(
         _digest(value, "compiler provenance digest")
         for value in compiler_provenance_digests

@@ -12,6 +12,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 dependencies = [
     "cryptography==49.0.0",
+    "web3==7.16.0",
 ]
 
 [project.optional-dependencies]
@@ -22,6 +23,9 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "local_e2e: requires a running Hardhat node at http://127.0.0.1:8545",
+]
 
 [tool.ruff]
 target-version = "py311"

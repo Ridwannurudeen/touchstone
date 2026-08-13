@@ -81,6 +81,11 @@ def test_strict_json_loads_rejects_invalid_utf8_and_invalid_input_type() -> None
         strict_json_loads(bytearray(b"{}"))  # type: ignore[arg-type]
 
 
+def test_strict_json_loads_rejects_excessive_depth() -> None:
+    with pytest.raises(ValueError, match="depth limit"):
+        strict_json_loads("[" * 65 + "0" + "]" * 65)
+
+
 @pytest.mark.parametrize(
     ("seed_hex", "public_key_hex", "message_hex", "signature_hex"),
     RFC_8032_VECTORS,

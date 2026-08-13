@@ -30,8 +30,6 @@ def _bundle(tmp_path: Path):
         epoch_id="ustb-2026-08-13",
         sequence=1,
         publisher_kid=signer.kid,
-        observed_at=RETRIEVED_AT,
-        valid_until=datetime(2026, 8, 13, 23, 59, 59, tzinfo=timezone.utc),
         compiler_provenance_digests=["33" * 32],
     )
     evidence = [
@@ -107,6 +105,28 @@ def test_verifier_rejects_validly_signed_inconsistent_state(tmp_path: Path) -> N
     bundle["signed_report"] = signer.sign_report(report)
     bundle["report_canonical"] = canonical_json_bytes(report).decode()
     with pytest.raises(VerificationError, match="state mismatch"):
+        verify_bundle(bundle)
+
+
+def test_verifier_rejects_validly_signed_cross_asset_controls(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path)
+    signer = Ed25519Signer.from_seed(bytes(range(32)))
+    report = deepcopy(bundle["signed_report"]["report"])
+    report["asset_key"] = "eip155:1:0x" + "22" * 20
+    bundle["signed_report"] = signer.sign_report(report)
+    bundle["report_canonical"] = canonical_json_bytes(report).decode()
+    with pytest.raises(VerificationError, match="report asset"):
+        verify_bundle(bundle)
+
+
+def test_verifier_rejects_validly_signed_freshness_extension(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path)
+    signer = Ed25519Signer.from_seed(bytes(range(32)))
+    report = deepcopy(bundle["signed_report"]["report"])
+    report["valid_until"] = "2026-08-14T23:59:59Z"
+    bundle["signed_report"] = signer.sign_report(report)
+    bundle["report_canonical"] = canonical_json_bytes(report).decode()
+    with pytest.raises(VerificationError, match="evidence deadline"):
         verify_bundle(bundle)
 
 

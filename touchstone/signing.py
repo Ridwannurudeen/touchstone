@@ -29,6 +29,8 @@ _SIGNATURE_ENVELOPE_FIELDS = frozenset(
 _LOWER_HEX_32 = re.compile(r"[0-9a-f]{64}")
 _LOWER_HEX_64 = re.compile(r"[0-9a-f]{128}")
 _KID = re.compile(r"ed25519:[0-9a-f]{64}")
+MAX_JSON_BYTES = 16_777_216
+MAX_JSON_DEPTH = 64
 
 
 def canonical_json_bytes(value: object) -> bytes:
@@ -57,6 +59,10 @@ def strict_json_loads(value: bytes | str) -> object:
         text = value
     else:
         raise TypeError("JSON input must be bytes or str")
+    raw = text.encode("utf-8")
+    if len(raw) > MAX_JSON_BYTES:
+        raise ValueError(f"JSON input exceeds {MAX_JSON_BYTES} bytes")
+    _check_json_depth(raw)
     return json.loads(
         text,
         object_pairs_hook=_object_without_duplicate_keys,
@@ -231,3 +237,28 @@ def _object_without_duplicate_keys(
 
 def _reject_json_constant(value: str) -> object:
     raise ValueError(f"invalid JSON constant: {value}")
+
+
+def _check_json_depth(raw: bytes) -> None:
+    depth = 0
+    in_string = False
+    escaped = False
+    for byte in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif byte == 0x5C:
+                escaped = True
+            elif byte == 0x22:
+                in_string = False
+            continue
+        if byte == 0x22:
+            in_string = True
+        elif byte in (0x5B, 0x7B):
+            depth += 1
+            if depth > MAX_JSON_DEPTH:
+                raise ValueError(f"JSON input exceeds depth limit of {MAX_JSON_DEPTH}")
+        elif byte in (0x5D, 0x7D):
+            depth -= 1
+            if depth < 0:
+                break

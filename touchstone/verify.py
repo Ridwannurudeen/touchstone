@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime
+from datetime import date, datetime, time, timezone
 import json
 from pathlib import Path
 import re
@@ -61,6 +61,7 @@ _CONTROL_RESULT_FIELDS = {"content_hash", "control_id", "evaluation"}
 _EVALUATION_FIELDS = {"evidence_deadline", "observed_value", "result"}
 _TRANSITION_FIELDS = {"as_of", "event", "evidence_deadline", "previous_state"}
 _DIGEST = re.compile(r"[0-9a-f]{64}")
+_ASSET_KEY = re.compile(r"eip155:[1-9][0-9]*:0x[0-9a-f]{40}")
 
 
 class VerificationError(RuntimeError):
@@ -103,7 +104,7 @@ def verify_bundle(value: bytes | str | Mapping[str, object]) -> Mapping[str, obj
     """Verify a bundle without network access and return its report mapping."""
     try:
         parsed = strict_json_loads(value) if isinstance(value, (bytes, str)) else value
-    except (TypeError, ValueError, json.JSONDecodeError) as error:
+    except (TypeError, ValueError, json.JSONDecodeError, RecursionError) as error:
         raise VerificationError(f"invalid bundle JSON: {error}") from error
     bundle = _exact_mapping(parsed, _BUNDLE_FIELDS, "bundle")
     if bundle["version"] != BUNDLE_VERSION:
@@ -131,13 +132,15 @@ def verify_bundle(value: bytes | str | Mapping[str, object]) -> Mapping[str, obj
         verified = verify_signed_report(signed_report, {kid: published_key})
     except InvalidSignature as error:
         raise VerificationError("signature verification failed") from error
-    except (TypeError, ValueError) as error:
+    except (TypeError, ValueError, RecursionError) as error:
         raise VerificationError(f"key resolution failed: {error}") from error
     if verified != report:
         raise VerificationError("verified report does not match bundled report")
 
     _verify_report_schema(report, kid)
     controls = _load_controls(bundle["control_records"])
+    if any(record.asset_key != report["asset_key"] for record in controls):
+        raise VerificationError("control records do not identify the report asset")
     evidence = _evidence_records(bundle["evidence_digests"])
     if report["control_set_root"] != control_set_root(controls):
         raise VerificationError("control-set root mismatch")
@@ -155,8 +158,11 @@ def _verify_report_schema(report: Mapping[str, object], envelope_kid: str) -> No
         raise VerificationError("unsupported report version")
     if report["publisher_kid"] != envelope_kid:
         raise VerificationError("report publisher kid does not match signature kid")
-    if not isinstance(report["asset_key"], str) or not report["asset_key"]:
-        raise VerificationError("asset_key must be nonempty text")
+    if (
+        not isinstance(report["asset_key"], str)
+        or _ASSET_KEY.fullmatch(report["asset_key"]) is None
+    ):
+        raise VerificationError("asset_key must be a canonical eip155 identifier")
     if not isinstance(report["epoch_id"], str) or not report["epoch_id"]:
         raise VerificationError("epoch_id must be nonempty text")
     if type(report["sequence"]) is not int or report["sequence"] < 1:
@@ -257,11 +263,27 @@ def _verify_state(report: Mapping[str, object]) -> None:
     deadline = _calendar_date(transition["evidence_deadline"], "evidence_deadline")
     as_of = _calendar_date(transition["as_of"], "as_of")
     results = []
+    control_deadlines = []
     for item in report["controls"]:
         try:
             results.append(EvaluationResult(item["evaluation"]["result"]))
+            control_deadline = item["evaluation"]["evidence_deadline"]
+            if control_deadline is not None:
+                control_deadlines.append(
+                    _calendar_date(control_deadline, "control evidence_deadline")
+                )
         except (KeyError, TypeError, ValueError) as error:
             raise VerificationError("control evaluation result is invalid") from error
+    if control_deadlines and deadline != min(control_deadlines):
+        raise VerificationError("state transition deadline does not match controls")
+    observed = _timestamp(report["observed_at"], "observed_at")
+    valid = _timestamp(report["valid_until"], "valid_until")
+    if observed.date() != as_of:
+        raise VerificationError("observed_at does not match the evaluated epoch")
+    expected_valid = datetime.combine(deadline, time(23, 59, 59), tzinfo=timezone.utc)
+    expected_valid = max(expected_valid, observed)
+    if valid != expected_valid:
+        raise VerificationError("valid_until does not match the evidence deadline")
     actual = transition_state(previous, event, results, deadline, as_of)
     if claimed is not actual:
         raise VerificationError(

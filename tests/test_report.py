@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from touchstone.controls import AssetState
+from touchstone.controls import AssetState, ControlRecord
 from touchstone.epoch import FixtureTransport, run_ustb_epoch
 from touchstone.evidence import EvidenceStore
 from touchstone.evaluate import default_ustb_controls
@@ -35,8 +35,6 @@ def _report(tmp_path: Path):
         epoch_id="ustb-2026-08-13",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
-        observed_at=RETRIEVED_AT,
-        valid_until=datetime(2026, 8, 13, 23, 59, 59, tzinfo=timezone.utc),
         compiler_provenance_digests=["22" * 32],
     )
 
@@ -51,8 +49,6 @@ def test_report_contains_recomputable_roots_and_honest_limitations(
         epoch_id="ustb-2026-08-13",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
-        observed_at=RETRIEVED_AT,
-        valid_until=datetime(2026, 8, 13, 23, 59, 59, tzinfo=timezone.utc),
         compiler_provenance_digests=["22" * 32],
     )
 
@@ -105,8 +101,6 @@ def test_report_rejects_inconsistent_state(tmp_path: Path) -> None:
             epoch_id="ustb-2026-08-13",
             sequence=1,
             publisher_kid="ed25519:" + "11" * 32,
-            observed_at=RETRIEVED_AT,
-            valid_until=datetime(2026, 8, 14, tzinfo=timezone.utc),
             compiler_provenance_digests=["22" * 32],
         )
 
@@ -120,10 +114,48 @@ def test_report_rejects_invalid_correction_reference(tmp_path: Path) -> None:
             sequence=2,
             correction_of=2,
             publisher_kid="ed25519:" + "11" * 32,
-            observed_at=RETRIEVED_AT,
-            valid_until=datetime(2026, 8, 14, tzinfo=timezone.utc),
             compiler_provenance_digests=["22" * 32],
         )
+
+
+def test_report_rejects_controls_for_another_asset(tmp_path: Path) -> None:
+    controls = list(default_ustb_controls())
+    changed = controls[0].to_mapping()
+    changed["asset_key"] = "eip155:1:0x" + "22" * 20
+    controls[0] = ControlRecord.from_mapping(changed)
+    with pytest.raises(ValueError, match="report asset"):
+        build_observation_report(
+            _epoch(tmp_path),
+            controls,
+            epoch_id="ustb-2026-08-13",
+            sequence=1,
+            publisher_kid="ed25519:" + "11" * 32,
+            compiler_provenance_digests=["22" * 32],
+        )
+
+
+def test_report_builds_stale_epoch_with_contract_valid_timestamps(
+    tmp_path: Path,
+) -> None:
+    retrieved_at = datetime(2026, 8, 14, 14, 16, 17, tzinfo=timezone.utc)
+    epoch = run_ustb_epoch(
+        transport=FixtureTransport(FIXTURES),
+        store=EvidenceStore(tmp_path),
+        now=date(2026, 8, 14),
+        retrieved_at=retrieved_at,
+    )
+    report = build_observation_report(
+        epoch,
+        default_ustb_controls(),
+        epoch_id="ustb-2026-08-14",
+        sequence=2,
+        publisher_kid="ed25519:" + "11" * 32,
+        compiler_provenance_digests=["22" * 32],
+    )
+
+    assert report["state"] == "STALE"
+    assert report["observed_at"] == "2026-08-14T14:16:17Z"
+    assert report["valid_until"] == report["observed_at"]
 
 
 def test_report_requires_explicit_limitations(tmp_path: Path) -> None:
@@ -134,8 +166,6 @@ def test_report_requires_explicit_limitations(tmp_path: Path) -> None:
             epoch_id="ustb-2026-08-13",
             sequence=1,
             publisher_kid="ed25519:" + "11" * 32,
-            observed_at=RETRIEVED_AT,
-            valid_until=datetime(2026, 8, 14, tzinfo=timezone.utc),
             compiler_provenance_digests=["22" * 32],
             limitations=[],
         )
@@ -149,8 +179,6 @@ def test_report_provenance_digests_are_strict(tmp_path: Path) -> None:
             epoch_id="ustb-2026-08-13",
             sequence=1,
             publisher_kid="ed25519:" + "11" * 32,
-            observed_at=RETRIEVED_AT,
-            valid_until=datetime(2026, 8, 14, tzinfo=timezone.utc),
             compiler_provenance_digests=["not-a-digest"],
         )
 
@@ -161,8 +189,6 @@ def test_report_provenance_digests_are_strict(tmp_path: Path) -> None:
             epoch_id="ustb-2026-08-13",
             sequence=1,
             publisher_kid="ed25519:" + "11" * 32,
-            observed_at=RETRIEVED_AT,
-            valid_until=datetime(2026, 8, 14, tzinfo=timezone.utc),
             compiler_provenance_digests=[],
         )
 
