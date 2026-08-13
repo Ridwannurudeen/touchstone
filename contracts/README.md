@@ -27,6 +27,8 @@ an explicit reference to a prior sequence; it never changes or deletes the refer
 report. Publisher rotation revokes the old key and authorizes the new key, while every
 historical report retains its posting address. Successor keys inherit a stable publisher
 identity, so a gate pinned to any key in that lineage continues to work after rotation.
+That first identity assignment is permanent: reauthorizing a suspended key preserves
+its lineage, and a key previously assigned to another lineage cannot be reused.
 
 The registry uses the minimum chain-separation option from the roadmap: it stores an
 immutable `expectedChainId` and compares it with `block.chainid` on every publish and

@@ -288,6 +288,54 @@ describe("TouchstoneRegistry", function () {
     );
   });
 
+  it("preserves publisher identity through revocation and reauthorization", async function () {
+    const { publisher, nextPublisher, registry } = await loadFixture(
+      deployRegistryFixture
+    );
+    await registry.rotatePublisher(publisher.address, nextPublisher.address);
+
+    await registry.revokePublisher(nextPublisher.address);
+    await registry.authorizePublisher(nextPublisher.address);
+
+    expect(await registry.publisherIdentity(nextPublisher.address)).to.equal(
+      publisher.address
+    );
+    expect(
+      await registry.isPublisherFor(publisher.address, nextPublisher.address)
+    ).to.equal(true);
+  });
+
+  it("rejects reusing a key that belongs to another publisher lineage", async function () {
+    const { publisher, nextPublisher, outsider, registry } = await loadFixture(
+      deployRegistryFixture
+    );
+    await registry.authorizePublisher(nextPublisher.address);
+    await registry.revokePublisher(nextPublisher.address);
+
+    await expect(
+      registry.rotatePublisher(publisher.address, nextPublisher.address)
+    )
+      .to.be.revertedWithCustomError(registry, "PublisherIdentityConflict")
+      .withArgs(
+        nextPublisher.address,
+        nextPublisher.address,
+        publisher.address
+      );
+
+    expect(await registry.isPublisherAuthorized(publisher.address)).to.equal(
+      true
+    );
+    expect(
+      await registry.isPublisherAuthorized(nextPublisher.address)
+    ).to.equal(false);
+    expect(await registry.publisherIdentity(nextPublisher.address)).to.equal(
+      nextPublisher.address
+    );
+    expect(await registry.publisherIdentity(outsider.address)).to.equal(
+      ethers.ZeroAddress
+    );
+  });
+
   it("appends a correction without mutating its referenced report", async function () {
     const { publisher, registry } = await loadFixture(deployRegistryFixture);
     const first = await report();

@@ -237,6 +237,34 @@ describe("AssetGate", function () {
     expect(await gate.check(ASSET_KEY)).to.deep.equal([true, "allowed"]);
   });
 
+  it("keeps a publisher-pinned gate usable after successor reauthorization", async function () {
+    const { publisher, otherPublisher, registry } = await loadFixture(
+      deployRegistryFixture
+    );
+    const first = await publish(registry, publisher);
+    const gate = await deployGate(registry, {
+      requiredPublisher: publisher.address,
+    });
+    await registry.rotatePublisher(publisher.address, otherPublisher.address);
+    await registry
+      .connect(otherPublisher)
+      .publish(
+        ASSET_KEY,
+        CONTROL_ROOT,
+        EVIDENCE_ROOT,
+        0,
+        first.observedAt,
+        first.validUntil,
+        2,
+        `${REPORT_URI}/rotated`
+      );
+
+    await registry.revokePublisher(otherPublisher.address);
+    await registry.authorizePublisher(otherPublisher.address);
+
+    expect(await gate.check(ASSET_KEY)).to.deep.equal([true, "allowed"]);
+  });
+
   it("returns control-set mismatch", async function () {
     const { publisher, registry } = await loadFixture(deployRegistryFixture);
     await publish(registry, publisher);

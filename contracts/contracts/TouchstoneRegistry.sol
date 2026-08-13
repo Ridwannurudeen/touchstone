@@ -24,6 +24,11 @@ contract TouchstoneRegistry {
     error UnauthorizedPublisher(address publisher);
     error InvalidPublisher(address publisher);
     error InvalidPublisherRotation(address publisher);
+    error PublisherIdentityConflict(
+        address publisher,
+        address existingIdentity,
+        address requestedIdentity
+    );
     error PublisherAlreadyAuthorized(address publisher);
     error PublisherNotAuthorized(address publisher);
     error ChainIdMismatch(uint256 expected, uint256 actual);
@@ -91,7 +96,8 @@ contract TouchstoneRegistry {
     }
 
     function authorizePublisher(address publisher) external onlyOwner {
-        _authorizePublisher(publisher, publisher);
+        address identity = publisherIdentity[publisher];
+        _authorizePublisher(publisher, identity == address(0) ? publisher : identity);
     }
 
     function revokePublisher(address publisher) external onlyOwner {
@@ -211,8 +217,14 @@ contract TouchstoneRegistry {
         if (isPublisherAuthorized[publisher]) {
             revert PublisherAlreadyAuthorized(publisher);
         }
+        address existingIdentity = publisherIdentity[publisher];
+        if (existingIdentity != address(0) && existingIdentity != identity) {
+            revert PublisherIdentityConflict(publisher, existingIdentity, identity);
+        }
         isPublisherAuthorized[publisher] = true;
-        publisherIdentity[publisher] = identity;
+        if (existingIdentity == address(0)) {
+            publisherIdentity[publisher] = identity;
+        }
         emit PublisherAuthorized(publisher);
     }
 
