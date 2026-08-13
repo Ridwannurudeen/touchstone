@@ -1,0 +1,2 @@
+# Evidence fixtures must retain their captured bytes across platforms.
+fixtures/*.json -text
