@@ -1,0 +1,220 @@
+"""Versioned observation reports and independently recomputable ordered roots.
+
+Roots use a domain-separated ordered hash chain. The initial value is
+``SHA256(b"touchstone-root-v1:" + domain)``. Each item, sorted as documented by
+the public helpers below, advances the chain with
+``SHA256(b"\x01" + previous + canonical_json(item))``. The hexadecimal final
+digest is the root published in reports and onchain.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping, Sequence
+from datetime import datetime, timezone
+import hashlib
+import re
+from typing import TYPE_CHECKING
+
+from touchstone.controls import (
+    AssetState,
+    ControlRecord,
+    OperationalEvent,
+    transition_state,
+)
+from touchstone.signing import canonical_json_bytes
+
+if TYPE_CHECKING:
+    from touchstone.epoch import USTBEpochReport
+
+
+REPORT_VERSION = "touchstone.observation-report.v1"
+USTB_LIMITATIONS = (
+    "Issuer APIs prove only what Superstate published at the observed endpoints; "
+    "Touchstone does not independently audit the fund, its assets, or issuer accuracy.",
+    "Holdings publication lags daily NAV and its 40-day freshness window is provisional.",
+    "This local-only report does not verify an onchain NAV oracle or token supply.",
+)
+_DIGEST = re.compile(r"[0-9a-f]{64}")
+
+
+def control_set_root(records: Iterable[ControlRecord]) -> str:
+    """Hash controls ordered by ``control_id`` using their canonical content hashes."""
+    controls = tuple(records)
+    if any(not isinstance(record, ControlRecord) for record in controls):
+        raise TypeError("each control record must be a ControlRecord")
+    items = [
+        {"content_hash": record.content_hash, "control_id": record.control_id}
+        for record in sorted(controls, key=lambda record: record.control_id)
+    ]
+    _reject_duplicate_values(items, "control_id", "control_id")
+    return ordered_hash_root("control-set", items)
+
+
+def evidence_root(records: Iterable[Mapping[str, object]]) -> str:
+    """Hash evidence digest records ordered by ``source_id`` then digest."""
+    items: list[dict[str, str]] = []
+    for record in records:
+        if not isinstance(record, Mapping) or set(record) != {"source_id", "sha256"}:
+            raise ValueError("evidence digest must contain source_id and sha256")
+        source_id = _nonempty_text(record["source_id"], "source_id")
+        digest = _digest(record["sha256"], "sha256")
+        items.append({"sha256": digest, "source_id": source_id})
+    items.sort(key=lambda item: (item["source_id"], item["sha256"]))
+    _reject_duplicate_values(items, "source_id", "source_id")
+    return ordered_hash_root("evidence", items)
+
+
+def ordered_hash_root(domain: str, items: Sequence[Mapping[str, object]]) -> str:
+    """Compute the documented domain-separated ordered hash chain."""
+    domain_text = _nonempty_text(domain, "domain")
+    state = hashlib.sha256(
+        b"touchstone-root-v1:" + domain_text.encode("utf-8")
+    ).digest()
+    for item in items:
+        if not isinstance(item, Mapping):
+            raise TypeError("root item must be a mapping")
+        state = hashlib.sha256(
+            b"\x01" + state + canonical_json_bytes(dict(item))
+        ).digest()
+    return state.hex()
+
+
+def build_observation_report(
+    epoch: USTBEpochReport,
+    controls: Iterable[ControlRecord],
+    *,
+    epoch_id: str,
+    sequence: int,
+    publisher_kid: str,
+    observed_at: datetime,
+    valid_until: datetime,
+    compiler_provenance_digests: Iterable[str],
+    previous_state: AssetState = AssetState.UNVERIFIABLE,
+    event: OperationalEvent = OperationalEvent.RECONFIRMED,
+    limitations: Iterable[str] = USTB_LIMITATIONS,
+    correction_of: int | None = None,
+) -> dict[str, object]:
+    """Build a strict report from a completed epoch without performing I/O."""
+    records = tuple(controls)
+    if type(sequence) is not int or sequence < 1:
+        raise ValueError("sequence must be a positive integer")
+    if correction_of is not None and (
+        type(correction_of) is not int or not 1 <= correction_of < sequence
+    ):
+        raise ValueError("correction_of must reference an earlier positive sequence")
+    if not isinstance(previous_state, AssetState):
+        raise TypeError("previous_state must be an AssetState")
+    if not isinstance(event, OperationalEvent):
+        raise TypeError("event must be an OperationalEvent")
+
+    observed_text = _utc_timestamp(observed_at, "observed_at")
+    valid_text = _utc_timestamp(valid_until, "valid_until")
+    if valid_until.astimezone(timezone.utc) < observed_at.astimezone(timezone.utc):
+        raise ValueError("valid_until must not precede observed_at")
+
+    controls_by_id = {record.control_id: record for record in records}
+    if len(controls_by_id) != len(records):
+        raise ValueError("control_id values must be unique")
+    evaluations_by_id = {item.control_id: item for item in epoch.evaluations}
+    if len(evaluations_by_id) != len(epoch.evaluations):
+        raise ValueError("epoch control_id values must be unique")
+    if set(controls_by_id) != set(evaluations_by_id):
+        raise ValueError("epoch evaluations do not match the control set")
+
+    expected_state = transition_state(
+        previous_state,
+        event,
+        (item.result for item in epoch.evaluations),
+        epoch.evidence_deadline,
+        epoch.now,
+    )
+    if epoch.state is not expected_state:
+        raise ValueError("epoch state does not match the transition rules")
+
+    evidence_digests = [
+        {"sha256": source.evidence_sha256, "source_id": source.source_id}
+        for source in epoch.sources
+    ]
+    provenance = tuple(
+        _digest(value, "compiler provenance digest")
+        for value in compiler_provenance_digests
+    )
+    if not provenance:
+        raise ValueError("compiler_provenance_digests must not be empty")
+    caveats = tuple(_nonempty_text(value, "limitation") for value in limitations)
+    if not caveats:
+        raise ValueError("limitations must not be empty")
+
+    report_controls = []
+    for control_id in sorted(controls_by_id):
+        control = controls_by_id[control_id]
+        evaluation = evaluations_by_id[control_id]
+        report_controls.append(
+            {
+                "content_hash": control.content_hash,
+                "control_id": control_id,
+                "evaluation": {
+                    "evidence_deadline": (
+                        evaluation.evidence_deadline.isoformat()
+                        if evaluation.evidence_deadline is not None
+                        else None
+                    ),
+                    "observed_value": evaluation.observed_value,
+                    "result": evaluation.result.value,
+                },
+            }
+        )
+
+    return {
+        "asset_key": epoch.asset_key,
+        "compiler_provenance_digests": list(provenance),
+        "control_set_root": control_set_root(records),
+        "controls": report_controls,
+        "correction_of": correction_of,
+        "epoch_id": _nonempty_text(epoch_id, "epoch_id"),
+        "evidence_root": evidence_root(evidence_digests),
+        "limitations": list(caveats),
+        "observed_at": observed_text,
+        "publisher_kid": _nonempty_text(publisher_kid, "publisher_kid"),
+        "sequence": sequence,
+        "state": epoch.state.value,
+        "state_transition": {
+            "as_of": epoch.now.isoformat(),
+            "event": event.value,
+            "evidence_deadline": epoch.evidence_deadline.isoformat(),
+            "previous_state": previous_state.value,
+        },
+        "valid_until": valid_text,
+        "version": REPORT_VERSION,
+    }
+
+
+def _reject_duplicate_values(
+    items: Sequence[Mapping[str, str]], key: str, label: str
+) -> None:
+    values = [item[key] for item in items]
+    if len(set(values)) != len(values):
+        raise ValueError(f"{label} values must be unique")
+
+
+def _nonempty_text(value: object, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a nonempty string")
+    value.encode("utf-8", errors="strict")
+    return value
+
+
+def _digest(value: object, field: str) -> str:
+    if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
+        raise ValueError(f"{field} must be a lowercase SHA-256 digest")
+    return value
+
+
+def _utc_timestamp(value: object, field: str) -> str:
+    if (
+        not isinstance(value, datetime)
+        or value.tzinfo is None
+        or value.utcoffset() is None
+    ):
+        raise ValueError(f"{field} must be a timezone-aware datetime")
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")

@@ -1,0 +1,173 @@
+from datetime import date, datetime, timezone
+from pathlib import Path
+
+import pytest
+
+from touchstone.controls import AssetState
+from touchstone.epoch import FixtureTransport, run_ustb_epoch
+from touchstone.evidence import EvidenceStore
+from touchstone.evaluate import default_ustb_controls
+from touchstone.report import (
+    USTB_LIMITATIONS,
+    build_observation_report,
+    control_set_root,
+    evidence_root,
+)
+
+
+FIXTURES = Path(__file__).parents[1] / "fixtures"
+RETRIEVED_AT = datetime(2026, 8, 13, 14, 16, 17, tzinfo=timezone.utc)
+
+
+def _epoch(tmp_path: Path):
+    return run_ustb_epoch(
+        transport=FixtureTransport(FIXTURES),
+        store=EvidenceStore(tmp_path),
+        now=date(2026, 8, 13),
+        retrieved_at=RETRIEVED_AT,
+    )
+
+
+def _report(tmp_path: Path):
+    return build_observation_report(
+        _epoch(tmp_path),
+        default_ustb_controls(),
+        epoch_id="ustb-2026-08-13",
+        sequence=1,
+        publisher_kid="ed25519:" + "11" * 32,
+        observed_at=RETRIEVED_AT,
+        valid_until=datetime(2026, 8, 13, 23, 59, 59, tzinfo=timezone.utc),
+        compiler_provenance_digests=["22" * 32],
+    )
+
+
+def test_report_contains_recomputable_roots_and_honest_limitations(
+    tmp_path: Path,
+) -> None:
+    epoch = _epoch(tmp_path)
+    report = build_observation_report(
+        epoch,
+        default_ustb_controls(),
+        epoch_id="ustb-2026-08-13",
+        sequence=1,
+        publisher_kid="ed25519:" + "11" * 32,
+        observed_at=RETRIEVED_AT,
+        valid_until=datetime(2026, 8, 13, 23, 59, 59, tzinfo=timezone.utc),
+        compiler_provenance_digests=["22" * 32],
+    )
+
+    assert report["control_set_root"] == control_set_root(default_ustb_controls())
+    assert report["evidence_root"] == evidence_root(
+        [
+            {"source_id": source.source_id, "sha256": source.evidence_sha256}
+            for source in epoch.sources
+        ]
+    )
+    assert report["state"] == "CONFIRMED"
+    assert report["limitations"] == list(USTB_LIMITATIONS)
+    assert [item["control_id"] for item in report["controls"]] == sorted(
+        control.control_id for control in default_ustb_controls()
+    )
+
+
+def test_root_construction_is_order_independent_but_content_sensitive(
+    tmp_path: Path,
+) -> None:
+    epoch = _epoch(tmp_path)
+    controls = default_ustb_controls()
+    digests = [
+        {"source_id": source.source_id, "sha256": source.evidence_sha256}
+        for source in epoch.sources
+    ]
+
+    assert control_set_root(controls) == control_set_root(reversed(controls))
+    assert evidence_root(digests) == evidence_root(reversed(digests))
+    changed = [*digests]
+    changed[0] = {**changed[0], "sha256": "ff" * 32}
+    assert evidence_root(changed) != evidence_root(digests)
+
+
+def test_report_rejects_inconsistent_state(tmp_path: Path) -> None:
+    epoch = _epoch(tmp_path)
+    inconsistent = type(epoch)(
+        asset_key=epoch.asset_key,
+        now=epoch.now,
+        state=AssetState.STALE,
+        evidence_deadline=epoch.evidence_deadline,
+        sources=epoch.sources,
+        evaluations=epoch.evaluations,
+    )
+
+    with pytest.raises(ValueError, match="transition rules"):
+        build_observation_report(
+            inconsistent,
+            default_ustb_controls(),
+            epoch_id="ustb-2026-08-13",
+            sequence=1,
+            publisher_kid="ed25519:" + "11" * 32,
+            observed_at=RETRIEVED_AT,
+            valid_until=datetime(2026, 8, 14, tzinfo=timezone.utc),
+            compiler_provenance_digests=["22" * 32],
+        )
+
+
+def test_report_rejects_invalid_correction_reference(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="earlier positive sequence"):
+        build_observation_report(
+            _epoch(tmp_path),
+            default_ustb_controls(),
+            epoch_id="ustb-2026-08-13",
+            sequence=2,
+            correction_of=2,
+            publisher_kid="ed25519:" + "11" * 32,
+            observed_at=RETRIEVED_AT,
+            valid_until=datetime(2026, 8, 14, tzinfo=timezone.utc),
+            compiler_provenance_digests=["22" * 32],
+        )
+
+
+def test_report_requires_explicit_limitations(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="limitations must not be empty"):
+        build_observation_report(
+            _epoch(tmp_path),
+            default_ustb_controls(),
+            epoch_id="ustb-2026-08-13",
+            sequence=1,
+            publisher_kid="ed25519:" + "11" * 32,
+            observed_at=RETRIEVED_AT,
+            valid_until=datetime(2026, 8, 14, tzinfo=timezone.utc),
+            compiler_provenance_digests=["22" * 32],
+            limitations=[],
+        )
+
+
+def test_report_provenance_digests_are_strict(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="compiler provenance"):
+        build_observation_report(
+            _epoch(tmp_path),
+            default_ustb_controls(),
+            epoch_id="ustb-2026-08-13",
+            sequence=1,
+            publisher_kid="ed25519:" + "11" * 32,
+            observed_at=RETRIEVED_AT,
+            valid_until=datetime(2026, 8, 14, tzinfo=timezone.utc),
+            compiler_provenance_digests=["not-a-digest"],
+        )
+
+    with pytest.raises(ValueError, match="must not be empty"):
+        build_observation_report(
+            _epoch(tmp_path),
+            default_ustb_controls(),
+            epoch_id="ustb-2026-08-13",
+            sequence=1,
+            publisher_kid="ed25519:" + "11" * 32,
+            observed_at=RETRIEVED_AT,
+            valid_until=datetime(2026, 8, 14, tzinfo=timezone.utc),
+            compiler_provenance_digests=[],
+        )
+
+
+def test_report_fixture_helper_is_canonical_json_compatible(tmp_path: Path) -> None:
+    report = _report(tmp_path)
+    assert report["version"] == "touchstone.observation-report.v1"
+    assert report["compiler_provenance_digests"] == ["22" * 32]

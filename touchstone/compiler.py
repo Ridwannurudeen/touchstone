@@ -25,7 +25,7 @@ MAX_PROVIDER_OUTPUT_BYTES = 1_048_576
 MAX_PROVIDER_OUTPUT_DEPTH = 32
 MAX_PROPOSALS = 32
 CONFIDENCE_THRESHOLD = 0.8
-USTB_ASSET_KEY = "ethereum:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
+USTB_ASSET_KEY = "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
 _OUTPUT_FIELDS = frozenset({"controls"})
 _INSTRUCTION_PATTERN = re.compile(
     r"\b(?:ignore|disregard|override|follow|execute|fetch|browse|visit|curl|wget)\b",

@@ -22,7 +22,7 @@ def test_golden_fixture_epoch_runs_the_complete_offline_vertical(tmp_path: Path)
         retrieved_at=RETRIEVED_AT,
     )
 
-    assert report.asset_key == "ethereum:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
+    assert report.asset_key == "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
     assert report.now == date(2026, 8, 13)
     assert report.state is AssetState.CONFIRMED
     assert report.evidence_deadline == date(2026, 8, 13)

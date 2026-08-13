@@ -41,7 +41,7 @@ FIELD_NAMES = [
 
 def control_values() -> dict[str, object]:
     return {
-        "asset_key": "ethereum:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+        "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
         "control_id": "nav-row-freshness",
         "control_version": 1,
         "predicate_type": "observation",

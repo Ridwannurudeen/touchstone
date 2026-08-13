@@ -25,7 +25,7 @@ FIXTURES = Path(__file__).parents[1] / "fixtures"
 
 def candidate(**changes: object) -> dict[str, object]:
     value: dict[str, object] = {
-        "asset_key": "ethereum:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+        "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
         "control_id": "value-vs-expected",
         "control_version": 1,
         "predicate_type": "observation",

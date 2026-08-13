@@ -27,7 +27,7 @@ from touchstone.normalize.ustb import (
 )
 
 
-USTB_ASSET_KEY = "ethereum:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
+USTB_ASSET_KEY = "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
 
 
 @dataclass(frozen=True, slots=True)
