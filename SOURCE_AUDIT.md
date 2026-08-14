@@ -1,6 +1,6 @@
 # Touchstone — Phase 0 Source Audit
 
-**Audit date:** 2026-08-13 · **Auditor:** Claude (Fable 5) + three Opus 5 research agents
+**Audit date:** 2026-08-13
 **Gate:** an asset enters the build only with an attributable official source, repeatable
 no-login retrieval, ≥2 honest machine-observable controls, explicit cadence, hashable
 evidence, and a sprint-feasible adapter. Abort Touchstone entirely if fewer than two
