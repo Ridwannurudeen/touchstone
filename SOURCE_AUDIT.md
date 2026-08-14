@@ -73,14 +73,21 @@ time; it is recorded per asset as a residual check.
 
 ### Residual checks before mainnet claims
 
-- **Defect found and closed 2026-08-14:** the control set read the newest nav-daily row,
-  so `aum-published` and `value-vs-expected` would have reported the provisional
-  carry-forward row's values as the epoch's observed values — attributing the prior
-  day's AUM to today. No such report was ever signed or published. Both controls are now
-  `control_version: 2` and declare `settled_after_business_days: 2`, the evaluator
-  observes the newest row past that window and records its `observed_on`, and the
-  offline verifier rejects any report stating a value without an evidence date.
+- **Defect found and remediated 2026-08-14:** the control set read the newest nav-daily
+  row, so `aum-published` and `value-vs-expected` would have reported the provisional
+  carry-forward row's values as the epoch's observed values — attributing the prior day's
+  AUM to today. No live or operational report was published under those semantics (test
+  fixtures sign reports routinely). Both controls are now `control_version: 3` and
+  observe only a row **confirmed unchanged across two retained captures ≥24h apart**,
+  recording its `observed_on`; a first epoch with no predecessor abstains and the asset
+  reports `UNVERIFIABLE`. `minimum_row_age_business_days: 2` remains as a pre-filter, not
+  as settlement proof. The offline verifier now rejects a value with no evidence date, a
+  value dated after the epoch, a conclusive evaluation with no date, and a value claim
+  whose confirmation capture is missing, cross-source, or less than 24h older.
   `nav-row-freshness` is unchanged and documented as feed-liveness, not settlement.
+  **Residual limitation:** the confirmation window is derived from two captures and
+  cannot prove that an older row is never revised; the business-day count ignores
+  holidays. Both are recorded in the report's published limitations.
 - Re-fetch repeatedly across days from the deployment VPS (scripted, part of sprint).
 - API terms-of-use review (docs present the API publicly; confirm no usage restriction).
 - Establish the exact outstanding-shares vs onchain-supply relationship before enabling control 5 beyond observation mode.
@@ -204,11 +211,16 @@ block).
 | PAXG | `0x4580…F78` (ETH; address only in issuer GitHub README — paxos.com page has NO address) | 436,225.095154 (18 dec) | **NONE issuer-published** (announced Chainlink PoR feed absent from Chainlink directory — COULD NOT VERIFY). Third-party Chainlink PAXG/USD `0x9944…8C3`: $4,393.54 (corroborated class only) | — |
 | BENJI | Stellar primary (`BENJI` / issuer `GBHN…IW5`, first-party stellar.toml); ETH `0x3DDc…dc9` | Stellar authorized 485,686,460.099; ETH 48,005,967.446 — fragmented across 9 networks, no aggregate; separate iBENJI class (210.7M) | **NONE on any chain** | — |
 
-**Empirical control confirmation (hero):** USTB API NAV `11.17558800` (08/13 row) vs
-Chainlink oracle `11.175588` (08-12 update) — independent sources agree to the digit.
-`nav-oracle-consistency` is real and live today. Note the two official oracles
-legitimately differ (checkpoint vs extrapolation) — the control must name which oracle
-is authoritative and use a tolerance.
+**Empirical control confirmation (hero):** USTB API NAV `11.17558800` vs Chainlink oracle
+`11.175588` (08-12 update) — independent sources agree to the digit.
+`nav-oracle-consistency` is real and live today. **Corrected 2026-08-14:** that API value
+was read from the then-newest 08/13 row, which the 08-14 capture revealed to be a
+provisional carry-forward of the 08/11 value — the settled 08/13 NAV is `11.17774800`.
+The agreement therefore holds between the oracle and the **08/11 settled row**, and the
+control must compare an oracle reading against a confirmed row of the matching date, not
+against the feed's tail. Note also that the two official oracles legitimately differ
+(checkpoint vs extrapolation) — the control must name which oracle is authoritative and
+use a tolerance.
 
 **Onchain ranking for a keyless daily monitor:** USTB > OUSG > USDY > PAXG (supply-only)
 > BENJI (non-EVM primary, fragmented, no NAV oracle — gate behind an explicit

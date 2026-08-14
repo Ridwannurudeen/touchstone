@@ -27,14 +27,19 @@ if TYPE_CHECKING:
     from touchstone.epoch import USTBEpochReport
 
 
-REPORT_VERSION = "touchstone.observation-report.v2"
+REPORT_VERSION = "touchstone.observation-report.v3"
+CAPTURE_ROLES = ("current", "confirmation")
+_EVIDENCE_FIELDS = {"capture_role", "retrieved_at", "sha256", "source_id"}
 USTB_LIMITATIONS = (
     "Issuer APIs prove only what Superstate published at the observed endpoints; "
     "Touchstone does not independently audit the fund, its assets, or issuer accuracy.",
     "Holdings publication lags daily NAV and its 40-day freshness window is provisional.",
     "The newest nav-daily rows are provisional and are revised in place, so value "
-    "controls observe a row that has aged past that revision window; a control's "
-    "observed_on names the row its observed_value belongs to.",
+    "controls observe only a row confirmed unchanged across two retained captures; a "
+    "control's observed_on names the row its observed_value belongs to. Confirmation "
+    "shows a row was not revised between those captures, not that it is final.",
+    "This bundle carries evidence digests, not the artifacts themselves, so it cannot "
+    "replay normalization or prove that a reported row occurs inside an artifact.",
     "This local-only report does not verify an onchain NAV oracle or token supply.",
 )
 _DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -54,16 +59,34 @@ def control_set_root(records: Iterable[ControlRecord]) -> str:
 
 
 def evidence_root(records: Iterable[Mapping[str, object]]) -> str:
-    """Hash evidence digest records ordered by ``source_id`` then digest."""
+    """Hash evidence references ordered by ``source_id`` then ``capture_role``.
+
+    Every reference names the role its artifact played in the epoch, so a report that
+    carries a cross-capture value claim binds both the current capture and the earlier
+    one that confirmed it.
+    """
     items: list[dict[str, str]] = []
     for record in records:
-        if not isinstance(record, Mapping) or set(record) != {"source_id", "sha256"}:
-            raise ValueError("evidence digest must contain source_id and sha256")
-        source_id = _nonempty_text(record["source_id"], "source_id")
-        digest = _digest(record["sha256"], "sha256")
-        items.append({"sha256": digest, "source_id": source_id})
-    items.sort(key=lambda item: (item["source_id"], item["sha256"]))
-    _reject_duplicate_values(items, "source_id", "source_id")
+        if not isinstance(record, Mapping) or set(record) != _EVIDENCE_FIELDS:
+            raise ValueError(
+                "evidence reference must contain "
+                "capture_role, retrieved_at, sha256 and source_id"
+            )
+        role = record["capture_role"]
+        if role not in CAPTURE_ROLES:
+            raise ValueError("capture_role must be current or confirmation")
+        items.append(
+            {
+                "capture_role": role,
+                "retrieved_at": _utc_timestamp_text(
+                    record["retrieved_at"], "evidence retrieved_at"
+                ),
+                "sha256": _digest(record["sha256"], "sha256"),
+                "source_id": _nonempty_text(record["source_id"], "source_id"),
+            }
+        )
+    items.sort(key=lambda item: (item["source_id"], item["capture_role"]))
+    _reject_duplicate_pairs(items)
     return ordered_hash_root("evidence", items)
 
 
@@ -80,6 +103,33 @@ def ordered_hash_root(domain: str, items: Sequence[Mapping[str, object]]) -> str
             b"\x01" + state + canonical_json_bytes(dict(item))
         ).digest()
     return state.hex()
+
+
+def evidence_references(epoch: USTBEpochReport) -> list[dict[str, object]]:
+    """Return the epoch's evidence references, one per capture and role."""
+    if not epoch.sources:
+        raise ValueError("epoch must contain source observations")
+    references: list[dict[str, object]] = [
+        {
+            "capture_role": "current",
+            "retrieved_at": _utc_timestamp(source.retrieved_at, "source retrieved_at"),
+            "sha256": source.evidence_sha256,
+            "source_id": source.source_id,
+        }
+        for source in epoch.sources
+    ]
+    if epoch.confirmation is not None:
+        references.append(
+            {
+                "capture_role": "confirmation",
+                "retrieved_at": _utc_timestamp(
+                    epoch.confirmation.retrieved_at, "confirmation retrieved_at"
+                ),
+                "sha256": epoch.confirmation.sha256,
+                "source_id": epoch.confirmation.source_id,
+            }
+        )
+    return references
 
 
 def build_observation_report(
@@ -129,12 +179,7 @@ def build_observation_report(
     if epoch.state is not expected_state:
         raise ValueError("epoch state does not match the transition rules")
 
-    evidence_digests = [
-        {"sha256": source.evidence_sha256, "source_id": source.source_id}
-        for source in epoch.sources
-    ]
-    if not epoch.sources:
-        raise ValueError("epoch must contain source observations")
+    evidence_digests = evidence_references(epoch)
     observed_at = max(source.retrieved_at for source in epoch.sources)
     observed_text = _utc_timestamp(observed_at, "source retrieved_at")
     valid_until = datetime.combine(
@@ -209,6 +254,12 @@ def _reject_duplicate_values(
         raise ValueError(f"{label} values must be unique")
 
 
+def _reject_duplicate_pairs(items: Sequence[Mapping[str, str]]) -> None:
+    pairs = [(item["source_id"], item["capture_role"]) for item in items]
+    if len(set(pairs)) != len(pairs):
+        raise ValueError("evidence references must be unique per source and role")
+
+
 def _nonempty_text(value: object, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field} must be a nonempty string")
@@ -220,6 +271,17 @@ def _digest(value: object, field: str) -> str:
     if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
         raise ValueError(f"{field} must be a lowercase SHA-256 digest")
     return value
+
+
+def _utc_timestamp_text(value: object, field: str) -> str:
+    """Accept an already-normalized UTC timestamp string and re-validate it."""
+    if not isinstance(value, str) or not value.endswith("Z"):
+        raise ValueError(f"{field} must be a normalized UTC timestamp")
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as error:
+        raise ValueError(f"{field} must be a normalized UTC timestamp") from error
+    return _utc_timestamp(parsed, field)
 
 
 def _utc_timestamp(value: object, field: str) -> str:

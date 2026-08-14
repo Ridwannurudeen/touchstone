@@ -7,7 +7,8 @@ import json
 import os
 import re
 import tempfile
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -26,8 +27,21 @@ _ENTRY_FIELDS = {
 }
 
 
+CONFIRMATION_INTERVAL_SECONDS = 86_400
+
+
 class EvidenceIntegrityError(RuntimeError):
     """Raised when the evidence index or a referenced object fails verification."""
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureRecord:
+    """Immutable identity of one retained capture."""
+
+    source_id: str
+    sha256: str
+    retrieved_at: datetime
+    index_position: int
 
 
 class EvidenceStore:
@@ -78,6 +92,56 @@ class EvidenceStore:
             index_file.flush()
             os.fsync(index_file.fileno())
         return digest
+
+    def confirmation_capture(
+        self, source_id: str, *, before: datetime
+    ) -> CaptureRecord | None:
+        """Return the newest capture of ``source_id`` old enough to confirm ``before``.
+
+        Qualifying captures precede ``before`` in index order and were retrieved at least
+        ``CONFIRMATION_INTERVAL_SECONDS`` earlier, so two captures taken minutes apart —
+        including either side of midnight — never confirm each other.
+        """
+        _validate_nonempty_string(source_id, "source_id")
+        if not isinstance(before, datetime):
+            raise TypeError("before must be a datetime")
+        if before.tzinfo is None or before.utcoffset() is None:
+            raise ValueError("before must be timezone-aware")
+
+        self.verify()
+        deadline = before.astimezone(timezone.utc) - timedelta(
+            seconds=CONFIRMATION_INTERVAL_SECONDS
+        )
+        qualifying: list[CaptureRecord] = []
+        for position, entry in enumerate(self._entries()):
+            if entry["source_id"] != source_id:
+                continue
+            retrieved_at = datetime.fromisoformat(entry["retrieved_at"][:-1] + "+00:00")
+            if retrieved_at <= deadline:
+                qualifying.append(
+                    CaptureRecord(
+                        source_id=source_id,
+                        sha256=entry["sha256"],
+                        retrieved_at=retrieved_at,
+                        index_position=position,
+                    )
+                )
+        return max(
+            qualifying,
+            key=lambda record: (record.retrieved_at, record.index_position),
+            default=None,
+        )
+
+    def _entries(self) -> list[dict[str, Any]]:
+        if not self.index_path.exists():
+            return []
+        index_bytes = self.index_path.read_bytes()
+        if not index_bytes:
+            return []
+        return [
+            self._decode_entry(line, number)
+            for number, line in enumerate(index_bytes.splitlines(), 1)
+        ]
 
     def verify(self) -> int:
         """Verify the complete index chain and all referenced objects."""

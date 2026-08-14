@@ -314,3 +314,79 @@ def test_index_append_keeps_existing_bytes_unchanged(tmp_path: Path) -> None:
 
     assert index_path.read_bytes().startswith(first_bytes)
     assert os.path.getsize(index_path) > len(first_bytes)
+
+
+def test_confirmation_capture_requires_a_full_day_of_separation(tmp_path: Path) -> None:
+    store = EvidenceStore(tmp_path)
+    store_observation(store, b"older", retrieved_at=RETRIEVED_AT)
+    current = RETRIEVED_AT + timedelta(hours=23, minutes=59)
+
+    assert (
+        store.confirmation_capture("superstate-ustb-nav", before=current) is None
+    )
+    assert (
+        store.confirmation_capture(
+            "superstate-ustb-nav", before=RETRIEVED_AT + timedelta(hours=24)
+        )
+        is not None
+    )
+
+
+def test_confirmation_capture_ignores_other_sources(tmp_path: Path) -> None:
+    store = EvidenceStore(tmp_path)
+    store_observation(store, b"yield", source_id="superstate-ustb-yield")
+
+    assert (
+        store.confirmation_capture(
+            "superstate-ustb-nav", before=RETRIEVED_AT + timedelta(days=2)
+        )
+        is None
+    )
+
+
+def test_confirmation_capture_selects_the_newest_qualifying_predecessor(
+    tmp_path: Path,
+) -> None:
+    store = EvidenceStore(tmp_path)
+    store_observation(store, b"oldest", retrieved_at=RETRIEVED_AT)
+    newest_digest = store_observation(
+        store, b"newest-qualifying", retrieved_at=RETRIEVED_AT + timedelta(days=1)
+    )
+    store_observation(
+        store, b"too-recent", retrieved_at=RETRIEVED_AT + timedelta(days=1, hours=23)
+    )
+
+    capture = store.confirmation_capture(
+        "superstate-ustb-nav", before=RETRIEVED_AT + timedelta(days=2)
+    )
+
+    assert capture is not None
+    assert capture.sha256 == newest_digest
+    assert capture.retrieved_at == RETRIEVED_AT + timedelta(days=1)
+
+
+def test_confirmation_capture_accepts_identical_bytes_from_a_later_day(
+    tmp_path: Path,
+) -> None:
+    """Unchanged bytes on a separate day are a genuine second observation."""
+    store = EvidenceStore(tmp_path)
+    digest = store_observation(store, b"unchanged", retrieved_at=RETRIEVED_AT)
+    store_observation(
+        store, b"unchanged", retrieved_at=RETRIEVED_AT + timedelta(days=1)
+    )
+
+    capture = store.confirmation_capture(
+        "superstate-ustb-nav", before=RETRIEVED_AT + timedelta(days=2)
+    )
+
+    assert capture is not None
+    assert capture.sha256 == digest
+
+
+def test_confirmation_capture_rejects_naive_timestamps(tmp_path: Path) -> None:
+    store = EvidenceStore(tmp_path)
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        store.confirmation_capture(
+            "superstate-ustb-nav", before=datetime(2026, 8, 14, 17, 8, 12)
+        )

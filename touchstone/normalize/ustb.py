@@ -37,15 +37,11 @@ _HOLDINGS_FIELDS = frozenset({"as_of_date", "holdings"})
 _HOLDING_FIELDS = frozenset(
     {"Security Name", "Base Value/Cost", "Maturity", "Current Yld", "% of Fund"}
 )
-_DECIMAL_TEXT = re.compile(
-    r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\Z"
-)
+_DECIMAL_TEXT = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\Z")
 _CURRENCY_TEXT = re.compile(
     r"\$(?:0|[1-9][0-9]*|[1-9][0-9]{0,2}(?:,[0-9]{3})+)(?:\.[0-9]+)?\Z"
 )
-_PERCENT_TEXT = re.compile(
-    r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?%\Z"
-)
+_PERCENT_TEXT = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?%\Z")
 _MATURITY_TEXT = re.compile(r"([0-9]{1,2})-([A-Z][a-z]{2})-([0-9]{4})\Z")
 _MONTHS = {
     "Jan": 1,
@@ -125,6 +121,7 @@ def parse_nav_daily(
         raise NormalizationError("USTB nav-daily root must be a non-empty array")
 
     rows: list[USTBNavRow] = []
+    seen_dates: set[date] = set()
     for index, item in enumerate(value):
         context = f"nav row {index}"
         record = _exact_object(item, _NAV_FIELDS, context)
@@ -134,6 +131,11 @@ def parse_nav_daily(
         observed_on = _parse_mmddyyyy(
             record["net_asset_value_date"], f"{context}.net_asset_value_date"
         )
+        if observed_on in seen_dates:
+            raise NormalizationError(
+                f"{context}.net_asset_value_date repeats {observed_on.isoformat()}"
+            )
+        seen_dates.add(observed_on)
         subscription_value = record["subscription_nav_per_share"]
         if subscription_value is None:
             subscription_nav = None
@@ -223,9 +225,7 @@ def parse_holdings(
                 base_value_cost=_currency_decimal(
                     holding["Base Value/Cost"], f"{context}.Base Value/Cost"
                 ),
-                maturity=_parse_maturity(
-                    holding["Maturity"], f"{context}.Maturity"
-                ),
+                maturity=_parse_maturity(holding["Maturity"], f"{context}.Maturity"),
                 current_yield=_percent_decimal(
                     holding["Current Yld"], f"{context}.Current Yld"
                 ),
@@ -356,9 +356,7 @@ def _decode_json(
     content = _prepare_raw(raw, max_bytes=max_bytes, max_depth=max_depth)
     if not content.lstrip().startswith(expected_root):
         shape = "array" if expected_root == b"[" else "object"
-        raise NormalizationError(
-            f"invalid JSON: payload must have {shape} magic byte"
-        )
+        raise NormalizationError(f"invalid JSON: payload must have {shape} magic byte")
     try:
         text = content.decode("utf-8", errors="strict")
         return json.loads(
@@ -394,9 +392,7 @@ def _prepare_raw(
         raise ValueError("max_depth must be positive")
     content = bytes(raw)
     if len(content) > max_bytes:
-        raise NormalizationError(
-            f"payload exceeds size limit of {max_bytes} bytes"
-        )
+        raise NormalizationError(f"payload exceeds size limit of {max_bytes} bytes")
     _check_nesting_depth(content, max_depth)
     return content
 
@@ -419,9 +415,7 @@ def _check_nesting_depth(raw: bytes, max_depth: int) -> None:
         elif byte in (0x5B, 0x7B):
             depth += 1
             if depth > max_depth:
-                raise NormalizationError(
-                    f"payload exceeds depth limit of {max_depth}"
-                )
+                raise NormalizationError(f"payload exceeds depth limit of {max_depth}")
         elif byte in (0x5D, 0x7D):
             depth = max(0, depth - 1)
 
@@ -505,9 +499,10 @@ def _parse_iso_date(value: object, context: str) -> date:
 
 
 def _parse_mmddyyyy(value: object, context: str) -> date:
-    if not isinstance(value, str) or re.fullmatch(
-        r"[0-9]{2}/[0-9]{2}/[0-9]{4}", value
-    ) is None:
+    if (
+        not isinstance(value, str)
+        or re.fullmatch(r"[0-9]{2}/[0-9]{2}/[0-9]{4}", value) is None
+    ):
         raise NormalizationError(f"{context} must be MM/DD/YYYY")
     month, day, year = (int(part) for part in value.split("/"))
     try:

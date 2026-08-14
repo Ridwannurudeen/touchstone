@@ -52,21 +52,36 @@ construction so later caller mutation cannot change identity.
 Operator names form a closed allowlist. Adding an operator requires a control-language
 version change and evaluator support.
 
-## Settled observations
+## Cross-capture confirmation of value rows
 
 Value operators (`exists`, `eq`, `within_tolerance`, `non_decreasing`) read one dated
-record from the source. Where a source publishes provisional records and revises them
-later, a control declares `settled_after_business_days` in its `expected_value`: the
-evaluator then observes the newest record that is at least that many business days old
-and reports its date as the evaluation's `observed_on`. Absent the key the window is
-zero, which observes the newest record that is not future-dated; a negative or
-non-integer window is malformed and the control evaluates as `UNEVALUABLE` rather than
-falling back. `fresh_within` is unaffected — it deliberately reads the newest record,
-because its subject is whether the source is still publishing.
+record from the source. Where a source publishes provisional records and revises them in
+place, reading the newest record would attribute an unsettled value to a date. A value
+operator therefore observes only a record **confirmed unchanged across retained
+captures**: the evaluator compares this epoch's record against the same dated record in
+a qualifying earlier capture and accepts it only when the whole normalized record is
+identical. A record revised between captures is skipped and an older unchanged record
+may be observed instead. The accepted record's date is reported as the evaluation's
+`observed_on`, and a report that carries such a value binds both captures through
+`capture_role` evidence references.
 
-The USTB nav-daily controls declare a window of two business days. That number is
-empirical, not conventional: it is the smallest window under which no row was observed
-to change between the 2026-08-13 and 2026-08-14 captures retained in `fixtures/`.
+A qualifying earlier capture is the newest retained capture of the same source retrieved
+at least 24 hours before the current one, so two captures taken minutes apart — including
+either side of midnight — never confirm each other. With no qualifying capture, every
+value operator returns `UNEVALUABLE`; the first epoch a publisher ever runs therefore
+reports `UNVERIFIABLE` rather than an unconfirmed value.
+
+`minimum_row_age_business_days` in `expected_value` is a cheap pre-filter in front of
+that comparison, not proof of settlement. Absent the key the window is zero, which admits
+any record that is not future-dated; a negative, boolean, or non-integer window is
+malformed and the control evaluates as `UNEVALUABLE` rather than falling back. The USTB
+nav-daily controls declare two business days, the smallest window under which no record
+changed between the 2026-08-13 and 2026-08-14 captures retained in `fixtures/`. Two
+captures cannot establish that no older record is ever revised, and the count is
+weekday-only — exchange and bank holidays are not modelled.
+
+`fresh_within` is deliberately unaffected: it reads the newest record because its subject
+is whether the source is still publishing, not what the record is worth.
 
 ## Canonical representation and identity
 

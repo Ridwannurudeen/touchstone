@@ -41,6 +41,11 @@ def nav_row(records: list[dict[str, object]], observed_on: str) -> dict[str, obj
             "4830bc348b621f70682cd41c0d48484987b6b5f3c1a99193e0ca33e7ccba3a25",
         ),
         (
+            "ustb-nav-20260814.json",
+            225_074,
+            "5b6a53e00de2d0762a122780d08961f37d7d5dc8d71f909c208574e64dfe9fda",
+        ),
+        (
             "ustb-yield.json",
             122,
             "02ef1e14a867a5d034916021fecde3c6e555e78ac830ce78a8a3d6d49e55ce1f",
@@ -66,7 +71,11 @@ def test_fixture_bytes_match_manifest(name: str, byte_length: int, sha256: str) 
 
 @pytest.mark.parametrize(
     ("name", "fund_id", "record_count"),
-    [("ustb-nav.json", 1, 954), ("uscc-nav.json", 2, 763)],
+    [
+        ("ustb-nav.json", 1, 954),
+        ("ustb-nav-20260814.json", 1, 955),
+        ("uscc-nav.json", 2, 763),
+    ],
 )
 def test_nav_fixture_schema(name: str, fund_id: int, record_count: int) -> None:
     records = load_json(name)
@@ -129,6 +138,38 @@ def test_ustb_source_audit_values() -> None:
     assert Decimal(current["net_asset_value"]) == Decimal("11.17558800")
     assert Decimal(current["assets_under_management"]) == Decimal("958406746.9500")
     assert Decimal(current["outstanding_shares"]) == Decimal("85758954.871099")
+
+
+def test_august_14_capture_head_row_golden_values() -> None:
+    records = load_json("ustb-nav-20260814.json")
+    assert isinstance(records, list)
+    head = nav_row(records, "08/14/2026")
+
+    assert Decimal(head["net_asset_value"]) == Decimal("11.17774800")
+    assert Decimal(head["assets_under_management"]) == Decimal("953805376.2200")
+    assert Decimal(head["outstanding_shares"]) == Decimal("85330728.177089")
+    assert Decimal(head["net_income_expenses"]) == Decimal("92216.05687500")
+    assert head["subscription_nav_per_share"] is None
+
+
+def test_captures_differ_only_in_the_revised_tail() -> None:
+    """The two retained captures are the evidence that the tail is revised in place."""
+    first = {
+        record["net_asset_value_date"]: record for record in load_json("ustb-nav.json")
+    }
+    second = {
+        record["net_asset_value_date"]: record
+        for record in load_json("ustb-nav-20260814.json")
+    }
+    shared = set(first) & set(second)
+    changed = {
+        date_text for date_text in shared if first[date_text] != second[date_text]
+    }
+
+    assert len(shared) == 954
+    assert len(shared - changed) == 952
+    assert changed == {"08/12/2026", "08/13/2026"}
+    assert set(second) - set(first) == {"08/14/2026"}
 
 
 def test_ustb_observation_dates_match_source_audit() -> None:

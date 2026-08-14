@@ -39,9 +39,7 @@ def test_nav_fixture_normalizes_exact_values_without_float_round_trip() -> None:
     assert observation.rows[0].observed_on == date(2026, 8, 13)
     assert observation.rows[0].net_asset_value == Decimal("11.17558800")
     assert observation.rows[0].subscription_nav_per_share is None
-    assert observation.rows[0].assets_under_management == Decimal(
-        "958406746.9500"
-    )
+    assert observation.rows[0].assets_under_management == Decimal("958406746.9500")
     assert observation.rows[0].outstanding_shares == Decimal("85758954.871099")
     assert observation.rows[0].net_income_expenses == Decimal("92362.32361600")
     assert observation.rows[-1].observed_on == date(2024, 1, 3)
@@ -62,9 +60,7 @@ def test_holdings_fixture_normalizes_currency_percent_and_variable_day_dates() -
 
     assert observation.as_of_date == date(2026, 7, 24)
     assert len(observation.holdings) == 36
-    assert observation.holdings[0].security_name == (
-        "U.S. Treasury Bill 07/30/2026"
-    )
+    assert observation.holdings[0].security_name == ("U.S. Treasury Bill 07/30/2026")
     assert observation.holdings[0].base_value_cost == Decimal("19990189")
     assert observation.holdings[0].maturity == date(2026, 7, 30)
     assert observation.holdings[0].current_yield == Decimal("2.99")
@@ -137,6 +133,22 @@ def test_nav_rejects_unknown_missing_wrong_fund_invalid_date_and_numeric() -> No
     for case in cases:
         with pytest.raises(NormalizationError):
             parse_nav_daily(encode(case))
+
+
+def test_nav_rejects_repeated_row_dates() -> None:
+    """Cross-capture row matching is keyed by date, so a repeated date is ambiguous."""
+    row = {
+        "fund_id": 1,
+        "net_asset_value_date": "08/13/2026",
+        "net_asset_value": "11.17558800",
+        "subscription_nav_per_share": None,
+        "assets_under_management": "958406746.9500",
+        "outstanding_shares": "85758954.871099",
+        "net_income_expenses": "92362.32361600",
+    }
+
+    with pytest.raises(NormalizationError, match="repeats 2026-08-13"):
+        parse_nav_daily(encode([row, {**row, "net_asset_value": "11.20000000"}]))
 
 
 def test_nav_allows_blank_outstanding_shares_only_for_exact_oldest_sentinel() -> None:

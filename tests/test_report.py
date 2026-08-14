@@ -11,19 +11,29 @@ from touchstone.report import (
     USTB_LIMITATIONS,
     build_observation_report,
     control_set_root,
+    evidence_references,
     evidence_root,
 )
 
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
-RETRIEVED_AT = datetime(2026, 8, 13, 14, 16, 17, tzinfo=timezone.utc)
+CONFIRMED_AT = datetime(2026, 8, 13, 14, 16, 17, tzinfo=timezone.utc)
+RETRIEVED_AT = datetime(2026, 8, 14, 17, 8, 12, tzinfo=timezone.utc)
 
 
-def _epoch(tmp_path: Path):
+def _epoch(tmp_path: Path, *, confirmed: bool = True):
+    store = EvidenceStore(tmp_path)
+    if confirmed:
+        run_ustb_epoch(
+            transport=FixtureTransport(FIXTURES, date(2026, 8, 13)),
+            store=store,
+            now=date(2026, 8, 13),
+            retrieved_at=CONFIRMED_AT,
+        )
     return run_ustb_epoch(
-        transport=FixtureTransport(FIXTURES),
-        store=EvidenceStore(tmp_path),
-        now=date(2026, 8, 13),
+        transport=FixtureTransport(FIXTURES, date(2026, 8, 14)),
+        store=store,
+        now=date(2026, 8, 14),
         retrieved_at=RETRIEVED_AT,
     )
 
@@ -32,7 +42,7 @@ def _report(tmp_path: Path):
     return build_observation_report(
         _epoch(tmp_path),
         default_ustb_controls(),
-        epoch_id="ustb-2026-08-13",
+        epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
         compiler_provenance_digests=["22" * 32],
@@ -53,12 +63,7 @@ def test_report_contains_recomputable_roots_and_honest_limitations(
     )
 
     assert report["control_set_root"] == control_set_root(default_ustb_controls())
-    assert report["evidence_root"] == evidence_root(
-        [
-            {"source_id": source.source_id, "sha256": source.evidence_sha256}
-            for source in epoch.sources
-        ]
-    )
+    assert report["evidence_root"] == evidence_root(evidence_references(epoch))
     assert report["state"] == "CONFIRMED"
     assert report["limitations"] == list(USTB_LIMITATIONS)
     assert [item["control_id"] for item in report["controls"]] == sorted(
@@ -71,16 +76,17 @@ def test_root_construction_is_order_independent_but_content_sensitive(
 ) -> None:
     epoch = _epoch(tmp_path)
     controls = default_ustb_controls()
-    digests = [
-        {"source_id": source.source_id, "sha256": source.evidence_sha256}
-        for source in epoch.sources
-    ]
+    digests = evidence_references(epoch)
 
     assert control_set_root(controls) == control_set_root(reversed(controls))
-    assert evidence_root(digests) == evidence_root(reversed(digests))
+    assert evidence_root(digests) == evidence_root(list(reversed(digests)))
     changed = [*digests]
     changed[0] = {**changed[0], "sha256": "ff" * 32}
     assert evidence_root(changed) != evidence_root(digests)
+    assert {reference["capture_role"] for reference in digests} == {
+        "current",
+        "confirmation",
+    }
 
 
 def test_report_rejects_inconsistent_state(tmp_path: Path) -> None:
@@ -92,6 +98,7 @@ def test_report_rejects_inconsistent_state(tmp_path: Path) -> None:
         evidence_deadline=epoch.evidence_deadline,
         sources=epoch.sources,
         evaluations=epoch.evaluations,
+        confirmation=epoch.confirmation,
     )
 
     with pytest.raises(ValueError, match="transition rules"):
@@ -195,5 +202,5 @@ def test_report_provenance_digests_are_strict(tmp_path: Path) -> None:
 
 def test_report_fixture_helper_is_canonical_json_compatible(tmp_path: Path) -> None:
     report = _report(tmp_path)
-    assert report["version"] == "touchstone.observation-report.v2"
+    assert report["version"] == "touchstone.observation-report.v3"
     assert report["compiler_provenance_digests"] == ["22" * 32]

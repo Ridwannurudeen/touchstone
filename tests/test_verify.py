@@ -7,41 +7,61 @@ import pytest
 from touchstone.epoch import FixtureTransport, run_ustb_epoch
 from touchstone.evidence import EvidenceStore
 from touchstone.evaluate import default_ustb_controls
-from touchstone.report import build_observation_report
+from touchstone.report import (
+    build_observation_report,
+    evidence_references,
+    evidence_root,
+)
 from touchstone.signing import Ed25519Signer, canonical_json_bytes
 from touchstone.verify import VerificationError, create_bundle, main, verify_bundle
 
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
-RETRIEVED_AT = datetime(2026, 8, 13, 14, 16, 17, tzinfo=timezone.utc)
+CONFIRMED_AT = datetime(2026, 8, 13, 14, 16, 17, tzinfo=timezone.utc)
+RETRIEVED_AT = datetime(2026, 8, 14, 17, 8, 12, tzinfo=timezone.utc)
 
 
-def _bundle(tmp_path: Path):
-    epoch = run_ustb_epoch(
-        transport=FixtureTransport(FIXTURES),
-        store=EvidenceStore(tmp_path / "evidence"),
-        now=date(2026, 8, 13),
+def _epoch(tmp_path: Path, *, confirmed: bool = True):
+    store = EvidenceStore(tmp_path / "evidence")
+    if confirmed:
+        run_ustb_epoch(
+            transport=FixtureTransport(FIXTURES, date(2026, 8, 13)),
+            store=store,
+            now=date(2026, 8, 13),
+            retrieved_at=CONFIRMED_AT,
+        )
+    return run_ustb_epoch(
+        transport=FixtureTransport(FIXTURES, date(2026, 8, 14)),
+        store=store,
+        now=date(2026, 8, 14),
         retrieved_at=RETRIEVED_AT,
     )
+
+
+def _bundle(tmp_path: Path, *, confirmed: bool = True):
+    epoch = _epoch(tmp_path, confirmed=confirmed)
     signer = Ed25519Signer.from_seed(bytes(range(32)))
     report = build_observation_report(
         epoch,
         default_ustb_controls(),
-        epoch_id="ustb-2026-08-13",
+        epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid=signer.kid,
         compiler_provenance_digests=["33" * 32],
     )
-    evidence = [
-        {"source_id": source.source_id, "sha256": source.evidence_sha256}
-        for source in epoch.sources
-    ]
     return create_bundle(
         signer.sign_report(report),
         signer.public_key_record(),
         default_ustb_controls(),
-        evidence,
+        evidence_references(epoch),
     )
+
+
+def _resign(bundle: dict, report: dict) -> dict:
+    signer = Ed25519Signer.from_seed(bytes(range(32)))
+    bundle["signed_report"] = signer.sign_report(report)
+    bundle["report_canonical"] = canonical_json_bytes(report).decode()
+    return bundle
 
 
 def test_verifier_accepts_complete_offline_bundle(tmp_path: Path) -> None:
@@ -142,3 +162,96 @@ def test_cli_returns_zero_for_good_bundle_and_nonzero_for_tamper(
     path.write_bytes(path.read_bytes().replace(b'"signature":"', b'"signature":"00', 1))
     assert main([str(path)]) == 1
     assert capsys.readouterr().err.startswith("FAIL:")
+
+
+def test_verifier_rejects_a_value_attributed_to_a_future_date(tmp_path: Path) -> None:
+    """A validly re-signed report may not date a value after the evaluated epoch."""
+    bundle = _bundle(tmp_path)
+    report = deepcopy(bundle["signed_report"]["report"])
+    for control in report["controls"]:
+        if control["control_id"] == "aum-published":
+            control["evaluation"]["observed_on"] = "2099-01-01"
+
+    with pytest.raises(VerificationError, match="later than the evaluated epoch"):
+        verify_bundle(_resign(bundle, report))
+
+
+def test_verifier_rejects_a_value_with_no_evidence_date(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path)
+    report = deepcopy(bundle["signed_report"]["report"])
+    for control in report["controls"]:
+        if control["control_id"] == "aum-published":
+            control["evaluation"]["observed_on"] = None
+
+    with pytest.raises(VerificationError, match="not attributed to an evidence date"):
+        verify_bundle(_resign(bundle, report))
+
+
+def test_verifier_rejects_a_conclusive_evaluation_with_no_evidence_date(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle(tmp_path)
+    report = deepcopy(bundle["signed_report"]["report"])
+    for control in report["controls"]:
+        if control["control_id"] == "aum-published":
+            control["evaluation"]["observed_on"] = None
+            control["evaluation"]["observed_value"] = None
+
+    with pytest.raises(VerificationError, match="conclusive evaluation"):
+        verify_bundle(_resign(bundle, report))
+
+
+def test_verifier_rejects_a_value_claim_with_no_confirmation_capture(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle(tmp_path)
+    bundle["evidence_digests"] = [
+        reference
+        for reference in bundle["evidence_digests"]
+        if reference["capture_role"] != "confirmation"
+    ]
+    report = deepcopy(bundle["signed_report"]["report"])
+    report["evidence_root"] = evidence_root(bundle["evidence_digests"])
+
+    with pytest.raises(VerificationError, match="no confirmation capture"):
+        verify_bundle(_resign(bundle, report))
+
+
+def test_verifier_rejects_a_same_day_confirmation_capture(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path)
+    for reference in bundle["evidence_digests"]:
+        if reference["capture_role"] == "confirmation":
+            reference["retrieved_at"] = "2026-08-14T09:00:00Z"
+    report = deepcopy(bundle["signed_report"]["report"])
+    report["evidence_root"] = evidence_root(bundle["evidence_digests"])
+
+    with pytest.raises(VerificationError, match="does not precede"):
+        verify_bundle(_resign(bundle, report))
+
+
+def test_verifier_rejects_a_confirmation_reference_for_another_source(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle(tmp_path)
+    for reference in bundle["evidence_digests"]:
+        if reference["capture_role"] == "confirmation":
+            reference["source_id"] = "superstate-ustb-yield"
+    report = deepcopy(bundle["signed_report"]["report"])
+    report["evidence_root"] = evidence_root(bundle["evidence_digests"])
+
+    with pytest.raises(VerificationError, match="no confirmation capture"):
+        verify_bundle(_resign(bundle, report))
+
+
+def test_verifier_accepts_a_first_epoch_with_no_confirmation(tmp_path: Path) -> None:
+    """Without a predecessor the report abstains on values and stays verifiable."""
+    verified = verify_bundle(canonical_json_bytes(_bundle(tmp_path, confirmed=False)))
+    values = {
+        control["control_id"]: control["evaluation"]
+        for control in verified["controls"]
+        if control["control_id"] in {"aum-published", "value-vs-expected"}
+    }
+
+    assert verified["state"] == "UNVERIFIABLE"
+    assert all(item["observed_value"] is None for item in values.values())
+    assert all(item["observed_on"] is None for item in values.values())

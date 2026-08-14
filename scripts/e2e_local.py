@@ -30,7 +30,10 @@ from touchstone.epoch import FixtureTransport, run_ustb_epoch  # noqa: E402
 from touchstone.evidence import EvidenceStore  # noqa: E402
 from touchstone.evaluate import default_ustb_controls  # noqa: E402
 from touchstone.publish import PublisherClient, Web3RegistryBackend  # noqa: E402
-from touchstone.report import build_observation_report  # noqa: E402
+from touchstone.report import (  # noqa: E402
+    build_observation_report,
+    evidence_references,
+)
 from touchstone.signing import Ed25519Signer  # noqa: E402
 from touchstone.translog import TransparencyLog  # noqa: E402
 from touchstone.verify import create_bundle, verify_bundle  # noqa: E402
@@ -68,12 +71,19 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
 
     with tempfile.TemporaryDirectory(prefix="touchstone-e2e-") as temporary:
         workspace = Path(temporary)
-        retrieved_at = datetime(2026, 8, 13, 14, 16, 17, tzinfo=timezone.utc)
+        confirmed_at = datetime(2026, 8, 13, 14, 16, 17, tzinfo=timezone.utc)
+        retrieved_at = datetime(2026, 8, 14, 17, 8, 12, tzinfo=timezone.utc)
         evidence_store = EvidenceStore(workspace / "evidence")
-        epoch = run_ustb_epoch(
-            transport=FixtureTransport(ROOT / "fixtures"),
+        run_ustb_epoch(
+            transport=FixtureTransport(ROOT / "fixtures", date(2026, 8, 13)),
             store=evidence_store,
             now=date(2026, 8, 13),
+            retrieved_at=confirmed_at,
+        )
+        epoch = run_ustb_epoch(
+            transport=FixtureTransport(ROOT / "fixtures", date(2026, 8, 14)),
+            store=evidence_store,
+            now=date(2026, 8, 14),
             retrieved_at=retrieved_at,
         )
         controls = default_ustb_controls()
@@ -84,16 +94,13 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
         report = build_observation_report(
             epoch,
             controls,
-            epoch_id="ustb-fixture-2026-08-13",
+            epoch_id="ustb-fixture-2026-08-14",
             sequence=1,
             publisher_kid=signer.kid,
             compiler_provenance_digests=compiler_provenance,
         )
         signed = signer.sign_report(report)
-        evidence_digests = [
-            {"source_id": source.source_id, "sha256": source.evidence_sha256}
-            for source in epoch.sources
-        ]
+        evidence_digests = evidence_references(epoch)
         bundle = create_bundle(
             signed,
             signer.public_key_record(),
@@ -154,7 +161,7 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
         correction = build_observation_report(
             epoch,
             controls,
-            epoch_id="ustb-fixture-2026-08-13-correction",
+            epoch_id="ustb-fixture-2026-08-14-correction",
             sequence=2,
             publisher_kid=signer.kid,
             compiler_provenance_digests=compiler_provenance,

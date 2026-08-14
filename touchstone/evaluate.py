@@ -31,11 +31,13 @@ from touchstone.normalize.ustb import (
 USTB_ASSET_KEY = "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
 
 # The newest nav-daily rows are provisional: the issuer publishes a row for the current
-# date carrying the previous settled values forward and rewrites it later. Comparing the
-# 2026-08-13 and 2026-08-14 captures, every row revised was under two business days old
-# and every row at or beyond that age was byte-identical, so value controls only observe
-# rows that have aged past this window. Re-derive it as more captures accumulate.
-SETTLED_AFTER_BUSINESS_DAYS = 2
+# date carrying the previous values forward and rewrites it later. Value controls
+# therefore observe only rows confirmed unchanged across two retained captures. This age
+# floor is a cheap pre-filter in front of that comparison, not proof of settlement: in
+# the 2026-08-13 and 2026-08-14 captures every revised row was under two business days
+# old, but two captures cannot establish that no older row is ever revised. The count is
+# weekday-only — exchange and bank holidays are not modelled.
+MINIMUM_ROW_AGE_BUSINESS_DAYS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,7 +141,7 @@ def default_ustb_controls() -> tuple[ControlRecord, ...]:
         {
             **common,
             "control_id": "aum-published",
-            "control_version": 2,
+            "control_version": 3,
             "subject": "USTB assets under management",
             "source_id": USTB_NAV_SOURCE_ID,
             "evidence_span": '"assets_under_management":"958406746.9500"',
@@ -149,13 +151,13 @@ def default_ustb_controls() -> tuple[ControlRecord, ...]:
             "comparison_operator": "exists",
             "expected_value": {
                 "field": "assets_under_management",
-                "settled_after_business_days": SETTLED_AFTER_BUSINESS_DAYS,
+                "minimum_row_age_business_days": MINIMUM_ROW_AGE_BUSINESS_DAYS,
             },
         },
         {
             **common,
             "control_id": "value-vs-expected",
-            "control_version": 2,
+            "control_version": 3,
             "subject": "USTB issuer fund identifier",
             "source_id": USTB_NAV_SOURCE_ID,
             "evidence_span": '"fund_id":1',
@@ -166,7 +168,7 @@ def default_ustb_controls() -> tuple[ControlRecord, ...]:
             "expected_value": {
                 "field": "fund_id",
                 "value": "1",
-                "settled_after_business_days": SETTLED_AFTER_BUSINESS_DAYS,
+                "minimum_row_age_business_days": MINIMUM_ROW_AGE_BUSINESS_DAYS,
             },
         },
     ]
@@ -177,14 +179,22 @@ def evaluate_ustb(
     controls: Iterable[ControlRecord],
     observations: Mapping[str, USTBObservation],
     *,
+    prior_observations: Mapping[str, USTBObservation],
     now: date,
     previous: AssetState = AssetState.UNVERIFIABLE,
     event: OperationalEvent = OperationalEvent.RECONFIRMED,
 ) -> USTBEvaluationReport:
-    """Evaluate approved USTB controls and apply frozen state-transition semantics."""
+    """Evaluate approved USTB controls and apply frozen state-transition semantics.
+
+    ``prior_observations`` carries the qualifying earlier capture per source and is
+    required, never defaulted: a caller with no qualifying predecessor passes ``{}`` and
+    every value control abstains rather than silently claiming an unconfirmed row.
+    """
     _date("now", now)
     if not isinstance(observations, Mapping):
         raise TypeError("observations must be a mapping")
+    if not isinstance(prior_observations, Mapping):
+        raise TypeError("prior_observations must be a mapping")
     records = tuple(controls)
     if any(not isinstance(control, ControlRecord) for control in records):
         raise TypeError("each control must be a ControlRecord")
@@ -194,7 +204,12 @@ def evaluate_ustb(
         _validate_control_binding(control)
 
     evaluations = tuple(
-        _evaluate_control(control, observations.get(control.source_id), now)
+        _evaluate_control(
+            control,
+            observations.get(control.source_id),
+            prior_observations.get(control.source_id),
+            now,
+        )
         for control in records
     )
     deadlines = tuple(
@@ -243,7 +258,10 @@ def _validate_control_binding(control: ControlRecord) -> None:
 
 
 def _evaluate_control(
-    control: ControlRecord, observation: USTBObservation | None, now: date
+    control: ControlRecord,
+    observation: USTBObservation | None,
+    prior_observation: USTBObservation | None,
+    now: date,
 ) -> ControlEvaluation:
     if now < control.effective_from or (
         control.effective_until is not None and now > control.effective_until
@@ -257,7 +275,7 @@ def _evaluate_control(
         )
     if control.comparison_operator is ComparisonOperator.FRESH_WITHIN:
         return _evaluate_freshness(control, observation, now)
-    row = _value_row(control, observation, now)
+    row = _confirmed_nav_row(control, observation, prior_observation, now)
     if row is None:
         return ControlEvaluation(
             control.control_id, EvaluationResult.UNEVALUABLE, None, None
@@ -321,20 +339,33 @@ def _evaluate_freshness(
     )
 
 
-def _value_row(
-    control: ControlRecord, observation: USTBObservation, now: date
+def _confirmed_nav_row(
+    control: ControlRecord,
+    observation: USTBObservation,
+    prior_observation: USTBObservation | None,
+    now: date,
 ) -> USTBNavRow | None:
-    """Return the newest NAV row a value control is allowed to observe."""
-    if not isinstance(observation, USTBNavObservation):
+    """Return the newest NAV row confirmed unchanged across two retained captures.
+
+    A row qualifies only when the earlier capture carries the same date and the whole
+    normalized row is identical, so a row revised between captures is skipped and an
+    older unchanged row may be observed instead.
+    """
+    if not isinstance(observation, USTBNavObservation) or not isinstance(
+        prior_observation, USTBNavObservation
+    ):
         return None
-    settled_after = _settled_after(control.expected_value)
-    if settled_after is None:
+    minimum_age = _minimum_row_age_business_days(control.expected_value)
+    if minimum_age is None:
         return None
+    prior_rows = {row.observed_on: row for row in prior_observation.rows}
     return max(
         (
             row
             for row in observation.rows
-            if business_days_elapsed(row.observed_on, now) >= settled_after
+            if row.observed_on <= now
+            and business_days_elapsed(row.observed_on, now) >= minimum_age
+            and prior_rows.get(row.observed_on) == row
         ),
         key=lambda row: row.observed_on,
         default=None,
@@ -358,11 +389,11 @@ def _latest_nav_row(observation: USTBNavObservation):
     return max(observation.rows, key=lambda row: row.observed_on, default=None)
 
 
-def _settled_after(value: FrozenJSONValue) -> int | None:
-    """Return the control's settling window; ``None`` rejects a malformed declaration."""
+def _minimum_row_age_business_days(value: FrozenJSONValue) -> int | None:
+    """Return the control's minimum row age; ``None`` rejects a malformed declaration."""
     if not isinstance(value, Mapping):
         return None
-    declared = value.get("settled_after_business_days", 0)
+    declared = value.get("minimum_row_age_business_days", 0)
     if type(declared) is not int or declared < 0:
         return None
     return declared

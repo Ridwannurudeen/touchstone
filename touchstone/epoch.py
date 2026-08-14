@@ -10,10 +10,15 @@ from pathlib import Path
 import tempfile
 
 from touchstone.controls import AssetState, EvaluationResult
-from touchstone.evidence import EvidenceStore
+from touchstone.evidence import CaptureRecord, EvidenceStore
 from touchstone.evaluate import USTB_ASSET_KEY, default_ustb_controls, evaluate_ustb
-from touchstone.normalize.ustb import USTBObservation, normalize_ustb_payload
+from touchstone.normalize.ustb import (
+    USTB_NAV_SOURCE_ID,
+    USTBObservation,
+    normalize_ustb_payload,
+)
 from touchstone.sources import (
+    USTB_SOURCE_BY_ID,
     USTB_SOURCES,
     FetchResult,
     LiveTransport,
@@ -23,13 +28,24 @@ from touchstone.sources import (
 )
 
 
-_FIXTURE_BY_SOURCE = {
-    "superstate-ustb-nav-daily": "ustb-nav.json",
-    "superstate-ustb-yield": "ustb-yield.json",
-    "superstate-ustb-holdings": "ustb-holdings.json",
+FIXTURE_CAPTURES = {
+    date(2026, 8, 13): {
+        "superstate-ustb-nav-daily": "ustb-nav.json",
+        "superstate-ustb-yield": "ustb-yield.json",
+        "superstate-ustb-holdings": "ustb-holdings.json",
+    },
+    date(2026, 8, 14): {
+        "superstate-ustb-nav-daily": "ustb-nav-20260814.json",
+        "superstate-ustb-yield": "ustb-yield-20260814.json",
+        "superstate-ustb-holdings": "ustb-holdings.json",
+    },
 }
-_FIXTURE_NOW = date(2026, 8, 13)
-_FIXTURE_RETRIEVED_AT = datetime(2026, 8, 13, 14, 16, 17, tzinfo=timezone.utc)
+FIXTURE_RETRIEVED_AT = {
+    date(2026, 8, 13): datetime(2026, 8, 13, 14, 16, 17, tzinfo=timezone.utc),
+    date(2026, 8, 14): datetime(2026, 8, 14, 17, 8, 12, tzinfo=timezone.utc),
+}
+_FIXTURE_CONFIRMATION = date(2026, 8, 13)
+_FIXTURE_NOW = date(2026, 8, 14)
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,10 +76,20 @@ class USTBEpochReport:
     evidence_deadline: date
     sources: tuple[EpochSourceReport, ...]
     evaluations: tuple[EpochControlReport, ...]
+    confirmation: CaptureRecord | None
 
     def to_mapping(self) -> dict[str, object]:
         return {
             "asset_key": self.asset_key,
+            "confirmation": (
+                {
+                    "retrieved_at": self.confirmation.retrieved_at.isoformat(),
+                    "sha256": self.confirmation.sha256,
+                    "source_id": self.confirmation.source_id,
+                }
+                if self.confirmation is not None
+                else None
+            ),
             "evaluations": [
                 {
                     "control_id": evaluation.control_id,
@@ -101,13 +127,18 @@ class USTBEpochReport:
 
 
 class FixtureTransport:
-    """Offline transport serving the committed fixture bytes by exact source URL."""
+    """Offline transport serving one dated capture of committed fixture bytes."""
 
-    def __init__(self, fixtures_dir: str | Path) -> None:
+    def __init__(
+        self, fixtures_dir: str | Path, capture: date = _FIXTURE_CONFIRMATION
+    ) -> None:
+        if capture not in FIXTURE_CAPTURES:
+            raise ValueError(f"no committed fixture capture for {capture}")
         self.fixtures_dir = Path(fixtures_dir)
+        self.capture = capture
         self.calls: list[str] = []
         self._paths = {
-            source.url: self.fixtures_dir / _FIXTURE_BY_SOURCE[source.source_id]
+            source.url: self.fixtures_dir / FIXTURE_CAPTURES[capture][source.source_id]
             for source in USTB_SOURCES
         }
 
@@ -134,7 +165,22 @@ def run_ustb_epoch(
     now: date,
     retrieved_at: datetime,
 ) -> USTBEpochReport:
-    """Fetch, store, isolate-normalize, evaluate, and transition one USTB epoch."""
+    """Fetch, store, isolate-normalize, evaluate, and transition one USTB epoch.
+
+    The NAV predecessor is resolved before this epoch's own capture is appended, so the
+    current fetch can never confirm itself.
+    """
+    nav_manifest = USTB_SOURCE_BY_ID[USTB_NAV_SOURCE_ID]
+    confirmation = store.confirmation_capture(USTB_NAV_SOURCE_ID, before=retrieved_at)
+    prior_observations: dict[str, USTBObservation] = {}
+    if confirmation is not None:
+        prior_observations[USTB_NAV_SOURCE_ID] = normalize_ustb_payload(
+            USTB_NAV_SOURCE_ID,
+            (store.objects_dir / confirmation.sha256).read_bytes(),
+            max_bytes=nav_manifest.max_bytes,
+            isolated=True,
+        )
+
     fetches: list[FetchResult] = []
     observations: dict[str, USTBObservation] = {}
     for manifest in USTB_SOURCES:
@@ -153,12 +199,18 @@ def run_ustb_epoch(
             isolated=True,
         )
 
-    evaluation = evaluate_ustb(default_ustb_controls(), observations, now=now)
+    evaluation = evaluate_ustb(
+        default_ustb_controls(),
+        observations,
+        prior_observations=prior_observations,
+        now=now,
+    )
     return USTBEpochReport(
         asset_key=USTB_ASSET_KEY,
         now=now,
         state=evaluation.state,
         evidence_deadline=evaluation.evidence_deadline,
+        confirmation=confirmation,
         sources=tuple(
             EpochSourceReport(
                 source_id=fetched.source_id,
@@ -211,11 +263,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.fixtures:
         fixtures = Path(__file__).parents[1] / "fixtures"
         with tempfile.TemporaryDirectory(prefix="touchstone-epoch-") as root:
+            store = EvidenceStore(root)
+            run_ustb_epoch(
+                transport=FixtureTransport(fixtures, _FIXTURE_CONFIRMATION),
+                store=store,
+                now=_FIXTURE_CONFIRMATION,
+                retrieved_at=FIXTURE_RETRIEVED_AT[_FIXTURE_CONFIRMATION],
+            )
             report = run_ustb_epoch(
-                transport=FixtureTransport(fixtures),
-                store=EvidenceStore(root),
+                transport=FixtureTransport(fixtures, _FIXTURE_NOW),
+                store=store,
                 now=_FIXTURE_NOW,
-                retrieved_at=_FIXTURE_RETRIEVED_AT,
+                retrieved_at=FIXTURE_RETRIEVED_AT[_FIXTURE_NOW],
             )
     else:
         retrieved_at = datetime.now(timezone.utc)

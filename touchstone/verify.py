@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 import json
 from pathlib import Path
 import re
@@ -14,12 +14,15 @@ from cryptography.exceptions import InvalidSignature
 
 from touchstone.controls import (
     AssetState,
+    ComparisonOperator,
     ControlRecord,
     EvaluationResult,
     OperationalEvent,
     transition_state,
 )
+from touchstone.evidence import CONFIRMATION_INTERVAL_SECONDS
 from touchstone.report import (
+    CAPTURE_ROLES,
     REPORT_VERSION,
     control_set_root,
     evidence_root,
@@ -31,7 +34,7 @@ from touchstone.signing import (
 )
 
 
-BUNDLE_VERSION = "touchstone.verification-bundle.v1"
+BUNDLE_VERSION = "touchstone.verification-bundle.v2"
 _BUNDLE_FIELDS = {
     "control_records",
     "evidence_digests",
@@ -62,6 +65,9 @@ _EVALUATION_FIELDS = {"evidence_deadline", "observed_on", "observed_value", "res
 _TRANSITION_FIELDS = {"as_of", "event", "evidence_deadline", "previous_state"}
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _ASSET_KEY = re.compile(r"eip155:[1-9][0-9]*:0x[0-9a-f]{40}")
+_CONCLUSIVE_RESULTS = frozenset(
+    {EvaluationResult.SATISFIED, EvaluationResult.CONTRADICTED}
+)
 
 
 class VerificationError(RuntimeError):
@@ -146,8 +152,14 @@ def verify_bundle(value: bytes | str | Mapping[str, object]) -> Mapping[str, obj
         raise VerificationError("control-set root mismatch")
     if report["evidence_root"] != evidence_root(evidence):
         raise VerificationError("evidence root mismatch")
-    _verify_control_results(report["controls"], controls)
+    transition = _mapping(report["state_transition"], "state_transition")
+    _verify_control_results(
+        report["controls"],
+        controls,
+        _calendar_date(transition.get("as_of"), "as_of"),
+    )
     _verify_state(report)
+    _verify_capture_roles(evidence, report, controls)
     return report
 
 
@@ -215,16 +227,62 @@ def _load_controls(value: object) -> tuple[ControlRecord, ...]:
 
 
 def _evidence_records(value: object) -> list[Mapping[str, object]]:
-    if not isinstance(value, list):
-        raise VerificationError("evidence_digests must be an array")
+    if not isinstance(value, list) or not value:
+        raise VerificationError("evidence_digests must be a nonempty array")
     if any(not isinstance(item, Mapping) for item in value):
         raise VerificationError("each evidence digest must be an object")
     return list(value)
 
 
-def _verify_control_results(value: object, records: tuple[ControlRecord, ...]) -> None:
-    if not isinstance(value, list):
-        raise VerificationError("report controls must be an array")
+def _verify_capture_roles(
+    evidence: Sequence[Mapping[str, object]],
+    report: Mapping[str, object],
+    records: tuple[ControlRecord, ...],
+) -> None:
+    """Bind every claim to a current capture, and every value claim to a confirmation."""
+    by_role: dict[tuple[str, str], Mapping[str, object]] = {}
+    for reference in evidence:
+        role = reference.get("capture_role")
+        source_id = reference.get("source_id")
+        if role not in CAPTURE_ROLES or not isinstance(source_id, str):
+            raise VerificationError("evidence reference role or source is invalid")
+        by_role[(source_id, role)] = reference
+
+    sources = {record.source_id for record in records}
+    for source_id in sources:
+        if (source_id, "current") not in by_role:
+            raise VerificationError(
+                f"no current evidence reference for source {source_id}"
+            )
+
+    controls_by_id = {record.control_id: record for record in records}
+    for item in report["controls"]:
+        evaluation = item["evaluation"]
+        if evaluation["observed_value"] is None:
+            continue
+        control = controls_by_id[item["control_id"]]
+        if control.comparison_operator is ComparisonOperator.FRESH_WITHIN:
+            continue
+        confirmation = by_role.get((control.source_id, "confirmation"))
+        if confirmation is None:
+            raise VerificationError(
+                f"value claim for {item['control_id']} has no confirmation capture"
+            )
+        current = by_role[(control.source_id, "current")]
+        separation = _timestamp(
+            current["retrieved_at"], "current retrieved_at"
+        ) - _timestamp(confirmation["retrieved_at"], "confirmation retrieved_at")
+        if separation < timedelta(seconds=CONFIRMATION_INTERVAL_SECONDS):
+            raise VerificationError(
+                "confirmation capture does not precede the current capture by a full day"
+            )
+
+
+def _verify_control_results(
+    value: object, records: tuple[ControlRecord, ...], as_of: date
+) -> None:
+    if not isinstance(value, list) or not value:
+        raise VerificationError("report controls must be a nonempty array")
     expected = {record.control_id: record.content_hash for record in records}
     observed: dict[str, str] = {}
     for item in value:
@@ -243,15 +301,37 @@ def _verify_control_results(value: object, records: tuple[ControlRecord, ...]) -
         except (TypeError, ValueError) as error:
             raise VerificationError("control evaluation result is invalid") from error
         deadline = evaluation["evidence_deadline"]
-        if deadline is not None:
-            _calendar_date(deadline, "control evidence_deadline")
+        observed_value = evaluation["observed_value"]
         observed_on = evaluation["observed_on"]
-        if observed_on is not None:
-            _calendar_date(observed_on, "control observed_on")
-        elif evaluation["observed_value"] is not None:
-            raise VerificationError(
-                "observed value is not attributed to an evidence date"
-            )
+        if observed_value is not None and (
+            not isinstance(observed_value, str) or not observed_value.strip()
+        ):
+            raise VerificationError("observed value must be nonempty text or null")
+        if observed_on is None:
+            if observed_value is not None:
+                raise VerificationError(
+                    "observed value is not attributed to an evidence date"
+                )
+            if EvaluationResult(evaluation["result"]) in _CONCLUSIVE_RESULTS:
+                raise VerificationError(
+                    "a conclusive evaluation requires an evidence date"
+                )
+        else:
+            observed_date = _calendar_date(observed_on, "control observed_on")
+            if observed_date > as_of:
+                raise VerificationError(
+                    "control observed_on is later than the evaluated epoch"
+                )
+        if deadline is not None:
+            deadline_date = _calendar_date(deadline, "control evidence_deadline")
+            if observed_on is None:
+                raise VerificationError(
+                    "an evidence deadline requires an evidence date"
+                )
+            if observed_date > deadline_date:
+                raise VerificationError(
+                    "control observed_on is later than its evidence deadline"
+                )
         observed[control_id] = content_hash
     if observed != expected:
         raise VerificationError("report controls do not match bundled control records")
