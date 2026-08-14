@@ -119,7 +119,7 @@ def default_ustb_controls() -> tuple[ControlRecord, ...]:
             "control_id": "yield-freshness",
             "subject": "USTB published yield date",
             "source_id": USTB_YIELD_SOURCE_ID,
-            "evidence_span": '"as_of_date":"2026-08-11"',
+            "evidence_span": '"as_of_date":"2026-08-13"',
             "cadence": "business-daily",
             "grace_period": 2,
             "observation_adapter": "ustb-yield",

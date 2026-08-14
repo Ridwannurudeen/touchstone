@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -254,7 +255,47 @@ def _compile_contracts() -> None:
     subprocess.run([npx, "hardhat", "compile"], cwd=CONTRACTS, check=True)
 
 
-def _start_node() -> tuple[subprocess.Popen[bytes], Path]:
+def _discard_log(path: Path) -> None:
+    """Delete the node log without ever failing the run that produced it.
+
+    On Windows the terminated node's handle can outlive ``taskkill``, so an immediate
+    unlink raises ``PermissionError``. Losing a temporary log matters far less than
+    losing a completed E2E result, so this retries briefly and then gives up quietly.
+    """
+    for _ in range(20):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            time.sleep(0.1)
+
+
+def _free_port() -> int:
+    """Reserve an ephemeral loopback port so a developer's own node is never reused."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def _start_node_on_free_port() -> tuple[subprocess.Popen[bytes], Path, int]:
+    """Start the node, retrying on a fresh port if the chosen one was taken.
+
+    ``_free_port`` must release the port before Hardhat can bind it, so another
+    process can claim it in between. That loses the port, not the run.
+    """
+    last_error: RuntimeError | None = None
+    for _ in range(3):
+        port = _free_port()
+        try:
+            process, output = _start_node(port)
+        except RuntimeError as error:
+            last_error = error
+            continue
+        return process, output, port
+    raise RuntimeError(f"Hardhat node could not be started: {last_error}")
+
+
+def _start_node(port: int) -> tuple[subprocess.Popen[bytes], Path]:
     npx = shutil.which("npx.cmd") or shutil.which("npx")
     if npx is None:
         raise RuntimeError("npx is not installed")
@@ -265,26 +306,49 @@ def _start_node() -> tuple[subprocess.Popen[bytes], Path]:
     try:
         with output.open("wb") as stream:
             process = subprocess.Popen(
-                [npx, "hardhat", "node", "--hostname", "127.0.0.1", "--port", "8545"],
+                [
+                    npx,
+                    "hardhat",
+                    "node",
+                    "--hostname",
+                    "127.0.0.1",
+                    "--port",
+                    str(port),
+                ],
                 cwd=CONTRACTS,
                 stdout=stream,
                 stderr=subprocess.STDOUT,
                 creationflags=flags,
             )
     except Exception:
-        output.unlink(missing_ok=True)
+        _discard_log(output)
         raise
-    for _ in range(80):
+    for _ in range(240):
         if process.poll() is not None:
             message = output.read_text(encoding="utf-8", errors="replace")
-            output.unlink(missing_ok=True)
+            _discard_log(output)
             raise RuntimeError(message)
-        if Web3(Web3.HTTPProvider(RPC_URL)).is_connected():
+        if Web3(Web3.HTTPProvider(f"http://127.0.0.1:{port}")).is_connected():
             return process, output
         time.sleep(0.25)
     _stop_node(process)
-    output.unlink(missing_ok=True)
+    _discard_log(output)
     raise RuntimeError("Hardhat node did not become ready")
+
+
+def run_managed_e2e() -> dict[str, object]:
+    """Compile, start a clock-pinned private node, run the loop, and stop the node.
+
+    The node is always this run's own, on an ephemeral port, so the result never
+    depends on whether a node happens to be running or what clock it started with.
+    """
+    _compile_contracts()
+    process, output, port = _start_node_on_free_port()
+    try:
+        return run_e2e(rpc_url=f"http://127.0.0.1:{port}")
+    finally:
+        _stop_node(process)
+        _discard_log(output)
 
 
 def _stop_node(process: subprocess.Popen[bytes]) -> None:
@@ -311,26 +375,17 @@ def main(argv: list[str] | None = None) -> int:
         help="require an already-running node instead of starting Hardhat",
     )
     args = parser.parse_args(argv)
-    process = None
-    output = None
     try:
-        _compile_contracts()
-        if (
-            not args.use_running_node
-            and not Web3(Web3.HTTPProvider(RPC_URL)).is_connected()
-        ):
-            process, output = _start_node()
-        result = run_e2e()
+        if args.use_running_node:
+            _compile_contracts()
+            result = run_e2e()
+        else:
+            result = run_managed_e2e()
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
     except Exception as error:
         print(f"E2E FAIL: {error}", file=sys.stderr)
         return 1
-    finally:
-        if process is not None:
-            _stop_node(process)
-        if output is not None:
-            output.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
