@@ -86,6 +86,11 @@ weekday-only — exchange and bank holidays are not modelled.
 `fresh_within` is deliberately unaffected: it reads the newest record because its subject
 is whether the source is still publishing, not what the record is worth.
 
+`evidence_span` is checked as a byte-exact substring, which proves the cited bytes occur in
+the artifact but not that the occurrence is unique or that it denotes the field the adapter
+consumed. That limitation, and the adapter-bound structural locator that would close it,
+are recorded as R-1 in `docs/THREAT-MODEL.md`.
+
 ## Canonical representation and identity
 
 `ControlRecord.canonical_bytes()` produces UTF-8 JSON with lexicographically sorted

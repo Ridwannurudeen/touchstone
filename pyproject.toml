@@ -24,7 +24,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "local_e2e: requires a running Hardhat node at http://127.0.0.1:8545",
+    "local_e2e: starts and stops its own local Hardhat node on an ephemeral port",
 ]
 
 [tool.ruff]

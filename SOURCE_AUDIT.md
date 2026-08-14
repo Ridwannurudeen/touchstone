@@ -8,7 +8,8 @@ candidates pass.
 
 All probes below were executed live from this development machine with plain `curl`
 (realistic User-Agent, no cookies, no login). VPS re-verification is required at deploy
-time; it is recorded per asset as a residual check.
+time; it is recorded per asset as a residual check (R-8 in `docs/THREAT-MODEL.md`, which
+also records what retrieval and parsing do and do not defend against).
 
 ---
 
