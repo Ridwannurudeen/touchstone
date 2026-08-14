@@ -98,8 +98,10 @@ reality — and a trust layer — for agents"*, 16 priced endpoints settling via
 
 `ROADMAP.md` states: *"Verified the same day: no existing crypto/web3 project uses the
 name."* Dated 2026-08-13. The Morpho announcement (2026-07-15) and the mainnet contracts
-(deployed 2026-07-07) predate it. **That line is false and should be corrected by the
-owner.** It is left unedited here because it is owner-authored text.
+(deployed 2026-07-07) predate it. The claim appears **twice** — `ROADMAP.md:5` and
+`ROADMAP.md:141`. Both have been corrected in place to point at this report, on the audit
+ruling that this is a factual status reference rather than owner-authored policy. The
+surrounding brand-clearance policy text was left untouched.
 
 ---
 
@@ -230,6 +232,25 @@ specifically. `.cv` publishes its registrant.
 | `touchstonelabs.xyz` | `rdap.centralnic.com/xyz/` | 2026-08-14T21:33:23Z | `errorCode 404`; controls `touchstone.xyz` 200, `zzqq-nope-8281.xyz` 404 |
 | `touchstone-rwa.com` | `rdap.verisign.com/com/v1/` | 2026-08-14T21:33:52Z | HTTP 404 empty body (Verisign's documented behaviour), confirmed on three requests; controls `google.com` 200, nonexistent 404 |
 
+### Registrar availability — attempted and failed
+
+`search_execution: not_completed` · `search_result: indeterminate` ·
+`legal_status: not_assessed` · `timestamp_utc`: 2026-08-14T23:47:25Z
+
+RDAP establishes registration status; it does **not** establish that a name can be
+registered, which is a registrar-side question involving reserved, premium and
+collision-list handling. A registrar check was attempted for the three no-record domains and
+did not complete:
+
+| Endpoint | Query | Result |
+|---|---|---|
+| `https://api.domainsdb.info/v1/domains/search?domain=<name>` | all three | **HTTP 401** — authentication required |
+| `https://porkbun.com/api/json/v3/domain/checkDomain/touchstone.finance` | one | **HTTP 403** — API key required |
+
+Registrar availability APIs require credentials, and creating an account is outside the
+read-only constraint and inside gate G4. **A human must check availability and price at a
+registrar of choice.** No purchase was attempted or is implied.
+
 **These are "no registry record at the stated timestamp", not "available".** A registry 404
 does not rule out registry-reserved, blocked, collision-list, or premium-priced status, nor
 a registration made since. **A human must confirm at a registrar.**
@@ -252,9 +273,12 @@ registry owner equals the deployed BaseRegistrar).
 | `touchstone.eth` | **match_found** | `available` = false; expires **2027-04-23T15:51:47Z** (grace to 2027-07-22). Wrapped; beneficial owner `0x3dDF19947022fd6aceb5b079E158dA69464Ad658`. All text records (`url`, `com.twitter`, `description`, `email`) empty — no public identity attached |
 | `touchstonelabs.eth`, `touchstone-labs.eth`, `touchstonerwa.eth`, `touchstone-rwa.eth`, `touchstonefinance.eth` | `no_match_found` | `nameExpires` = 0, `available` = true, registry owner `0x0` at that block |
 
-Caveat: `available()` reflects registrar state only; the ETHRegistrarController separately
-enforces label validity and pricing. All five labels are ≥3 characters so the answer should
-hold, but this was not verified against the controller.
+Caveat, and it bounds the finding: `available()` reflects **registrar state only**. The
+ETHRegistrarController separately enforces label validity, length and pricing, and it was
+**not queried**. The five `no_match_found` rows are therefore
+`search_execution: partial` / `search_result: indeterminate` **as to registrability** —
+they establish only that the base registrar holds no registration at that block. No
+prediction about whether they could be registered is made here.
 
 ---
 
@@ -263,17 +287,17 @@ hold, but this was not verified against the controller.
 | Source | `search_execution` | `search_result` | Detail |
 |---|---|---|---|
 | CoinGecko search + full coin list (18,412 coins parsed) | complete | `no_match_found` | No coin named or symbolled Touchstone/TSTONE |
-| CoinGecko inactive/delisted | **not_completed** | indeterminate | HTTP 401 — pro-API only. Delisted tokens unchecked |
-| CoinMarketCap (5 endpoints + web) | **not_completed** | **indeterminate** | HTTP 404, *"system is busy"*, 503 `no healthy upstream`, DNS blocked, `ETIMEOUT` |
+| CoinGecko inactive/delisted — `api.coingecko.com/api/v3/coins/list?status=inactive` | **not_completed** | indeterminate | HTTP 401, error 10005 — pro-API only. Delisted tokens unchecked |
+| CoinMarketCap — `api.coinmarketcap.com/data-api/v3/search`, `/data-api/v4/search`, `/aggr/v3/search/multi`, `/dexer/v3/.../search`, `coinmarketcap.com/search/?q=touchstone` | **not_completed** | **indeterminate** | HTTP 404 (v3/v4), *"The system is busy, please try again later!"* (aggr), 503 `no healthy upstream` (dexer), host DNS-blocked in sandbox, `ETIMEOUT` via fetcher |
 | DefiLlama protocols (8,056 parsed) | complete | `no_match_found` | — |
-| DefiLlama raises / curators | **not_completed** | indeterminate | HTTP 402 (paid) / HTTP 404. **The live collision is a Morpho *curator*, so this surface is unchecked** |
+| DefiLlama raises — `api.llama.fi/raises`; curators — `api.llama.fi/curators`, `defillama.com/api/curators` | **not_completed** | indeterminate | HTTP 402 (paid endpoint) / HTTP 404 (endpoint does not exist). **The live collision in §1.2 is a Morpho *curator*, so precisely this surface is unchecked** |
 | Dexscreener (4 queries) | complete | `no_match_found` | No pool-bearing Touchstone token on indexed chains |
 | Blockscout Ethereum | complete | **match_found** | The two vault tokens in §1.2 |
 | Blockscout Base | complete | **match_found** | Four dormant tokens: TCHN `0x911e…dd17`, TCHSTN `0x8480…8b07`, "Touchstone Demo Cover", "Midas Touchstone" — 2–6 holders each, no price, no liquidity |
 | Etherscan / Basescan / Arbiscan / BscScan token search | complete | `no_match_found` | **See the calibration warning below** |
 | Apple App Store (36 results) | complete | match_found | None crypto: Touchstone Investments Mobile, Touchstone Fireplace, Touchstone Connect, Touchstone Golf, etc. |
 | Google Play | complete | match_found | None crypto: Touchstone Funds, Touchstone CRM, Touchstone Recovery, etc. |
-| DappRadar | **not_completed** | indeterminate | HTTP 404 on the search route (homepage returns 200) |
+| DappRadar — `dappradar.com/search?query=touchstone` | **not_completed** | indeterminate | HTTP 404 on the search route; the homepage returns 200, so the site is up |
 
 **Calibration warning that governs this whole section.** Etherscan's token search returned
 **empty** for "touchstone" while two Touchstone-named tokens demonstrably exist on Ethereum,
@@ -328,7 +352,49 @@ sweep of X for accounts *using* the name was possible** — only the six exact h
 
 ---
 
-## 8. Similar and adjacent marks encountered
+## 8. Phonetic and visual similarity
+
+### 8.1 Phonetic method and results
+
+An authoritative phonetic search — USPTO's own similarity search, which applies phonetic
+equivalence rules — **was not reachable** (§2.1: the search interface renders client-side).
+What follows is a defined variant set run against registries that *were* reachable. It is a
+substitute, not an equivalent, and does not discharge the phonetic search a human must run.
+
+- `query set`: `touchtone`, `tuchstone`, `touchstown`, `toughstone`, `tochstone`,
+  `touchstoan` — chosen to cover the dropped medial /s/, the vowel substitutions a listener
+  would plausibly make, and the two most common misspellings.
+- `sources`: `https://pypi.org/pypi/<variant>/json` and `https://registry.npmjs.org/<variant>`
+  (authoritative registry APIs)
+- `timestamp_utc`: 2026-08-14T23:47Z
+- `search_execution`: **complete** for these two registries · `search_result`: **match_found**
+- `legal_status`: `not_assessed`
+
+| Variant | PyPI | npm | Result |
+|---|---|---|---|
+| `touchtone` | 404 | **200** | **match_found** — an npm package exists under the nearest phonetic neighbour |
+| `tuchstone` | 404 | 404 | no_match_found |
+| `touchstown` | 404 | 404 | no_match_found |
+| `toughstone` | 404 | 404 | no_match_found |
+| `tochstone` | 404 | 404 | no_match_found |
+| `touchstoan` | 404 | 404 | no_match_found |
+
+Earlier searches surfaced no misspelling variants in trademark results, but that is an
+**absence in indicative search output**, not a phonetic registry search.
+
+### 8.2 Visual similarity — not assessed
+
+`search_execution: not_completed` · `search_result: indeterminate` ·
+`legal_status: not_assessed`
+
+**No visual-similarity assessment was performed.** Visual similarity concerns device marks,
+logos and stylised word marks, which requires an image search against a registry's figurative
+database — WIPO's Global Brand Database image search or EUIPO's, both of which were
+unreachable (§2.2), and neither of which has been substituted. This project also has no logo
+or stylised mark yet, so there is no device to compare. **This must be done by a human, and
+again once a visual identity exists.**
+
+### 8.3 Adjacent marks encountered
 
 Verified at TSDR: KF TOUCHSTONE, TOUCHSTONE PATHWAYS, TOUCHSTONE FUNDS, TOUCHSTONE
 INVESTMENTS, TOUCHSTONE VARIABLE ANNUITY (statuses in §2.1).
@@ -367,9 +433,31 @@ Semiconductor, and the Cambridge University Press "Touchstone" English course.
    manual search at the Abuja registry.
 6. **X Layer**, by a non-JavaScript method — API key or an indexed `name()`/`symbol()` scan
    on chain 196.
-7. **Domain availability** for the three no-record domains, confirmed at a registrar.
+7. **Domain availability** for the three no-record domains, confirmed at a registrar —
+   the automated attempt failed with HTTP 401/403 (§4).
 8. **Handle availability** on X and Telegram, by attempting registration (gated — owner
-   only).
+   only). Also X's in-app people search, which no tool here could reach.
+9. **CoinMarketCap** — `https://coinmarketcap.com/search/?q=touchstone` in a browser; every
+   automated endpoint failed (§6).
+10. **DefiLlama curator listings** — the surface where the §1.2 collision actually lives; no
+    public endpoint exists, so this needs the DefiLlama UI or a direct enquiry.
+11. **CoinGecko delisted/inactive coins** — requires a pro API key.
+12. **DappRadar search** — `https://dappradar.com/search?query=touchstone` in a browser.
+13. **An authoritative phonetic search** at USPTO, and a **figurative/visual search** at WIPO
+    or EUIPO once a logo exists (§8).
+
+### Intended operating markets — undefined, and this bounds the whole report
+
+`search_execution: not_completed` for jurisdiction scoping. The searches above were driven
+by the registries named in `ROADMAP.md`, not by a defined market list. **The owner has not
+stated which jurisdictions the project will operate in commercially**, and that choice
+determines which registries actually matter. What is known: the owner operates from
+**Nigeria**; the project targets a **global, chain-native user base**; and the intended
+deployment chain is **X Layer**, which has no jurisdiction of its own.
+
+Until the owner names the operating markets, this report cannot claim jurisdictional
+coverage, and counsel cannot scope an opinion. That question should be answered before the
+counsel questions below are put.
 
 **Counsel questions, for the trademark opinion `ROADMAP.md` already requires before
 commercial launch:**
@@ -394,8 +482,12 @@ commercial launch:**
 The name "Touchstone" is **in active use by at least two 2026-vintage crypto or AI projects
 whose function overlaps this project's**, is the subject of **at least three live US
 trademark registrations** including one for risk-analysis software in the insurance field,
-is **taken on every package registry checked**, on **ENS**, on **six of nine checked
-domains**, and on **every social platform where a public check was possible**.
+is **taken on every package registry checked**, on **ENS**, and on **seven of the ten
+domains checked** (three returned no registry record). On social platforms the picture is
+mixed and is stated precisely in §7: the exact name is held on Farcaster, Telegram and
+LinkedIn, three of the five X variants are held by dormant accounts, and the exact
+`touchstone` handle on X and every Discord vanity checked returned `no_match_found` —
+which, per §7's caveat, distinguishes "did not resolve" from "available".
 
 **No conclusion about legal risk or freedom to use is drawn here, and none may be inferred.
 `legal_status` is `not_assessed` throughout.** Whether to keep or change the name is the

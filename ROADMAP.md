@@ -2,7 +2,11 @@
 
 > **Name chosen by the owner on 2026-08-13: Touchstone** — the stone assayers rubbed
 > gold against to verify what it really was before anyone accepted it.
-> Verified the same day: no existing crypto/web3 project uses the name. Known adjacent
+> That claim was corrected on 2026-08-14: **existing crypto projects do use the name** —
+> see `docs/BRAND-CLEARANCE.md`, which records a Morpho vault curator branded Touchstone
+> for gold-RWA lending (announced 2026-07-15, contracts live on Ethereum) and a PyPI SDK
+> `touchstone-verify` implementing signed, hash-chained disclosure verification
+> (2026-07-12). Known adjacent
 > mark: Touchstone Investments (Cincinnati mutual-fund/ETF firm, Western & Southern) —
 > different business (asset management vs. verification software), but a trademark
 > opinion from counsel is required before commercial launch. DNS quick-check:
@@ -138,7 +142,9 @@ evidence, uncertain contract mapping, or controls claiming more than the source 
 lowering evidence standards.**
 
 **Brand clearance for "Touchstone" (deadline Aug 14, before the project X account
-opens):** already verified 2026-08-13 — no existing crypto/web3 project uses the name;
+opens):** completed 2026-08-14 and recorded in `docs/BRAND-CLEARANCE.md`. The earlier
+2026-08-13 finding that no existing crypto/web3 project uses the name **was wrong** — two
+live projects use it, one of them in this project's own verification lane;
 Touchstone Investments (US mutual-fund/ETF firm) is the known adjacent financial mark,
 different service class but requiring a counsel trademark opinion before commercial
 launch. Remaining checks: USPTO, WIPO, EUIPO/TMview, Nigerian and operating-market
