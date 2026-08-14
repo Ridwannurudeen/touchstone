@@ -40,8 +40,24 @@ time; it is recorded per asset as a residual check.
 
 ### Honest quirks recorded
 
-- The 08/13 and 08/12 nav-daily rows carry identical values — controls must key on
-  **row-date presence and freshness**, not on value change. Same-value days are normal.
+- **The nav-daily tail is provisional and is revised in place — verified 2026-08-14 by
+  differing two retained artifacts.** The 08-13 capture (`fixtures/ustb-nav.json`,
+  sha256 `4830bc34…`, 954 rows) carried 08/12 and 08/13 rows both holding the 08/11
+  values (NAV/S 11.17558800, AUM 958,406,746.95). The 08-14 live artifact
+  (sha256 `5b6a53e0…`, 955 rows, retrieved 17:08:12Z) shows both of those row-dates
+  rewritten — 08/12 → 11.17666400 / AUM 951,115,028.81, 08/13 → 11.17774800 / AUM
+  953,805,376.22 (`outstanding_shares` and `net_income_expenses` revised with them) —
+  and a new 08/14 row again carrying forward the prior day's settled values.
+  Consequences: (a) a row existing for today proves the **feed is live**, not that a
+  settled NAV exists for that date; (b) evidence for a given row-date is **mutable**,
+  so an unchanged row-date is not an unchanged fact and re-fetching yields a different
+  artifact hash for reasons other than new data; (c) a single snapshot cannot
+  distinguish a carry-forward placeholder from a genuine unchanged-NAV day — only
+  cross-epoch comparison can. Any value claim keyed to the newest rows must be labelled
+  provisional, or restricted to rows older than the observed revision window (≥2
+  business days on the evidence to date).
+- Holdings bytes were byte-identical across both captures (sha256 `0c42d794…`, 07/24
+  as-of) — the holdings endpoint is stable, only nav-daily mutates.
 - Holdings lag NAV (07/24 vs 08/13 today): holdings freshness control needs a
   generous grace period (~35-40 days) until cadence is observed longer.
 - `subscription_nav_per_share` is null in recent rows — not usable as a control.
@@ -57,6 +73,12 @@ time; it is recorded per asset as a residual check.
 
 ### Residual checks before mainnet claims
 
+- **Open defect (found 2026-08-14):** the shipped control set reads the newest nav-daily
+  row (`evaluate.py:_latest_nav_row`), which is the provisional carry-forward row.
+  `nav-row-freshness` is still honest as a feed-liveness control, but `aum-published`
+  and `value-vs-expected` report that row's values as the epoch's observed values — a
+  signed report therefore attributes the prior day's AUM to today. Fix before any
+  mainnet claim: mark tail rows provisional and/or evaluate values on settled rows.
 - Re-fetch repeatedly across days from the deployment VPS (scripted, part of sprint).
 - API terms-of-use review (docs present the API publicly; confirm no usage restriction).
 - Establish the exact outstanding-shares vs onchain-supply relationship before enabling control 5 beyond observation mode.
