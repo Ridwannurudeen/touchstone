@@ -244,12 +244,14 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   `proposed`, and an independent verifier would accept it. Approval is enforced only inside
   `evaluate_ustb`, on the publisher's own machine, at evaluation time.
 
-  Two distinct remedies are needed, and neither is scheduled yet: (a) bind an approved
-  control to the specific compilation record that produced it and have the verifier check
-  that binding and the approval state; and (b) separately, record the model identity the
-  provider returned rather than the one requested (`touchstone/compiler.py:152`), without
-  which provenance cannot attest which model proposed a control at all. Remedy (a) does not
-  close T11; remedy (b) does not close the binding gap.
+  Three distinct changes are needed. The offline verifier's rejection of controls whose
+  `approval_state` is not `approved` is scheduled in **PLAN-T5**. The other two remain
+  unscheduled: (a) bind an approved control to the specific compilation record that
+  produced it and have the verifier check that binding; and (b) separately, record the
+  model identity the provider returned rather than the one requested
+  (`touchstone/compiler.py:152`), without which provenance cannot attest which model
+  proposed a control at all. The PLAN-T5 check closes neither the binding gap nor T11;
+  remedy (a) does not close T11, and remedy (b) does not close the binding gap.
 - **R-10 — Time is taken from the host clock, with only a one-sided chain check.**
   Retrieval timestamps, freshness deadlines and the 24-hour confirmation separation all
   derive from the local clock (B15). The chain catches one direction: the registry rejects
