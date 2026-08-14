@@ -255,3 +255,21 @@ def test_verifier_accepts_a_first_epoch_with_no_confirmation(tmp_path: Path) -> 
     assert verified["state"] == "UNVERIFIABLE"
     assert all(item["observed_value"] is None for item in values.values())
     assert all(item["observed_on"] is None for item in values.values())
+
+
+def test_verifier_rejects_an_unconfirmed_absence_claim(tmp_path: Path) -> None:
+    """An `exists` control reporting CONTRADICTED carries no value but asserts absence."""
+    bundle = _bundle(tmp_path, confirmed=False)
+    report = deepcopy(bundle["signed_report"]["report"])
+    for control in report["controls"]:
+        if control["control_id"] == "aum-published":
+            control["evaluation"] = {
+                "evidence_deadline": None,
+                "observed_on": "2026-08-11",
+                "observed_value": None,
+                "result": "CONTRADICTED",
+            }
+    report["state"] = "INCONSISTENT"
+
+    with pytest.raises(VerificationError, match="no confirmation capture"):
+        verify_bundle(_resign(bundle, report))

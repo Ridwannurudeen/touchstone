@@ -56,7 +56,8 @@ version change and evaluator support.
 
 Value operators (`exists`, `eq`, `within_tolerance`, `non_decreasing`) read one dated
 record from the source. Where a source publishes provisional records and revises them in
-place, reading the newest record would attribute an unsettled value to a date. A value
+place, reading the newest record would attribute a value to a date the source has not
+finished restating. A value
 operator therefore observes only a record **confirmed unchanged across retained
 captures**: the evaluator compares this epoch's record against the same dated record in
 a qualifying earlier capture and accepts it only when the whole normalized record is
@@ -68,8 +69,10 @@ may be observed instead. The accepted record's date is reported as the evaluatio
 A qualifying earlier capture is the newest retained capture of the same source retrieved
 at least 24 hours before the current one, so two captures taken minutes apart — including
 either side of midnight — never confirm each other. With no qualifying capture, every
-value operator returns `UNEVALUABLE`; the first epoch a publisher ever runs therefore
-reports `UNVERIFIABLE` rather than an unconfirmed value.
+value operator returns `UNEVALUABLE`, so the first epoch a publisher ever runs abstains
+on value rather than reporting an unconfirmed one. The resulting asset state is
+`UNVERIFIABLE` when the remaining evidence is fresh; expired freshness still takes
+precedence and yields `STALE`.
 
 `minimum_row_age_business_days` in `expected_value` is a cheap pre-filter in front of
 that comparison, not proof of settlement. Absent the key the window is zero, which admits

@@ -47,9 +47,9 @@ time; it is recorded per asset as a residual check.
   (sha256 `5b6a53e0…`, 955 rows, retrieved 17:08:12Z) shows both of those row-dates
   rewritten — 08/12 → 11.17666400 / AUM 951,115,028.81, 08/13 → 11.17774800 / AUM
   953,805,376.22 (`outstanding_shares` and `net_income_expenses` revised with them) —
-  and a new 08/14 row again carrying forward the prior day's settled values.
+  and a new 08/14 row again carrying forward the prior day's values.
   Consequences: (a) a row existing for today proves the **feed is live**, not that a
-  settled NAV exists for that date; (b) evidence for a given row-date is **mutable**,
+  final NAV exists for that date; (b) evidence for a given row-date is **mutable**,
   so an unchanged row-date is not an unchanged fact and re-fetching yields a different
   artifact hash for reasons other than new data; (c) a single snapshot cannot
   distinguish a carry-forward placeholder from a genuine unchanged-NAV day — only
@@ -215,10 +215,10 @@ block).
 `11.175588` (08-12 update) — independent sources agree to the digit.
 `nav-oracle-consistency` is real and live today. **Corrected 2026-08-14:** that API value
 was read from the then-newest 08/13 row, which the 08-14 capture revealed to be a
-provisional carry-forward of the 08/11 value — the settled 08/13 NAV is `11.17774800`.
-The agreement therefore holds between the oracle and the **08/11 settled row**, and the
-control must compare an oracle reading against a confirmed row of the matching date, not
-against the feed's tail. Note also that the two official oracles legitimately differ
+provisional carry-forward of the 08/11 value — the revised 08/13 NAV is `11.17774800`.
+The agreement therefore holds between the oracle and the **08/11 row**, which was
+unchanged between the two retained captures, and the control must compare an oracle
+reading against a confirmed row of the matching date, not against the feed's tail. Note also that the two official oracles legitimately differ
 (checkpoint vs extrapolation) — the control must name which oracle is authoritative and
 use a tolerance.
 

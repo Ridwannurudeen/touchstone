@@ -80,7 +80,7 @@ def create_bundle(
     control_records: Sequence[ControlRecord],
     evidence_digests: Sequence[Mapping[str, object]],
 ) -> dict[str, object]:
-    """Create the exact self-contained v1 bundle mapping."""
+    """Create the exact self-contained bundle mapping at ``BUNDLE_VERSION``."""
     if not isinstance(signed_report, Mapping) or not isinstance(
         signed_report.get("report"), Mapping
     ):
@@ -239,7 +239,13 @@ def _verify_capture_roles(
     report: Mapping[str, object],
     records: tuple[ControlRecord, ...],
 ) -> None:
-    """Bind every claim to a current capture, and every value claim to a confirmation."""
+    """Bind every claim to a current capture, and every conclusive value result to a
+    confirmation.
+
+    The trigger is the result, not the value: an ``exists`` control that reports
+    ``CONTRADICTED`` carries no value but still asserts an absence, and asserting absence
+    from a single capture is exactly the unconfirmed claim this rule exists to reject.
+    """
     by_role: dict[tuple[str, str], Mapping[str, object]] = {}
     for reference in evidence:
         role = reference.get("capture_role")
@@ -258,10 +264,10 @@ def _verify_capture_roles(
     controls_by_id = {record.control_id: record for record in records}
     for item in report["controls"]:
         evaluation = item["evaluation"]
-        if evaluation["observed_value"] is None:
-            continue
         control = controls_by_id[item["control_id"]]
         if control.comparison_operator is ComparisonOperator.FRESH_WITHIN:
+            continue
+        if EvaluationResult(evaluation["result"]) not in _CONCLUSIVE_RESULTS:
             continue
         confirmation = by_role.get((control.source_id, "confirmation"))
         if confirmation is None:
