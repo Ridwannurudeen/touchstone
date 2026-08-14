@@ -77,27 +77,140 @@ time; it is recorded per asset as a residual check.
 
 ---
 
-## OUSG / USDY (Ondo) — agent audit pending
+## OUSG / USDY (Ondo) — **BOTH PASS** (verified 2026-08-13; USDY selected for the sprint)
+
+**USDY — PASS, selected as second daily asset.** 759 Ankura Trust daily attestation
+PDFs in a public Dropbox folder (links embedded in the server-rendered
+`ondo.finance/usdy`; `rlkey` param is the credential, `st` param droppable): cookieless
+zip download verified (root 260MB; **2026 year-subfolder 35.9MB — fetch that**, hash
+re-derived per run via the root listing). Filename pattern
+`YYYY/MM Monthname/Ondo USDY LLC_ATCAttest_YYMMDD.pdf` stable since 2023-09. Sample PDF
+(260807) fully text-extractable: Token Principal 2,134,875,462.46; Permitted Assets
+2,142,264,400.29; **collateralization 1.003461 ≥ 1.000 — a real daily covenant test by
+a named third-party verification agent** (the strongest single control in the
+portfolio). Cadence: business-day reports, 3-business-day publication lag (held on
+23/24 genuine timestamps AND observed live in-session: Mon 08/10 report appeared Thu
+08/13 13:32Z). Onchain `getPriceData()` cross-checks PDF Token Value (1.14266759 vs
+1.142013). **TRAPS:** (a) the USDY oracle SELF-ACCRUES daily incl. weekends
+(~+0.00010916/day) — "oracle changed" is NEVER a freshness signal; (b) no per-file
+URLs, no HTTP Range — daily check costs the year-zip pull; (c) `rlkey` can rotate —
+re-scrape ondo.finance/usdy for current links every run; (d) attestations cover Ondo
+USDY LLC only, not Ondo Global Markets (BVI) — dossier must state this; (e) 126/150
+2026 files carry a bulk-reupload mtime (2026-07-09) — mtimes unusable for lag except
+the 24 genuine ones; (f) one unexplained missing weekday 2026-03-31.
+
+**OUSG — PASS, second spare.** OndoOracle `getAssetPrice(OUSG)` = 116.204547 (18-dec)
+cross-checks the SSR page value `$116.2045 +$0.0109` to 6 s.f. (delta matches prior
+business day 116.193670 exactly). Oracle steps ~+0.0107/business-day, FLAT on weekends
+(15 samples) — genuinely discrete updates, so staleness IS meaningful here (opposite
+of USDY). Portfolio table SSR'd with `As of` date (~1bd lag) incl. full holdings
+(State Street 40.06%, BUIDL 26.96%, BENJI 17.24%, FYOXX 15.01%…). **TRAPS:** hero
+widget SSRs zeros (anchor on the marketing block / `Portfolio Overview` text, never
+CSS hashes); official NAV-Consulting daily financials are login-gated (302→
+ServiceLogin — the dossier must say the NAV number is verifiable but the underlying
+financials are not); monotonicity is NOT an honest invariant (use business-day-aware
+"changed within window"). No JSON API exists for OUSG NAV. Legacy oracle
+`0x0502…6abe` is deprecated — never use. RPC notes: eth.drpc.org served archive
+calls; merkle.io/publicnode rate-limited historical sampling (429/403).
 
 Findings from the Ondo research agent will be recorded here.
 
-## BENJI/FOBXX (Franklin Templeton) — agent audit pending
+## BENJI/FOBXX (Franklin Templeton) — **PASS** (verified 2026-08-13)
 
-## PAXG (Paxos) — agent audit pending
+- **Daily NAV (T-1, business days):** the fund page's own config names a same-origin
+  GraphQL endpoint `POST https://www.franklintempleton.com/api/pds/price-and-performance`
+  (GET returns 403; POST returns 200, JSON, no auth, no anti-bot block). `ProductLookup`
+  (ticker FOBXX) → fundid 29386; `PricesHistory` returned 159 business-day rows for 2026
+  (latest 2026-08-12: NAV $1.0000, navstd 1.00000000, daily liquidity 64.07%, weekly
+  71.57%). Liquidity ratios intermittently blank (08-03/04/06) — blank = no-data, never
+  a breach. 7-day yield: COULD NOT VERIFY (schema exists, returns empty for this fund).
+- **Regulator second source (SEC EDGAR, all verified 200 no-login):** ticker→CIK via
+  `company_tickers_mf.json` (CIK 1786958, S000067043); filings index
+  `data.sec.gov/submissions/CIK0001786958.json`; latest N-MFP3 filed 2026-08-06 for
+  period 2026-07-31: net assets **$720,928,224.29**, shares 720,931,891.09,
+  stablePricePerShare 1.0000, daily/weekly liquid 67.42%/74.62%, PwC as accountant.
+  Monthly cadence, ~4-6 day filing lag. **This gives FOBXX a genuine two-source
+  cross-check (issuer API vs regulator filing) — the strongest evidence-class pairing
+  in the audit.**
+- **Key caveat:** the daily feed is an undocumented private endpoint FT could lock down
+  without notice; degradation path is monthly EDGAR (never total loss). Onchain: no NAV
+  oracle on any chain; supply fragmented across 9 networks + iBENJI class — onchain
+  supply observation is out of sprint scope for this asset (dossier discloses this
+  explicitly).
+- Supported controls: daily NAV-peg (navstd == 1.00000000, row ≤ T-3bd), liquidity
+  floors (≥10%/≥30% when present), feed-liveness, monthly N-MFP filing appears ≤10bd
+  after month-end with stablePricePerShare 1.0000, FT-vs-SEC liquidity reconciliation,
+  ProductLookup schema-drift canary.
 
-## Onchain observability (all five assets) — agent audit pending
+## PAXG (Paxos) — **FAIL** (verified 2026-08-13; excluded from the sprint)
+
+- Attestation PDFs are real, text-extractable, and immutable once published (June 30
+  2026 report: KPMG, 452,151 PAXG vs 452,355 oz — coverage holds), and there is no
+  anti-bot or login. **But there is no stable machine-readable contract:** the
+  transparency page HTML contains zero PDF links; report URLs live only inside a
+  content-hashed Framer JS bundle that changes on every site redeploy; month labels
+  carry no year and no asset name — a **USDG (different product) report was found in
+  the PAXG bundle** — so nothing can be attributed without downloading and parsing each
+  PDF; Content-Type is inconsistent on the same CDN; no supply/reserve JSON exists
+  (docs.paxos.com lists only authenticated trading APIs). Onchain: no issuer-published
+  oracle (announced Chainlink PoR feed absent from Chainlink's directory).
+- Roadmap abort rule applied: evidence discovery relies on reverse-engineering a
+  rebuildable front-end bundle = fragile; controls would claim more stability than the
+  source provides. PAXG is parked for Phase 2+ (revisit if Paxos publishes stable
+  report URLs or a data API).
+
+## Onchain observability (all five assets) — VERIFIED 2026-08-13 13:15–13:30 UTC
+
+All reads keyless via public JSON-RPC; every address from issuer-official sources; all
+values cross-confirmed on two endpoints. Full raw-hex working notes retained by auditor.
+
+**RPC reality (gating infrastructure finding):** `eth.llamarpc.com` (HTTP 521) and
+`cloudflare-eth.com` (JSON errors) are UNUSABLE; `rpc.flashbots.net` rejects `eth_call`;
+`rpc.ankr.com/eth` is key-walled. **Primary: `ethereum-rpc.publicnode.com`** (0.7–1.4s,
+30/30 burst calls OK) **· Fallback: `eth.drpc.org`** (free tier, quota undisclosed). No
+rate-limit headers on either — implement retry-with-backoff; pin blockNumber into every
+eth_call (endpoints ran one block apart; cross-endpoint comparison only valid at a fixed
+block).
+
+| Asset | Token (chain) | Supply (decoded) | Issuer-official oracle | Oracle value @ read |
+|---|---|---|---|---|
+| USTB | `0x43415eB6…C4e` (ETH) | 68,913,599.947976 (6 dec) | Chainlink-compat `0x289B…AAC` + Continuous `0xe4fa…8a8` (both in Superstate docs) | $11.175588 (updated 08-12 13:13Z) / $11.177405 (current-second extrapolated) |
+| OUSG | `0x1B19…e92` (ETH) | 1,403,785.674966 (18 dec) | OndoOracle `0x9Cad…094` — NOT Chainlink-shaped: `getAssetPrice(address)`, Sourcify-verified ABI; **no timestamp in return** (freshness needs underlying `0xadc4…df3`) | $116.204547 |
+| USDY | `0x96F6…85C` (ETH) | 970,805,366.407203 (18 dec) | USDYOracleWrapper `0x87b1…F90`: `getPriceData()` → (price, ts) | $1.14266759 @ 13:24:11Z |
+| PAXG | `0x4580…F78` (ETH; address only in issuer GitHub README — paxos.com page has NO address) | 436,225.095154 (18 dec) | **NONE issuer-published** (announced Chainlink PoR feed absent from Chainlink directory — COULD NOT VERIFY). Third-party Chainlink PAXG/USD `0x9944…8C3`: $4,393.54 (corroborated class only) | — |
+| BENJI | Stellar primary (`BENJI` / issuer `GBHN…IW5`, first-party stellar.toml); ETH `0x3DDc…dc9` | Stellar authorized 485,686,460.099; ETH 48,005,967.446 — fragmented across 9 networks, no aggregate; separate iBENJI class (210.7M) | **NONE on any chain** | — |
+
+**Empirical control confirmation (hero):** USTB API NAV `11.17558800` (08/13 row) vs
+Chainlink oracle `11.175588` (08-12 update) — independent sources agree to the digit.
+`nav-oracle-consistency` is real and live today. Note the two official oracles
+legitimately differ (checkpoint vs extrapolation) — the control must name which oracle
+is authoritative and use a tolerance.
+
+**Onchain ranking for a keyless daily monitor:** USTB > OUSG > USDY > PAXG (supply-only)
+> BENJI (non-EVM primary, fragmented, no NAV oracle — gate behind an explicit
+scope decision; effectively disqualified for the sprint).
+
+**Adapter directives for the builder:** never guess oracle selectors (both Ondo oracles
+revert on all Chainlink-style selectors — resolve ABIs via Sourcify v2 only; v1 is in
+brownout); store `decimals()` per contract (6/8/18 all occur); pin block numbers;
+key contracts by (chain, address) — Superstate reuses addresses across chains.
 
 ---
 
-## Portfolio selection — provisional (finalize after agent reports)
+## Portfolio selection — **FINAL (2026-08-13)**
 
-- **Hero:** USTB — strongest machine-readable daily evidence found so far; public
-  documented JSON API; dual onchain oracles for cross-source consistency; $958M real AUM.
-- **Second daily asset:** target OUSG or USDY (pending Ondo agent) — needed for
-  cross-issuer proof. BENJI possible if machine-retrievable.
-- **Contrast asset:** PAXG (monthly attestation cadence + staleness semantics), pending
-  direct-PDF retrievability from the Paxos agent.
-- **Spare:** USCC (verified, same-issuer caveat).
+- **Hero: USTB (Superstate/Invesco)** — public documented JSON API (verified live),
+  dual issuer-official onchain oracles, digit-level API↔oracle agreement, $958M AUM.
+- **Second daily asset: USDY (Ondo)** — cross-issuer proof + the portfolio's strongest
+  covenant: a named third-party verification agent's daily attestation PDF with a
+  machine-parseable over-collateralization test (1.003461 ≥ 1.000 verified).
+- **Third asset / contrast: FOBXX (Franklin BENJI)** — daily issuer feed + monthly SEC
+  EDGAR N-MFP3: the regulator-hosted cross-source check and the monthly-staleness
+  semantics. Onchain supply out of scope (fragmented, no oracle) — stated openly.
+- **Spares (verified PASS, in order): OUSG (Ondo), USCC (Superstate).**
+- **Rejected: PAXG** (FAIL — fragile bundle-scrape discovery, unattributable labels).
 
-**Gate state: 2 of 2 minimum candidates already PASS (USTB, USCC) — Touchstone proceeds.
-Cross-issuer requirement still to satisfy from the pending agent audits.**
+**Gate state: PASSED — three cross-issuer assets (Superstate, Ondo, Franklin) all
+verified with ≥2 honest controls each, two verified spares, one honest rejection.
+Residuals: VPS re-verification at deploy; FT GraphQL lockout watch (degradation path:
+monthly EDGAR); USDY rlkey rotation watch (mitigation: re-scrape links each run).**
