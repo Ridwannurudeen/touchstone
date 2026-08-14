@@ -2,7 +2,7 @@
 
 **Issued 2026-08-14** by the project's review process, which sets the build order and
 audits each item before the next begins. Items are referenced elsewhere in the repository
-as `PLAN-T1` … `PLAN-T13`, distinct from the `T1` … `T26` threat identifiers in
+as `PLAN-T1` … `PLAN-T13`, distinct from the `T1` … `T27` threat identifiers in
 `docs/THREAT-MODEL.md`.
 
 Order follows `ROADMAP.md`'s own priority stack: evidence integrity, then one flawless hero
@@ -59,14 +59,17 @@ non-identity `Content-Encoding`; make redirects fail closed unless the final URL
 allowlisted; prove a hung parsing worker is terminated by the wall-clock limit; prove
 embedded instructions cannot produce an accepted control; add `touchstone/oracles.py`
 pinning a block, verifying chain/address/decimals, and comparing only against a confirmed
-row of the matching date within an explicit tolerance.
+row of the matching date within an explicit tolerance. The offline verifier must also
+reject a bundle whose controls are not `approved`; the compilation-to-control binding of
+R-11 is not closed by that check and remains unscheduled until an item names it.
 
 **PLAN-T6 — production publisher.** Locally signed raw transactions with no unlocked remote
 account; RPC URL, chain id, registry address, runtime bytecode hash, publisher lineage and
 confirmation depth from a validated deployment manifest; preflight verification before
 signing; distinct deployer, publisher, reporter and operations identities; deployment
-scripts and manifest templates; `docs/KEY-MANAGEMENT.md`. **Sends no testnet or mainnet
-transaction.**
+scripts and manifest templates; Ed25519 reporting-key rollover that keeps existing bundles
+verifiable while selecting the new key for future reports; `docs/KEY-MANAGEMENT.md`.
+**Sends no testnet or mainnet transaction.**
 
 **PLAN-T7 — operations and incidents.** Restartable service with atomic per-asset state;
 append-only hash-chained incident history where recovery closes an incident with a new
@@ -106,7 +109,8 @@ to the monthly source.
 lint, contract tests, the managed local-chain E2E and browser smoke tests with no silent
 skip; new integration coverage for restart with a pending transaction, duplicate-publication
 recovery, full source outage and recovery, publisher rotation, reporting-key rollover,
-encrypted backup and restore, clean-browser dossier smoke, and the full two-act hero demo.
+encrypted backup and restore, rejection of a bundle carrying non-approved controls,
+clean-browser dossier smoke, and the full two-act hero demo.
 
 **PLAN-T13 — release and gate package.** Release builder recording exact commit, artifact
 hashes, compiler settings, runtime bytecode hashes, dependency locks, schema versions,

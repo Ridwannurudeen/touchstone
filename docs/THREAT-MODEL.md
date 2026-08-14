@@ -15,8 +15,8 @@ legal opinion that Touchstone has not obtained.
 
 ## 1. What Touchstone is trusted to say
 
-Touchstone claims exactly one class of thing: *that it retrieved exact bytes from an
-allowlisted first-party endpoint at the recorded retrieval time, that a stated control was
+Touchstone claims exactly one class of thing: *that it retrieved exact bytes from a
+first-party endpoint reached from an allowlisted URL at the recorded retrieval time, that a stated control was
 evaluated against those bytes deterministically, and that the result was signed and
 published.* It does not claim the issuer is honest, that the published figures are
 accurate, or that an asset is sound.
@@ -41,12 +41,12 @@ assumptions are the product, so they are enumerated rather than minimised.
 | B7 | **EVM publisher key** | Authority to write to the registry | A compromised key can publish authentic-looking state; the owner can revoke it onchain |
 | B8 | **Deployer / owner key** | Contract deployment and publisher authorisation | Full control of the registry's publisher set |
 | B9 | **Operations / backup identity** | Service continuity and archive integrity | Backup loss or forgery; separated from publishing keys by policy — see PLAN-T6/PLAN-T8 |
-| B10 | **Registry contract** (X Layer) | Immutable, ordered, append-only history | Chain reorganisation or a wrong-chain deployment; guarded by an immutable expected chain id compared on every write (`contracts/contracts/TouchstoneRegistry.sol:239`) |
+| B10 | **Registry contract** (X Layer) | Immutable, ordered, append-only history | Chain reorganisation or a wrong-chain deployment; guarded by an immutable expected chain id compared on every report publication, including corrections (`contracts/contracts/TouchstoneRegistry.sol:239`); publisher-authorisation writes are not chain-checked |
 | B11 | **Consumer contract** (`AssetGate`) | Enforcing its own freshness policy | A permissive policy admits stale state; the gate reacts to verification freshness, never to asset safety |
 | B12 | **Public projection** (dossier, heartbeat) | Displaying only signed, verified data | Claim inflation in the UI — see T26 |
 | B13 | **Viewer's browser** | Rendering | No wallet is required and no key material reaches the page |
 | B14 | **Control approver / release authority** | Deciding which proposals become approved, evaluable controls | This is the gate the compiler's output must pass, so it is the point where a hostile or careless approval enters the system. Today approval is a field on the record (`approval_state`) set by whoever edits the control set; there is no separate approver identity, no signature over the approval, and no four-eyes requirement |
-| B15 | **Host clock / time source** | Retrieval timestamps, freshness deadlines, confirmation windows | Every freshness and staleness decision and the 24h confirmation separation derive from it. The chain provides a partial check — the registry rejects an `observedAt` in the future against `block.timestamp` (`contracts/contracts/TouchstoneRegistry.sol:257`) and the gate measures age the same way — so a clock running *fast* is caught at publication. A clock running *slow*, or offchain-only decisions, are not. See R-10 |
+| B15 | **Host clock / time source** | Retrieval timestamps, freshness deadlines, confirmation windows | Every freshness and staleness decision and the 24h confirmation separation derive from it. The chain provides a partial check — the registry rejects an `observedAt` in the future against `block.timestamp` (`contracts/contracts/TouchstoneRegistry.sol:257`) and the gate measures age the same way — so a clock fast enough that `observedAt` is *still* ahead of chain time when the transaction executes is rejected. Publication delay masks a moderately fast clock, and offchain-only decisions are never checked. See R-10 |
 | B16 | **JSON-RPC endpoint** | Reporting chain state honestly | Reads and writes go through one configured endpoint, so it can both accept a transaction and describe the resulting state. See R-12 |
 
 Keys at B6, B7, B8 and B9 are **required to be four distinct identities**. Today the local
@@ -95,10 +95,10 @@ threat identifiers `T1`–`T27` used in this section.
 
 | ID | Threat | Disposition |
 |---|---|---|
-| T17 | **Signature or key compromise** | **Partially implemented.** Reports are Ed25519-signed and offline-verifiable; the registry supports onchain publisher rotation with preserved historical attribution. Reporting-key rollover is built in **PLAN-T6** and exercised in **PLAN-T12**. Hardware-backed or multisig custody is **not a Phase 1 item at all** — `ROADMAP.md` places it in the "before external production dependence" ladder; see **R-5** |
+| T17 | **Signature or key compromise** | **Partially implemented.** Reports are Ed25519-signed and offline-verifiable; the registry supports onchain publisher rotation with preserved historical attribution. Reporting-key rollover is built in **PLAN-T6**, which now names it explicitly, and exercised in **PLAN-T12**. Hardware-backed or multisig custody is **not a Phase 1 item at all** — `ROADMAP.md` places it in the "before external production dependence" ladder; see **R-5** |
 | T18 | **Sequence replay / gap** | **Implemented.** The registry enforces a monotonic per-asset sequence, and the publisher refuses a sequence already onchain or not exactly next (`touchstone/publish.py:381`) |
 | T19 | **Duplicate publication after a crash** | **Implemented.** A persisted pending journal plus onchain reconciliation resolves an interrupted send instead of resending it (`touchstone/publish.py:372`). Real subprocess-restart coverage is **PLAN-T7/PLAN-T12** |
-| T20 | **Chain or deployment mismatch** — publishing to the wrong chain or a wrong contract | **Partially implemented.** The registry stores an immutable expected chain id (`contracts/contracts/TouchstoneRegistry.sol:72`) and compares it on every write (`contracts/contracts/TouchstoneRegistry.sol:239`). Manifest-pinned RPC, chain id, address and runtime-bytecode verification on the client side are **PLAN-T6** |
+| T20 | **Chain or deployment mismatch** — publishing to the wrong chain or a wrong contract | **Partially implemented.** The registry stores an immutable expected chain id (`contracts/contracts/TouchstoneRegistry.sol:72`) and compares it on every report publication, including corrections (`contracts/contracts/TouchstoneRegistry.sol:239`); publisher-authorisation writes are not chain-checked. Manifest-pinned RPC, chain id, address and runtime-bytecode verification on the client side are **PLAN-T6** |
 | T21 | **RPC failure** | **Partially implemented.** No value is ever invented on failure, and an interrupted send is reconciled rather than resent (see T19). Not built: endpoint pinning and client-side chain-id and runtime-bytecode verification (**PLAN-T6**), and retry/backoff on a failed submission (**PLAN-T7**) |
 | T27 | **Dishonest RPC endpoint** | **Not defended — residual R-12.** Every fact the publisher reconciles against — latest sequence, receipts, events, stored reports — is read back from the same single configured endpoint that it writes through |
 
@@ -117,8 +117,9 @@ threat identifiers `T1`–`T27` used in this section.
 These distinctions are load-bearing and must not be collapsed:
 
 - **`SOURCE_ERROR` is an operational event, not an asset judgement.** Touchstone failing to
-  retrieve evidence says nothing about the issuer. It preserves the last evidence-derived
-  state until that evidence's own deadline expires.
+  retrieve evidence says nothing about the issuer. Absent a contradicted result it preserves
+  the last evidence-derived state until that evidence's own deadline expires; a contradiction
+  is evaluated first (`touchstone/controls.py:280`) and still yields `INCONSISTENT`.
 - **`STALE` means the evidence deadline passed**, not that anything is wrong with the asset.
 - **`INCONSISTENT` requires a genuine predicate conflict** between attributable
   observations — never a retrieval failure, never a missing field, never an ordinary value
@@ -135,7 +136,7 @@ These distinctions are load-bearing and must not be collapsed:
 | All documents treated as adversarial input | Implemented — exact-object parsing, typed conversion, no evaluation of document content |
 | Model gets no shell, network, wallet or contract tools | **Implemented** — no tool surface in the request (`touchstone/compiler.py:114`) |
 | Instructions embedded in evidence are never followed | Partially — impact bounded by tool denial and deterministic gates, but steering is not prevented and **no test** exists (T9). Backlog: **PLAN-T5** |
-| Allowlisted URLs | Implemented (`touchstone/sources.py:151`) |
+| Allowlisted URLs | Partially — the initial URL is allowlisted (`touchstone/sources.py:178`); a same-host redirect may end retrieval at an unlisted URL (T1, T2) |
 | Blocked redirects | Partially — same-host single redirect still followed. Backlog: **PLAN-T5** |
 | MIME limits | **Not enforced.** Backlog: **PLAN-T5** |
 | Magic-byte limits | Implemented for JSON; PDF/ZIP with **PLAN-T10** |
@@ -182,8 +183,9 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   and evidence digest in *epoch provenance* rather than durable control identity — with
   compiler, evaluator and verifier agreement and offline re-resolution.
 - **R-2 — The confirmation window is empirical, not proven.** Cross-capture confirmation
-  shows a row was not revised between two retained captures. It cannot establish that an
-  older row is never revised. The two-business-day minimum age is derived from two captures
+  shows only that a row was identical *at* two capture instants (`touchstone/evaluate.py:361`);
+  a row revised and restored between them is indistinguishable from one never touched, and
+  nothing establishes that an older row is never revised later. The two-business-day minimum age is derived from two captures
   and the business-day count ignores exchange and bank holidays.
 - **R-3 — Parser isolation bounds runtime, not compromise.** Normalisation runs in a
   spawned worker with a wall-clock timeout. There is no seccomp, container, namespace or
@@ -253,13 +255,15 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   derive from the local clock (B15). The chain catches one direction: the registry rejects
   a future `observedAt` relative to `block.timestamp`
   (`contracts/contracts/TouchstoneRegistry.sol:257`), and `AssetGate` measures observation
-  age against the same chain time. What is missing is two-sided validation — a clock
-  running slow still yields observations that are accepted and simply look older, purely
-  offchain decisions are never cross-checked against the chain, and there is no monotonic
-  guard against a clock moving backwards between epochs. Source-asserted dates are not
-  ignored: freshness requires `observed_on <= now` (`touchstone/evaluate.py:332`) and value
-  rows dated after `now` cannot be selected (`touchstone/evaluate.py:361`), so a clock
-  running slow causes abstention rather than a quietly accepted observation.
+  age against the same chain time. That check is one-sided and delay-sensitive: it rejects
+  only an `observedAt` still ahead of chain time when the transaction executes, so
+  publication delay masks a moderately fast clock. Source-asserted dates are not ignored
+  either — freshness requires `observed_on <= now` (`touchstone/evaluate.py:332`) and value
+  rows dated after `now` cannot be selected (`touchstone/evaluate.py:361`) — so a slow clock
+  does not silently accept a future-dated row; it excludes that row and falls back to an
+  older qualifying one, or abstains when none exists. What is missing is two-sided
+  validation, any cross-check for purely offchain decisions, and a monotonic guard against
+  the clock moving backwards between epochs.
 - **R-12 — Chain state is read from the endpoint it is written through.** The publisher
   reconciles against latest sequence, receipts, events and stored reports supplied by the
   same single configured JSON-RPC endpoint used to submit transactions (B16). An endpoint
