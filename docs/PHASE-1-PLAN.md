@@ -13,8 +13,8 @@ previous one passes audit.**
 | ID | Goal | Size | Status |
 |---|---|---|---|
 | PLAN-T1 | Make the managed hero E2E deterministic and non-skipping | S | **Done** (`2ddd23d`) |
-| PLAN-T2 | Close the Phase 0 threat-model deliverable | M | In progress |
-| PLAN-T3 | Complete brand-clearance research | M | |
+| PLAN-T2 | Close the Phase 0 threat-model deliverable | M | **Done** (`d659b02`) |
+| PLAN-T3 | Complete brand-clearance research | M | In progress |
 | PLAN-T4 | Source manifests and golden fixtures for USTB, USDY, FOBXX | M | |
 | PLAN-T5 | Hero evidence security and the authoritative USTB oracle check | L | |
 | PLAN-T6 | Production-capable publisher and staged deployment path | L | |
