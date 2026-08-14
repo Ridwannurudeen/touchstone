@@ -41,12 +41,12 @@ assumptions are the product, so they are enumerated rather than minimised.
 | B7 | **EVM publisher key** | Authority to write to the registry | A compromised key can publish authentic-looking state; the owner can revoke it onchain |
 | B8 | **Deployer / owner key** | Contract deployment and publisher authorisation | Full control of the registry's publisher set |
 | B9 | **Operations / backup identity** | Service continuity and archive integrity | Backup loss or forgery; separated from publishing keys by policy — see PLAN-T6/PLAN-T8 |
-| B10 | **Registry contract** (X Layer) | Immutable, ordered, append-only history | Chain reorganisation or a wrong-chain deployment; guarded by an immutable expected chain id |
+| B10 | **Registry contract** (X Layer) | Immutable, ordered, append-only history | Chain reorganisation or a wrong-chain deployment; guarded by an immutable expected chain id compared on every write (`contracts/contracts/TouchstoneRegistry.sol:239`) |
 | B11 | **Consumer contract** (`AssetGate`) | Enforcing its own freshness policy | A permissive policy admits stale state; the gate reacts to verification freshness, never to asset safety |
 | B12 | **Public projection** (dossier, heartbeat) | Displaying only signed, verified data | Claim inflation in the UI — see T26 |
 | B13 | **Viewer's browser** | Rendering | No wallet is required and no key material reaches the page |
 | B14 | **Control approver / release authority** | Deciding which proposals become approved, evaluable controls | This is the gate the compiler's output must pass, so it is the point where a hostile or careless approval enters the system. Today approval is a field on the record (`approval_state`) set by whoever edits the control set; there is no separate approver identity, no signature over the approval, and no four-eyes requirement |
-| B15 | **Host clock / time source** | Retrieval timestamps, freshness deadlines, confirmation windows | Every freshness and staleness decision and the 24h confirmation separation derive from it. The chain provides a partial check — the registry rejects an `observedAt` in the future against `block.timestamp` (`contracts/contracts/TouchstoneRegistry.sol:37`) and the gate measures age the same way — so a clock running *fast* is caught at publication. A clock running *slow*, or offchain-only decisions, are not. See R-10 |
+| B15 | **Host clock / time source** | Retrieval timestamps, freshness deadlines, confirmation windows | Every freshness and staleness decision and the 24h confirmation separation derive from it. The chain provides a partial check — the registry rejects an `observedAt` in the future against `block.timestamp` (`contracts/contracts/TouchstoneRegistry.sol:257`) and the gate measures age the same way — so a clock running *fast* is caught at publication. A clock running *slow*, or offchain-only decisions, are not. See R-10 |
 | B16 | **JSON-RPC endpoint** | Reporting chain state honestly | Reads and writes go through one configured endpoint, so it can both accept a transaction and describe the resulting state. See R-12 |
 
 Keys at B6, B7, B8 and B9 are **required to be four distinct identities**. Today the local
@@ -58,13 +58,13 @@ policy only — the identities, manifests and templates are not in the repositor
 Legend: **Implemented** (control exists and is tested) · **Backlog** (a named item in
 `docs/PHASE-1-PLAN.md` that will implement it) · **Residual** (accepted, documented, not
 mitigated in Phase 1). Backlog items are written `PLAN-Tn` to keep them distinct from the
-threat identifiers `T1`–`T26` used in this section.
+threat identifiers `T1`–`T27` used in this section.
 
 ### Evidence acquisition
 
 | ID | Threat | Disposition |
 |---|---|---|
-| T1 | **Source impersonation / wrong endpoint** — evidence fetched from an address that is not the approved source | **Implemented.** Only an exact allowlisted URL may be fetched; any other initial URL is rejected (`touchstone/sources.py:151`). URLs must be HTTPS with no embedded credentials and no non-443 port (`touchstone/sources.py:276`) |
+| T1 | **Source impersonation / wrong endpoint** — evidence fetched from an address that is not the approved source | **Partially implemented.** The *initial* URL must match the manifest exactly (`touchstone/sources.py:178`), and every URL must be HTTPS with no embedded credentials and no non-443 port (`touchstone/sources.py:276`). Retrieval can still end at an address the allowlist never named, because a same-host redirect is followed and the redirected URL becomes the stored `source_url` (`touchstone/sources.py:220`) — see T2 |
 | T2 | **Redirect abuse** — an open or cross-host redirect moves retrieval to attacker-controlled bytes | **Partially implemented.** At most one redirect is followed, cross-host and non-HTTPS redirects are refused (`touchstone/sources.py:196`, `touchstone/sources.py:295`). The final URL is *not* required to be independently present in the allowlist, so a same-host open redirect is still followed. **Backlog: PLAN-T5** |
 | T3 | **MIME confusion** — a source returns a different content type than the manifest approved | **Backlog: PLAN-T5.** `SourceManifest.expected_mime` exists and the received `Content-Type` is recorded as `declared_mime` (`touchstone/sources.py:213`), but the two are never compared. Recorded, not enforced |
 | T4 | **Content-encoding confusion / decompression bomb** | **Partially implemented.** `Accept-Encoding: identity` is requested (`touchstone/sources.py:134`) and every response is capped at the manifest's byte limit before storage (`touchstone/sources.py:192`). The response's actual `Content-Encoding` is never validated, so a source that compresses anyway is not detected. **Backlog: PLAN-T5**; ZIP/PDF expansion limits arrive with **PLAN-T10** |
@@ -80,14 +80,14 @@ threat identifiers `T1`–`T26` used in this section.
 | T9 | **Prompt injection** — instructions embedded in issuer evidence steer the compiler | **Partially mitigated, untested.** The model is given no tool surface at all: the request body carries only `model`, `messages` and `temperature` (`touchstone/compiler.py:114`), so there is no shell, network, wallet or contract capability for injected text to invoke. Impact is further bounded because output is only a *proposal* that must survive schema validation, an adapter/source binding check (`touchstone/compiler.py:379`) and explicit approval before evaluation. **This constrains impact; it does not prevent steering.** Embedded instructions can still shape a schema-valid, byte-citable proposal, and **no prompt-injection test exists**. Backlog: **PLAN-T5** |
 | T10 | **False citation** — a proposed control cites evidence it did not come from | **Partially implemented — byte-presence only.** The cited span must occur byte-exactly in both the stored artifact and the excerpt shown to the model (`touchstone/compiler.py:325`). That proves the bytes are present; it does not prove uniqueness or that they denote the value the adapter consumed. The broader threat remains open under **R-1** |
 | T11 | **Silent model substitution** — output attributed to a model that did not produce it | **Not implemented — residual R-11.** Prompt hash, compiler version, input hash and the exact raw output are recorded, but the recorded model id is the *requested* one read from configuration (`touchstone/compiler.py:90`), and the response parser reads only the message content and never the provider's returned model identity (`touchstone/compiler.py:157`). A substituted model is therefore attributed to the configured name. The actual model remains provider-attested and untested by Touchstone |
-| T12 | **Overconfident acceptance** — an ambiguous document yields a confident control | **Partially implemented.** Below-threshold confidence abstains rather than accepting (`touchstone/compiler.py:340`), but `compiler_confidence` is **supplied by the model in its own proposal**, so a confidently wrong or hostile output can clear the threshold by asserting a high number. The remaining protection is human approval before a control becomes evaluable, not the gate |
+| T12 | **Overconfident acceptance** — an ambiguous document yields a confident control | **Partially implemented.** Below-threshold confidence abstains rather than accepting (`touchstone/compiler.py:340`), but `compiler_confidence` is **supplied by the model in its own proposal**, so a confidently wrong or hostile output can clear the threshold by asserting a high number. The remaining protection is that a control must be marked approved before it becomes evaluable — which is a string comparison on a field, not an attested human decision (B14, R-9, R-11) |
 
 ### Evaluation and state
 
 | ID | Threat | Disposition |
 |---|---|---|
-| T13 | **Mutable evidence** — the source revises a value after it was observed | **Implemented.** Value controls observe only a row confirmed unchanged across two retained captures at least 24h apart; a revised row is skipped. Documented in `docs/CONTROL-LANGUAGE.md` and `SOURCE_AUDIT.md` |
-| T14 | **Retrieval failure mistaken for issuer failure** | **Rule implemented; runtime path not.** The transition rule is correct and tested: `SOURCE_ERROR` preserves the previous state while its evidence deadline holds and only becomes `STALE` after expiry (`touchstone/controls.py:282`). But **no runtime caller ever produces that event** — a fetch or normalisation failure propagates out of the epoch (`touchstone/epoch.py:187`) and terminates the run instead of being recorded. Backlog: **PLAN-T7** |
+| T13 | **Mutable evidence** — the source revises a value after it was observed | **Partially implemented.** Value controls observe only a row whose whole record is identical in two retained captures at least 24h apart; a row revised between them is skipped. This compares two instants only (`touchstone/evaluate.py:361`), so a row revised and restored between captures is indistinguishable from one never touched. Documented in `docs/CONTROL-LANGUAGE.md` and `SOURCE_AUDIT.md` |
+| T14 | **Retrieval failure mistaken for issuer failure** | **Rule implemented; runtime path not.** The transition rule is correct and tested: `SOURCE_ERROR` preserves the previous state while its evidence deadline holds and only becomes `STALE` after expiry (`touchstone/controls.py:282`) — **except** that a contradicted result is checked first (`touchstone/controls.py:280`), so a source error arriving alongside a genuine contradiction still yields `INCONSISTENT`. But **no runtime caller ever produces that event** — a fetch or normalisation failure propagates out of the epoch (`touchstone/epoch.py:187`) and terminates the run instead of being recorded. Backlog: **PLAN-T7** |
 | T15 | **Missing or conflicting observations** | **Implemented within an epoch that completes.** Absent or unusable evidence yields `UNEVALUABLE`, which drives `UNVERIFIABLE` rather than a confident result; only a genuine predicate conflict yields `INCONSISTENT` (`touchstone/controls.py:262`). This covers evidence that is retrieved but unusable, not an epoch that fails to complete — see T14 |
 | T16 | **Evidence-store tampering** | **Implemented for detection.** The index is a hash chain and every append re-verifies the full chain and re-hashes every referenced object (`touchstone/evidence.py:78`, `:88`). A privileged actor able to rewrite objects *and* recompute the whole chain is not defended against — **R-4** |
 
@@ -95,12 +95,12 @@ threat identifiers `T1`–`T26` used in this section.
 
 | ID | Threat | Disposition |
 |---|---|---|
-| T17 | **Signature or key compromise** | **Partially implemented.** Reports are Ed25519-signed and offline-verifiable; the registry supports onchain publisher rotation with preserved historical attribution. Reporting-key rollover and hardware/multisig custody are **PLAN-T6/PLAN-T12**; see **R-5** |
+| T17 | **Signature or key compromise** | **Partially implemented.** Reports are Ed25519-signed and offline-verifiable; the registry supports onchain publisher rotation with preserved historical attribution. Reporting-key rollover is built in **PLAN-T6** and exercised in **PLAN-T12**. Hardware-backed or multisig custody is **not a Phase 1 item at all** — `ROADMAP.md` places it in the "before external production dependence" ladder; see **R-5** |
 | T18 | **Sequence replay / gap** | **Implemented.** The registry enforces a monotonic per-asset sequence, and the publisher refuses a sequence already onchain or not exactly next (`touchstone/publish.py:381`) |
 | T19 | **Duplicate publication after a crash** | **Implemented.** A persisted pending journal plus onchain reconciliation resolves an interrupted send instead of resending it (`touchstone/publish.py:372`). Real subprocess-restart coverage is **PLAN-T7/PLAN-T12** |
-| T20 | **Chain or deployment mismatch** — publishing to the wrong chain or a wrong contract | **Partially implemented.** The registry stores an immutable expected chain id and compares it on every write (`contracts/contracts/TouchstoneRegistry.sol:72`). Manifest-pinned RPC, chain id, address and runtime-bytecode verification on the client side are **PLAN-T6** |
-| T21 | **RPC failure** | **Partially implemented.** No value is ever invented on failure, and an interrupted send is reconciled rather than resent (see T19). Not built: endpoint pinning, client-side chain-id and runtime-bytecode verification, and retry policy. Backlog: **PLAN-T6/PLAN-T7** |
-| T21b | **Dishonest RPC endpoint** | **Not defended — residual R-12.** Every fact the publisher reconciles against — latest sequence, receipts, events, stored reports — is read back from the same single configured endpoint that it writes through |
+| T20 | **Chain or deployment mismatch** — publishing to the wrong chain or a wrong contract | **Partially implemented.** The registry stores an immutable expected chain id (`contracts/contracts/TouchstoneRegistry.sol:72`) and compares it on every write (`contracts/contracts/TouchstoneRegistry.sol:239`). Manifest-pinned RPC, chain id, address and runtime-bytecode verification on the client side are **PLAN-T6** |
+| T21 | **RPC failure** | **Partially implemented.** No value is ever invented on failure, and an interrupted send is reconciled rather than resent (see T19). Not built: endpoint pinning and client-side chain-id and runtime-bytecode verification (**PLAN-T6**), and retry/backoff on a failed submission (**PLAN-T7**) |
+| T27 | **Dishonest RPC endpoint** | **Not defended — residual R-12.** Every fact the publisher reconciles against — latest sequence, receipts, events, stored reports — is read back from the same single configured endpoint that it writes through |
 
 ### Operations and presentation
 
@@ -150,7 +150,7 @@ These distinctions are load-bearing and must not be collapsed:
 
 | Requirement | Status |
 |---|---|
-| Separated deployer / publisher / Ed25519 / operations keys | **Not yet** — policy and templates only. Backlog: **PLAN-T6**, residual **R-5** |
+| Separated deployer / publisher / Ed25519 / operations keys | **Not yet** — stated policy only; no distinct identities or manifest templates exist in the repository. Backlog: **PLAN-T6**, residual **R-5** |
 | No secrets in code, logs, bundles or clients | Holds today; no secret is committed. The E2E now warns when a Hardhat log containing development keys cannot be removed |
 | Onchain key rotation | Implemented in the registry, with preserved historical attribution and lineage |
 | Monotonic sequences + replay protection | Implemented (registry + `touchstone/publish.py:381`) |
@@ -233,18 +233,33 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   "AI proposes, deterministic systems decide" separation rests entirely on that curator
   (B14, R-9). Also unresolved: the recorded model identity is the requested one, not the
   provider's returned one (T11), so provenance cannot attest which model proposed a
-  control. Closing this requires binding an approved control to a specific compilation
-  record and having the verifier check that binding.
+  control.
+
+  The gap is wider than evaluation. Report construction matches controls to evaluations by
+  `control_id` alone (`touchstone/report.py:161`), and the offline verifier never inspects
+  `approval_state` at all (`touchstone/verify.py:216` and its surrounding checks). A
+  validly signed, internally consistent bundle can therefore carry controls still marked
+  `proposed`, and an independent verifier would accept it. Approval is enforced only inside
+  `evaluate_ustb`, on the publisher's own machine, at evaluation time.
+
+  Two distinct remedies are needed, and neither is scheduled yet: (a) bind an approved
+  control to the specific compilation record that produced it and have the verifier check
+  that binding and the approval state; and (b) separately, record the model identity the
+  provider returned rather than the one requested (`touchstone/compiler.py:152`), without
+  which provenance cannot attest which model proposed a control at all. Remedy (a) does not
+  close T11; remedy (b) does not close the binding gap.
 - **R-10 — Time is taken from the host clock, with only a one-sided chain check.**
   Retrieval timestamps, freshness deadlines and the 24-hour confirmation separation all
   derive from the local clock (B15). The chain catches one direction: the registry rejects
   a future `observedAt` relative to `block.timestamp`
-  (`contracts/contracts/TouchstoneRegistry.sol:37`), and `AssetGate` measures observation
+  (`contracts/contracts/TouchstoneRegistry.sol:257`), and `AssetGate` measures observation
   age against the same chain time. What is missing is two-sided validation — a clock
   running slow still yields observations that are accepted and simply look older, purely
-  offchain decisions are never cross-checked at all, there is no monotonic guard against a
-  clock moving backwards between epochs, and no comparison against any date the source
-  itself asserts.
+  offchain decisions are never cross-checked against the chain, and there is no monotonic
+  guard against a clock moving backwards between epochs. Source-asserted dates are not
+  ignored: freshness requires `observed_on <= now` (`touchstone/evaluate.py:332`) and value
+  rows dated after `now` cannot be selected (`touchstone/evaluate.py:361`), so a clock
+  running slow causes abstention rather than a quietly accepted observation.
 - **R-12 — Chain state is read from the endpoint it is written through.** The publisher
   reconciles against latest sequence, receipts, events and stored reports supplied by the
   same single configured JSON-RPC endpoint used to submit transactions (B16). An endpoint

@@ -72,7 +72,8 @@ transaction.**
 append-only hash-chained incident history where recovery closes an incident with a new
 event rather than deleting it; `SOURCE_ERROR` recorded and the previous state preserved
 until its deadline; a failed epoch never ends future scheduling; restart reconciliation
-before any resend; missed slots recorded, never backfilled with invented timestamps.
+before any resend; bounded retry with backoff on a failed submission; missed slots
+recorded, never backfilled with invented timestamps.
 
 **PLAN-T8 — reliability layer.** Heartbeat that cannot stay green after daemon death;
 watchdog detection within five minutes and recovery within fifteen; alerting without
