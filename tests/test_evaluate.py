@@ -94,9 +94,7 @@ def test_golden_ustb_evaluation_is_confirmed() -> None:
         "aum-published",
         "value-vs-expected",
     ]
-    assert all(
-        item.result is EvaluationResult.SATISFIED for item in report.evaluations
-    )
+    assert all(item.result is EvaluationResult.SATISFIED for item in report.evaluations)
 
 
 @pytest.mark.parametrize(
@@ -173,19 +171,80 @@ def test_value_mismatch_is_contradicted_and_drives_inconsistent_state() -> None:
         expected_value={"field": "net_asset_value", "value": "9.99"},
     )
 
-    report = evaluate_ustb(
-        [value_control], observations(), now=date(2026, 8, 13)
-    )
+    report = evaluate_ustb([value_control], observations(), now=date(2026, 8, 13))
 
     assert report.evaluations[0].observed_value == Decimal("11.17558800")
     assert report.evaluations[0].result is EvaluationResult.CONTRADICTED
     assert report.state is AssetState.INCONSISTENT
 
 
-def test_only_approved_controls_are_evaluated() -> None:
-    proposed = replace_control(
-        default_ustb_controls()[0], approval_state="proposed"
+def nav_capture(name: str):
+    return parse_nav_daily((FIXTURES / name).read_bytes(), max_bytes=262_144)
+
+
+def aum_control() -> ControlRecord:
+    return next(
+        control
+        for control in default_ustb_controls()
+        if control.control_id == "aum-published"
     )
+
+
+@pytest.mark.parametrize(
+    ("capture", "now", "settled_on"),
+    [
+        ("ustb-nav.json", date(2026, 8, 13), date(2026, 8, 11)),
+        ("ustb-nav-20260814.json", date(2026, 8, 14), date(2026, 8, 12)),
+    ],
+)
+def test_value_controls_observe_a_settled_row_not_the_provisional_tail(
+    capture: str, now: date, settled_on: date
+) -> None:
+    observation = nav_capture(capture)
+
+    report = evaluate_ustb([aum_control()], {USTB_NAV_SOURCE_ID: observation}, now=now)
+    evaluation = report.evaluations[0]
+
+    assert evaluation.result is EvaluationResult.SATISFIED
+    assert evaluation.observed_on == settled_on
+    assert settled_on < max(row.observed_on for row in observation.rows)
+
+
+def test_settled_row_survives_the_issuer_revision_that_rewrote_the_tail() -> None:
+    first = {row.observed_on: row for row in nav_capture("ustb-nav.json").rows}
+    second = {
+        row.observed_on: row for row in nav_capture("ustb-nav-20260814.json").rows
+    }
+
+    report = evaluate_ustb(
+        [aum_control()],
+        {USTB_NAV_SOURCE_ID: nav_capture("ustb-nav.json")},
+        now=date(2026, 8, 13),
+    )
+    reported_on = report.evaluations[0].observed_on
+
+    assert second[reported_on] == first[reported_on]
+    assert second[date(2026, 8, 13)] != first[date(2026, 8, 13)]
+    assert second[date(2026, 8, 12)] != first[date(2026, 8, 12)]
+
+
+def test_malformed_settling_window_fails_closed() -> None:
+    malformed = replace_control(
+        aum_control(),
+        expected_value={
+            "field": "assets_under_management",
+            "settled_after_business_days": -1,
+        },
+    )
+
+    report = evaluate_ustb([malformed], observations(), now=date(2026, 8, 13))
+
+    assert report.evaluations[0].result is EvaluationResult.UNEVALUABLE
+    assert report.evaluations[0].observed_on is None
+
+
+def test_only_approved_controls_are_evaluated() -> None:
+    proposed = replace_control(default_ustb_controls()[0], approval_state="proposed")
 
     with pytest.raises(ValueError, match="approved"):
         evaluate_ustb([proposed], observations(), now=date(2026, 8, 13))
@@ -196,9 +255,7 @@ def test_nav_evaluation_selects_latest_row_independent_of_payload_order() -> Non
     nav = reordered[USTB_NAV_SOURCE_ID]
     reordered[USTB_NAV_SOURCE_ID] = type(nav)(rows=tuple(reversed(nav.rows)))
 
-    report = evaluate_ustb(
-        default_ustb_controls(), reordered, now=date(2026, 8, 13)
-    )
+    report = evaluate_ustb(default_ustb_controls(), reordered, now=date(2026, 8, 13))
 
     assert report.state is AssetState.CONFIRMED
     assert all(

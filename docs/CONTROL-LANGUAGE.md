@@ -52,6 +52,22 @@ construction so later caller mutation cannot change identity.
 Operator names form a closed allowlist. Adding an operator requires a control-language
 version change and evaluator support.
 
+## Settled observations
+
+Value operators (`exists`, `eq`, `within_tolerance`, `non_decreasing`) read one dated
+record from the source. Where a source publishes provisional records and revises them
+later, a control declares `settled_after_business_days` in its `expected_value`: the
+evaluator then observes the newest record that is at least that many business days old
+and reports its date as the evaluation's `observed_on`. Absent the key the window is
+zero, which observes the newest record that is not future-dated; a negative or
+non-integer window is malformed and the control evaluates as `UNEVALUABLE` rather than
+falling back. `fresh_within` is unaffected — it deliberately reads the newest record,
+because its subject is whether the source is still publishing.
+
+The USTB nav-daily controls declare a window of two business days. That number is
+empirical, not conventional: it is the smallest window under which no row was observed
+to change between the 2026-08-13 and 2026-08-14 captures retained in `fixtures/`.
+
 ## Canonical representation and identity
 
 `ControlRecord.canonical_bytes()` produces UTF-8 JSON with lexicographically sorted

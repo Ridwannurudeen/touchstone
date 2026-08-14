@@ -22,12 +22,20 @@ from touchstone.normalize.ustb import (
     USTB_YIELD_SOURCE_ID,
     USTBHoldingsObservation,
     USTBNavObservation,
+    USTBNavRow,
     USTBObservation,
     USTBYieldObservation,
 )
 
 
 USTB_ASSET_KEY = "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
+
+# The newest nav-daily rows are provisional: the issuer publishes a row for the current
+# date carrying the previous settled values forward and rewrites it later. Comparing the
+# 2026-08-13 and 2026-08-14 captures, every row revised was under two business days old
+# and every row at or beyond that age was byte-identical, so value controls only observe
+# rows that have aged past this window. Re-derive it as more captures accumulate.
+SETTLED_AFTER_BUSINESS_DAYS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +44,7 @@ class ControlEvaluation:
     result: EvaluationResult
     observed_value: date | Decimal | None
     evidence_deadline: date | None
+    observed_on: date | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +139,7 @@ def default_ustb_controls() -> tuple[ControlRecord, ...]:
         {
             **common,
             "control_id": "aum-published",
+            "control_version": 2,
             "subject": "USTB assets under management",
             "source_id": USTB_NAV_SOURCE_ID,
             "evidence_span": '"assets_under_management":"958406746.9500"',
@@ -137,11 +147,15 @@ def default_ustb_controls() -> tuple[ControlRecord, ...]:
             "grace_period": 0,
             "observation_adapter": "ustb-nav-daily",
             "comparison_operator": "exists",
-            "expected_value": {"field": "assets_under_management"},
+            "expected_value": {
+                "field": "assets_under_management",
+                "settled_after_business_days": SETTLED_AFTER_BUSINESS_DAYS,
+            },
         },
         {
             **common,
             "control_id": "value-vs-expected",
+            "control_version": 2,
             "subject": "USTB issuer fund identifier",
             "source_id": USTB_NAV_SOURCE_ID,
             "evidence_span": '"fund_id":1',
@@ -152,6 +166,7 @@ def default_ustb_controls() -> tuple[ControlRecord, ...]:
             "expected_value": {
                 "field": "fund_id",
                 "value": "1",
+                "settled_after_business_days": SETTLED_AFTER_BUSINESS_DAYS,
             },
         },
     ]
@@ -242,7 +257,12 @@ def _evaluate_control(
         )
     if control.comparison_operator is ComparisonOperator.FRESH_WITHIN:
         return _evaluate_freshness(control, observation, now)
-    observed = _observed_value(control, observation)
+    row = _value_row(control, observation, now)
+    if row is None:
+        return ControlEvaluation(
+            control.control_id, EvaluationResult.UNEVALUABLE, None, None
+        )
+    observed = _observed_value(control, row)
     if control.comparison_operator is ComparisonOperator.EXISTS:
         result = (
             EvaluationResult.SATISFIED
@@ -266,7 +286,9 @@ def _evaluate_control(
             result = _comparison_result(observed >= expected)
         else:
             result = EvaluationResult.UNEVALUABLE
-    return ControlEvaluation(control.control_id, result, observed, None)
+    return ControlEvaluation(
+        control.control_id, result, observed, None, row.observed_on
+    )
 
 
 def _evaluate_freshness(
@@ -294,17 +316,32 @@ def _evaluate_freshness(
         if observed_on is not None and observed_on <= now <= deadline
         else EvaluationResult.UNEVALUABLE
     )
-    return ControlEvaluation(control.control_id, result, observed_on, deadline)
+    return ControlEvaluation(
+        control.control_id, result, observed_on, deadline, observed_on
+    )
 
 
-def _observed_value(
-    control: ControlRecord, observation: USTBObservation
-) -> Decimal | None:
+def _value_row(
+    control: ControlRecord, observation: USTBObservation, now: date
+) -> USTBNavRow | None:
+    """Return the newest NAV row a value control is allowed to observe."""
     if not isinstance(observation, USTBNavObservation):
         return None
-    row = _latest_nav_row(observation)
-    if row is None:
+    settled_after = _settled_after(control.expected_value)
+    if settled_after is None:
         return None
+    return max(
+        (
+            row
+            for row in observation.rows
+            if business_days_elapsed(row.observed_on, now) >= settled_after
+        ),
+        key=lambda row: row.observed_on,
+        default=None,
+    )
+
+
+def _observed_value(control: ControlRecord, row: USTBNavRow) -> Decimal | None:
     field = _expected_field(control.expected_value)
     allowed = {
         "fund_id": Decimal(row.fund_id),
@@ -319,6 +356,16 @@ def _observed_value(
 
 def _latest_nav_row(observation: USTBNavObservation):
     return max(observation.rows, key=lambda row: row.observed_on, default=None)
+
+
+def _settled_after(value: FrozenJSONValue) -> int | None:
+    """Return the control's settling window; ``None`` rejects a malformed declaration."""
+    if not isinstance(value, Mapping):
+        return None
+    declared = value.get("settled_after_business_days", 0)
+    if type(declared) is not int or declared < 0:
+        return None
+    return declared
 
 
 def _expected_field(value: FrozenJSONValue) -> str | None:

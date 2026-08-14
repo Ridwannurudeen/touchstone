@@ -49,6 +49,7 @@ class EpochControlReport:
     result: EvaluationResult
     observed_value: str | None
     evidence_deadline: date | None
+    observed_on: date | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +70,11 @@ class USTBEpochReport:
                     "evidence_deadline": (
                         evaluation.evidence_deadline.isoformat()
                         if evaluation.evidence_deadline is not None
+                        else None
+                    ),
+                    "observed_on": (
+                        evaluation.observed_on.isoformat()
+                        if evaluation.observed_on is not None
                         else None
                     ),
                     "observed_value": evaluation.observed_value,
@@ -105,9 +111,7 @@ class FixtureTransport:
             for source in USTB_SOURCES
         }
 
-    def get(
-        self, url: str, *, timeout: float, max_bytes: int
-    ) -> TransportResponse:
+    def get(self, url: str, *, timeout: float, max_bytes: int) -> TransportResponse:
         del timeout
         self.calls.append(url)
         path = self._paths.get(url)
@@ -177,6 +181,7 @@ def run_ustb_epoch(
                     else None
                 ),
                 evidence_deadline=item.evidence_deadline,
+                observed_on=item.observed_on,
             )
             for item in evaluation.evaluations
         ),
@@ -198,7 +203,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the USTB ingestion epoch")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fixtures", action="store_true", help="use committed fixtures")
-    mode.add_argument("--live", action="store_true", help="perform allowlisted live GETs")
+    mode.add_argument(
+        "--live", action="store_true", help="perform allowlisted live GETs"
+    )
     args = parser.parse_args(argv)
 
     if args.fixtures:

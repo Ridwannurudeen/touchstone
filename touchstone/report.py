@@ -27,11 +27,14 @@ if TYPE_CHECKING:
     from touchstone.epoch import USTBEpochReport
 
 
-REPORT_VERSION = "touchstone.observation-report.v1"
+REPORT_VERSION = "touchstone.observation-report.v2"
 USTB_LIMITATIONS = (
     "Issuer APIs prove only what Superstate published at the observed endpoints; "
     "Touchstone does not independently audit the fund, its assets, or issuer accuracy.",
     "Holdings publication lags daily NAV and its 40-day freshness window is provisional.",
+    "The newest nav-daily rows are provisional and are revised in place, so value "
+    "controls observe a row that has aged past that revision window; a control's "
+    "observed_on names the row its observed_value belongs to.",
     "This local-only report does not verify an onchain NAV oracle or token supply.",
 )
 _DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -161,6 +164,11 @@ def build_observation_report(
                     "evidence_deadline": (
                         evaluation.evidence_deadline.isoformat()
                         if evaluation.evidence_deadline is not None
+                        else None
+                    ),
+                    "observed_on": (
+                        evaluation.observed_on.isoformat()
+                        if evaluation.observed_on is not None
                         else None
                     ),
                     "observed_value": evaluation.observed_value,

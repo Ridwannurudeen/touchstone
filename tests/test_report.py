@@ -195,5 +195,5 @@ def test_report_provenance_digests_are_strict(tmp_path: Path) -> None:
 
 def test_report_fixture_helper_is_canonical_json_compatible(tmp_path: Path) -> None:
     report = _report(tmp_path)
-    assert report["version"] == "touchstone.observation-report.v1"
+    assert report["version"] == "touchstone.observation-report.v2"
     assert report["compiler_provenance_digests"] == ["22" * 32]

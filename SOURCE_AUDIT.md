@@ -73,12 +73,14 @@ time; it is recorded per asset as a residual check.
 
 ### Residual checks before mainnet claims
 
-- **Open defect (found 2026-08-14):** the shipped control set reads the newest nav-daily
-  row (`evaluate.py:_latest_nav_row`), which is the provisional carry-forward row.
-  `nav-row-freshness` is still honest as a feed-liveness control, but `aum-published`
-  and `value-vs-expected` report that row's values as the epoch's observed values — a
-  signed report therefore attributes the prior day's AUM to today. Fix before any
-  mainnet claim: mark tail rows provisional and/or evaluate values on settled rows.
+- **Defect found and closed 2026-08-14:** the control set read the newest nav-daily row,
+  so `aum-published` and `value-vs-expected` would have reported the provisional
+  carry-forward row's values as the epoch's observed values — attributing the prior
+  day's AUM to today. No such report was ever signed or published. Both controls are now
+  `control_version: 2` and declare `settled_after_business_days: 2`, the evaluator
+  observes the newest row past that window and records its `observed_on`, and the
+  offline verifier rejects any report stating a value without an evidence date.
+  `nav-row-freshness` is unchanged and documented as feed-liveness, not settlement.
 - Re-fetch repeatedly across days from the deployment VPS (scripted, part of sprint).
 - API terms-of-use review (docs present the API publicly; confirm no usage restriction).
 - Establish the exact outstanding-shares vs onchain-supply relationship before enabling control 5 beyond observation mode.

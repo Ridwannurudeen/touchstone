@@ -58,7 +58,7 @@ _REPORT_FIELDS = {
     "version",
 }
 _CONTROL_RESULT_FIELDS = {"content_hash", "control_id", "evaluation"}
-_EVALUATION_FIELDS = {"evidence_deadline", "observed_value", "result"}
+_EVALUATION_FIELDS = {"evidence_deadline", "observed_on", "observed_value", "result"}
 _TRANSITION_FIELDS = {"as_of", "event", "evidence_deadline", "previous_state"}
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _ASSET_KEY = re.compile(r"eip155:[1-9][0-9]*:0x[0-9a-f]{40}")
@@ -153,7 +153,7 @@ def verify_bundle(value: bytes | str | Mapping[str, object]) -> Mapping[str, obj
 
 def _verify_report_schema(report: Mapping[str, object], envelope_kid: str) -> None:
     if set(report) != _REPORT_FIELDS:
-        raise VerificationError("report fields do not match the v1 schema")
+        raise VerificationError("report fields do not match the supported schema")
     if report["version"] != REPORT_VERSION:
         raise VerificationError("unsupported report version")
     if report["publisher_kid"] != envelope_kid:
@@ -245,6 +245,13 @@ def _verify_control_results(value: object, records: tuple[ControlRecord, ...]) -
         deadline = evaluation["evidence_deadline"]
         if deadline is not None:
             _calendar_date(deadline, "control evidence_deadline")
+        observed_on = evaluation["observed_on"]
+        if observed_on is not None:
+            _calendar_date(observed_on, "control observed_on")
+        elif evaluation["observed_value"] is not None:
+            raise VerificationError(
+                "observed value is not attributed to an evidence date"
+            )
         observed[control_id] = content_hash
     if observed != expected:
         raise VerificationError("report controls do not match bundled control records")
@@ -296,7 +303,7 @@ def _exact_mapping(
 ) -> Mapping[str, object]:
     mapping = _mapping(value, context)
     if set(mapping) != expected:
-        raise VerificationError(f"{context} fields do not match the v1 schema")
+        raise VerificationError(f"{context} fields do not match the supported schema")
     return mapping
 
 
