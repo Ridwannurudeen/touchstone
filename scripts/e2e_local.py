@@ -260,7 +260,9 @@ def _discard_log(path: Path) -> None:
 
     On Windows the terminated node's handle can outlive ``taskkill``, so an immediate
     unlink raises ``PermissionError``. Losing a temporary log matters far less than
-    losing a completed E2E result, so this retries briefly and then gives up quietly.
+    losing a completed E2E result, so this retries briefly and then gives up — but it
+    says so on stderr, because the abandoned log holds Hardhat's development account
+    keys and silent accumulation would hide that.
     """
     for _ in range(20):
         try:
@@ -268,6 +270,7 @@ def _discard_log(path: Path) -> None:
             return
         except PermissionError:
             time.sleep(0.1)
+    print(f"warning: left Hardhat node log at {path}", file=sys.stderr)
 
 
 def _free_port() -> int:
@@ -323,13 +326,22 @@ def _start_node(port: int) -> tuple[subprocess.Popen[bytes], Path]:
     except Exception:
         _discard_log(output)
         raise
+    # Readiness must come from this process, not from whoever answers on the port.
+    # _free_port releases the port before Hardhat binds it, so a foreign JSON-RPC
+    # server can hold it; that server would answer is_connected() happily and the
+    # loop would silently run against someone else's chain.
+    announcement = f"JSON-RPC server at http://127.0.0.1:{port}/"
     for _ in range(240):
         if process.poll() is not None:
             message = output.read_text(encoding="utf-8", errors="replace")
             _discard_log(output)
             raise RuntimeError(message)
-        if Web3(Web3.HTTPProvider(f"http://127.0.0.1:{port}")).is_connected():
-            return process, output
+        if announcement in output.read_text(encoding="utf-8", errors="replace"):
+            if Web3(Web3.HTTPProvider(f"http://127.0.0.1:{port}")).is_connected():
+                return process, output
+            _stop_node(process)
+            _discard_log(output)
+            raise RuntimeError(f"Hardhat announced {port} but the port is unreachable")
         time.sleep(0.25)
     _stop_node(process)
     _discard_log(output)
