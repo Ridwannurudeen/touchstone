@@ -1,10 +1,10 @@
 """The harness that proves the other tests is itself a claim, so it is tested too.
 
-Its whole job is to answer "did an assertion notice this?", and its first two versions
-answered a different question: the first read any nonzero pytest exit as a kill, the second
-read exit 1 as a kill. Both credited infrastructure failures — a mistyped node, an
-unwritable temporary directory, a plugin that dies during initialisation — to assertions
-that never ran. A verification instrument that over-reports is worse than none, because
+Its whole job is to answer "did a targeted test run and reject this?", and its first two
+versions answered a different question: the first read any nonzero pytest exit as a kill,
+the second read exit 1 as a kill. Both credited infrastructure failures — a mistyped node,
+an unwritable temporary directory, a plugin that dies during initialisation — to tests that
+never ran. A verification instrument that over-reports is worse than none, because
 everything downstream of it is stated with more confidence than it was earned.
 """
 

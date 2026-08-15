@@ -481,3 +481,37 @@ def test_a_manifest_that_cannot_be_snapshotted_is_a_deployment_error() -> None:
     """The declared boundary is DeploymentError, so nothing else may come out of it."""
     with pytest.raises(DeploymentError):
         DeploymentManifest.from_mapping(_HostileMapping(manifest()))
+
+
+class _UnrenderableFailure(Exception):
+    """An exception that refuses to describe itself."""
+
+    def __str__(self) -> str:
+        raise KeyError("this exception cannot be rendered")
+
+
+class _UnrenderableMapping(Mapping):
+    """Fails traversal with an exception whose own string conversion raises."""
+
+    def __init__(self, value: dict[str, object]) -> None:
+        self._value = value
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._value)
+
+    def __getitem__(self, key: str) -> object:
+        raise _UnrenderableFailure()
+
+    def __len__(self) -> int:
+        return len(self._value)
+
+
+def test_a_failure_that_cannot_describe_itself_is_still_a_deployment_error() -> None:
+    """The handler that contains arbitrary failures was itself running caller code.
+
+    Interpolating the caught exception invokes its `__str__`, so one that raises escaped
+    the very handler written to contain it — and a RuntimeError with an ordinary message
+    does not exercise that, because rendering it succeeds.
+    """
+    with pytest.raises(DeploymentError):
+        DeploymentManifest.from_mapping(_UnrenderableMapping(manifest()))

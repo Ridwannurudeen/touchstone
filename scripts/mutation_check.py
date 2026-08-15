@@ -299,6 +299,15 @@ MUTATIONS = (
         ),
     ),
     Mutation(
+        name="a-failure-that-cannot-be-rendered-escapes-the-handler",
+        path="touchstone/signing.py",
+        old="    try:\n        detail = str(error)\n    except Exception:",
+        new="    try:\n        detail = str(error)\n    except UnicodeDecodeError:",
+        tests=(
+            "tests/test_deployment.py::test_a_failure_that_cannot_describe_itself_is_still_a_deployment_error",
+        ),
+    ),
+    Mutation(
         name="control-record-read-more-than-once",
         path="touchstone/controls.py",
         old="        value = dict(value)",
@@ -365,9 +374,9 @@ MUTATIONS = (
 )
 
 
-# pytest's documented exit codes. Only TESTS_FAILED means a mutant was noticed by an
-# assertion. Every other nonzero code means the run did not happen as intended — a
-# mistyped node id collects nothing and exits USAGE_ERROR — and counting those as kills
+# pytest's documented exit codes. Only TESTS_FAILED can mean a targeted test ran and
+# rejected the mutant. Every other nonzero code means the run did not happen as intended —
+# a mistyped node id collects nothing and exits USAGE_ERROR — and counting those as kills
 # is how a harness reports full coverage while executing none of it.
 _TESTS_FAILED = 1
 _NO_TESTS_COLLECTED = 5

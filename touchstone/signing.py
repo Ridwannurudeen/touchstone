@@ -92,13 +92,30 @@ def frozen_snapshot(value: object, field: str) -> Mapping[str, object]:
         # unhandled crash the whole helper exists to prevent.
         raise ValueError(f"{field} contains a reference cycle") from error
     except (TypeError, ValueError) as error:
-        raise ValueError(f"{field} is not canonical JSON: {error}") from error
+        raise ValueError(
+            f"{field} is not canonical JSON: {_rendered(error)}"
+        ) from error
     except Exception as error:
         # Walking a caller's mapping runs caller code — `items`, `__iter__`, `__getitem__`
         # are all overridable — and it may raise anything at all. Everything it can do
         # becomes this helper's refusal, because a snapshot that fails in the caller's own
         # exception type puts arbitrary errors through every boundary that snapshots.
-        raise ValueError(f"{field} could not be read: {error}") from error
+        raise ValueError(f"{field} could not be read: {_rendered(error)}") from error
+
+
+def _rendered(error: BaseException) -> str:
+    """Describe an exception without trusting it to describe itself.
+
+    The handler that turns arbitrary failures into this module's refusal was itself calling
+    caller-controlled code: interpolating the caught exception invokes its ``__str__``, and
+    one that raises escapes the very handler written to contain it. The type name is always
+    available and is enough to act on; the detail is best-effort.
+    """
+    try:
+        detail = str(error)
+    except Exception:
+        return f"{type(error).__name__} (its description could not be rendered)"
+    return f"{type(error).__name__}: {detail}" if detail else type(error).__name__
 
 
 def _plain(value: object) -> object:
