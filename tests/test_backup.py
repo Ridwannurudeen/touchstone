@@ -364,3 +364,140 @@ def test_an_empty_workspace_has_nothing_to_back_up(tmp_path: Path) -> None:
             asset_key=ASSET,
             registry_address=REGISTRY,
         )
+
+
+def forged(payload: dict) -> bytes:
+    """Encrypt an arbitrary payload with the real key, as a holder of it could."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    from touchstone.signing import canonical_json_bytes
+
+    associated = canonical_json_bytes(
+        {
+            "asset_key": ASSET,
+            "registry_address": REGISTRY,
+            "version": ARCHIVE_VERSION,
+        }
+    )
+    nonce = bytes(range(NONCE_BYTES))
+    return nonce + AESGCM(KEY).encrypt(
+        nonce, canonical_json_bytes(payload), associated
+    )
+
+
+def payload(**changes: object) -> dict:
+    value: dict = {
+        "asset_key": ASSET,
+        "captured_at": "2026-08-15T09:00:00Z",
+        "files": [
+            {
+                "bytes": b"real bytes".hex(),
+                "path": "transparency.jsonl",
+                "sha256": "ab" * 32,
+                "size": len(b"real bytes"),
+            }
+        ],
+        "registry_address": REGISTRY,
+        "version": ARCHIVE_VERSION,
+    }
+    value.update(changes)
+    return value
+
+
+def test_a_valid_archive_whose_inventory_lies_is_refused(tmp_path: Path) -> None:
+    """Authentication proves who made the archive, not that it describes itself.
+
+    A holder of the backup key can encrypt any payload it likes, so the digests are
+    recomputed from the exact bytes about to be written rather than read from the
+    inventory that travelled with them — an inventory is part of the archive, and
+    trusting it to validate the archive proves nothing.
+    """
+    with pytest.raises(BackupError, match="does not match its recorded digest"):
+        restore(
+            forged(payload()),
+            tmp_path / "restored",
+            key=KEY,
+            asset_key=ASSET,
+            registry_address=REGISTRY,
+        )
+
+    assert not (tmp_path / "restored").exists()
+
+
+def test_a_valid_archive_whose_size_lies_is_refused(tmp_path: Path) -> None:
+    import hashlib
+
+    raw = b"real bytes"
+    lying = payload(
+        files=[
+            {
+                "bytes": raw.hex(),
+                "path": "transparency.jsonl",
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "size": len(raw) + 1,
+            }
+        ]
+    )
+
+    with pytest.raises(BackupError, match="not the size the archive claims"):
+        restore(
+            forged(lying),
+            tmp_path / "restored",
+            key=KEY,
+            asset_key=ASSET,
+            registry_address=REGISTRY,
+        )
+
+
+@pytest.mark.parametrize(
+    "path", ["/etc/passwd", "../outside.json", "a/../../b.json", "C:/windows/x"]
+)
+def test_a_valid_archive_cannot_write_outside_its_target(
+    tmp_path: Path, path: str
+) -> None:
+    """Path traversal in an archive is how a restore writes somewhere it was not sent."""
+    import hashlib
+
+    raw = b"escaped"
+    traversing = payload(
+        files=[
+            {
+                "bytes": raw.hex(),
+                "path": path,
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "size": len(raw),
+            }
+        ]
+    )
+
+    with pytest.raises(BackupError, match="unsafe archive path"):
+        restore(
+            forged(traversing),
+            tmp_path / "restored",
+            key=KEY,
+            asset_key=ASSET,
+            registry_address=REGISTRY,
+        )
+
+    assert not (tmp_path / "restored").exists()
+
+
+def test_a_valid_archive_naming_one_path_twice_is_refused(tmp_path: Path) -> None:
+    import hashlib
+
+    raw = b"twice"
+    member = {
+        "bytes": raw.hex(),
+        "path": "transparency.jsonl",
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "size": len(raw),
+    }
+
+    with pytest.raises(BackupError, match="twice"):
+        restore(
+            forged(payload(files=[member, member])),
+            tmp_path / "restored",
+            key=KEY,
+            asset_key=ASSET,
+            registry_address=REGISTRY,
+        )

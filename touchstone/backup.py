@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import hashlib
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import secrets
 
 from cryptography.exceptions import InvalidTag
@@ -265,10 +265,21 @@ def _member(item: Mapping[str, object]) -> Member:
     path = item.get("path")
     if not isinstance(path, str) or not path:
         raise BackupError("each archive member must name a path")
-    candidate = Path(path)
-    if candidate.is_absolute() or ".." in candidate.parts or candidate.parts[0] == "":
-        # Path traversal in an archive is how a restore writes outside its target. The
-        # check is on the parts rather than the string, so "a/../../b" cannot slip past.
+    # Judged under both path flavours, because an archive is portable and the check must
+    # not be. `Path("/etc/passwd").is_absolute()` is False on Windows and True on POSIX,
+    # so a single-flavour check would let a POSIX-absolute member through on one host and
+    # refuse it on another — and an archive written on one is restored on the other.
+    posix, windows = PurePosixPath(path), PureWindowsPath(path)
+    if (
+        posix.is_absolute()
+        or windows.is_absolute()
+        or windows.drive
+        or path.startswith(("/", "\\"))
+        or ".." in posix.parts
+        or ".." in windows.parts
+    ):
+        # Traversal in an archive is how a restore writes outside its target. The check is
+        # on the parts rather than the string, so "a/../../b" cannot slip past either.
         raise BackupError(f"refusing an unsafe archive path: {path}")
     size = item.get("size")
     digest = item.get("sha256")
