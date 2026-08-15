@@ -112,8 +112,11 @@ def run_schedule(
         # Every timestamp the run will need, not merely the first. A finite schedule
         # knows exactly how far it must reach, and proving one step said nothing about
         # the last one.
-        _advanced(scheduled_at, interval * (max_runs if max_runs is not None else 1))
-    except (OverflowError, OSError, ValueError) as error:
+        # The last slot a finite run reaches is start + (max_runs - 1) * interval. Proving
+        # start + max_runs * interval rejected schedules whose every used timestamp was
+        # perfectly representable — a validation stricter than the thing it validates.
+        _advanced(scheduled_at, interval * max(0, (max_runs or 1) - 1))
+    except ScheduleClockError as error:
         raise ValueError(
             f"interval_seconds={interval_seconds!r} cannot be added to the clock: {error}"
         ) from error
@@ -142,7 +145,17 @@ def run_schedule(
             break
 
         next_run += interval
-        scheduled_at = _advanced(scheduled_at, interval)
+        try:
+            scheduled_at = _advanced(scheduled_at, interval)
+        except ScheduleClockError as error:
+            # Reached only through an outage, whose size is unbounded and therefore cannot
+            # be proved in advance. It ends the schedule through the same path as any
+            # other failure — reported, recorded, and returned — rather than escaping as a
+            # bare OSError after the work is done.
+            failed.append(scheduled_at)
+            if on_failure is not None:
+                on_failure(scheduled_at, error)
+            break
         current = monotonic()
         if _slots_elapsed(current, next_run, interval) > 0:
             # Slots whose moment has already passed. How many is arithmetic, not a loop:
@@ -176,7 +189,13 @@ def run_schedule(
                 on_outage(scheduled_at, skipped)
             missed_count += skipped
             next_run += interval * skipped
-            scheduled_at = _advanced(scheduled_at, interval * skipped)
+            try:
+                scheduled_at = _advanced(scheduled_at, interval * skipped)
+            except ScheduleClockError as error:
+                failed.append(scheduled_at)
+                if on_failure is not None:
+                    on_failure(scheduled_at, error)
+                break
 
     return ScheduleOutcome(
         completed=completed,
@@ -222,8 +241,17 @@ def _slot_slack(scale: float, interval: float) -> float:
     return slack
 
 
+class ScheduleClockError(ValueError):
+    """A slot time cannot be represented on this clock."""
+
+
 def _advanced(moment: datetime, interval: float) -> datetime:
-    return datetime.fromtimestamp(moment.timestamp() + interval, timezone.utc)
+    try:
+        return datetime.fromtimestamp(moment.timestamp() + interval, timezone.utc)
+    except (OverflowError, OSError, ValueError) as error:
+        raise ScheduleClockError(
+            f"a slot {interval} seconds after {moment.isoformat()} cannot be represented"
+        ) from error
 
 
 def main(argv: Sequence[str] | None = None) -> int:

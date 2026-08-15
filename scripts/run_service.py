@@ -125,10 +125,19 @@ class Service:
             or backoff_seconds < 0
         ):
             raise ValueError("backoff_seconds must be a non-negative, finite number")
-        # The *derived* delays, not only the base. Doubling a finite base can reach
-        # infinity, and a configuration accepted at startup would then raise on the first
-        # failure it was supposed to absorb — turning the recovery into the outage.
-        longest = backoff_seconds * (2 ** max(retries - 1, 0))
+        # The *derived* delays, over exactly the domain that is accepted. Doubling a
+        # finite base can reach infinity, so checking the base alone let a configuration
+        # be accepted at startup and then raise on the first failure it was meant to
+        # absorb. Three edges matter and each was wrong in turn: no retries derives no
+        # delays, so any finite base is fine; a zero base stays zero however many times it
+        # doubles; and a huge retry count overflows the exponent itself rather than the
+        # product, which surfaced as a raw OverflowError instead of a refusal.
+        longest = 0.0
+        if retries > 0 and backoff_seconds > 0:
+            try:
+                longest = backoff_seconds * float(2 ** (retries - 1))
+            except OverflowError:
+                longest = math.inf
         if not math.isfinite(longest) or longest > MAX_BACKOFF_SECONDS:
             raise ValueError(
                 f"backoff_seconds={backoff_seconds!r} with retries={retries} reaches "
@@ -283,8 +292,20 @@ class Service:
         except Exception as error:  # noqa: BLE001 - any epoch failure is an incident
             return self._record_incident(EPOCH_FAILED, str(error), scheduled_at)
 
-        # Frozen before it is inspected, so what is checked is what is published.
-        signed_report = _frozen(signed_report) if signed_report is not None else None
+        # Frozen before it is inspected, so what is checked is what is published — and
+        # inside the boundary, because freezing can fail on a report carrying something
+        # that is not JSON, and a direct caller of run_slot deserves the same recorded
+        # outcome as everything else here.
+        try:
+            signed_report = (
+                _frozen(signed_report) if signed_report is not None else None
+            )
+        except Exception as error:  # noqa: BLE001 - an unusable report is an epoch failure
+            return self._record_incident(
+                EPOCH_FAILED,
+                f"the produced report cannot be represented: {error}",
+                scheduled_at,
+            )
         produced_asset = None
         if isinstance(signed_report, Mapping):
             report = signed_report.get("report")

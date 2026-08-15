@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 
+from touchstone.locking import exclusive_lock
 from touchstone.signing import (
     Ed25519Signer,
     canonical_json_bytes,
@@ -52,7 +53,29 @@ class TransparencyLog:
         receipt: Mapping[str, object],
         supersedes: str | None = None,
     ) -> dict[str, object]:
-        """Verify the existing chain and append one publication receipt."""
+        """Verify the existing chain and append one publication receipt.
+
+        Under an exclusive lock for the whole read-modify-write. Verifying and then
+        appending as two steps lets two writers agree on the same head and append entries
+        claiming the same predecessor, which breaks the chain for good — and does so at
+        the moment two publishers are both working, not at an idle one.
+        """
+        with exclusive_lock(self.path.with_name(self.path.name + ".lock")):
+            return self._append_locked(
+                signed_report,
+                transaction_hash=transaction_hash,
+                receipt=receipt,
+                supersedes=supersedes,
+            )
+
+    def _append_locked(
+        self,
+        signed_report: Mapping[str, object],
+        *,
+        transaction_hash: str,
+        receipt: Mapping[str, object],
+        supersedes: str | None = None,
+    ) -> dict[str, object]:
         entries = self.verify()
         if _TX_HASH.fullmatch(transaction_hash) is None:
             raise ValueError("transaction_hash must be a lowercase 32-byte hex value")

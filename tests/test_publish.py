@@ -935,3 +935,34 @@ def test_only_the_reread_decides_success_or_failure(tmp_path: Path) -> None:
 
     assert result.receipt["status"] == 1
     assert not (tmp_path / "pending.json").exists()
+
+
+def test_the_published_report_is_the_one_that_was_verified(tmp_path: Path) -> None:
+    """Verification and submission must see the same bytes.
+
+    The caller keeps a reference to whatever it passed, and every backend call in between
+    is a chance for that object to change — so a signature checked against one report
+    could be published over another, leaving a transparency-log entry whose own signature
+    no longer verifies.
+    """
+    backend = FakeBackend()
+    signed = _signed_report(1)
+
+    def mutate_during_the_publication() -> None:
+        backend.revalidations += 1
+        signed["report"]["evidence_root"] = "44" * 32
+
+    backend.revalidate = mutate_during_the_publication
+
+    _client(tmp_path, backend).publish(signed, report_uri="urn:touchstone:report:1")
+
+    logged = TransparencyLog(tmp_path / "transparency.jsonl").verify()[0]
+    assert logged["signed_report"]["report"]["evidence_root"] == "33" * 32, (
+        "the report that was verified is the one that was published"
+    )
+    # And the entry still verifies against its own signature.
+    from touchstone.signing import verify_signed_report
+
+    verify_signed_report(
+        logged["signed_report"], {REPORTER.kid: REPORTER.public_key_record()}
+    )

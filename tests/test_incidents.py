@@ -1,5 +1,6 @@
 """An incident log is only worth having if it cannot be quietly tidied afterwards."""
 
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -441,9 +442,14 @@ def test_a_partial_final_line_waits_for_the_lock_before_it_is_called_damage(
     held = []
     real_exclusive = incidents._exclusive
 
+    @contextmanager
     def watched_lock():
-        held.append(True)
-        return real_exclusive()
+        # Recorded on *entry*, not on construction. A mutant writing `self._exclusive();`
+        # instead of `with self._exclusive():` constructs the manager and never enters it,
+        # and a watcher counting construction would call that locked.
+        with real_exclusive():
+            held.append(True)
+            yield
 
     incidents._exclusive = watched_lock
 

@@ -831,7 +831,12 @@ def test_a_uri_callback_cannot_rewrite_the_report_it_was_given(
 
 @pytest.mark.parametrize(
     ("backoff", "retries"),
-    [(1e308, 2), (1e300, 40), (1e10, 10)],
+    [
+        (1e308, 2),
+        (1e300, 40),
+        (1e10, 10),
+        (1.0, 1025),  # the exponent itself overflows, not the product
+    ],
 )
 def test_a_finite_backoff_that_derives_an_impossible_delay_is_refused(
     tmp_path: Path, backoff: float, retries: int
@@ -854,3 +859,47 @@ def test_an_ordinary_backoff_is_still_accepted(tmp_path: Path) -> None:
     service = build(tmp_path, backend, backoff_seconds=2.0, retries=3)
 
     assert service.backoff_seconds == 2.0
+
+
+@pytest.mark.parametrize(
+    ("backoff", "retries"),
+    [
+        (0.0, 2000),  # every wait is zero however many times it doubles
+        (3601.0, 0),  # no retries derive no delays at all
+        (2.0, 3),
+    ],
+)
+def test_a_backoff_that_derives_no_impossible_delay_is_accepted(
+    tmp_path: Path, backoff: float, retries: int
+) -> None:
+    """The check must cover the domain it accepts and no more.
+
+    Refusing a large base with zero retries, or a zero base with many, rejected
+    configurations that derive no delay worth objecting to — and a huge retry count
+    overflowed the exponent and surfaced as a raw OverflowError rather than a refusal.
+    """
+    service = build(tmp_path, FakeBackend(), backoff_seconds=backoff, retries=retries)
+
+    assert service.backoff_seconds == backoff
+    assert service.retries == retries
+
+
+def test_a_report_that_cannot_be_represented_is_recorded_not_raised(
+    tmp_path: Path,
+) -> None:
+    """Freezing is part of the slot, so its failure is a slot outcome.
+
+    A producer returning something unserialisable raised straight out of run_slot, past
+    the boundary that is supposed to turn every failure into a recorded incident.
+    """
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+
+    outcome = service.run_slot(
+        AT, lambda at: {"report": {"asset_key": ASSET_KEY_OF, "x": object()}},
+        report_uri=uri,
+    )
+
+    assert outcome.published is False
+    assert [i.kind for i in service.incidents.open_incidents()] == [EPOCH_FAILED]
+    assert backend.submissions == []

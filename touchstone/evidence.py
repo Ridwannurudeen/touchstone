@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from touchstone.locking import exclusive_lock
+
 
 _HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
 _ENTRY_FIELDS = {
@@ -70,6 +72,27 @@ class EvidenceStore:
         retrieved_at_text = _normalize_retrieval_time(retrieved_at)
         _validate_nonempty_string(declared_mime, "declared_mime")
 
+        # One critical section for verify-then-append, for the same reason as the
+        # transparency log: two writers that both verify before either appends agree on a
+        # predecessor that only one of them can truthfully claim.
+        with exclusive_lock(self.index_path.with_name(self.index_path.name + ".lock")):
+            return self._capture_locked(
+                raw,
+                source_id=source_id,
+                source_url=source_url,
+                retrieved_at_text=retrieved_at_text,
+                declared_mime=declared_mime,
+            )
+
+    def _capture_locked(
+        self,
+        raw: bytes,
+        *,
+        source_id: str,
+        source_url: str,
+        retrieved_at_text: str,
+        declared_mime: str,
+    ) -> str:
         self.verify()
         digest = hashlib.sha256(raw).hexdigest()
         self.objects_dir.mkdir(parents=True, exist_ok=True)

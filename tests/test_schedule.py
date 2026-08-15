@@ -402,16 +402,15 @@ def test_a_cadence_the_clock_cannot_resolve_is_refused() -> None:
     assert schedule(lambda at: None, FakeTime(1e9), interval_seconds=60, max_runs=1).completed == 1
 
 
-@pytest.mark.parametrize(
-    "interval", [float("nan"), float("inf"), float("-inf"), 1e20, 1e300]
-)
-def test_an_unusable_cadence_is_refused_before_any_slot_runs(interval: float) -> None:
+@pytest.mark.parametrize("interval", [float("nan"), float("inf"), float("-inf")])
+def test_a_cadence_that_is_not_a_number_is_refused_before_any_slot_runs(
+    interval: float,
+) -> None:
     """A configuration error must not arrive as a mid-flight crash.
 
     NaN compares false against every bound and infinity passes them all, so both reached
     the loop and failed only after a slot had already executed — with whatever side
-    effects that slot had. A finite but enormous interval did the same, overflowing the
-    wall clock on the first advancement.
+    effects that slot had.
     """
     ran = []
 
@@ -428,30 +427,90 @@ def test_an_unusable_cadence_is_refused_before_any_slot_runs(interval: float) ->
     assert ran == [], "nothing ran before the configuration was rejected"
 
 
-def test_a_span_that_only_overflows_later_is_refused_up_front() -> None:
-    """One advancement proves one advancement, and the run needs all of them.
+def test_a_span_that_the_clock_cannot_reach_is_refused_up_front() -> None:
+    """Every timestamp the run will need, proved before the first job.
 
-    An interval small enough to survive the first step and large enough to overflow the
-    last ran every requested slot and *then* failed — with all the work already done and
-    the failure arriving as a crash rather than as a configuration error.
+    An interval that survives the first step and overflows a later one ran every requested
+    slot and *then* failed, with all the work already done.
     """
     clock = FakeTime()
     ran = []
 
     with pytest.raises(ValueError, match="cannot be added to the clock"):
-        schedule(lambda at: ran.append(at), clock, interval_seconds=2e10, max_runs=2)
+        schedule(lambda at: ran.append(at), clock, interval_seconds=1e11, max_runs=2)
 
     assert ran == [], "no slot ran"
 
 
-def test_a_finished_schedule_does_not_compute_a_slot_nobody_will_use() -> None:
-    """After the last requested run there is no next slot to name."""
+def test_a_span_the_clock_can_reach_is_not_refused() -> None:
+    """Validation must not be stricter than the thing it validates.
+
+    A finite run reaches start + (max_runs - 1) * interval. Proving one interval further
+    rejected schedules whose every used timestamp was perfectly representable — including
+    a single run, which needs no advancement at all.
+    """
     clock = FakeTime()
+
+    assert schedule(lambda at: None, clock, interval_seconds=1e20, max_runs=1).completed == 1
+    # Two runs a long way apart: the second slot is in the year 2660, which is fine.
+    assert schedule(lambda at: None, FakeTime(), interval_seconds=2e10, max_runs=2).completed == 2
+
+
+def test_an_outage_beyond_the_clocks_reach_ends_the_schedule_in_the_open() -> None:
+    """The one span that cannot be proved in advance, because the jump is unbounded.
+
+    A long enough outage pushes the next slot past any representable date. That has to end
+    the schedule through the same reported, recorded path as any other failure rather than
+    escaping as a bare OSError once the work is done.
+    """
+    clock = FakeTime()
+    failures = []
     ran = []
 
-    outcome = schedule(
-        lambda at: ran.append(at), clock, interval_seconds=1e9, max_runs=2
+    def job(scheduled_at: datetime) -> None:
+        ran.append(scheduled_at)
+        if len(ran) == 1:
+            clock.current += 1e12  # an outage no clock can name the far side of
+
+    outcome = run_schedule(
+        job,
+        interval_seconds=1e7,
+        max_runs=2,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+        now=lambda: START,
+        on_failure=lambda at, error: failures.append(error),
     )
 
+    assert len(ran) == 1, "the schedule stopped rather than crashing"
+    assert outcome.failed, "and it recorded that it stopped"
+    assert failures and "cannot be represented" in str(failures[0])
+
+
+def test_a_finished_schedule_does_not_compute_a_slot_nobody_will_use(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After the last requested run there is no next slot to name.
+
+    Counting jobs cannot show this — the count is the same either way. What distinguishes
+    the two is whether a timestamp was computed for a slot that will never run, so the
+    advancements themselves are counted.
+    """
+    import touchstone.schedule as schedule_module
+
+    advanced = schedule_module._advanced
+    calls = []
+
+    def counted(moment, interval):
+        calls.append(interval)
+        return advanced(moment, interval)
+
+    monkeypatch.setattr(schedule_module, "_advanced", counted)
+    clock = FakeTime()
+
+    outcome = schedule(lambda at: None, clock, interval_seconds=60, max_runs=2)
+
     assert outcome.completed == 2
-    assert len(ran) == 2
+    # One advancement between the two slots, plus the single up-front span check. A third
+    # would be the slot after the last run.
+    assert len(calls) == 2, f"advancements: {calls}"

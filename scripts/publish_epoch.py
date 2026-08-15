@@ -25,6 +25,7 @@ from touchstone.keyring import (  # noqa: E402
     PublisherKey,
     assert_role_separation,
 )
+from touchstone.locking import LockUnavailable, exclusive_lock  # noqa: E402
 from touchstone.publish import (  # noqa: E402
     PublicationError,
     PublisherClient,
@@ -64,10 +65,15 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
     client = PublisherClient(
         backend, TransparencyLog(arguments.transparency_log), arguments.pending
     )
+    # The same workspace lock the service holds. Without it this command could publish
+    # alongside a running service, and both would verify the same transparency-log head
+    # before either appended to it.
+    lock_path = Path(arguments.pending).with_name("service.lock")
     # The active-key rule lives in PublisherClient, not here. It used to live here, which
     # meant anything calling the client directly bypassed it entirely.
     publish = client.publish_correction if arguments.correction else client.publish
-    publication = publish(signed_report, report_uri=arguments.report_uri)
+    with exclusive_lock(lock_path):
+        publication = publish(signed_report, report_uri=arguments.report_uri)
     result.update(
         {
             "published": True,
@@ -115,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     except (
         DeploymentError,
         IdentityError,
+        LockUnavailable,
         PublicationError,
         OSError,
         ValueError,

@@ -22,6 +22,7 @@ from datetime import date, datetime, time, timezone
 import hashlib
 import os
 from pathlib import Path
+import math
 import re
 import time as clock
 from typing import Protocol
@@ -817,8 +818,16 @@ class PublisherClient:
         self.backend = backend
         self.transparency_log = transparency_log
         self.pending_path = Path(pending_path)
-        if receipt_timeout <= 0:
-            raise ValueError("receipt_timeout must be positive")
+        if (
+            isinstance(receipt_timeout, bool)
+            or not isinstance(receipt_timeout, (int, float))
+            or not math.isfinite(receipt_timeout)
+            or receipt_timeout <= 0
+        ):
+            # Finite as well as positive. web3 waits while `time.time() > begun_at +
+            # timeout` is false, which NaN and infinity never make true — so a timeout
+            # that cannot expire is not a long timeout, it is no timeout at all.
+            raise ValueError("receipt_timeout must be a positive, finite number")
         self.receipt_timeout = float(receipt_timeout)
 
     @property
@@ -863,6 +872,12 @@ class PublisherClient:
         report_uri: str,
     ) -> PublicationResult:
         """Publish an ordinary report; corrections use ``publish_correction``."""
+        # Frozen before it is verified, and only the frozen copy is used afterwards. The
+        # caller keeps a reference to whatever it passed, and every backend call between
+        # verification and submission is a chance for that object to change — so a
+        # signature checked against one report could be published over another, leaving a
+        # log entry whose own signature no longer verifies.
+        signed_report = _frozen_envelope(signed_report)
         report = _verified_report(signed_report, self._active_key(signed_report))
         if report.get("correction_of") is not None:
             raise ValueError("correction reports require publish_correction")
@@ -877,6 +892,7 @@ class PublisherClient:
         report_uri: str,
     ) -> PublicationResult:
         """Publish a correction through the registry's distinct correction function."""
+        signed_report = _frozen_envelope(signed_report)
         report = _verified_report(signed_report, self._active_key(signed_report))
         correction_of = report.get("correction_of")
         if type(correction_of) is not int:
@@ -1222,6 +1238,13 @@ class PublisherClient:
 
     def _clear_pending(self) -> None:
         self.pending_path.unlink(missing_ok=True)
+
+
+def _frozen_envelope(signed_report: object) -> Mapping[str, object]:
+    """An independent copy of a signed envelope, so nothing can change it afterwards."""
+    if not isinstance(signed_report, Mapping):
+        raise ValueError("signed_report must be a mapping")
+    return strict_json_loads(canonical_json_bytes(dict(signed_report)))
 
 
 def _verified_report(
