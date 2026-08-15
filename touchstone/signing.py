@@ -93,6 +93,12 @@ def frozen_snapshot(value: object, field: str) -> Mapping[str, object]:
         raise ValueError(f"{field} contains a reference cycle") from error
     except (TypeError, ValueError) as error:
         raise ValueError(f"{field} is not canonical JSON: {error}") from error
+    except Exception as error:
+        # Walking a caller's mapping runs caller code — `items`, `__iter__`, `__getitem__`
+        # are all overridable — and it may raise anything at all. Everything it can do
+        # becomes this helper's refusal, because a snapshot that fails in the caller's own
+        # exception type puts arbitrary errors through every boundary that snapshots.
+        raise ValueError(f"{field} could not be read: {error}") from error
 
 
 def _plain(value: object) -> object:

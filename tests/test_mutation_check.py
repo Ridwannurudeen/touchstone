@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
+from xml.etree import ElementTree
 
 import pytest
 
@@ -140,3 +141,26 @@ def test_every_named_test_exists(mutation) -> None:
         path, _, function = node.partition("::")
         source = (ROOT / path).read_text(encoding="utf-8")
         assert f"def {function}(" in source, f"{node} is not a test that exists"
+
+
+def test_no_tests_collected_is_broken() -> None:
+    verdict, detail = classify(5, ([], []), "")
+    assert verdict == "broken"
+    assert "no tests were collected" in detail
+
+
+def test_any_other_nonzero_exit_is_broken() -> None:
+    """Exit 2 is an interrupted run and exit 3 is an internal error; neither judged."""
+    for returncode in (2, 3, 4):
+        verdict, detail = classify(returncode, ([], []), "")
+        assert verdict == "broken"
+        assert f"pytest exited {returncode}" in detail
+
+
+def test_a_malformed_report_is_not_read_as_evidence(tmp_path: Path) -> None:
+    """A truncated report is the shape an interrupted run leaves behind."""
+    path = tmp_path / "report.xml"
+    path.write_text("<testsuites><testsuite>", encoding="utf-8")
+
+    with pytest.raises(ElementTree.ParseError):
+        reported_outcomes(path, WANTED)

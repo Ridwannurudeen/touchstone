@@ -1,3 +1,4 @@
+from collections.abc import Iterator, Mapping
 from dataclasses import fields
 from datetime import date, datetime, timedelta
 import hashlib
@@ -353,3 +354,33 @@ def test_transition_rejects_invalid_inputs() -> None:
             date(2026, 8, 13),
             date(2026, 8, 13),
         )
+
+
+class _WithdrawingMapping(Mapping):
+    """Presents a complete schema and then withdraws a field.
+
+    The fields were checked by iterating the caller's mapping and the record was built from
+    a second reading of it, so this passed inspection and failed during construction.
+    """
+
+    def __init__(self, value: dict[str, object]) -> None:
+        self._value = value
+        self.iterations = 0
+
+    def __iter__(self) -> Iterator[str]:
+        self.iterations += 1
+        return iter(self._value)
+
+    def __getitem__(self, key: str) -> object:
+        if key == "expected_value" and self.iterations >= 2:
+            raise KeyError(key)
+        return self._value[key]
+
+    def __len__(self) -> int:
+        return len(self._value)
+
+
+def test_a_control_is_inspected_and_built_from_one_reading() -> None:
+    withdrawing = _WithdrawingMapping(control_values())
+
+    assert ControlRecord.from_mapping(withdrawing) == make_control()

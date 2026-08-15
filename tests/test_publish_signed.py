@@ -585,3 +585,24 @@ def _manifest_shape() -> dict:
             }
         ],
     }
+
+
+def test_a_read_that_fails_after_preflight_is_still_a_transport_failure() -> None:
+    """Criterion 8: a transient pre-broadcast fault must be eligible for bounded retry.
+
+    An endpoint that answered the preflight and then dropped left these reads raising the
+    transport's own error, which the service's retry loop does not catch — so a fault
+    before anything was signed ended the slot instead of being tried again.
+    """
+    from touchstone.publish import TransportUnavailable
+
+    with StubNode() as node:
+        backend = backend_for(node)
+        backend.preflight()
+
+    # The node is closed now, so every later read reaches a port nobody is listening on.
+    asset_key = hashlib.sha256(b"asset").digest()
+    with pytest.raises(TransportUnavailable, match="sequence read"):
+        backend.latest_sequence(asset_key)
+    with pytest.raises(TransportUnavailable, match="report read"):
+        backend.get_report(asset_key, 1)

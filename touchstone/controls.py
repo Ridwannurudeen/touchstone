@@ -177,6 +177,11 @@ class ControlRecord:
     def from_mapping(cls, value: Mapping[str, object]) -> ControlRecord:
         if not isinstance(value, Mapping):
             raise TypeError("control record must be a mapping")
+        # One reading before the schema is inspected. The fields were checked by iterating
+        # the caller's mapping and the record was then built from a second reading of it,
+        # so a mapping that presented a complete schema and then withdrew a field passed
+        # inspection and failed during construction.
+        value = dict(value)
 
         names = {field.name for field in fields(cls)}
         supplied = set(value)

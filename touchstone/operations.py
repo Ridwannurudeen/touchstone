@@ -416,11 +416,18 @@ def _write_atomic(path: Path, value: Mapping[str, object]) -> None:
     neither the old state nor the new one, and no way to tell which it was owed.
     """
     temporary = path.with_name(path.name + ".tmp")
-    with temporary.open("wb") as output:
-        output.write(canonical_json_bytes(dict(value)) + b"\n")
-        output.flush()
-        os.fsync(output.fileno())
-    os.replace(temporary, path)
+    try:
+        with temporary.open("wb") as output:
+            output.write(canonical_json_bytes(dict(value)) + b"\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+    except OSError as error:
+        # A durable record that could not be written is this store's failure, not the
+        # filesystem's to report in its own terms. The previous file is untouched either
+        # way — that is what the temporary and the rename are for — so the caller's
+        # recovery is the same whichever step refused.
+        raise OperationsError(f"cannot write {path.name}: {error}") from error
 
 
 def _read(path: Path) -> dict[str, object] | None:

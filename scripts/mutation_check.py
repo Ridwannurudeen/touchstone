@@ -217,16 +217,32 @@ MUTATIONS = (
     Mutation(
         name="report-reads-the-epoch-more-than-once",
         path="touchstone/report.py",
-        old="    epoch = USTBEpochReport(\n        asset_key=epoch.asset_key,\n        now=epoch.now,\n        state=epoch.state,\n        evidence_deadline=epoch.evidence_deadline,\n        sources=tuple(epoch.sources),\n        evaluations=tuple(epoch.evaluations),\n        confirmation=epoch.confirmation,\n    )\n",
-        new="",
+        old="    epoch = _epoch_snapshot(epoch)",
+        new="    pass",
         tests=("tests/test_report.py::test_a_report_describes_one_epoch",),
     ),
     Mutation(
         name="report-snapshot-is-not-materialised",
         path="touchstone/report.py",
-        old="        sources=tuple(epoch.sources),\n        evaluations=tuple(epoch.evaluations),",
-        new="        sources=epoch.sources,\n        evaluations=epoch.evaluations,",
+        old="        sources=tuple(_source_snapshot(source) for source in epoch.sources),",
+        new="        sources=(_source_snapshot(source) for source in epoch.sources),",
         tests=("tests/test_report.py::test_a_report_describes_one_epoch",),
+    ),
+    Mutation(
+        name="report-elements-remain-caller-owned",
+        path="touchstone/report.py",
+        old="            _evaluation_snapshot(evaluation) for evaluation in epoch.evaluations",
+        new="            evaluation for evaluation in epoch.evaluations",
+        tests=(
+            "tests/test_report.py::test_a_report_describes_one_reading_of_each_evaluation",
+        ),
+    ),
+    Mutation(
+        name="report-instant-resolved-more-than-once",
+        path="touchstone/report.py",
+        old='        retrieved_at=utc_instant(source.retrieved_at, "source retrieved_at"),',
+        new="        retrieved_at=source.retrieved_at,",
+        tests=("tests/test_report.py::test_a_report_resolves_each_instant_once",),
     ),
     Mutation(
         name="a-datetime-subclass-escapes-the-error-contract",
@@ -271,6 +287,60 @@ MUTATIONS = (
         new="    except UnicodeDecodeError as error:\n        # An artifact that cannot be read",
         tests=(
             "tests/test_evidence.py::test_an_object_that_cannot_be_read_is_this_modules_failure",
+        ),
+    ),
+    Mutation(
+        name="a-hostile-mapping-escapes-the-snapshot-contract",
+        path="touchstone/signing.py",
+        old="    except Exception as error:\n        # Walking a caller's mapping runs caller code",
+        new="    except UnicodeDecodeError as error:\n        # Walking a caller's mapping runs caller code",
+        tests=(
+            "tests/test_deployment.py::test_a_manifest_that_cannot_be_snapshotted_is_a_deployment_error",
+        ),
+    ),
+    Mutation(
+        name="control-record-read-more-than-once",
+        path="touchstone/controls.py",
+        old="        value = dict(value)",
+        new="        pass",
+        tests=(
+            "tests/test_controls.py::test_a_control_is_inspected_and_built_from_one_reading",
+        ),
+    ),
+    Mutation(
+        name="sequence-read-failure-bypasses-retry",
+        path="touchstone/publish.py",
+        old='            raise TransportUnavailable(\n                f"registry did not answer a sequence read: {error}"\n            ) from error',
+        new="            raise",
+        tests=(
+            "tests/test_publish_signed.py::test_a_read_that_fails_after_preflight_is_still_a_transport_failure",
+        ),
+    ),
+    Mutation(
+        name="operations-write-failure-escapes-untyped",
+        path="touchstone/operations.py",
+        old='        raise OperationsError(f"cannot write {path.name}: {error}") from error',
+        new="        raise",
+        tests=(
+            "tests/test_operations.py::test_a_durable_write_that_fails_is_this_stores_failure",
+        ),
+    ),
+    Mutation(
+        name="journal-write-failure-escapes-untyped",
+        path="touchstone/publish.py",
+        old='            raise PendingSubmission(\n                f"the pending journal cannot be written: {error}"\n            ) from error',
+        new="            raise",
+        tests=(
+            "tests/test_publish.py::test_a_journal_that_cannot_be_written_is_a_pending_submission",
+        ),
+    ),
+    Mutation(
+        name="worker-start-failure-escapes-untyped",
+        path="touchstone/normalize/ustb.py",
+        old='        raise NormalizationError(\n            f"USTB normalization worker could not be started: {error}"\n        ) from error',
+        new="        raise",
+        tests=(
+            "tests/test_normalize_ustb.py::test_a_worker_that_cannot_be_started_is_a_normalization_error",
         ),
     ),
     Mutation(
@@ -360,11 +430,16 @@ def reported_outcomes(
     from *this* mutation's target set is evidence.
 
     The two kinds are separated because pytest means different things by them. `<failure>`
-    is the call phase: the test body ran and an assertion rejected the mutant, which is the
-    only thing that proves anything here. `<error>` is setup or teardown, so the body never
-    ran — the fixture could not build a workspace, a temporary directory was gone. That is
-    infrastructure wearing the target's name, and counting it is the same mistake as
-    counting the exit code, one level further in.
+    is the call phase: the test body ran and rejected the mutant. `<error>` is setup or
+    teardown, so the body never ran — the fixture could not build a workspace, a temporary
+    directory was gone. That is infrastructure wearing the target's name, and counting it
+    is the same mistake as counting the exit code, one level further in.
+
+    A kill therefore means precisely "a targeted test ran and failed", not "an assertion
+    rejected it". Pytest maps every call-phase failure to `<failure>`, so an uncaught
+    `KeyError` or `RuntimeError` from the mutated code counts too. That is still evidence
+    the mutation changed observable behaviour, which is what a mutant is for; it is simply
+    a weaker statement than "an assertion caught it", and this says the weaker one.
     """
     if not report_path.exists():
         return None

@@ -457,3 +457,27 @@ def test_a_manifest_is_validated_and_built_from_one_reading() -> None:
 
     assert loaded.active_key.kid == KID
     assert loaded == DeploymentManifest.from_mapping(manifest())
+
+
+class _HostileMapping(Mapping):
+    """Traversal runs caller code, and caller code may raise anything at all."""
+
+    def __init__(self, value: dict[str, object]) -> None:
+        self._value = value
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._value)
+
+    def __getitem__(self, key: str) -> object:
+        if key == "reporting_keys":
+            raise RuntimeError("mapping changed during snapshot")
+        return self._value[key]
+
+    def __len__(self) -> int:
+        return len(self._value)
+
+
+def test_a_manifest_that_cannot_be_snapshotted_is_a_deployment_error() -> None:
+    """The declared boundary is DeploymentError, so nothing else may come out of it."""
+    with pytest.raises(DeploymentError):
+        DeploymentManifest.from_mapping(_HostileMapping(manifest()))

@@ -280,12 +280,28 @@ def normalize_ustb_payload_isolated(
     timeout = finite_positive(timeout, "timeout")
 
     context = multiprocessing.get_context("spawn")
-    receive, send = context.Pipe(duplex=False)
+    # Building and starting the worker is I/O like any other, and it can fail before the
+    # worker exists: no file descriptors for the pipe, no process slots, a spawn refused.
+    # Those escaped as OSError while every failure *inside* the worker was already this
+    # module's own error, so the caller had to handle two vocabularies for one operation.
+    try:
+        receive, send = context.Pipe(duplex=False)
+    except OSError as error:
+        raise NormalizationError(
+            f"USTB normalization worker could not be prepared: {error}"
+        ) from error
     process = context.Process(
         target=_isolated_worker,
         args=(send, source_id, content, max_bytes, max_depth),
     )
-    process.start()
+    try:
+        process.start()
+    except OSError as error:
+        receive.close()
+        send.close()
+        raise NormalizationError(
+            f"USTB normalization worker could not be started: {error}"
+        ) from error
     send.close()
     try:
         if not receive.poll(float(timeout)):
@@ -300,6 +316,12 @@ def normalize_ustb_payload_isolated(
         except EOFError as error:
             raise NormalizationError(
                 "USTB normalization worker exited without a result"
+            ) from error
+        except OSError as error:
+            # A pipe that fails mid-read is the same outcome as one that closes early:
+            # no result was obtained. The worker is reaped by the `finally` either way.
+            raise NormalizationError(
+                f"USTB normalization worker result could not be read: {error}"
             ) from error
     finally:
         receive.close()

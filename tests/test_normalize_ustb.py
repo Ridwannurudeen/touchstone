@@ -309,3 +309,27 @@ def test_the_isolated_timeout_must_be_a_positive_number() -> None:
             normalize_ustb_payload_isolated(
                 USTB_YIELD_SOURCE_ID, fixture_bytes("ustb-yield.json"), timeout=bad
             )
+
+
+def test_a_worker_that_cannot_be_started_is_a_normalization_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Building the worker is I/O, and it can fail before the worker exists.
+
+    No descriptors for the pipe, no process slots, a spawn refused. Those escaped as
+    OSError while every failure *inside* the worker was already this module's own error,
+    so one operation had two vocabularies.
+    """
+    import multiprocessing
+
+    context = multiprocessing.get_context("spawn")
+
+    def refuse_start(self):
+        raise PermissionError(13, "worker start denied")
+
+    monkeypatch.setattr(type(context.Process(target=len)), "start", refuse_start)
+
+    with pytest.raises(NormalizationError, match="could not be started"):
+        normalize_ustb_payload_isolated(
+            "superstate-ustb-nav-daily", b'{"data":[]}', timeout=5.0
+        )

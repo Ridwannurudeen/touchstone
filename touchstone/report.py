@@ -20,7 +20,8 @@ from touchstone.controls import (
     OperationalEvent,
     transition_state,
 )
-from touchstone.epoch import USTBEpochReport
+from touchstone.epoch import EpochControlReport, EpochSourceReport, USTBEpochReport
+from touchstone.evidence import CaptureRecord
 from touchstone.quantities import utc_instant
 from touchstone.signing import canonical_json_bytes
 
@@ -130,6 +131,68 @@ def evidence_references(epoch: USTBEpochReport) -> list[dict[str, object]]:
     return references
 
 
+def _epoch_snapshot(epoch: USTBEpochReport) -> USTBEpochReport:
+    """Rebuild one epoch, element by element, reading every attribute exactly once.
+
+    Materialising only the two outer sequences left their *elements* caller-owned, and
+    those are read again during validation and again during serialisation. A stateful
+    evaluation could therefore report SATISFIED while the transition was checked and
+    CONTRADICTED while the controls were written down, producing a CONFIRMED report whose
+    own serialised controls contradict it.
+
+    Instants are resolved here too, for the same reason and in the same pass. The evidence
+    references normalised each `retrieved_at` while `observed_at` reused the caller's
+    original object, so a zone that changed offset between those two reads committed an
+    evidence root to one instant and declared another in the report.
+    """
+    if not isinstance(epoch, USTBEpochReport):
+        raise TypeError("epoch must be a USTBEpochReport")
+    return USTBEpochReport(
+        asset_key=epoch.asset_key,
+        now=epoch.now,
+        state=epoch.state,
+        evidence_deadline=epoch.evidence_deadline,
+        sources=tuple(_source_snapshot(source) for source in epoch.sources),
+        evaluations=tuple(
+            _evaluation_snapshot(evaluation) for evaluation in epoch.evaluations
+        ),
+        confirmation=_capture_snapshot(epoch.confirmation),
+    )
+
+
+def _source_snapshot(source: EpochSourceReport) -> EpochSourceReport:
+    return EpochSourceReport(
+        source_id=source.source_id,
+        source_url=source.source_url,
+        content_type=source.content_type,
+        byte_size=source.byte_size,
+        evidence_sha256=source.evidence_sha256,
+        retrieved_at=utc_instant(source.retrieved_at, "source retrieved_at"),
+        observed_on=source.observed_on,
+    )
+
+
+def _evaluation_snapshot(evaluation: EpochControlReport) -> EpochControlReport:
+    return EpochControlReport(
+        control_id=evaluation.control_id,
+        result=evaluation.result,
+        observed_value=evaluation.observed_value,
+        evidence_deadline=evaluation.evidence_deadline,
+        observed_on=evaluation.observed_on,
+    )
+
+
+def _capture_snapshot(capture: CaptureRecord | None) -> CaptureRecord | None:
+    if capture is None:
+        return None
+    return CaptureRecord(
+        source_id=capture.source_id,
+        sha256=capture.sha256,
+        retrieved_at=utc_instant(capture.retrieved_at, "confirmation retrieved_at"),
+        index_position=capture.index_position,
+    )
+
+
 def build_observation_report(
     epoch: USTBEpochReport,
     controls: Iterable[ControlRecord],
@@ -152,15 +215,7 @@ def build_observation_report(
     # the checks could see it because each one was individually satisfied.
     if not isinstance(epoch, USTBEpochReport):
         raise TypeError("epoch must be a USTBEpochReport")
-    epoch = USTBEpochReport(
-        asset_key=epoch.asset_key,
-        now=epoch.now,
-        state=epoch.state,
-        evidence_deadline=epoch.evidence_deadline,
-        sources=tuple(epoch.sources),
-        evaluations=tuple(epoch.evaluations),
-        confirmation=epoch.confirmation,
-    )
+    epoch = _epoch_snapshot(epoch)
     records = tuple(controls)
     if type(sequence) is not int or sequence < 1:
         raise ValueError("sequence must be a positive integer")

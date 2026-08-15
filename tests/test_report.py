@@ -1,10 +1,16 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 
 import pytest
 
-from touchstone.controls import AssetState, ControlRecord
-from touchstone.epoch import FixtureTransport, USTBEpochReport, run_ustb_epoch
+from touchstone.controls import AssetState, ControlRecord, EvaluationResult
+from touchstone.epoch import (
+    EpochControlReport,
+    EpochSourceReport,
+    FixtureTransport,
+    USTBEpochReport,
+    run_ustb_epoch,
+)
 from touchstone.evidence import EvidenceStore
 from touchstone.evaluate import default_ustb_controls
 from touchstone.report import (
@@ -268,3 +274,140 @@ def test_a_report_describes_one_epoch(tmp_path: Path) -> None:
 
     assert counting._reads == {"sources": 1, "evaluations": 1}
     assert report == _report(tmp_path / "stable")
+
+
+class _StatefulEvaluation(EpochControlReport):
+    """An evaluation whose result changes between reads.
+
+    The transition was validated from one reading and the controls were serialised from
+    another, so a CONFIRMED report could carry controls that say CONTRADICTED.
+    """
+
+    __slots__ = ("_stored", "_reads")
+
+    @property
+    def result(self):
+        self._reads.append(len(self._reads))
+        first, later = self._stored["result"]
+        return first if len(self._reads) == 1 else later
+
+
+def _stateful(evaluation: EpochControlReport, later) -> _StatefulEvaluation:
+    instance = object.__new__(_StatefulEvaluation)
+    for name in ("control_id", "observed_value", "evidence_deadline", "observed_on"):
+        object.__setattr__(instance, name, getattr(evaluation, name))
+    object.__setattr__(instance, "_stored", {"result": (evaluation.result, later)})
+    object.__setattr__(instance, "_reads", [])
+    return instance
+
+
+class _DriftingZone(tzinfo):
+    """A zone whose offset differs between reads."""
+
+    def __init__(self) -> None:
+        self.reads = 0
+
+    def utcoffset(self, dt):
+        self.reads += 1
+        return timedelta(hours=1) if self.reads == 1 else timedelta(0)
+
+    def dst(self, dt):
+        return None
+
+
+def test_a_report_describes_one_reading_of_each_evaluation(tmp_path: Path) -> None:
+    """Elements of the epoch are caller-owned too, not only the sequences holding them."""
+    epoch = _epoch(tmp_path)
+    drifted = USTBEpochReport(
+        asset_key=epoch.asset_key,
+        now=epoch.now,
+        state=epoch.state,
+        evidence_deadline=epoch.evidence_deadline,
+        sources=epoch.sources,
+        evaluations=tuple(
+            _stateful(item, EvaluationResult.CONTRADICTED) for item in epoch.evaluations
+        ),
+        confirmation=epoch.confirmation,
+    )
+
+    report = build_observation_report(
+        drifted,
+        default_ustb_controls(),
+        epoch_id="ustb-2026-08-14",
+        sequence=1,
+        publisher_kid="ed25519:" + "11" * 32,
+        compiler_provenance_digests=["22" * 32],
+    )
+
+    assert report["state"] == "CONFIRMED"
+    assert {item["evaluation"]["result"] for item in report["controls"]} == {
+        "SATISFIED"
+    }, "the serialised controls describe the same reading the state was derived from"
+
+
+def test_a_report_resolves_each_instant_once(tmp_path: Path) -> None:
+    """`observed_at` reused the caller's datetime after the references had normalised it.
+
+    A zone answering with a different offset the second time therefore committed the
+    evidence root to one instant while the report declared another.
+    """
+    epoch = _epoch(tmp_path)
+    zone = _DriftingZone()
+    source = epoch.sources[0]
+    shifted = USTBEpochReport(
+        asset_key=epoch.asset_key,
+        now=epoch.now,
+        state=epoch.state,
+        evidence_deadline=epoch.evidence_deadline,
+        sources=(
+            EpochSourceReport(
+                source_id=source.source_id,
+                source_url=source.source_url,
+                content_type=source.content_type,
+                byte_size=source.byte_size,
+                evidence_sha256=source.evidence_sha256,
+                retrieved_at=source.retrieved_at.replace(tzinfo=zone),
+                observed_on=source.observed_on,
+            ),
+            *epoch.sources[1:],
+        ),
+        evaluations=epoch.evaluations,
+        confirmation=epoch.confirmation,
+    )
+
+    report = build_observation_report(
+        shifted,
+        default_ustb_controls(),
+        epoch_id="ustb-2026-08-14",
+        sequence=1,
+        publisher_kid="ed25519:" + "11" * 32,
+        compiler_provenance_digests=["22" * 32],
+    )
+
+    assert zone.reads == 1, "the instant was resolved exactly once"
+
+    # The same epoch with the offset the zone gave on that single read, pinned. If the
+    # instant were resolved a second time the zone would answer UTC and this would differ.
+    settled = USTBEpochReport(
+        asset_key=shifted.asset_key,
+        now=shifted.now,
+        state=shifted.state,
+        evidence_deadline=shifted.evidence_deadline,
+        sources=(
+            EpochSourceReport(
+                source_id=source.source_id,
+                source_url=source.source_url,
+                content_type=source.content_type,
+                byte_size=source.byte_size,
+                evidence_sha256=source.evidence_sha256,
+                retrieved_at=source.retrieved_at.replace(
+                    tzinfo=timezone(timedelta(hours=1))
+                ),
+                observed_on=source.observed_on,
+            ),
+            *epoch.sources[1:],
+        ),
+        evaluations=shifted.evaluations,
+        confirmation=shifted.confirmation,
+    )
+    assert report["evidence_root"] == evidence_root(evidence_references(settled))

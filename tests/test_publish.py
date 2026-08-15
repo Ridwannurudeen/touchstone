@@ -1065,3 +1065,26 @@ def test_the_receipt_that_settles_a_publication_is_the_receipt_recorded(
     assert entry["publication"]["receipt"]["status"] == 1, (
         "and the log carries the reading that settled it"
     )
+
+
+def test_a_journal_that_cannot_be_written_is_a_pending_submission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The journal is written before the broadcast, so failing it means nothing was sent.
+
+    Saying so in this module's terms is what lets the caller treat it as the pre-broadcast
+    failure it is, rather than as whatever the filesystem happened to raise.
+    """
+    client = PublisherClient(
+        FakeBackend(),
+        TransparencyLog(tmp_path / "transparency.jsonl"),
+        tmp_path / "pending.json",
+    )
+
+    def refuse(self, *args, **kwargs):
+        raise PermissionError(13, "denied")
+
+    monkeypatch.setattr(Path, "open", refuse)
+
+    with pytest.raises(PendingSubmission, match="cannot be written"):
+        client.publish(_signed_report(1), report_uri="urn:touchstone:report:1")

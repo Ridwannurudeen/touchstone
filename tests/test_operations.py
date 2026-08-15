@@ -279,3 +279,27 @@ def test_saved_state_records_the_report_it_read(tmp_path: Path) -> None:
     assert shifting.reads == 1
     reloaded = operations.load_state(state.asset_key)
     assert reloaded == state
+
+
+def test_a_durable_write_that_fails_is_this_stores_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A record that could not be written is this store's failure to report.
+
+    The previous file is untouched whichever step refused — that is what the temporary and
+    the rename are for — so the caller's recovery is the same and the type should be too.
+    """
+    operations = store(tmp_path)
+
+    def refuse(self, *args, **kwargs):
+        raise PermissionError(13, "denied")
+
+    monkeypatch.setattr(Path, "open", refuse)
+
+    with pytest.raises(OperationsError, match="cannot write"):
+        operations.begin_operation(
+            _signed_report(1),
+            report_uri="urn:touchstone:report:1",
+            correction_of=None,
+            scheduled_for=datetime(2026, 8, 15, 9, 0, tzinfo=timezone.utc),
+        )

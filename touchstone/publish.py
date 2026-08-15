@@ -492,11 +492,25 @@ class SignedRegistryBackend:
 
     def latest_sequence(self, asset_key: bytes) -> int:
         self._ensure_preflight()
-        return int(self.contract.functions.latestSequence(asset_key).call())
+        # Same translation as preflight. An endpoint that answered the preflight and then
+        # dropped left this read raising the transport's own error, which the service's
+        # bounded retry does not catch — so a transient fault before anything was signed
+        # ended the slot instead of being retried, which is what criterion 8 forbids.
+        try:
+            return int(self.contract.functions.latestSequence(asset_key).call())
+        except (Web3RPCError, OSError) as error:
+            raise TransportUnavailable(
+                f"registry did not answer a sequence read: {error}"
+            ) from error
 
     def get_report(self, asset_key: bytes, sequence: int) -> ChainReport:
         self._ensure_preflight()
-        value = self.contract.functions.getReport(asset_key, sequence).call()
+        try:
+            value = self.contract.functions.getReport(asset_key, sequence).call()
+        except (Web3RPCError, OSError) as error:
+            raise TransportUnavailable(
+                f"registry did not answer a report read: {error}"
+            ) from error
         return ChainReport(
             control_set_root=_bytes32_hex(value[0]),
             evidence_root=_bytes32_hex(value[1]),
@@ -1235,16 +1249,33 @@ class PublisherClient:
         return value
 
     def _write_pending(self, value: Mapping[str, object]) -> None:
-        self.pending_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.pending_path.with_name(self.pending_path.name + ".tmp")
-        with temporary.open("wb") as output:
-            output.write(canonical_json_bytes(dict(value)) + b"\n")
-            output.flush()
-            os.fsync(output.fileno())
-        os.replace(temporary, self.pending_path)
+        try:
+            self.pending_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.pending_path.with_name(self.pending_path.name + ".tmp")
+            with temporary.open("wb") as output:
+                output.write(canonical_json_bytes(dict(value)) + b"\n")
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary, self.pending_path)
+        except OSError as error:
+            # This journal is written *before* the broadcast, so failing to write it means
+            # nothing has been sent and nothing is owed. Saying so in this module's terms
+            # is what lets the caller treat it as the pre-broadcast failure it is.
+            raise PendingSubmission(
+                f"the pending journal cannot be written: {error}"
+            ) from error
 
     def _clear_pending(self) -> None:
-        self.pending_path.unlink(missing_ok=True)
+        try:
+            self.pending_path.unlink(missing_ok=True)
+        except OSError as error:
+            # The opposite case: the publication finished and only the note survives. A
+            # journal that cannot be cleared is a journal that will be reconciled again,
+            # which is safe — the reconciliation is idempotent — but it must not be
+            # mistaken for a clean finish, so it is reported rather than swallowed.
+            raise PendingSubmission(
+                f"the pending journal cannot be cleared: {error}"
+            ) from error
 
 
 def _verified_report(
