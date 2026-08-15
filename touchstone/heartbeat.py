@@ -209,7 +209,7 @@ def verify(
     asset_key: str,
     registry_address: str,
     previous_sequence: int | None = None,
-    slot_overdue: bool = False,
+    due_slot: datetime | None = None,
 ) -> Health:
     """Decide, at read time, whether the daemon is alive and whether epochs are healthy.
 
@@ -251,16 +251,46 @@ def verify(
 
     daemon_alive = not reasons
     epoch_reasons: list[str] = []
-    if slot_overdue and not (
-        record["last_successful_epoch"] or record["last_attempted_slot"]
-    ):
-        epoch_reasons.append("a scheduled slot is overdue with no epoch recorded")
+    if due_slot is not None:
+        # Bound to *this* slot, not to any epoch ever recorded. The first version asked
+        # only whether the fields were truthy, so a two-day-old attempt marked today's
+        # overdue slot healthy — which is precisely the silence the check exists to break.
+        due = utc_instant(due_slot, "due_slot")
+        latest = _latest_epoch(record)
+        if latest is None:
+            epoch_reasons.append("a scheduled slot is due with no epoch recorded")
+        elif latest < due:
+            epoch_reasons.append(
+                f"the newest epoch is {_stamp(latest)}, older than the slot due at "
+                f"{_stamp(due)}"
+            )
     return Health(
         daemon_alive=daemon_alive,
         epoch_healthy=daemon_alive and not epoch_reasons,
         reasons=tuple(reasons + epoch_reasons),
         record=record,
     )
+
+
+def _latest_epoch(record: Mapping[str, object]) -> datetime | None:
+    """The newest instant this heartbeat claims an epoch happened at, if any is readable.
+
+    A malformed field is treated as absent rather than raising: this is a health check, and
+    a record it cannot parse is a record that establishes nothing — which is the unhealthy
+    answer, not an exception for the caller to handle.
+    """
+    latest: datetime | None = None
+    for field in ("last_successful_epoch", "last_attempted_slot"):
+        value = record.get(field)
+        if not isinstance(value, str):
+            continue
+        try:
+            parsed = _parse(value, field)
+        except HeartbeatError:
+            continue
+        if latest is None or parsed > latest:
+            latest = parsed
+    return latest
 
 
 def _stamp(moment: datetime) -> str:

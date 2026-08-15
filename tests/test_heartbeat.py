@@ -136,21 +136,56 @@ def test_liveness_and_epoch_health_are_answered_separately(tmp_path: Path) -> No
     """
     path = beat(tmp_path, last_successful_epoch=None, last_attempted_slot=None)
 
-    health = checked(path, now=AT + timedelta(seconds=30), slot_overdue=True)
+    health = checked(path, now=AT + timedelta(seconds=30), due_slot=AT)
 
     assert health.daemon_alive, "the process is writing heartbeats"
-    assert not health.epoch_healthy, "and has produced no epoch for an overdue slot"
+    assert not health.epoch_healthy, "and has produced no epoch for a due slot"
     assert not health.ok
-    assert "overdue" in " ".join(health.reasons)
+    assert "no epoch recorded" in " ".join(health.reasons)
 
 
-def test_an_overdue_slot_with_a_recorded_attempt_is_still_healthy(
-    tmp_path: Path,
-) -> None:
+def test_a_due_slot_with_an_attempt_at_or_after_it_is_healthy(tmp_path: Path) -> None:
     """An attempt that opened an incident is the system working, not failing silently."""
     path = beat(tmp_path, last_attempted_slot="2026-08-15T09:00:00Z")
 
-    assert checked(path, now=AT + timedelta(seconds=30), slot_overdue=True).ok
+    assert checked(path, now=AT + timedelta(seconds=30), due_slot=AT).ok
+
+
+def test_an_epoch_older_than_the_due_slot_does_not_satisfy_it(tmp_path: Path) -> None:
+    """The check is bound to *this* slot, not to any epoch ever recorded.
+
+    Asking only whether the field was truthy let a two-day-old attempt mark today's slot
+    healthy — which is exactly the silence the check exists to break.
+    """
+    path = beat(tmp_path, last_attempted_slot="2026-08-13T09:00:00Z")
+
+    health = checked(
+        path, now=AT + timedelta(seconds=30), due_slot=datetime(
+            2026, 8, 15, 9, 0, tzinfo=timezone.utc
+        )
+    )
+
+    assert health.daemon_alive
+    assert not health.epoch_healthy
+    assert "older than the slot due" in " ".join(health.reasons)
+
+
+def test_the_newest_of_the_two_epoch_fields_is_used(tmp_path: Path) -> None:
+    """A successful epoch after a failed attempt is still a current epoch."""
+    path = beat(
+        tmp_path,
+        last_attempted_slot="2026-08-13T09:00:00Z",
+        last_successful_epoch="2026-08-15T09:00:00Z",
+    )
+
+    assert checked(path, now=AT + timedelta(seconds=30), due_slot=AT).ok
+
+
+def test_no_due_slot_means_epoch_health_is_not_asserted(tmp_path: Path) -> None:
+    """Before the first slot falls there is nothing for an epoch to be late for."""
+    path = beat(tmp_path, last_successful_epoch=None, last_attempted_slot=None)
+
+    assert checked(path, now=AT + timedelta(seconds=30)).ok
 
 
 def test_a_truncated_heartbeat_is_refused_rather_than_guessed(tmp_path: Path) -> None:

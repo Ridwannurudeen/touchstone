@@ -135,7 +135,7 @@ def test_a_healthy_daemon_with_no_epoch_is_alive_and_unhealthy(tmp_path: Path) -
     """The two questions stay separate all the way out to the exit code."""
     alive(Workspace(tmp_path), last_successful_epoch=None, last_attempted_slot=None)
 
-    report = looked_at(tmp_path, slot_overdue=True)
+    report = looked_at(tmp_path, due_slot=AT)
 
     assert named(report, "heartbeat").healthy, "the process is alive"
     assert not named(report, "epoch").healthy, "and has produced nothing"
@@ -157,20 +157,40 @@ def test_the_watchdog_writes_nothing_into_the_workspace(tmp_path: Path) -> None:
     """
     workspace = Workspace(tmp_path)
     alive(workspace)
-    before = sorted(
-        (path.relative_to(tmp_path), path.stat().st_mtime_ns, path.stat().st_size)
-        for path in tmp_path.rglob("*")
-        if path.is_file()
-    )
+    def snapshot():
+        # Directories and file *bytes*, not just names and sizes. The first version of
+        # this test compared paths, sizes and mtimes of files only — and passed while the
+        # watchdog was creating an `operations/` directory on every inspection.
+        return sorted(
+            (
+                path.relative_to(tmp_path).as_posix(),
+                path.is_dir(),
+                None if path.is_dir() else path.read_bytes(),
+            )
+            for path in tmp_path.rglob("*")
+        )
+
+    before = snapshot()
 
     looked_at(tmp_path)
 
-    after = sorted(
-        (path.relative_to(tmp_path), path.stat().st_mtime_ns, path.stat().st_size)
-        for path in tmp_path.rglob("*")
-        if path.is_file()
-    )
-    assert before == after, "the watchdog modified the workspace it was watching"
+    assert snapshot() == before, "the watchdog modified the workspace it was watching"
+
+
+def test_inspecting_a_workspace_that_was_never_served_creates_nothing(
+    tmp_path: Path,
+) -> None:
+    """The case the byte-comparison above would still have missed.
+
+    An empty directory has nothing to compare, so the assertion has to be that it is
+    still empty afterwards.
+    """
+    workspace = tmp_path / "untouched"
+    workspace.mkdir()
+
+    looked_at(workspace)
+
+    assert list(workspace.iterdir()) == [], "inspection created part of the workspace"
 
 
 def test_the_report_names_every_question_it_asked(tmp_path: Path) -> None:

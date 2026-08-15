@@ -22,7 +22,6 @@ from pathlib import Path
 
 from touchstone.heartbeat import Health, verify as verify_heartbeat
 from touchstone.incidents import IncidentLog, IncidentLogError
-from touchstone.operations import OperationsError, OperationsStore
 from touchstone.quantities import utc_instant
 from touchstone.signing import strict_json_loads
 from touchstone.translog import TransparencyLog, TransparencyLogError
@@ -66,7 +65,7 @@ def inspect(
     asset_key: str,
     registry_address: str,
     previous_sequence: int | None = None,
-    slot_overdue: bool = False,
+    due_slot: datetime | None = None,
 ) -> Report:
     """Read the workspace from outside and judge it, without writing anything to it."""
     moment = utc_instant(now, "now")
@@ -79,7 +78,7 @@ def inspect(
         asset_key=asset_key,
         registry_address=registry_address,
         previous_sequence=previous_sequence,
-        slot_overdue=slot_overdue,
+        due_slot=due_slot,
     )
     checks.append(
         Check(
@@ -142,9 +141,18 @@ def _publication_coherent(root: Workspace) -> Check:
         return Check(
             "publication", False, f"the pending journal cannot be read: {error}"
         )
+    # The operation file is read directly rather than through `OperationsStore`, whose
+    # constructor creates its directory. Inspecting a workspace that had never been served
+    # therefore *created* part of it — a watchdog quietly writing into the thing it is
+    # supposed to be observing from outside.
+    operation_path = root.operations / "operation.json"
     try:
-        operation = OperationsStore(root.operations).load_operation()
-    except (OperationsError, ValueError) as error:
+        operation = (
+            strict_json_loads(operation_path.read_bytes())
+            if operation_path.exists()
+            else None
+        )
+    except (OSError, TypeError, ValueError) as error:
         return Check("publication", False, f"the operation cannot be read: {error}")
 
     if pending is not None and operation is None:

@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import math
+import os
 from pathlib import Path
 import sys
 import time
@@ -64,6 +65,9 @@ from touchstone.schedule import ScheduleOutcome, run_schedule  # noqa: E402
 from touchstone.signing import (  # noqa: E402
     frozen_snapshot,
 )
+from touchstone import backup, heartbeat  # noqa: E402
+from touchstone.backup import BackupError  # noqa: E402
+from touchstone.heartbeat import HeartbeatError  # noqa: E402
 from touchstone.quantities import finite_non_negative, utc_instant  # noqa: E402
 from touchstone.translog import TransparencyLog  # noqa: E402
 from touchstone.workspace import Workspace  # noqa: E402
@@ -108,6 +112,10 @@ class Service:
         backoff_seconds: float = DEFAULT_BACKOFF_SECONDS,
         sleep: Callable[[float], None] = time.sleep,
         now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        heartbeat_path: str | Path | None = None,
+        registry_address: str | None = None,
+        backup_dir: str | Path | None = None,
+        backup_key: bytes | None = None,
     ) -> None:
         self.client = client
         self.operations = operations
@@ -154,6 +162,107 @@ class Service:
         self.backoff_seconds = float(backoff_seconds)
         self.sleep = sleep
         self.now = now
+        # Reliability wiring. All optional, because the epoch machinery must remain
+        # constructible without it — every test that predates T8 builds a Service with
+        # neither a heartbeat nor a backup destination.
+        self.heartbeat_path = Path(heartbeat_path) if heartbeat_path else None
+        self.registry_address = registry_address
+        self.backup_dir = Path(backup_dir) if backup_dir else None
+        self.backup_key = backup_key
+        self._heartbeat_sequence = 0
+        self._last_attempted_slot: str | None = None
+        self._last_successful_epoch: str | None = None
+        self._last_backup_at: str | None = None
+        self._last_backup_day: str | None = None
+
+    # ---------------------------------------------------------------- reliability
+    def beat(self) -> None:
+        """Write one heartbeat, from one reading of the clock and the durable state.
+
+        Never fatal. A daemon that stopped serving because it could not write a liveness
+        file would have turned a monitoring failure into an outage — and the watchdog
+        already treats an absent heartbeat as unhealthy, so the condition is reported by
+        exactly the mechanism that exists for it.
+        """
+        if self.heartbeat_path is None:
+            return
+        try:
+            self._heartbeat_sequence += 1
+            heartbeat.write(
+                self.heartbeat_path,
+                heartbeat.build_record(
+                    asset_key=self.asset_key,
+                    registry_address=self.registry_address or "",
+                    sequence=self._heartbeat_sequence,
+                    now=self._moment(),
+                    last_attempted_slot=self._last_attempted_slot,
+                    last_successful_epoch=self._last_successful_epoch,
+                    last_backup_at=self._last_backup_at,
+                ),
+            )
+        except (HeartbeatError, OSError, ValueError):
+            return
+
+    def note_attempt(self, scheduled_at: datetime) -> None:
+        """Record that this slot was attempted, whatever came of it."""
+        stamped = utc_instant(scheduled_at, "scheduled_at")
+        self._last_attempted_slot = stamped.isoformat().replace("+00:00", "Z")
+
+    def note_success(self, scheduled_at: datetime) -> None:
+        stamped = utc_instant(scheduled_at, "scheduled_at")
+        self._last_successful_epoch = stamped.isoformat().replace("+00:00", "Z")
+
+    def backup_if_due(self, scheduled_at: datetime) -> None:
+        """Take the daily archive from inside the lock this daemon already holds.
+
+        This is the cooperative path the backup module exists for. A second process
+        copying a live workspace would read its files at several different moments; here
+        the workspace is between mutations and nothing else can write to it.
+        """
+        if self.backup_dir is None or self.backup_key is None:
+            return
+        moment = utc_instant(scheduled_at, "scheduled_at")
+        day = moment.date().isoformat()
+        if self._last_backup_day == day:
+            return
+        try:
+            archive = backup.create(
+                backup.Lease.from_held_lock(Path(self.operations.directory).parent),
+                now=moment,
+                key=self.backup_key,
+                asset_key=self.asset_key,
+                registry_address=self.registry_address or "",
+            )
+            # The asset key is a CAIP identifier and contains colons, which are not legal
+            # in a Windows filename — so naming the archive after it directly produced a
+            # backup that silently never appeared. The identity is authenticated inside
+            # the archive anyway; the filename only has to be unique and legible.
+            safe = self.asset_key.replace(":", "_")
+            destination = Path(self.backup_dir) / f"{safe}-{day}.archive"
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            temporary = destination.with_name(destination.name + ".tmp")
+            temporary.write_bytes(archive)
+            temporary.replace(destination)
+        except (BackupError, OSError, ValueError) as error:
+            # An incident, not a crash. A failed backup is a reliability problem to be
+            # seen, and the slot that just ran is unaffected by it.
+            self._record_backup_failure(str(error))
+            return
+        self._last_backup_day = day
+        self._last_backup_at = moment.isoformat().replace("+00:00", "Z")
+
+    def _record_backup_failure(self, detail: str) -> None:
+        try:
+            moment = self._moment()
+            self.incidents.open_incident(
+                asset_key=self.asset_key,
+                kind=EPOCH_FAILED,
+                detail=f"the daily backup could not be written: {detail}"[:500],
+                occurred_at=moment,
+                state=self._projected_state(moment),
+            )
+        except Exception:  # noqa: BLE001 - recording a failure must not raise a new one
+            return
 
     # ------------------------------------------------------------------- startup
     def resolve_startup(self) -> SlotOutcome | None:
@@ -383,6 +492,7 @@ class Service:
                 scheduled_at,
             )
         self._close_open_incidents("evidence was retrieved and published again")
+        self.note_success(scheduled_at)
         return SlotOutcome(
             scheduled_at=scheduled_at,
             published=True,
@@ -596,10 +706,27 @@ def _serve_locked(
     **schedule_arguments: object,
 ) -> ScheduleOutcome:
     service.resolve_startup()
+    # Only now. A heartbeat written before reconciliation would report a healthy daemon
+    # during the one window where the durable state has not yet been settled — which is
+    # precisely when an operator most needs to know the service is not ready.
+    service.beat()
+
+    def slot(scheduled_at: datetime) -> None:
+        try:
+            service.run_slot(scheduled_at, produce, report_uri=report_uri)
+        finally:
+            # In the `finally`, because a failed slot is exactly when the heartbeat has to
+            # record that an attempt was made. Recording only successes would leave a
+            # failing service looking identical to an idle one.
+            # Backup before the beat, so the heartbeat reports the archive that was just
+            # taken rather than the previous day's. A watchdog alerting on a backup older
+            # than 24h would otherwise fire on the strength of stale bookkeeping.
+            service.note_attempt(scheduled_at)
+            service.backup_if_due(scheduled_at)
+            service.beat()
+
     return run_schedule(
-        lambda scheduled_at: service.run_slot(
-            scheduled_at, produce, report_uri=report_uri
-        ),
+        slot,
         interval_seconds=interval_seconds,
         max_runs=max_runs,
         # Composed, not chosen. Letting a caller's handler *replace* the service's meant
@@ -641,12 +768,22 @@ def build_service(manifest_path: str, workspace: str, *, asset_key: str) -> Serv
         TransparencyLog(root.transparency_log),
         root.pending_journal,
     )
+    # The backup key is optional and read here rather than demanded: a service that
+    # refused to start for want of a backup destination would turn a missing archive into
+    # an outage. Its absence is visible in the heartbeat, which never records a backup.
+    key = None
+    if os.environ.get(backup.BACKUP_KEY_ENV):
+        key = backup.backup_key()
     return Service(
         client,
         OperationsStore(root.operations),
         IncidentLog(root.incidents),
         asset_key=asset_key,
         lock_path=root.lock,
+        heartbeat_path=root.heartbeat,
+        registry_address=manifest.registry_address,
+        backup_dir=os.environ.get("TOUCHSTONE_BACKUP_DIR") or None,
+        backup_key=key,
     )
 
 

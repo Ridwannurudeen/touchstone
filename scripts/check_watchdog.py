@@ -33,9 +33,11 @@ def main(argv: list[str] | None = None) -> int:
         "advanced, which is what a restored backup or a second daemon looks like",
     )
     parser.add_argument(
-        "--slot-overdue",
-        action="store_true",
-        help="the caller knows a scheduled slot has passed; epoch health is judged against it",
+        "--due-slot",
+        default=None,
+        help="the UTC instant of the slot that should have run by now, e.g. "
+        "2026-08-15T09:00:00Z. Epoch health is judged against this exact slot: an epoch "
+        "older than it does not satisfy it. Omit when no slot is yet due.",
     )
     arguments = parser.parse_args(argv)
 
@@ -45,6 +47,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"WATCHDOG FAIL: {error}", file=sys.stderr)
         return 1
 
+    due_slot = None
+    if arguments.due_slot is not None:
+        try:
+            due_slot = datetime.fromisoformat(
+                arguments.due_slot.replace("Z", "+00:00")
+            )
+        except ValueError:
+            print("WATCHDOG FAIL: --due-slot must be an ISO instant", file=sys.stderr)
+            return 1
+
     try:
         report = inspect(
             arguments.workspace,
@@ -52,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
             asset_key=arguments.asset_key,
             registry_address=manifest.registry_address,
             previous_sequence=arguments.previous_sequence,
-            slot_overdue=arguments.slot_overdue,
+            due_slot=due_slot,
         )
     except (HeartbeatError, OSError, ValueError) as error:
         # Indeterminate is unhealthy. A watchdog that cannot decide must not be silent,

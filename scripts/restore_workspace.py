@@ -16,10 +16,14 @@ ROOT = Path(__file__).parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from cryptography.exceptions import InvalidSignature  # noqa: E402
+
 from touchstone.backup import BackupError, backup_key, restore  # noqa: E402
 from touchstone.deployment import DeploymentError, DeploymentManifest  # noqa: E402
 from touchstone.evidence import EvidenceStore  # noqa: E402
 from touchstone.incidents import IncidentLog, IncidentLogError  # noqa: E402
+from touchstone.keyring import verification_keys  # noqa: E402
+from touchstone.signing import verify_signed_report  # noqa: E402
 from touchstone.translog import TransparencyLog, TransparencyLogError  # noqa: E402
 from touchstone.workspace import Workspace  # noqa: E402
 
@@ -62,6 +66,28 @@ def main(argv: list[str] | None = None) -> int:
     except (IncidentLogError, TransparencyLogError, ValueError) as error:
         print(
             f"RESTORE FAIL: the archive restored but does not verify: {error}",
+            file=sys.stderr,
+        )
+        return 1
+
+    # And signatures. `TransparencyLog.verify` proves the chain, the entry hashes and the
+    # report digests — it never checks an Ed25519 signature, so a consistently rehashed
+    # archive of unsigned or wrongly signed reports passed every check above. The manifest
+    # carries the reporting-key history precisely so this can be asked.
+    try:
+        keys = verification_keys(manifest)
+        for entry in entries:
+            verify_signed_report(entry["signed_report"], keys)
+    except (
+        InvalidSignature,
+        DeploymentError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as error:
+        print(
+            f"RESTORE FAIL: a restored report does not verify against the manifest's "
+            f"reporting keys: {error}",
             file=sys.stderr,
         )
         return 1

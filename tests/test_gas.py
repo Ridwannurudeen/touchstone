@@ -9,6 +9,7 @@ import pytest
 from touchstone.gas import (
     UNKNOWN,
     GasError,
+    Indeterminate,
     daily_schedule,
     measured_costs,
     render,
@@ -77,27 +78,48 @@ def test_no_measured_cost_is_unknown_rather_than_a_guess() -> None:
 
 
 @pytest.mark.parametrize(
-    "broken",
+    "ignorable",
     [
-        entry(gas_used=None),
-        entry(price=None),
         entry(status=0),
-        entry(gas_used=0),
-        entry(price=0),
-        entry(gas_used=True),
         {"publication": {"receipt": "not a mapping"}},
         {"publication": "not a mapping"},
         {},
     ],
 )
-def test_an_entry_without_two_real_operands_is_skipped_not_guessed(broken) -> None:
-    """A missing operand is not a zero, and a reverted transaction published nothing."""
-    assert measured_costs([broken]) == []
+def test_an_entry_that_is_not_a_successful_publication_is_skipped(ignorable) -> None:
+    """A reverted transaction published nothing, so its gas is not a publication cost."""
+    assert measured_costs([ignorable]) == []
+
+
+@pytest.mark.parametrize(
+    "incomplete",
+    [
+        entry(gas_used=None),
+        entry(price=None),
+        entry(gas_used=0),
+        entry(price=0),
+        entry(gas_used=True),
+    ],
+)
+def test_a_successful_publication_with_no_readable_cost_is_indeterminate(
+    incomplete,
+) -> None:
+    """Skipping it would produce a confident number from incomplete data.
+
+    The answer is the *maximum* cost, so the sample that could not be read might have been
+    the maximum. A missing operand is not a zero, and it is not an absence either.
+    """
+    with pytest.raises(Indeterminate):
+        measured_costs([incomplete])
 
     value = runway(
-        balance_wei=10**18, entries=[broken], schedule=schedule(), read_at_block=1
+        balance_wei=10**18,
+        entries=[entry(), incomplete],
+        schedule=schedule(),
+        read_at_block=1,
     )
-    assert value.status == UNKNOWN
+    assert value.status == UNKNOWN, "one unreadable sample makes the whole answer unknown"
+    assert not value.covers(SEPT_3)
 
 
 def test_a_reverted_publication_does_not_raise_the_measured_cost() -> None:

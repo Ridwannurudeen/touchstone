@@ -102,6 +102,13 @@ def webhook_from_env(environ: Mapping[str, str] | None = None) -> Webhook:
         # A query is where a webhook secret is usually smuggled, and query strings are
         # logged by every proxy in the path. Refusing the shape refuses the habit.
         raise AlertError("the webhook URL must not carry a query or fragment")
+    if token in url:
+        # Refusing userinfo, query and fragment left the *path*, and a URL is logged whole.
+        # Many services issue exactly this shape — the secret as a path segment — so the
+        # check has to be on the token's presence rather than on the URL's structure.
+        raise AlertError(
+            "the webhook URL contains the credential; it must travel only in the header"
+        )
     return Webhook(url=url, token=token)
 
 
@@ -165,7 +172,14 @@ def send(
     compromised or misconfigured endpoint into credential disclosure.
     """
     seconds = finite_positive(timeout, "timeout")
+    if set(body) != _BODY_FIELDS:
+        # `send` accepted any mapping, so the containment rule held only for bodies that
+        # happened to come from `build`. The shape is checked here instead, at the one
+        # place bytes actually leave the process.
+        raise AlertError("an alert body must be exactly the fields build() produces")
     payload = canonical_json_bytes(dict(body))
+    if webhook.token in payload.decode("utf-8"):
+        raise AlertError("the alert body contains the credential; refusing to send it")
     request = urllib.request.Request(
         webhook.url,
         data=payload,
@@ -212,6 +226,17 @@ def _is_digest(value: object) -> bool:
 
 
 _CODE_ALPHABET = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+_BODY_FIELDS = frozenset(
+    {
+        "asset_key",
+        "detail_code",
+        "event",
+        "incident_hash",
+        "observed_at",
+        "severity",
+        "version",
+    }
+)
 
 
 def render(body: Mapping[str, object]) -> str:

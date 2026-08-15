@@ -74,11 +74,20 @@ def measured_costs(entries: Sequence[Mapping[str, object]]) -> list[int]:
         gas_used = receipt.get("gas_used")
         price = receipt.get("effective_gas_price")
         if not _is_positive_integer(gas_used) or not _is_positive_integer(price):
-            # An entry written before the price was recorded, or one whose node omitted
-            # it. Skipped rather than guessed: a missing operand is not a zero.
-            continue
+            # A successful publication whose cost cannot be read is not a sample to skip.
+            # The answer is the *maximum* cost, so the unreadable one could have been it,
+            # and quietly dropping it produces a confident number from incomplete data.
+            # A missing operand is not a zero, and it is not an absence either.
+            raise Indeterminate(
+                "a successful publication has no readable cost, so the maximum cannot "
+                "be established"
+            )
         costs.append(gas_used * price)
     return costs
+
+
+class Indeterminate(GasError):
+    """A successful publication's cost could not be read, so no maximum is knowable."""
 
 
 def runway(
@@ -104,7 +113,18 @@ def runway(
     if list(slots) != sorted(slots):
         raise GasError("the schedule must be in order")
 
-    costs = measured_costs(entries)
+    try:
+        costs = measured_costs(entries)
+    except Indeterminate as error:
+        return Runway(
+            balance_wei=balance_wei,
+            maximum_cost_wei=None,
+            remaining_publications=None,
+            funded_through=None,
+            samples=0,
+            status=UNKNOWN,
+            detail=str(error),
+        )
     if not costs:
         return Runway(
             balance_wei=balance_wei,

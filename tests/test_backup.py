@@ -16,6 +16,7 @@ import pytest
 
 from touchstone.backup import (
     ARCHIVE_VERSION,
+    Lease,
     BACKUP_KEY_ENV,
     NONCE_BYTES,
     BackupError,
@@ -79,7 +80,7 @@ def archive_of(workspace: Workspace, **changes: object) -> bytes:
         "registry_address": REGISTRY,
     }
     arguments.update(changes)
-    return create(workspace.root, **arguments)
+    return create(Lease(root=workspace.root), **arguments)
 
 
 def test_an_archive_round_trips_every_file(tmp_path: Path) -> None:
@@ -168,7 +169,7 @@ def test_a_backup_taken_between_mutations_holds_one_consistent_instant(
 
     with exclusive_lock(workspace.lock):
         before = create(
-            workspace.root,
+            Lease(root=workspace.root),
             now=AT,
             key=KEY,
             asset_key=ASSET,
@@ -182,7 +183,7 @@ def test_a_backup_taken_between_mutations_holds_one_consistent_instant(
     )
     with exclusive_lock(workspace.lock):
         after = create(
-            workspace.root,
+            Lease(root=workspace.root),
             now=AT,
             key=KEY,
             asset_key=ASSET,
@@ -358,7 +359,7 @@ def test_an_empty_workspace_has_nothing_to_back_up(tmp_path: Path) -> None:
 
     with pytest.raises(BackupError, match="nothing in this workspace"):
         create(
-            tmp_path / "asset",
+            Lease(root=tmp_path / "asset"),
             now=AT,
             key=KEY,
             asset_key=ASSET,

@@ -57,6 +57,29 @@ class Member:
     sha256: str
 
 
+@dataclass(frozen=True, slots=True)
+class Lease:
+    """Evidence that the caller holds this workspace's lock.
+
+    A comment saying "the caller must hold the lock" is enforced by whoever reads it. A
+    parameter is enforced by the signature: `create` cannot be called without one, so the
+    two ways to obtain one are the two places the rule is actually checked.
+    """
+
+    root: Path
+
+    @classmethod
+    def from_held_lock(cls, workspace: str | Path) -> Lease:
+        """For a caller that already holds the lock and cannot take it twice.
+
+        The daemon holds the workspace lock for its entire serving lifetime, and the lock
+        is deliberately not reentrant, so it cannot acquire a second one to prove it. This
+        is the seam where that is asserted rather than checked, and it is named to be
+        greppable: any use outside a section that provably holds the lock is a defect.
+        """
+        return cls(root=Workspace(workspace).root)
+
+
 def backup_key(environ: Mapping[str, str] | None = None) -> bytes:
     """Read the archive key, and refuse one that is doing another job as well."""
     source = os.environ if environ is None else environ
@@ -81,15 +104,22 @@ def backup_key(environ: Mapping[str, str] | None = None) -> bytes:
     return bytes.fromhex(encoded)
 
 
-def members(workspace: Workspace) -> list[Member]:
-    """Every file worth restoring, read once each, with its digest taken from those bytes.
+def capture(workspace: Workspace) -> list[tuple[Member, bytes]]:
+    """Read each file exactly once, and describe it from the bytes that were read.
+
+    The first version read every file twice — once in this function to take its digest,
+    and again while building the archive to obtain its contents. That is the defect this
+    project has now found in six other modules wearing a different hat: the bytes that
+    were measured and the bytes that were stored need not be the same bytes, so the
+    archive could carry one file's digest over another file's contents and satisfy every
+    check on the way out. The bytes travel with their own description from here on.
 
     The exclusions are as deliberate as the inclusions. The lock is a live artifact of a
     running process; the heartbeat is expected to be stale and is never restored; both
     would restore a claim about a process that is not running.
     """
     root = workspace.root
-    found: list[Member] = []
+    found: list[tuple[Member, bytes]] = []
     for path in sorted(_candidates(workspace)):
         if not path.exists():
             continue
@@ -102,15 +132,23 @@ def members(workspace: Workspace) -> list[Member]:
         except OSError as error:
             raise BackupError(f"{path.name} cannot be read: {error}") from error
         found.append(
-            Member(
-                path=path.relative_to(root).as_posix(),
-                size=len(raw),
-                sha256=hashlib.sha256(raw).hexdigest(),
+            (
+                Member(
+                    path=path.relative_to(root).as_posix(),
+                    size=len(raw),
+                    sha256=hashlib.sha256(raw).hexdigest(),
+                ),
+                raw,
             )
         )
     if not found:
         raise BackupError("there is nothing in this workspace to back up")
     return found
+
+
+def members(workspace: Workspace) -> list[Member]:
+    """The shape of what would be archived, without the contents."""
+    return [member for member, _ in capture(workspace)]
 
 
 def _candidates(workspace: Workspace) -> list[Path]:
@@ -130,7 +168,7 @@ def _candidates(workspace: Workspace) -> list[Path]:
 
 
 def create(
-    workspace: str | Path,
+    lease: Lease,
     *,
     now: datetime,
     key: bytes,
@@ -140,25 +178,27 @@ def create(
 ) -> bytes:
     """Build one encrypted archive from one reading of the workspace.
 
-    The caller must already hold the workspace lock. That is not checked here because it
-    cannot be: holding a lock is a property of the calling process, so the two public
-    entry points — the daemon's cooperative backup and `take_offline` — are where it is
-    established.
+    Takes a `Lease` rather than a path, so holding the workspace lock is a precondition
+    the signature states rather than a comment the caller may not read.
     """
+    if not isinstance(lease, Lease):
+        raise BackupError(
+            "a backup requires a Lease proving the workspace lock is held"
+        )
     captured_at = utc_instant(now, "now")
-    root = Workspace(workspace)
-    inventory = members(root)
+    root = Workspace(lease.root)
+    taken = capture(root)
     payload = {
         "asset_key": asset_key,
         "captured_at": captured_at.isoformat().replace("+00:00", "Z"),
         "files": [
             {
-                "bytes": (root.root / member.path).read_bytes().hex(),
+                "bytes": raw.hex(),
                 "path": member.path,
                 "sha256": member.sha256,
                 "size": member.size,
             }
-            for member in inventory
+            for member, raw in taken
         ],
         "registry_address": registry_address,
         "version": ARCHIVE_VERSION,
@@ -314,7 +354,7 @@ def take_offline(
     try:
         with exclusive_lock(root.lock):
             return create(
-                workspace,
+                Lease(root=root.root),
                 now=now,
                 key=key,
                 asset_key=asset_key,
