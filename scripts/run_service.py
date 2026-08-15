@@ -60,11 +60,18 @@ from touchstone.publish import (  # noqa: E402
     TransportUnavailable,
 )
 from touchstone.schedule import ScheduleOutcome, run_schedule  # noqa: E402
+from touchstone.signing import (  # noqa: E402
+    canonical_json_bytes,
+    strict_json_loads,
+)
 from touchstone.translog import TransparencyLog  # noqa: E402
 
 
 DEFAULT_RETRIES = 3
 DEFAULT_BACKOFF_SECONDS = 2.0
+# The longest single wait a retry may derive. An hour is already far past the point where
+# waiting is the right answer; beyond it the configuration is a mistake, not a policy.
+MAX_BACKOFF_SECONDS = 3600.0
 
 
 class SourceUnavailable(RuntimeError):
@@ -118,6 +125,15 @@ class Service:
             or backoff_seconds < 0
         ):
             raise ValueError("backoff_seconds must be a non-negative, finite number")
+        # The *derived* delays, not only the base. Doubling a finite base can reach
+        # infinity, and a configuration accepted at startup would then raise on the first
+        # failure it was supposed to absorb — turning the recovery into the outage.
+        longest = backoff_seconds * (2 ** max(retries - 1, 0))
+        if not math.isfinite(longest) or longest > MAX_BACKOFF_SECONDS:
+            raise ValueError(
+                f"backoff_seconds={backoff_seconds!r} with retries={retries} reaches "
+                f"{longest!r} seconds, beyond the {MAX_BACKOFF_SECONDS} second maximum"
+            )
         self.retries = retries
         self.backoff_seconds = float(backoff_seconds)
         self.sleep = sleep
@@ -169,7 +185,9 @@ class Service:
         moment = self.now()
         self._require_our_asset(operation, moment=moment)
         try:
-            self.operations.resolve(self.client)
+            self.operations.resolve(
+                self.client, expected_asset_key=self.asset_key
+            )
         except Exception as error:  # noqa: BLE001 - the contract is that *any* failure is recorded
             self._record_startup_failure(
                 f"sequence {operation.sequence} was in flight at startup and could not "
@@ -265,6 +283,8 @@ class Service:
         except Exception as error:  # noqa: BLE001 - any epoch failure is an incident
             return self._record_incident(EPOCH_FAILED, str(error), scheduled_at)
 
+        # Frozen before it is inspected, so what is checked is what is published.
+        signed_report = _frozen(signed_report) if signed_report is not None else None
         produced_asset = None
         if isinstance(signed_report, Mapping):
             report = signed_report.get("report")
@@ -295,11 +315,16 @@ class Service:
             # Inside the boundary: naming the report and recording the operation can both
             # fail — a bad URI, a full disk — and outside it those failures ended the slot
             # with nothing written down at all.
+            # The caller names the report from its own copy. Handing over the object
+            # that was just checked let a URI callback rewrite it in place — the check
+            # passed on one report and the publication carried another.
+            uri = report_uri(_frozen(signed_report))
             self.operations.begin_operation(
                 signed_report,
-                report_uri=report_uri(signed_report),
+                report_uri=uri,
                 correction_of=correction_of,
                 scheduled_for=scheduled_at,
+                expected_asset_key=self.asset_key,
             )
         except Exception as error:  # noqa: BLE001 - recorded, like every other failure
             # EPOCH_FAILED, not PUBLICATION_UNRESOLVED: nothing was ever handed to the
@@ -315,7 +340,11 @@ class Service:
             # The retry belongs here, around the publication, because this is where a
             # transport failure actually arises — preflight and submission. Wrapping the
             # producer instead meant submission was never retried at all.
-            self._with_retry(lambda: self.operations.resolve(self.client))
+            self._with_retry(
+                lambda: self.operations.resolve(
+                    self.client, expected_asset_key=self.asset_key
+                )
+            )
         except Exception as error:  # noqa: BLE001 - anything here is an incident
             # Deliberately broad. Two chosen types left the transparency log's own error
             # escaping unrecorded, and naming types one at a time is how that keeps
@@ -358,9 +387,15 @@ class Service:
                 )
             return
         if journalled is not None:
-            self.operations.resolve(self.client)
+            self.operations.resolve(
+                self.client, expected_asset_key=self.asset_key
+            )
         else:
-            self._with_retry(lambda: self.operations.resolve(self.client))
+            self._with_retry(
+                lambda: self.operations.resolve(
+                    self.client, expected_asset_key=self.asset_key
+                )
+            )
         # Closed here, with the resolution that earned it, rather than at the end of a
         # successful slot. Waiting meant a producer failing afterwards left the settled
         # publication's incident open, reporting a service as stuck on something it had
@@ -506,6 +541,11 @@ def _serve_locked(
         ),
         **schedule_arguments,
     )
+
+
+def _frozen(signed_report):
+    """An independent copy, so nobody can rewrite a report after it has been checked."""
+    return strict_json_loads(canonical_json_bytes(dict(signed_report)))
 
 
 def _also(mandatory, extra):

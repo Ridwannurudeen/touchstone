@@ -3,6 +3,7 @@ double publication."""
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
@@ -675,7 +676,12 @@ def test_a_failing_journal_read_at_startup_is_recorded(tmp_path: Path) -> None:
     with pytest.raises(UnresolvedPublication, match="cannot be read"):
         service.resolve_startup()
 
-    assert len(service.incidents.open_incidents()) == 1
+    incidents = service.incidents.open_incidents()
+    assert [i.kind for i in incidents] == [PUBLICATION_UNRESOLVED]
+    assert incidents[0].asset_key == ASSET_KEY_OF
+    assert "cannot be read" in incidents[0].detail, (
+        "counting incidents says nothing about whether the right one was written"
+    )
 
 
 def test_a_failing_recorder_does_not_replace_the_failure_it_describes(
@@ -748,3 +754,103 @@ def test_a_non_finite_backoff_is_refused(tmp_path: Path, backoff: object) -> Non
 
     with pytest.raises(ValueError, match="backoff_seconds"):
         build(tmp_path, backend, backoff_seconds=backoff)
+
+
+def test_an_operation_swapped_between_the_check_and_the_publish_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Check and use must be the same object, or the check is decoration.
+
+    Validating a loaded operation and then calling a resolve that re-reads the file means
+    two different objects: whatever replaced it in between was published unchecked. A
+    static file cannot show this, so the file changes between the two loads.
+    """
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    store = service.operations
+    ours = _signed_report(1)
+    store.begin_operation(
+        ours, report_uri=uri(ours), correction_of=None, scheduled_for=AT
+    )
+
+    theirs = dict(_signed_report(1))
+    theirs["report"] = {**theirs["report"], "asset_key": "eip155:1:0x" + "99" * 20}
+    real_load = store.load_operation
+    loads = {"n": 0}
+
+    def load_ours_then_theirs():
+        loads["n"] += 1
+        operation = real_load()
+        if loads["n"] == 1 or operation is None:
+            return operation
+        # The second read — the one resolve() performs — returns a foreign operation.
+        return dataclasses.replace(
+            operation,
+            asset_key="eip155:1:0x" + "99" * 20,
+            signed_report=theirs,
+        )
+
+    store.load_operation = load_ours_then_theirs
+
+    with pytest.raises(UnresolvedPublication, match="configured for"):
+        service.resolve_startup()
+    assert backend.submissions == [], "the substituted operation was never published"
+
+
+def test_a_uri_callback_cannot_rewrite_the_report_it_was_given(
+    tmp_path: Path,
+) -> None:
+    """The report is checked, then named. Naming must not be a chance to replace it.
+
+    Handing the callback the very object that was just checked let it clear and refill the
+    dict in place, so the check passed on one report and the publication carried another.
+    """
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    foreign = dict(_signed_report(1))
+    foreign["report"] = {**foreign["report"], "asset_key": "eip155:1:0x" + "99" * 20}
+
+    def rewrite_while_naming(value):
+        value.clear()
+        value.update(foreign)
+        return "urn:touchstone:report:1"
+
+    outcome = service.run_slot(
+        AT, lambda at: _signed_report(1), report_uri=rewrite_while_naming
+    )
+
+    assert outcome.published is True, "our own report published normally"
+    operation_assets = [
+        entry["signed_report"]["report"]["asset_key"]
+        for entry in service.client.transparency_log.verify()
+    ]
+    assert operation_assets == [ASSET_KEY_OF], (
+        f"the published report must be the one that was checked, got {operation_assets}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("backoff", "retries"),
+    [(1e308, 2), (1e300, 40), (1e10, 10)],
+)
+def test_a_finite_backoff_that_derives_an_impossible_delay_is_refused(
+    tmp_path: Path, backoff: float, retries: int
+) -> None:
+    """Checking the base said nothing about the delays doubled out of it.
+
+    A finite base reaches infinity in a few doublings, so a configuration accepted at
+    startup raised on the first failure it existed to absorb — the recovery becoming the
+    outage.
+    """
+    backend = FakeBackend()
+
+    with pytest.raises(ValueError, match="beyond the"):
+        build(tmp_path, backend, backoff_seconds=backoff, retries=retries)
+
+
+def test_an_ordinary_backoff_is_still_accepted(tmp_path: Path) -> None:
+    backend = FakeBackend()
+
+    service = build(tmp_path, backend, backoff_seconds=2.0, retries=3)
+
+    assert service.backoff_seconds == 2.0

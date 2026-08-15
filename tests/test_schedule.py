@@ -426,3 +426,32 @@ def test_an_unusable_cadence_is_refused_before_any_slot_runs(interval: float) ->
         )
 
     assert ran == [], "nothing ran before the configuration was rejected"
+
+
+def test_a_span_that_only_overflows_later_is_refused_up_front() -> None:
+    """One advancement proves one advancement, and the run needs all of them.
+
+    An interval small enough to survive the first step and large enough to overflow the
+    last ran every requested slot and *then* failed — with all the work already done and
+    the failure arriving as a crash rather than as a configuration error.
+    """
+    clock = FakeTime()
+    ran = []
+
+    with pytest.raises(ValueError, match="cannot be added to the clock"):
+        schedule(lambda at: ran.append(at), clock, interval_seconds=2e10, max_runs=2)
+
+    assert ran == [], "no slot ran"
+
+
+def test_a_finished_schedule_does_not_compute_a_slot_nobody_will_use() -> None:
+    """After the last requested run there is no next slot to name."""
+    clock = FakeTime()
+    ran = []
+
+    outcome = schedule(
+        lambda at: ran.append(at), clock, interval_seconds=1e9, max_runs=2
+    )
+
+    assert outcome.completed == 2
+    assert len(ran) == 2

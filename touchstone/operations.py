@@ -126,6 +126,7 @@ class OperationsStore:
         report_uri: str,
         correction_of: int | None,
         scheduled_for: datetime,
+        expected_asset_key: str | None = None,
     ) -> PendingOperation:
         """Write down the whole publication before asking anyone to perform it."""
         existing = self.load_operation()
@@ -135,6 +136,11 @@ class OperationsStore:
                 "still unresolved; it must be settled before another begins"
             )
         report = _report_of(signed_report)
+        if expected_asset_key is not None and report["asset_key"] != expected_asset_key:
+            raise OperationsError(
+                f"the report is for {report['asset_key']!r}, but this service is "
+                f"configured for {expected_asset_key!r}"
+            )
         if correction_of != report.get("correction_of"):
             raise OperationsError(
                 f"correction_of={correction_of!r} contradicts the report, which says "
@@ -189,7 +195,12 @@ class OperationsStore:
     def clear_operation(self) -> None:
         self.operation_path.unlink(missing_ok=True)
 
-    def resolve(self, client: PublisherClient) -> PublicationResult | None:
+    def resolve(
+        self,
+        client: PublisherClient,
+        *,
+        expected_asset_key: str | None = None,
+    ) -> PublicationResult | None:
         """Settle any in-flight publication. Call before fetching or signing anything.
 
         Two crashes have to come out the same way. If the publisher never finished, this
@@ -202,6 +213,14 @@ class OperationsStore:
         operation = self.load_operation()
         if operation is None:
             return None
+        # Validated here, inside the call that loads and then publishes it. A caller that
+        # checked a *previously* loaded operation checked a different object: this method
+        # re-reads the file, so anything that changed in between was published unchecked.
+        if expected_asset_key is not None and operation.asset_key != expected_asset_key:
+            raise UnresolvedPublication(
+                f"the recorded operation is for {operation.asset_key!r}, but this "
+                f"service is configured for {expected_asset_key!r}"
+            )
         publish = (
             client.publish_correction
             if operation.correction_of is not None

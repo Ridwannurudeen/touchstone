@@ -109,7 +109,10 @@ def run_schedule(
         # interval passes every bound and then overflows the wall clock *after* a job has
         # already executed — a configuration error reported as a mid-flight crash, with
         # side effects already taken.
-        _advanced(scheduled_at, interval)
+        # Every timestamp the run will need, not merely the first. A finite schedule
+        # knows exactly how far it must reach, and proving one step said nothing about
+        # the last one.
+        _advanced(scheduled_at, interval * (max_runs if max_runs is not None else 1))
     except (OverflowError, OSError, ValueError) as error:
         raise ValueError(
             f"interval_seconds={interval_seconds!r} cannot be added to the clock: {error}"
@@ -131,6 +134,12 @@ def run_schedule(
                 on_failure(scheduled_at, error)
         else:
             completed += 1
+
+        if max_runs is not None and completed + len(failed) >= max_runs:
+            # Nothing more will run, so nothing more needs a timestamp. Advancing anyway
+            # computed a slot no one would ever use — and for a long interval that
+            # arithmetic overflowed *after* every requested job had already succeeded.
+            break
 
         next_run += interval
         scheduled_at = _advanced(scheduled_at, interval)
