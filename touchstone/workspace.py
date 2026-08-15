@@ -56,6 +56,27 @@ class Workspace:
         return self.root / "incidents.jsonl"
 
     @property
+    def evidence(self) -> Path:
+        """Where retained artifacts live.
+
+        Derived here rather than rooted independently, because evidence is the one thing in
+        this project that cannot be recreated: a report can be rebuilt from its inputs, and
+        the inputs cannot be rebuilt from anything. An adapter free to store it outside the
+        workspace is an adapter free to store it outside the backup.
+        """
+        return self.root / "evidence"
+
+    @property
+    def heartbeat(self) -> Path:
+        """What the daemon writes to say it is alive, and when that stops being true.
+
+        Deliberately not inside `operations`: that directory is durable state the service
+        reasons about, while this is a liveness artifact that is expected to go stale and
+        is never restored from a backup.
+        """
+        return self.root / "heartbeat.json"
+
+    @property
     def lock(self) -> Path:
         """The single lock every writer to this workspace takes.
 
