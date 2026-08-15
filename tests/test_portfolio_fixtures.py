@@ -191,6 +191,45 @@ def test_probe_revalidates_a_hand_built_target() -> None:
         probe(unsafe)
 
 
+def test_probe_refuses_a_forged_cap_on_a_declared_url() -> None:
+    """Membership by URL alone let a hand-built target widen its own byte cap."""
+    declared = next(
+        target for target in load_targets()
+        if target.source_id == "superstate-ustb-yield"
+    )
+    forged = ProbeTarget(
+        manifest=declared.manifest,
+        source_id=declared.source_id,
+        url=declared.url,
+        max_bytes=ABSOLUTE_MAX_BYTES,
+        expected_mime=declared.expected_mime,
+    )
+
+    assert forged.url == declared.url and forged.max_bytes > declared.max_bytes
+    with pytest.raises(ValueError, match="not exactly as declared"):
+        probe(forged)
+
+
+def test_the_discovery_fixture_points_at_the_filing_fixture() -> None:
+    """Discovery is only useful if it resolves to the filing actually retained."""
+    submissions = json.loads(
+        (ROOT / "fixtures" / "fobxx-submissions-20260815.json").read_text(encoding="utf-8")
+    )
+    recent = submissions["filings"]["recent"]
+    index = recent["form"].index("N-MFP3")
+
+    assert submissions["cik"] == "0001786958"
+    assert recent["reportDate"][index] == "2026-07-31"
+    assert recent["accessionNumber"][index] == "0002071691-26-017542"
+
+    manifest = json.loads((MANIFESTS / "fobxx.json").read_text(encoding="utf-8"))
+    filing = next(
+        record for record in manifest["fixtures"]
+        if record["source_id"] == "sec-edgar-fobxx-nmfp3"
+    )
+    assert filing["accession"] == recent["accessionNumber"][index]
+
+
 def test_probe_refuses_an_undeclared_https_target() -> None:
     """HTTPS alone is not enough: the module promises only manifest-declared URLs."""
     undeclared = ProbeTarget(
@@ -198,7 +237,7 @@ def test_probe_refuses_an_undeclared_https_target() -> None:
         max_bytes=1024, expected_mime=None,
     )
 
-    with pytest.raises(ValueError, match="not declared in any manifest"):
+    with pytest.raises(ValueError, match="not exactly as declared"):
         probe(undeclared)
 
 
@@ -209,14 +248,13 @@ def test_every_source_states_a_fixture_disposition(name: str, manifest: dict) ->
     for source in manifest["sources"]:
         disposition = source.get("fixture_disposition")
         assert disposition, f"{name}/{source['source_id']} has no fixture disposition"
-        assert disposition.split(":")[0] in {
-            "captured",
-            "blocked",
-            "exempt",
-            "deferred",
-        }, disposition
-        if disposition == "captured" and captured:
-            continue
+        kind = disposition.split(":")[0]
+        assert kind in {"captured", "blocked", "exempt", "deferred"}, disposition
+        if kind == "captured":
+            assert source["source_id"] in captured, (
+                f"{name}/{source['source_id']} claims captured but no fixture "
+                f"declares it as its source"
+            )
 
 
 def test_edgar_filing_discovery_is_probed_not_just_one_filing() -> None:

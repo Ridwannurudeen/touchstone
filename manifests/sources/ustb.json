@@ -80,31 +80,36 @@
       "file": "fixtures/ustb-nav.json",
       "captured_utc": "2026-08-13T14:16:17Z",
       "bytes": 224837,
-      "sha256": "4830bc348b621f70682cd41c0d48484987b6b5f3c1a99193e0ca33e7ccba3a25"
+      "sha256": "4830bc348b621f70682cd41c0d48484987b6b5f3c1a99193e0ca33e7ccba3a25",
+      "source_id": "superstate-ustb-nav-daily"
     },
     {
       "file": "fixtures/ustb-nav-20260814.json",
       "captured_utc": "2026-08-14T17:08:12Z",
       "bytes": 225074,
-      "sha256": "5b6a53e00de2d0762a122780d08961f37d7d5dc8d71f909c208574e64dfe9fda"
+      "sha256": "5b6a53e00de2d0762a122780d08961f37d7d5dc8d71f909c208574e64dfe9fda",
+      "source_id": "superstate-ustb-nav-daily"
     },
     {
       "file": "fixtures/ustb-yield.json",
       "captured_utc": "2026-08-13T14:16:17Z",
       "bytes": 122,
-      "sha256": "02ef1e14a867a5d034916021fecde3c6e555e78ac830ce78a8a3d6d49e55ce1f"
+      "sha256": "02ef1e14a867a5d034916021fecde3c6e555e78ac830ce78a8a3d6d49e55ce1f",
+      "source_id": "superstate-ustb-yield"
     },
     {
       "file": "fixtures/ustb-yield-20260814.json",
       "captured_utc": "2026-08-14T17:08:12Z",
       "bytes": 122,
-      "sha256": "7f2a26430697e35096cf2e5d5bb225d6886b78dc25be4b543383fd4524db5a2c"
+      "sha256": "7f2a26430697e35096cf2e5d5bb225d6886b78dc25be4b543383fd4524db5a2c",
+      "source_id": "superstate-ustb-yield"
     },
     {
       "file": "fixtures/ustb-holdings.json",
       "captured_utc": "2026-08-13T14:16:17Z",
       "bytes": 5396,
-      "sha256": "0c42d7949ccfbcd10256718199361daa4ff1c81ad90ba62c415fa173f8d22bdf"
+      "sha256": "0c42d7949ccfbcd10256718199361daa4ff1c81ad90ba62c415fa173f8d22bdf",
+      "source_id": "superstate-ustb-holdings"
     }
   ],
   "terms_of_use": {

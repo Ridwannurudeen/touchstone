@@ -120,14 +120,17 @@ def load_targets(manifest_dir: Path = MANIFEST_DIR) -> list[ProbeTarget]:
 def probe(target: ProbeTarget, *, timeout: float = DEFAULT_TIMEOUT) -> ProbeResult:
     """Issue one bounded GET and describe the response without interpreting it.
 
-    The URL and cap are re-checked here rather than trusted from the target, and the URL
-    must still be one a manifest declares. A ProbeTarget built by hand therefore cannot
-    reach anything ``load_targets`` would not have reached.
+    The URL and cap are re-checked here rather than trusted from the target, and the target
+    must match a declared one **exactly** — same URL, same cap, same identity. Membership by
+    URL alone was not enough: a hand-built target could reuse a declared URL while widening
+    its byte cap, and the read would have been bounded by the forged value.
     """
     url = _checked_url(target.url, target.source_id)
     max_bytes = _checked_cap(target.max_bytes, target.source_id)
-    if url not in {declared.url for declared in load_targets()}:
-        raise ValueError(f"{target.source_id}: url is not declared in any manifest")
+    if target not in load_targets():
+        raise ValueError(
+            f"{target.source_id}: target is not exactly as declared in a manifest"
+        )
     headers = {
         "Accept": "*/*",
         "Accept-Encoding": "identity",
