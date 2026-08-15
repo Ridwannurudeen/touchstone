@@ -249,19 +249,22 @@ class OperationsStore:
                 f"onchain but this service has no record of publishing it: {error}"
             ) from error
         asset_key = bytes(Web3.keccak(text=operation.asset_key))
+        report = _report_of(operation.signed_report)
         try:
+            # Every field, not a chosen few. The publisher already owns this comparison —
+            # roots, status, both timestamps, sequence and URI — and checking only the URI
+            # and the lineage here let a report with different roots pass as settled,
+            # after which the operation was cleared and local state saved for something
+            # the chain does not contain.
+            client.ensure_onchain_match(asset_key, report, operation.report_uri)
             onchain = client.backend.get_report(asset_key, operation.sequence)
-        except Exception as read_error:  # noqa: BLE001 - unreadable means unproven
+        except UnresolvedPublication:
+            raise
+        except Exception as read_error:  # noqa: BLE001 - unproven is not settled
             raise UnresolvedPublication(
-                f"sequence {operation.sequence} is onchain but could not be read back "
-                f"to confirm it is this operation: {read_error}"
+                f"sequence {operation.sequence} is onchain but does not match this "
+                f"operation: {read_error}"
             ) from read_error
-        if onchain.report_uri != operation.report_uri:
-            raise UnresolvedPublication(
-                f"sequence {operation.sequence} is onchain under "
-                f"{onchain.report_uri!r}, but this operation is for "
-                f"{operation.report_uri!r}"
-            )
         lineage = client.backend.publisher_lineage(onchain.publisher)
         if lineage != client.manifest.publisher_identity_address:
             raise UnresolvedPublication(

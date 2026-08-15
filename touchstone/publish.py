@@ -937,7 +937,7 @@ class PublisherClient:
             # it all runs after the endpoint has been proved again — not on reads taken
             # when this branch was entered.
             self.backend.revalidate()
-            self._ensure_onchain_match(asset_key, report, report_uri)
+            self.ensure_onchain_match(asset_key, report, report_uri)
             # The publishing transaction is whichever one the registry emitted for this
             # asset and sequence under our lineage — not whichever one the journal names.
             found = self.backend.find_receipt(asset_key, sequence, correction_of)
@@ -1015,7 +1015,7 @@ class PublisherClient:
                 raise SubmissionFailed(
                     "successful receipt did not advance registry sequence"
                 )
-            self._ensure_onchain_match(asset_key, report, report_uri)
+            self.ensure_onchain_match(asset_key, report, report_uri)
             return self._finalize(
                 signed_report,
                 receipt,
@@ -1060,7 +1060,7 @@ class PublisherClient:
             raise SubmissionFailed(
                 "successful receipt did not advance registry sequence"
             )
-        self._ensure_onchain_match(asset_key, report, report_uri)
+        self.ensure_onchain_match(asset_key, report, report_uri)
         return self._finalize(
             signed_report,
             receipt,
@@ -1087,7 +1087,7 @@ class PublisherClient:
             )
         return receipt
 
-    def _ensure_onchain_match(
+    def ensure_onchain_match(
         self, asset_key: bytes, report: Mapping[str, object], report_uri: str
     ) -> None:
         onchain = self.backend.get_report(asset_key, report["sequence"])

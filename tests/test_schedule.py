@@ -258,3 +258,48 @@ def test_a_slot_due_at_this_exact_moment_is_run_not_skipped() -> None:
         START + timedelta(seconds=120),
         START + timedelta(seconds=180),
     ]
+
+
+@pytest.mark.parametrize("interval", [0.1, 0.2, 0.3, 1 / 3, 0.05, 2.5])
+@pytest.mark.parametrize("elapsed", [1, 2, 3, 4, 7])
+def test_a_fractional_interval_still_runs_the_slot_that_is_due(
+    interval: float, elapsed: int
+) -> None:
+    """The same boundary, over the input domain where floats do not divide cleanly.
+
+    A gap of exactly N intervals divides to a hair over N — 2.0000000000000004 — and a
+    bare ceiling reads that as N+1, dropping the live slot again. Integer intervals hid
+    this entirely, which is why the first fix looked complete.
+    """
+    clock = FakeTime()
+    starts = []
+
+    def job(scheduled_at: datetime) -> None:
+        starts.append(scheduled_at)
+        if len(starts) == 1:
+            clock.current += interval * elapsed
+
+    outcome = schedule(job, clock, interval_seconds=interval, max_runs=2)
+
+    assert outcome.missed_count == elapsed - 1, (
+        f"{elapsed} slots elapsed, so {elapsed - 1} were missed and one was due"
+    )
+    # Within a microsecond: datetime has microsecond resolution, and the scheduler
+    # accumulates its slot times by repeated addition rather than one multiplication.
+    expected = START + timedelta(seconds=interval * elapsed)
+    assert abs((starts[1] - expected).total_seconds()) < 1e-5
+
+
+def test_a_partial_gap_still_counts_the_slot_it_passed() -> None:
+    """The tolerance must not swallow a slot that genuinely went by."""
+    clock = FakeTime()
+    starts = []
+
+    def job(scheduled_at: datetime) -> None:
+        starts.append(scheduled_at)
+        if len(starts) == 1:
+            clock.current += 0.25  # two and a half intervals of 0.1
+
+    outcome = schedule(job, clock, interval_seconds=0.1, max_runs=2)
+
+    assert outcome.missed_count == 2

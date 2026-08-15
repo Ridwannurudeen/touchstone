@@ -10,11 +10,12 @@ import sys
 import pytest
 
 from touchstone.incidents import (
+    EPOCH_FAILED,
     PUBLICATION_UNRESOLVED,
     SOURCE_UNAVAILABLE,
     IncidentLog,
 )
-from touchstone.operations import OperationsStore
+from touchstone.operations import OperationsStore, UnresolvedPublication
 from touchstone.publish import PublisherClient, TransportUnavailable
 from touchstone.translog import TransparencyLog
 
@@ -162,7 +163,7 @@ def test_retrying_stops_once_a_transaction_has_been_journalled(
         }
     )
 
-    with pytest.raises(Exception, match="reconciled, not retried"):
+    with pytest.raises(UnresolvedPublication, match="reconciled, not retried"):
         service._with_retry(lambda: None)
 
 
@@ -312,7 +313,7 @@ def test_a_settled_sequence_under_another_uri_is_not_accepted_as_ours(
         scheduled_for=AT,
     )
 
-    with pytest.raises(Exception, match="is onchain under"):
+    with pytest.raises(UnresolvedPublication, match="does not match this operation"):
         service.operations.resolve(service.client)
     assert service.operations.load_operation() is not None, "kept for review"
 
@@ -369,9 +370,10 @@ def test_a_failure_recording_the_operation_is_still_recorded(tmp_path: Path) -> 
     outcome = service.run_slot(AT, lambda at: _signed_report(1), report_uri=bad_uri)
 
     assert outcome.published is False
-    assert [i.kind for i in service.incidents.open_incidents()] == [
-        PUBLICATION_UNRESOLVED
-    ]
+    # EPOCH_FAILED, not PUBLICATION_UNRESOLVED. Nothing was handed to the publisher, so
+    # filing it as a publication incident made startup close it the moment it saw no
+    # operation and no journal — declaring recovered a failure nobody had touched.
+    assert [i.kind for i in service.incidents.open_incidents()] == [EPOCH_FAILED]
     assert backend.submissions == []
 
 
@@ -396,3 +398,116 @@ def test_two_services_cannot_share_one_workspace(tmp_path: Path) -> None:
                 now=lambda: AT,
             )
     assert backend.submissions == [], "the second service did no work at all"
+
+
+def test_startup_does_not_close_a_failure_that_never_reached_the_publisher(
+    tmp_path: Path,
+) -> None:
+    """The false-closure this arrangement is built to avoid.
+
+    A URI failure leaves no operation and no journal. If it were filed as a publication
+    incident, startup would see both absent and close it — reporting a recovery for a
+    cause nobody had touched.
+    """
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+
+    def bad_uri(signed_report):
+        raise RuntimeError("disk full")
+
+    service.run_slot(AT, lambda at: _signed_report(1), report_uri=bad_uri)
+    assert len(service.incidents.open_incidents()) == 1
+
+    service.resolve_startup()
+
+    assert [i.kind for i in service.incidents.open_incidents()] == [EPOCH_FAILED], (
+        "the failure stays open until something actually addresses it"
+    )
+
+
+def test_a_journal_without_an_operation_stops_the_slot_before_it_produces(
+    tmp_path: Path,
+) -> None:
+    """Either durable layer saying 'unresolved' must stop production, not just one.
+
+    A journal with no operation was ignored by the resolution gate, so the slot fetched
+    and signed and only then met the refusal — after exactly the work that must not
+    happen first.
+    """
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    service.client._write_pending(
+        {
+            "asset_key": ASSET_KEY_OF,
+            "chain_id": 31337,
+            "correction_of": None,
+            "nonce": 0,
+            "publisher_address": backend.manifest.publisher_address,
+            "raw_transaction": "aa",
+            "registry_address": backend.manifest.registry_address,
+            "report_sha256": "cd" * 32,
+            "report_uri": "urn:touchstone:report:1",
+            "sequence": 1,
+            "transaction_hash": "0x" + "ab" * 32,
+        }
+    )
+    produced = []
+
+    outcome = service.run_slot(
+        AT,
+        lambda at: produced.append(at) or _signed_report(1),
+        report_uri=uri,
+    )
+
+    assert produced == [], "nothing was fetched or signed"
+    assert outcome.published is False
+    assert [i.kind for i in service.incidents.open_incidents()] == [
+        PUBLICATION_UNRESOLVED
+    ]
+
+
+def test_startup_refuses_a_journal_with_no_operation(tmp_path: Path) -> None:
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    service.client._write_pending(
+        {
+            "asset_key": ASSET_KEY_OF,
+            "chain_id": 31337,
+            "correction_of": None,
+            "nonce": 0,
+            "publisher_address": backend.manifest.publisher_address,
+            "raw_transaction": "aa",
+            "registry_address": backend.manifest.registry_address,
+            "report_sha256": "cd" * 32,
+            "report_uri": "urn:touchstone:report:1",
+            "sequence": 1,
+            "transaction_hash": "0x" + "ab" * 32,
+        }
+    )
+
+    with pytest.raises(UnresolvedPublication, match="journalled with no operation"):
+        service.resolve_startup()
+
+
+def test_a_serve_caller_may_still_supply_its_own_failure_handler(
+    tmp_path: Path,
+) -> None:
+    """Forcing the service's handler made the parameter unforwardable."""
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    clock = Clock()
+    seen = []
+
+    serve(
+        service,
+        lambda at: _signed_report(1),
+        report_uri=uri,
+        interval_seconds=60,
+        max_runs=1,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+        now=lambda: AT,
+        on_failure=lambda at, error: seen.append(error),
+    )
+
+    assert seen == [], "nothing failed, but supplying the handler was accepted"

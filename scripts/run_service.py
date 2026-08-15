@@ -131,14 +131,21 @@ class Service:
                 f"the recorded operation cannot be read: {error}"
             ) from error
         if operation is None:
-            # The operation may have been cleared by a run that died before it could
-            # close the incident it had opened. Nothing is outstanding, so the incident
-            # is stale, and leaving it open would report a service as stuck for ever.
-            if self.client.pending_transaction() is None:
-                self._close_open_incidents(
-                    "no publication is outstanding",
-                    kinds={PUBLICATION_UNRESOLVED},
+            journalled = self.client.pending_transaction()
+            if journalled is not None:
+                raise UnresolvedPublication(
+                    f"transaction {journalled} is journalled with no operation to settle "
+                    "it; this workspace must be reconciled before the service runs"
                 )
+            # The operation may have been cleared by a run that died before it could close
+            # the incident it had opened. With no operation and no journal there is
+            # genuinely nothing outstanding, and leaving it open would report a service as
+            # stuck for ever. This only ever closes *publication* incidents, which is why
+            # a failure before an operation exists is not filed as one.
+            self._close_open_incidents(
+                "no publication is outstanding",
+                kinds={PUBLICATION_UNRESOLVED},
+            )
             return None
         moment = self.now()
         try:
@@ -220,8 +227,12 @@ class Service:
                 scheduled_for=scheduled_at,
             )
         except Exception as error:  # noqa: BLE001 - recorded, like every other failure
+            # EPOCH_FAILED, not PUBLICATION_UNRESOLVED: nothing was ever handed to the
+            # publisher, so there is no operation and no journal. Filing it as a
+            # publication incident made it look resolved the moment startup noticed those
+            # were absent — closing an incident whose cause nobody had touched.
             return self._record_incident(
-                PUBLICATION_UNRESOLVED,
+                EPOCH_FAILED,
                 f"the report could not be recorded for publication: {error}",
                 scheduled_at,
             )
@@ -258,9 +269,18 @@ class Service:
         alive, even after the transaction confirmed. Disabling the retry is right;
         disabling reconciliation is not.
         """
+        journalled = self.client.pending_transaction()
         if self.operations.load_operation() is None:
+            if journalled is not None:
+                # A journal with no operation is still something unresolved on the chain.
+                # Returning here let the slot go on to fetch and sign, and only then run
+                # into the refusal — after the work that must not happen first.
+                raise UnresolvedPublication(
+                    f"transaction {journalled} is journalled with no operation to settle "
+                    "it; nothing new may be produced until it is reconciled"
+                )
             return
-        if self.client.pending_transaction() is not None:
+        if journalled is not None:
             self.operations.resolve(self.client)
             return
         self._with_retry(lambda: self.operations.resolve(self.client))
@@ -392,11 +412,14 @@ def _serve_locked(
         ),
         interval_seconds=interval_seconds,
         max_runs=max_runs,
-        on_outage=service.record_outage,
+        on_outage=schedule_arguments.pop("on_outage", service.record_outage),
         # A last resort. run_slot records everything it can, but anything that escapes it
         # would otherwise leave the schedule running and the log silent — the worst
-        # combination, because it looks exactly like working.
-        on_failure=service.record_escaped_failure,
+        # combination, because it looks exactly like working. A caller may supply its own;
+        # forcing this one made the parameter unforwardable.
+        on_failure=schedule_arguments.pop(
+            "on_failure", service.record_escaped_failure
+        ),
         **schedule_arguments,
     )
 

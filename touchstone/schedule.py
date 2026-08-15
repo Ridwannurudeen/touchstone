@@ -33,6 +33,9 @@ DEFAULT_INTERVAL_SECONDS = 86_400.0
 # denial of service against whoever reads it. The count is always exact.
 MAX_NAMED_MISSES = 64
 
+# Tolerance, as a fraction of one interval, for deciding whether a slot is due now.
+_SLOT_EPSILON = 1e-9
+
 
 @dataclass(frozen=True, slots=True)
 class ScheduleOutcome:
@@ -115,7 +118,13 @@ def run_schedule(
             # Ceiling, not floor-plus-one. A slot due at exactly this moment is due, not
             # missed: the old form counted it as skipped and then jumped past it, so an
             # outage of an exact multiple of the interval silently dropped a live slot.
-            skipped = math.ceil((current - next_run) / interval)
+            #
+            # The tolerance matters as much as the ceiling. With a fractional interval the
+            # division lands a few ulps above a whole number — 2.0000000000000004 for a
+            # gap that is exactly two intervals — and a bare ceiling reads that as three,
+            # dropping the live slot all over again. Anything within a hair of a whole
+            # number is that whole number; a slot a nanosecond late is due, not missed.
+            skipped = math.ceil((current - next_run) / interval - _SLOT_EPSILON)
             # Only the slots actually named cost anything. Iterating over every skipped
             # slot to discard most of them made the work proportional to the outage, which
             # is the opposite of what a recovering service needs.

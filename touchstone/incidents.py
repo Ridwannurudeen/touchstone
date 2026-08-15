@@ -85,6 +85,7 @@ class IncidentLog:
             raise ValueError(f"incident log path must be a file: {self.path}")
         self.head_path = self.path.with_name(self.path.name + ".head")
         self.lock_path = self.path.with_name(self.path.name + ".lock")
+        self._writing = False
 
     def _exclusive(self):
         """An OS-level lock, so a killed writer does not lock the log out forever.
@@ -215,14 +216,18 @@ class IncidentLog:
         state: str | None,
     ) -> dict[str, object]:
         with self._exclusive():
-            return self._append_locked(
-                asset_key=asset_key,
-                kind=kind,
-                detail=detail,
-                occurred_at=occurred_at,
-                closes=closes,
-                state=state,
-            )
+            self._writing = True
+            try:
+                return self._append_locked(
+                    asset_key=asset_key,
+                    kind=kind,
+                    detail=detail,
+                    occurred_at=occurred_at,
+                    closes=closes,
+                    state=state,
+                )
+            finally:
+                self._writing = False
 
     def _append_locked(
         self,
@@ -292,6 +297,32 @@ class IncidentLog:
             entries.append(value)
         return entries
 
+    def _repair_head(self, count: int, head_entry_hash: str) -> None:
+        """Complete an interrupted head under the lock, and only if still needed.
+
+        Repair is a write, and ``verify()`` is called by readers who hold nothing. Two of
+        them repairing at once share one ``.head.tmp``: each writes it, and the second
+        ``os.replace`` can find its source already moved. Under the lock the state is
+        re-read first, so a repair another process has already done is simply not redone.
+        """
+        if self._writing:
+            # Already inside an append, which holds the lock; recursing would deadlock.
+            self._write_head(count, head_entry_hash)
+            return
+        with self._exclusive():
+            if self.head_path.exists():
+                try:
+                    current = strict_json_loads(self.head_path.read_bytes())
+                except (OSError, TypeError, ValueError):
+                    current = None
+                if (
+                    isinstance(current, dict)
+                    and current.get("count") == count
+                    and current.get("head_entry_hash") == head_entry_hash
+                ):
+                    return
+            self._write_head(count, head_entry_hash)
+
     def _write_head(self, count: int, head_entry_hash: str) -> None:
         head = {
             "count": count,
@@ -317,7 +348,7 @@ class IncidentLog:
                 # The very first entry was fsynced and the head never written. Same
                 # interrupted append as below, and equally repairable — refusing it would
                 # make a service's first recorded incident unrecoverable.
-                self._write_head(1, entries[0]["entry_hash"])
+                self._repair_head(1, entries[0]["entry_hash"])
                 return
             if entries:
                 raise IncidentLogError(
@@ -344,7 +375,7 @@ class IncidentLog:
                 # loss: the line was fsynced and the head never caught up. Completing the
                 # head is the recovery, and it is the only direction safe to repair — a
                 # log shorter than its head has lost something no repair brings back.
-                self._write_head(len(entries), expected)
+                self._repair_head(len(entries), expected)
                 return
         if head["count"] > len(entries):
             raise IncidentLogError(
