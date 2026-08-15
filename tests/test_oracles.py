@@ -17,7 +17,11 @@ from touchstone.oracles import (
 )
 
 
-UPDATED_AT = int(datetime(2026, 8, 11, 13, 13, 0, tzinfo=timezone.utc).timestamp())
+# The audit records a publication on 08-12 carrying the NAV effective 08/11, so the
+# fixture deliberately puts publication and effective date on different days.
+PUBLISHED_AT = int(datetime(2026, 8, 12, 13, 13, 0, tzinfo=timezone.utc).timestamp())
+UPDATED_AT = PUBLISHED_AT
+EFFECTIVE_DATE = date(2026, 8, 11)
 
 
 def word(value: int) -> str:
@@ -75,7 +79,7 @@ def test_a_reading_pins_a_block_and_verifies_identity() -> None:
     assert reading.block_number == 25_756_018
     assert reading.decimals == 6
     assert reading.answer == Decimal("11.175588")
-    assert reading.updated_on == date(2026, 8, 11)
+    assert reading.updated_on == date(2026, 8, 12)
     pinned = [params for method, params in rpc.calls if method == "eth_call"]
     assert pinned and all(params[1] == hex(25_756_018) for params in pinned), (
         "every contract read must be pinned to the same block"
@@ -124,10 +128,10 @@ def test_agreement_within_tolerance() -> None:
     reading = read_ustb_oracle(FakeRPC(), block_number=1)
 
     comparison = compare_confirmed_row(
-        row(date(2026, 8, 11), "11.17558800"),
+        row(EFFECTIVE_DATE, "11.17558800"),
         reading,
         tolerance=Decimal("0.000001"),
-        effective_date=date(2026, 8, 11),
+        effective_date=EFFECTIVE_DATE,
     )
 
     assert comparison.agrees
@@ -139,10 +143,10 @@ def test_a_real_disagreement_is_reported() -> None:
     reading = read_ustb_oracle(FakeRPC(), block_number=1)
 
     comparison = compare_confirmed_row(
-        row(date(2026, 8, 11), "11.99999999"),
+        row(EFFECTIVE_DATE, "11.99999999"),
         reading,
         tolerance=Decimal("0.000001"),
-        effective_date=date(2026, 8, 11),
+        effective_date=EFFECTIVE_DATE,
     )
 
     assert not comparison.agrees
@@ -158,7 +162,7 @@ def test_a_date_mismatch_refuses_to_compare() -> None:
             row(date(2026, 8, 13), "11.17774800"),
             reading,
             tolerance=Decimal("0.01"),
-            effective_date=date(2026, 8, 11),
+            effective_date=EFFECTIVE_DATE,
         )
 
 
@@ -177,10 +181,10 @@ def test_tolerance_must_be_a_non_negative_decimal() -> None:
     for bad in (Decimal("-0.01"), 0.01, "0.01"):
         with pytest.raises(ValueError, match="tolerance"):
             compare_confirmed_row(
-                row(date(2026, 8, 11), "11.17"),
+                row(EFFECTIVE_DATE, "11.17"),
                 reading,
                 tolerance=bad,
-                effective_date=date(2026, 8, 11),
+                effective_date=EFFECTIVE_DATE,
             )
 
 
@@ -203,17 +207,31 @@ def test_a_reading_is_a_frozen_record() -> None:
         reading.answer = Decimal("0")  # type: ignore[misc]
 
 
-def test_the_effective_date_is_not_inferred_from_the_publication_time() -> None:
-    """The audit records an 08-12 publication carrying the 08/11 NAV, so the reading's own
-    date is not the NAV date. The caller must state it, and a wrong statement is refused."""
-    reading = read_ustb_oracle(FakeRPC(), block_number=1)
-    assert reading.updated_on == date(2026, 8, 11)
+def test_publication_date_and_effective_date_differ_and_only_the_stated_one_counts() -> None:
+    """The audit records an 08-12 publication carrying the 08/11 NAV.
 
-    # A row dated as the oracle published, but stated to represent a different NAV date,
-    # is refused rather than quietly compared.
+    The fixture reproduces that gap: the reading publishes on 08-12, and the comparison
+    succeeds against a row dated 08/11 **because the caller states 08/11**, not because
+    anything inferred it. Had the module used the publication date, this would fail.
+    """
+    reading = read_ustb_oracle(FakeRPC(), block_number=1)
+    assert reading.updated_on == date(2026, 8, 12)
+    assert EFFECTIVE_DATE == date(2026, 8, 11)
+
+    comparison = compare_confirmed_row(
+        row(EFFECTIVE_DATE, "11.17558800"),
+        reading,
+        tolerance=Decimal("0.000001"),
+        effective_date=EFFECTIVE_DATE,
+    )
+
+    assert comparison.agrees
+    assert comparison.effective_date != reading.updated_on
+
+    # And a wrongly stated effective date is still refused.
     with pytest.raises(OracleUnavailable, match="nothing comparable"):
         compare_confirmed_row(
-            row(date(2026, 8, 11), "11.17558800"),
+            row(EFFECTIVE_DATE, "11.17558800"),
             reading,
             tolerance=Decimal("0.01"),
             effective_date=date(2026, 8, 10),
@@ -225,7 +243,7 @@ def test_an_effective_date_must_be_supplied() -> None:
 
     with pytest.raises(TypeError):
         compare_confirmed_row(
-            row(date(2026, 8, 11), "11.17"), reading, tolerance=Decimal("0.01")
+            row(EFFECTIVE_DATE, "11.17"), reading, tolerance=Decimal("0.01")
         )
 
 
@@ -239,3 +257,41 @@ def test_a_different_address_is_refused_even_if_it_has_code() -> None:
 def test_non_hex_code_is_refused() -> None:
     with pytest.raises(OracleIdentityError, match="no contract bytecode"):
         read_ustb_oracle(FakeRPC(eth_getCode="0xnothexatall"), block_number=1)
+
+
+def test_the_pinned_identity_cannot_be_relaxed_by_the_caller() -> None:
+    """An earlier version took expectations as arguments, so declaring chain 137 with 18
+    decimals produced a valid-looking reading from the wrong contract."""
+    import inspect
+
+    signature = inspect.signature(read_ustb_oracle)
+
+    assert "expected_chain_id" not in signature.parameters
+    assert "expected_decimals" not in signature.parameters
+    for bad in (
+        {"eth_chainId": "0x89"},
+        {"decimals": f"0x{18:064x}"},
+        {"eth_getCode": "0x0"},
+        {"eth_getCode": "0x123"},
+    ):
+        with pytest.raises(OracleIdentityError):
+            read_ustb_oracle(FakeRPC(**bad), block_number=1)
+
+
+def test_the_committed_transcript_matches_the_pinned_identity() -> None:
+    """The transcript proves the reading only; it asserts nothing about the NAV date."""
+    import json
+    from pathlib import Path
+
+    transcript = json.loads(
+        (Path(__file__).parents[1] / "fixtures" / "ustb-oracle-transcript.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert transcript["chain_id"] == "0x1"
+    assert transcript["address"] == USTB_ORACLE_ADDRESS
+    assert transcript["block_hash"].startswith("0x") and len(transcript["block_hash"]) == 66
+    assert int(transcript["calls"]["decimals"]["result"], 16) == 6
+    assert transcript["code_bytes"] > 0
+    assert "NAV date" in transcript["_note"]

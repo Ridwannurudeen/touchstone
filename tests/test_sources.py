@@ -1,4 +1,5 @@
 import hashlib
+from collections.abc import Mapping
 from dataclasses import replace
 from types import MappingProxyType
 import json
@@ -537,3 +538,84 @@ def test_an_explicit_identity_encoding_is_accepted(tmp_path: Path) -> None:
         ).byte_size
         == len(raw)
     )
+
+
+def test_identity_with_a_parameter_is_refused(tmp_path: Path) -> None:
+    """The exact bypass that existed: parameter-stripping made 'identity; gzip' pass."""
+    source = USTB_SOURCES[1]
+    transport = FakeTransport(
+        {
+            source.url: response(
+                (FIXTURES / "ustb-yield.json").read_bytes(),
+                headers={
+                    "Content-Type": "application/json",
+                    "Content-Encoding": "identity; gzip",
+                },
+            )
+        }
+    )
+
+    with pytest.raises(SourceResponseError, match="only identity is accepted"):
+        fetch_source(
+            source.source_id,
+            store=EvidenceStore(tmp_path),
+            transport=transport,
+            retrieved_at=RETRIEVED_AT,
+        )
+
+
+class DuplicateHeaders(Mapping):
+    """Headers carrying the same field twice, as a real response can."""
+
+    def __init__(self, pairs: list[tuple[str, str]]) -> None:
+        self._pairs = pairs
+
+    def items(self):
+        return iter(self._pairs)
+
+    def __iter__(self):
+        return iter(name for name, _ in self._pairs)
+
+    def __len__(self) -> int:
+        return len(self._pairs)
+
+    def __getitem__(self, key: str) -> str:
+        for name, value in self._pairs:
+            if name == key:
+                return value
+        raise KeyError(key)
+
+
+@pytest.mark.parametrize(
+    "pairs",
+    [
+        [("Content-Type", "application/json"), ("content-type", "text/html")],
+        [
+            ("Content-Type", "application/json"),
+            ("Content-Encoding", "identity"),
+            ("content-encoding", "gzip"),
+        ],
+    ],
+)
+def test_conflicting_duplicate_headers_are_refused(
+    tmp_path: Path, pairs: list[tuple[str, str]]
+) -> None:
+    """Last-wins on a duplicated header would let either value hide behind the other."""
+    source = USTB_SOURCES[1]
+    transport = FakeTransport(
+        {
+            source.url: TransportResponse(
+                status_code=200,
+                headers=DuplicateHeaders(pairs),
+                body=(FIXTURES / "ustb-yield.json").read_bytes(),
+            )
+        }
+    )
+
+    with pytest.raises(SourceResponseError, match="conflicting"):
+        fetch_source(
+            source.source_id,
+            store=EvidenceStore(tmp_path),
+            transport=transport,
+            retrieved_at=RETRIEVED_AT,
+        )

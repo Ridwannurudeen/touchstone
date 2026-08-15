@@ -157,14 +157,14 @@ def read_ustb_oracle(
     *,
     block_number: int | None = None,
     address: str | None = None,
-    expected_chain_id: int = USTB_ORACLE_CHAIN_ID,
-    expected_decimals: int = USTB_ORACLE_EXPECTED_DECIMALS,
 ) -> OracleReading:
     """Read the oracle at a pinned block, verifying identity before trusting the answer.
 
-    ``address`` defaults to the pinned constant. Passing a different one is checked
-    case-insensitively against that constant and refused unless it matches, so a caller
-    cannot silently point this at another contract.
+    The identity is pinned in this module and is **not** a parameter. Chain id, address
+    and decimals are compared against the constants above, so a caller cannot relax the
+    check by declaring what it expects to find — an earlier version took those as
+    arguments, and supplying chain 137 with 18 decimals produced a perfectly valid-looking
+    reading from the wrong contract.
     """
     if address is None:
         address = USTB_ORACLE_ADDRESS
@@ -173,9 +173,9 @@ def read_ustb_oracle(
             f"{address} is not the pinned USTB oracle {USTB_ORACLE_ADDRESS}"
         )
     chain_id = _hex_to_int(rpc.call(_SELECTOR_CHAIN_ID, []), "chain id")
-    if chain_id != expected_chain_id:
+    if chain_id != USTB_ORACLE_CHAIN_ID:
         raise OracleIdentityError(
-            f"endpoint reports chain {chain_id}, expected {expected_chain_id}"
+            f"endpoint reports chain {chain_id}, expected {USTB_ORACLE_CHAIN_ID}"
         )
 
     if block_number is None:
@@ -187,7 +187,9 @@ def read_ustb_oracle(
         not isinstance(code, str)
         or not code.startswith("0x")
         or len(code) <= 2
+        or len(code) % 2 != 0
         or any(character not in "0123456789abcdefABCDEF" for character in code[2:])
+        or int(code, 16) == 0
     ):
         raise OracleIdentityError(
             f"no contract bytecode at {address} in block {block_number}"
@@ -197,9 +199,10 @@ def read_ustb_oracle(
         "eth_call", [{"to": address, "data": _SELECTOR_DECIMALS}, block]
     )
     decimals = _hex_to_int(decimals_raw, "decimals")
-    if decimals != expected_decimals:
+    if decimals != USTB_ORACLE_EXPECTED_DECIMALS:
         raise OracleIdentityError(
-            f"oracle reports {decimals} decimals, expected {expected_decimals}"
+            f"oracle reports {decimals} decimals, expected "
+            f"{USTB_ORACLE_EXPECTED_DECIMALS}"
         )
 
     answer_raw = rpc.call(

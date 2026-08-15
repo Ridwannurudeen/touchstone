@@ -64,7 +64,7 @@ contingent on the blocker clearing. The N-MFP3 fixture was retrieved and is comm
 **PLAN-T5 — evidence security and oracle check.** Enforce MIME against the manifest; reject
 non-identity `Content-Encoding`; make redirects fail closed unless the final URL is itself
 allowlisted; prove a hung parsing worker is terminated by the wall-clock limit; prove
-embedded instructions cannot produce an accepted control; add `touchstone/oracles.py`
+embedded instructions cannot self-approve a control or move it into evaluation — **amended 2026-08-15**: steering is explicitly retained as a residual risk, because a well-formed injected candidate is accepted as a proposal and only the approval gate stops it (threat model T9, R-9); add `touchstone/oracles.py`
 pinning a block, verifying chain/address/decimals, and comparing only against a confirmed
 row of the matching date within an explicit tolerance. The offline verifier must also
 reject a bundle whose controls are not `approved`; the compilation-to-control binding of

@@ -1,0 +1,22 @@
+{
+  "_note": "Sanitized, pinned transcript of the USTB oracle read. It proves the reading only. It makes NO claim about which NAV date the value represents: that mapping is undocumented by the issuer and is recorded as unresolved.",
+  "address": "0x289B5036cd942e619E1Ee48670F98d214E745AAC",
+  "block_hash": "0x53f12a595c8fcd2d67af0c22fb72a538c3bce7dedd82c32c33ed4a4ba30a0862",
+  "block_number": "0x18909f5",
+  "block_timestamp": "0x6a7ff177",
+  "calls": {
+    "decimals": {
+      "data": "0x313ce567",
+      "result": "0x0000000000000000000000000000000000000000000000000000000000000006"
+    },
+    "latestRoundData": {
+      "data": "0xfeaf968c",
+      "result": "0x00000000000000000000000000000000000000000000000200000000000003010000000000000000000000000000000000000000000000000000000000aa8f14000000000000000000000000000000000000000000000000000000006a7f1465000000000000000000000000000000000000000000000000000000006a7f14730000000000000000000000000000000000000000000000020000000000000301"
+    }
+  },
+  "captured_utc": "2026-08-15T01:05Z",
+  "chain_id": "0x1",
+  "code_bytes": 9571,
+  "code_sha256_prefix": "0x6080604052348015...",
+  "endpoint_host": "ethereum-rpc.publicnode.com"
+}
