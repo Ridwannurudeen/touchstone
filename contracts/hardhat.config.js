@@ -1,6 +1,17 @@
 require("@nomicfoundation/hardhat-toolbox");
 
-// Reserved network name: xLayerTestnet. Add only an audited RPC endpoint.
+// X Layer testnet, added 2026-08-15 with owner approval. Chain 1952 at
+// https://testrpc.xlayer.tech/terigon, verified against chainlist.org/chain/1952.
+//
+// The deprecated testnet on chain 195 must never be used. Naming the chain id here is not
+// enough on its own to prevent that — an endpoint can answer for whatever chain it likes —
+// so `deploy.js` requires TOUCHSTONE_DEPLOY_CONFIRM_CHAIN_ID to name the chain the endpoint
+// actually reports, and the publisher's preflight refuses a mismatch before signing.
+//
+// The deployer key is read from the environment and is never written here. It belongs to
+// the owner and does not live on the publishing host: see docs/KEY-MANAGEMENT.md.
+const XLAYER_TESTNET_RPC = "https://testrpc.xlayer.tech/terigon";
+const deployerKey = process.env.TOUCHSTONE_DEPLOYER_PRIVATE_KEY;
 
 // The local chain starts at the retrieval instant of the committed 2026-08-14 capture.
 // AssetGate compares block.timestamp against a report's observedAt, so a wall-clock
@@ -21,6 +32,13 @@ module.exports = {
   networks: {
     hardhat: {
       initialDate: FIXTURE_EPOCH_RETRIEVED_AT,
+    },
+    xLayerTestnet: {
+      url: XLAYER_TESTNET_RPC,
+      chainId: 1952,
+      // Absent rather than empty when the key is unset, so an accidental invocation fails
+      // with "no signer" instead of selecting whatever default hardhat would supply.
+      accounts: deployerKey ? [deployerKey] : [],
     },
   },
 };
