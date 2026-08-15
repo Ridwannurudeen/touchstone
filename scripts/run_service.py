@@ -38,6 +38,7 @@ from touchstone.deployment import DeploymentError, DeploymentManifest  # noqa: E
 from touchstone.incidents import (  # noqa: E402
     EPOCH_FAILED,
     PUBLICATION_UNRESOLVED,
+    SCHEDULE_UNUSABLE,
     SLOT_MISSED,
     SOURCE_UNAVAILABLE,
     IncidentLog,
@@ -61,9 +62,9 @@ from touchstone.publish import (  # noqa: E402
 )
 from touchstone.schedule import ScheduleOutcome, run_schedule  # noqa: E402
 from touchstone.signing import (  # noqa: E402
-    canonical_json_bytes,
-    strict_json_loads,
+    frozen_snapshot,
 )
+from touchstone.quantities import finite_non_negative  # noqa: E402
 from touchstone.translog import TransparencyLog  # noqa: E402
 from touchstone.workspace import Workspace  # noqa: E402
 
@@ -122,13 +123,7 @@ class Service:
         )
         if type(retries) is not int or retries < 0:
             raise ValueError("retries must be a non-negative integer")
-        if (
-            isinstance(backoff_seconds, bool)
-            or not isinstance(backoff_seconds, (int, float))
-            or not math.isfinite(backoff_seconds)
-            or backoff_seconds < 0
-        ):
-            raise ValueError("backoff_seconds must be a non-negative, finite number")
+        backoff_seconds = finite_non_negative(backoff_seconds, "backoff_seconds")
         # The *derived* delays, over exactly the domain that is accepted. Doubling a
         # finite base can reach infinity, so checking the base alone let a configuration
         # be accepted at startup and then raise on the first failure it was meant to
@@ -202,9 +197,7 @@ class Service:
         moment = self.now()
         self._require_our_asset(operation, moment=moment)
         try:
-            self.operations.resolve(
-                self.client, expected_asset_key=self.asset_key
-            )
+            self.operations.resolve(self.client, expected_asset_key=self.asset_key)
         except Exception as error:  # noqa: BLE001 - the contract is that *any* failure is recorded
             self._record_startup_failure(
                 f"sequence {operation.sequence} was in flight at startup and could not "
@@ -306,7 +299,9 @@ class Service:
         # outcome as everything else here.
         try:
             signed_report = (
-                _frozen(signed_report) if signed_report is not None else None
+                frozen_snapshot(signed_report, "signed_report")
+                if signed_report is not None
+                else None
             )
         except Exception as error:  # noqa: BLE001 - an unusable report is an epoch failure
             return self._record_incident(
@@ -347,7 +342,7 @@ class Service:
             # The caller names the report from its own copy. Handing over the object
             # that was just checked let a URI callback rewrite it in place — the check
             # passed on one report and the publication carried another.
-            uri = report_uri(_frozen(signed_report))
+            uri = report_uri(frozen_snapshot(signed_report, "signed_report"))
             self.operations.begin_operation(
                 signed_report,
                 report_uri=uri,
@@ -416,9 +411,7 @@ class Service:
                 )
             return
         if journalled is not None:
-            self.operations.resolve(
-                self.client, expected_asset_key=self.asset_key
-            )
+            self.operations.resolve(self.client, expected_asset_key=self.asset_key)
         else:
             self._with_retry(
                 lambda: self.operations.resolve(
@@ -443,6 +436,26 @@ class Service:
             asset_key=self.asset_key,
             kind=EPOCH_FAILED,
             detail=f"the slot at {scheduled_at.isoformat()} failed unexpectedly: {error}",
+            occurred_at=moment,
+            state=self._projected_state(moment),
+        )
+
+    def record_clock_error(self, scheduled_at: datetime, error: BaseException) -> None:
+        """Record that the schedule stopped because it could not name its next slot.
+
+        Not an epoch failure. `record_escaped_failure` would write "the slot at X failed
+        unexpectedly", and the slot at X had just succeeded — the schedule's *next* step
+        is what could not be taken. An operator reading that would look for a broken epoch
+        and find a working one.
+        """
+        moment = self._moment()
+        self.incidents.open_incident(
+            asset_key=self.asset_key,
+            kind=SCHEDULE_UNUSABLE,
+            detail=(
+                f"the schedule stopped after {scheduled_at.isoformat()}: {error}; "
+                "no further slot can be scheduled until the cadence is corrected"
+            ),
             occurred_at=moment,
             state=self._projected_state(moment),
         )
@@ -590,17 +603,17 @@ def _serve_locked(
         # Composed, not chosen. Letting a caller's handler *replace* the service's meant
         # supplying one silently switched off the incident recording — an escaped failure
         # would call the caller back and write nothing down.
-        on_outage=_also(service.record_outage, schedule_arguments.pop("on_outage", None)),
+        on_outage=_also(
+            service.record_outage, schedule_arguments.pop("on_outage", None)
+        ),
         on_failure=_also(
             service.record_escaped_failure, schedule_arguments.pop("on_failure", None)
         ),
+        on_clock_error=_also(
+            service.record_clock_error, schedule_arguments.pop("on_clock_error", None)
+        ),
         **schedule_arguments,
     )
-
-
-def _frozen(signed_report):
-    """An independent copy, so nobody can rewrite a report after it has been checked."""
-    return strict_json_loads(canonical_json_bytes(dict(signed_report)))
 
 
 def _also(mandatory, extra):
@@ -633,7 +646,6 @@ def build_service(manifest_path: str, workspace: str, *, asset_key: str) -> Serv
         asset_key=asset_key,
         lock_path=root.lock,
     )
-
 
 
 def main(argv: list[str] | None = None) -> int:

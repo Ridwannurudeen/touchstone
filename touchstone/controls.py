@@ -12,6 +12,8 @@ import math
 from types import MappingProxyType
 from typing import TypeAlias
 
+from touchstone.quantities import finite_number
+
 
 JSONScalar: TypeAlias = None | bool | int | float | str
 JSONValue: TypeAlias = JSONScalar | list["JSONValue"] | dict[str, "JSONValue"]
@@ -166,12 +168,9 @@ class ControlRecord:
             if self.effective_until < self.effective_from:
                 raise ValueError("effective_until must not precede effective_from")
 
-        confidence = self.compiler_confidence
-        if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
-            raise TypeError("compiler_confidence must be a number")
-        confidence = float(confidence)
-        if not math.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
-            raise ValueError("compiler_confidence must be finite and between 0 and 1")
+        confidence = finite_number(self.compiler_confidence, "compiler_confidence")
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError("compiler_confidence must be between 0 and 1")
         object.__setattr__(self, "compiler_confidence", confidence)
 
     @classmethod

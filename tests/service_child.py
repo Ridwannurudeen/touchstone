@@ -302,9 +302,7 @@ def _published_sequences(backend: FileChainBackend, signed_report: dict) -> list
 
     asset_key = bytes(Web3.keccak(text=signed_report["report"]["asset_key"]))
     chain = backend._load()
-    return [
-        entry["sequence"] for entry in chain["reports"].get(asset_key.hex(), [])
-    ]
+    return [entry["sequence"] for entry in chain["reports"].get(asset_key.hex(), [])]
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import sys
@@ -26,24 +27,36 @@ def test_a_workspace_derives_every_durable_path_from_its_root(tmp_path: Path) ->
     assert workspace.lock == tmp_path / "asset" / "service.lock"
 
 
-def test_the_services_default_lock_is_the_workspaces_lock(tmp_path: Path) -> None:
-    """The service derives its lock from the operations directory it was handed.
+def test_a_real_service_locks_the_file_the_workspace_names(tmp_path: Path) -> None:
+    """Construct the service and read the lock it will actually take.
 
-    That derivation and the workspace's have to land on the same file, or the two commands
-    that share this state take different locks and neither notices.
+    Recomputing the derivation in the test and comparing it to itself asserted the test's
+    own arithmetic. What matters is the value the object carries, because that is what
+    `serve()` passes to `exclusive_lock`.
     """
     from run_service import Service
 
     workspace = Workspace(tmp_path / "asset")
-    derived = Path(workspace.operations).parent / "service.lock"
+    service = Service(
+        client=None,
+        operations=_OperationsAt(workspace.operations),
+        incidents=None,
+        asset_key="eip155:1:0x" + "11" * 20,
+    )
 
-    assert derived == workspace.lock
-    assert "lock_path" in Service.__init__.__annotations__
+    assert service.lock_path == workspace.lock
+
+
+class _OperationsAt:
+    """Only the attribute Service reads to derive its default lock."""
+
+    def __init__(self, directory: Path) -> None:
+        self.directory = directory
 
 
 @pytest.mark.parametrize("removed", ["--transparency-log", "--pending"])
 def test_the_cli_cannot_be_given_a_layout_the_service_would_not_share(
-    removed: str, tmp_path: Path
+    removed: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A mismatched layout is not rejected — it is no longer expressible.
 
@@ -52,18 +65,29 @@ def test_the_cli_cannot_be_given_a_layout_the_service_would_not_share(
     both processes would verify one log head before either appended to it. Nothing checks
     that independently supplied paths belong together, because there is nothing to check
     them against.
+
+    Every other required argument is supplied, and the message is asserted: exiting 2
+    because some *other* argument was missing would have passed against the very parser
+    that still accepted these flags.
     """
     with pytest.raises(SystemExit) as refused:
         publish_epoch.main(
             [
                 "--manifest",
                 str(tmp_path / "manifest.json"),
+                "--signed-report",
+                str(tmp_path / "signed.json"),
+                "--report-uri",
+                "urn:touchstone:test:1",
+                "--workspace",
+                str(tmp_path / "workspace"),
                 removed,
                 str(tmp_path / "elsewhere"),
             ]
         )
 
     assert refused.value.code == 2
+    assert f"unrecognized arguments: {removed}" in capsys.readouterr().err
 
 
 def test_a_second_name_for_one_file_does_not_grant_a_second_lock(
@@ -116,7 +140,13 @@ def test_a_log_reached_by_two_names_is_still_one_log(tmp_path: Path) -> None:
 
 
 def test_locking_a_log_leaves_the_log_alone(tmp_path: Path) -> None:
-    """The lock is taken past any content, so the protected file is still just a file."""
+    """The lock is taken past any content, so the protected file is still just a file.
+
+    Windows-specific in what it distinguishes: `msvcrt.locking` locks a byte range, so an
+    offset of zero would collide with real data. POSIX `flock` locks the whole open file
+    description and ignores the offset entirely, so this passes there either way — the
+    guarantee it protects is the same, but only this platform can fail it.
+    """
     path = tmp_path / "transparency.jsonl"
     log = TransparencyLog(path)
     entry = log.append(
@@ -144,3 +174,71 @@ def _signed():
             "correction_of": None,
         }
     )
+
+
+def test_an_incident_log_reachable_by_two_names_is_refused(tmp_path: Path) -> None:
+    """The lock is per-inode; the completeness head is per-path. Two names break that.
+
+    Serialising on the shared log is not enough. The original writes entry 1 and advances
+    `incidents.jsonl.head`; the alias writes entries 2 and 3 and advances
+    `alias.jsonl.head`. The first name then sees three entries attested by a head claiming
+    one — past the single-entry repair window, so a perfectly valid sequence of serialized
+    appends is reported as corruption. A two-file store cannot have one identity under
+    hardlinks, so opening the second name is refused instead.
+    """
+    from touchstone.incidents import IncidentLog
+
+    real = tmp_path / "incidents.jsonl"
+    IncidentLog(real).open_incident(
+        asset_key="eip155:1:0x" + "11" * 20,
+        kind="EPOCH_FAILED",
+        detail="the first entry",
+        occurred_at=datetime(2026, 8, 15, 9, 0, tzinfo=timezone.utc),
+    )
+    os.link(real, tmp_path / "alias.jsonl")
+
+    with pytest.raises(ValueError, match="has 2 names"):
+        IncidentLog(tmp_path / "alias.jsonl")
+    with pytest.raises(ValueError, match="has 2 names"):
+        (
+            IncidentLog(real),
+            "and the original is refused too, rather than silently diverging",
+        )
+
+
+def test_one_incident_log_is_one_store_however_it_is_spelled(tmp_path: Path) -> None:
+    """Relative, absolute and symlinked spellings are the same store, not three."""
+    from touchstone.incidents import IncidentLog
+
+    nested = tmp_path / "workspace"
+    nested.mkdir()
+    absolute = IncidentLog(nested / "incidents.jsonl")
+    indirect = IncidentLog(
+        tmp_path / "workspace" / ".." / "workspace" / "incidents.jsonl"
+    )
+
+    assert indirect.path == absolute.path
+    assert indirect.head_path == absolute.head_path
+    assert indirect.lock_path == absolute.lock_path
+
+
+def test_a_workspace_anchors_a_relative_root_to_one_absolute_location(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A relative root is not a location — it is a location plus the current directory.
+
+    The current directory is not part of the workspace and can change under it, so the
+    same stored `asset/service.lock` named two different files from two working
+    directories: exactly the divergence one identity exists to prevent.
+    """
+    (tmp_path / "here" / "asset").mkdir(parents=True)
+    (tmp_path / "there" / "asset").mkdir(parents=True)
+
+    monkeypatch.chdir(tmp_path / "here")
+    workspace = Workspace("asset")
+    lock_from_here = workspace.lock
+
+    monkeypatch.chdir(tmp_path / "there")
+
+    assert workspace.lock == lock_from_here
+    assert workspace.lock == (tmp_path / "here" / "asset" / "service.lock").resolve()

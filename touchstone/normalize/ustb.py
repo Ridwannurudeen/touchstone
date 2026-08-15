@@ -7,11 +7,12 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import json
-import math
 import multiprocessing
 from multiprocessing.connection import Connection
 import re
 from typing import TypeAlias
+
+from touchstone.quantities import finite_positive
 
 
 DEFAULT_MAX_BYTES = 1_048_576
@@ -276,10 +277,7 @@ def normalize_ustb_payload_isolated(
     """Normalize in a spawned worker with a hard wall-clock timeout."""
     _parser_for_source(source_id)
     content = _prepare_raw(raw, max_bytes=max_bytes, max_depth=max_depth)
-    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
-        raise TypeError("timeout must be a positive number")
-    if not math.isfinite(timeout) or timeout <= 0:
-        raise ValueError("timeout must be a positive, finite number")
+    timeout = finite_positive(timeout, "timeout")
 
     context = multiprocessing.get_context("spawn")
     receive, send = context.Pipe(duplex=False)

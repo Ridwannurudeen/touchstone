@@ -22,8 +22,25 @@ from touchstone.quantities import (
 )
 from touchstone.schedule import run_schedule
 
+sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 from probe_sources import probe  # noqa: E402
+
+
+# The exact domain every boundary must refuse. Listing a subset per boundary is how the
+# sweep went incomplete in the first place: a boundary that accepted `True` or `"30"` still
+# passed its own narrower list.
+REFUSED_DURATIONS = [
+    float("nan"),
+    float("inf"),
+    float("-inf"),
+    10**1000,
+    True,
+    "30",
+    None,
+    0,
+    -1,
+]
 
 
 NOT_A_DURATION = [
@@ -61,7 +78,7 @@ def test_a_finite_duration_is_returned_as_a_float() -> None:
     assert isinstance(finite_positive(30, "timeout"), float)
 
 
-@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), 10**1000, 0, -1])
+@pytest.mark.parametrize("timeout", REFUSED_DURATIONS)
 def test_the_model_provider_refuses_a_timeout_that_never_elapses(
     monkeypatch: pytest.MonkeyPatch, timeout: object
 ) -> None:
@@ -73,13 +90,13 @@ def test_the_model_provider_refuses_a_timeout_that_never_elapses(
         HTTPProvider(timeout=timeout)
 
 
-@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), 10**1000, 0, -1])
+@pytest.mark.parametrize("timeout", REFUSED_DURATIONS)
 def test_the_rpc_client_refuses_a_timeout_that_never_elapses(timeout: object) -> None:
     with pytest.raises(ValueError, match="timeout"):
         HTTPRPC("https://example.invalid/rpc", timeout=timeout)
 
 
-@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), 10**1000, 0, -1])
+@pytest.mark.parametrize("timeout", REFUSED_DURATIONS)
 def test_the_source_prober_refuses_a_timeout_that_never_elapses(
     timeout: object,
 ) -> None:
@@ -88,7 +105,7 @@ def test_the_source_prober_refuses_a_timeout_that_never_elapses(
         probe(_target(), timeout=timeout)
 
 
-@pytest.mark.parametrize("interval", [float("nan"), float("inf"), 10**1000, 0, -1])
+@pytest.mark.parametrize("interval", REFUSED_DURATIONS)
 def test_the_scheduler_refuses_an_interval_that_is_not_a_duration(
     interval: object,
 ) -> None:
@@ -110,3 +127,88 @@ def _target():
         max_bytes=1024,
         expected_mime="application/json",
     )
+
+
+@pytest.mark.parametrize("receipt_timeout", REFUSED_DURATIONS)
+def test_the_publisher_refuses_a_receipt_timeout_that_never_elapses(
+    tmp_path: Path, receipt_timeout: object
+) -> None:
+    """web3 waits while `time.time() > begun_at + timeout` is false, which NaN and
+    infinity never make true — so the wait that bounds a broadcast would not bound it."""
+    from touchstone.publish import PublisherClient
+    from touchstone.translog import TransparencyLog
+
+    with pytest.raises(ValueError, match="receipt_timeout"):
+        PublisherClient(
+            backend=None,
+            transparency_log=TransparencyLog(tmp_path / "transparency.jsonl"),
+            pending_path=tmp_path / "pending.json",
+            receipt_timeout=receipt_timeout,
+        )
+
+
+@pytest.mark.parametrize(
+    "backoff", [value for value in REFUSED_DURATIONS if value != 0 or value is True]
+)
+def test_the_service_refuses_a_backoff_that_is_not_a_duration(
+    tmp_path: Path, backoff: object
+) -> None:
+    """Zero is a legitimate backoff here, so it is excluded; everything else is not."""
+    from run_service import Service
+
+    with pytest.raises(ValueError, match="backoff_seconds"):
+        Service(
+            client=None,
+            operations=_operations_at(tmp_path),
+            incidents=None,
+            asset_key="eip155:1:0x" + "11" * 20,
+            backoff_seconds=backoff,
+        )
+
+
+@pytest.mark.parametrize("timeout", REFUSED_DURATIONS)
+def test_the_source_fetcher_refuses_a_timeout_that_never_elapses(
+    timeout: object,
+) -> None:
+    from touchstone.sources import fetch_source
+
+    with pytest.raises(ValueError, match="timeout"):
+        fetch_source(
+            "superstate-ustb-nav-daily",
+            store=None,
+            transport=None,
+            timeout=timeout,
+        )
+
+
+@pytest.mark.parametrize("timeout", REFUSED_DURATIONS)
+def test_the_isolated_normalizer_refuses_a_timeout_that_never_elapses(
+    timeout: object,
+) -> None:
+    """A worker with no wall-clock bound is a worker that is never reaped."""
+    from touchstone.normalize.ustb import normalize_ustb_payload_isolated
+
+    with pytest.raises(ValueError, match="timeout"):
+        normalize_ustb_payload_isolated(
+            "superstate-ustb-nav-daily", b"{}", timeout=timeout
+        )
+
+
+@pytest.mark.parametrize(
+    "confidence", [float("nan"), float("inf"), 10**1000, True, "1"]
+)
+def test_a_control_record_refuses_a_confidence_that_is_not_a_number(
+    confidence: object,
+) -> None:
+    """`float(10**1000)` raised OverflowError before `isfinite` was ever reached."""
+    from test_controls import make_control
+
+    with pytest.raises((TypeError, ValueError), match="compiler_confidence"):
+        make_control(compiler_confidence=confidence)
+
+
+def _operations_at(tmp_path):
+    class _At:
+        directory = tmp_path / "operations"
+
+    return _At()

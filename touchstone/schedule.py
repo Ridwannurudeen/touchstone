@@ -78,6 +78,7 @@ def run_schedule(
     sleep: Callable[[float], None] = time.sleep,
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     on_failure: Callable[[datetime, BaseException], None] | None = None,
+    on_clock_error: Callable[[datetime, BaseException], None] | None = None,
     on_missed: Callable[[datetime], None] | None = None,
     on_outage: Callable[[datetime, int], None] | None = None,
 ) -> ScheduleOutcome:
@@ -103,6 +104,15 @@ def run_schedule(
     # than part-way through the first catch-up.
     _slot_slack(max(abs(next_run), interval), interval)
     scheduled_at = now()
+    # The clock's *result*, not merely its interval. A naive datetime has no offset, so
+    # every later `_advanced` call reinterprets it through whatever the host timezone
+    # happens to be — and returns an aware value, so one schedule ends up mixing naive and
+    # aware slot identities that no longer compare or serialise consistently.
+    if not isinstance(scheduled_at, datetime):
+        raise TypeError("now() must return a datetime")
+    if scheduled_at.tzinfo is None or scheduled_at.utcoffset() is None:
+        raise ValueError("now() must return a timezone-aware datetime")
+    scheduled_at = scheduled_at.astimezone(timezone.utc)
     try:
         # Every timestamp the run will need, proved before the first slot runs. A finite
         # but enormous interval passes every numeric bound and then overflows the wall
@@ -155,8 +165,8 @@ def run_schedule(
             # it to `failed` counted one slot as both completed and failed, so the outcome
             # said two things had happened when one had.
             clock_error = str(error)
-            if on_failure is not None:
-                on_failure(scheduled_at, error)
+            if on_clock_error is not None:
+                on_clock_error(scheduled_at, error)
             break
         current = monotonic()
         if _slots_elapsed(current, next_run, interval) > 0:
@@ -189,8 +199,8 @@ def run_schedule(
                 # advancement can, and it happens first. Guarding only the aggregate left
                 # the earlier call to escape unreported.
                 clock_error = str(error)
-                if on_failure is not None:
-                    on_failure(scheduled_at, error)
+                if on_clock_error is not None:
+                    on_clock_error(scheduled_at, error)
                 break
             for slot in named_slots:
                 missed.append(slot)
@@ -207,8 +217,8 @@ def run_schedule(
                 scheduled_at = _advanced(scheduled_at, interval * skipped)
             except ScheduleClockError as error:
                 clock_error = str(error)
-                if on_failure is not None:
-                    on_failure(scheduled_at, error)
+                if on_clock_error is not None:
+                    on_clock_error(scheduled_at, error)
                 break
 
     return ScheduleOutcome(
@@ -295,15 +305,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     def report_missed(scheduled_at: datetime) -> None:
         print(f"slot {scheduled_at.isoformat()} was missed", file=sys.stderr)
 
+    def report_clock_error(scheduled_at: datetime, error: BaseException) -> None:
+        print(f"the schedule stopped after {scheduled_at.isoformat()}: {error}", file=sys.stderr)
+
     outcome = run_schedule(
         execute,
         interval_seconds=args.interval_seconds,
         max_runs=args.runs,
         on_failure=report_failure,
         on_missed=report_missed,
+        on_clock_error=report_clock_error,
     )
     # A failed slot is reported rather than swallowed: the schedule continues, but the
-    # exit status still says the work did not all happen.
+    # exit status still says the work did not all happen. A clock error is not a failed
+    # slot and is not counted as one — but it did end the schedule early, so reporting
+    # success because no *slot* failed said the work had all happened when it had not.
+    if outcome.clock_error is not None:
+        return 1
     return 0 if outcome.completed and not outcome.failed else 1
 
 

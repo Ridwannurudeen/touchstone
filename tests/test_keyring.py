@@ -315,7 +315,9 @@ def test_an_access_list_is_refused() -> None:
     """A publication touches one contract; an access list is extra intent nobody checked."""
     with pytest.raises(ValueError, match="access list"):
         decoded_transaction(
-            signed(accessList=[{"address": address(OPERATIONS_SECRET), "storageKeys": []}])
+            signed(
+                accessList=[{"address": address(OPERATIONS_SECRET), "storageKeys": []}]
+            )
         )
 
 

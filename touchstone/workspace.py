@@ -27,7 +27,14 @@ class Workspace:
     root: Path
 
     def __init__(self, root: str | os.PathLike[str]) -> None:
-        location = Path(root)
+        # Anchored to one absolute location at construction. A relative root is not a
+        # location — it is a location *plus* the process's current directory, which is
+        # not part of the workspace and can change under it. The same stored
+        # `asset/service.lock` then names two different files from two working
+        # directories, which is exactly the divergence a single identity exists to
+        # prevent. Resolving also collapses symlinks and `..`, so two spellings of one
+        # directory are one workspace.
+        location = Path(root).resolve()
         if location.exists() and not location.is_dir():
             raise ValueError(f"workspace must be a directory: {location}")
         object.__setattr__(self, "root", location)

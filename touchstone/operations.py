@@ -31,7 +31,11 @@ from web3 import Web3
 
 from touchstone.controls import AssetState
 from touchstone.publish import DuplicateSequence, PublicationResult, PublisherClient
-from touchstone.signing import canonical_json_bytes, strict_json_loads
+from touchstone.signing import (
+    canonical_json_bytes,
+    frozen_snapshot,
+    strict_json_loads,
+)
 
 
 OPERATION_VERSION = "touchstone.pending-operation.v1"
@@ -129,6 +133,13 @@ class OperationsStore:
         expected_asset_key: str | None = None,
     ) -> PendingOperation:
         """Write down the whole publication before asking anyone to perform it."""
+        # One snapshot for the whole record. Every field below is read from the caller's
+        # mapping at a different moment — the asset key here, the sequence there, the
+        # envelope again at serialisation — so a caller that still holds a reference could
+        # produce a durable operation whose top-level sequence and embedded report
+        # disagree. `load_operation` would then reject the store's own record as
+        # contradictory, and a real mutation would invalidate the signature too.
+        signed_report = frozen_snapshot(signed_report, "signed_report")
         existing = self.load_operation()
         if existing is not None:
             raise UnresolvedPublication(
@@ -315,6 +326,9 @@ class OperationsStore:
         self, signed_report: Mapping[str, object], *, updated_at: datetime
     ) -> OperationalState:
         """Record what this report observed, and the date it remains fair to say it."""
+        # The same multi-read shape as begin_operation: state, deadline, asset key and
+        # sequence are four reads of a mapping the caller still owns.
+        signed_report = frozen_snapshot(signed_report, "signed_report")
         report = _report_of(signed_report)
         transition = report.get("state_transition")
         if not isinstance(transition, Mapping):

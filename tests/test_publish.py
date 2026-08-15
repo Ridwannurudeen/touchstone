@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -160,9 +161,7 @@ class FakeBackend:
                 "maxPriorityFeePerGas": 10**8,
                 "nonce": nonce,
                 "chainId": self.manifest.chain_id,
-                "data": self.calldata(
-                    asset_key, report, report_uri, correction_of
-                ),
+                "data": self.calldata(asset_key, report, report_uri, correction_of),
             }
         )
         self.intents[transaction_hash] = (
@@ -670,7 +669,9 @@ def _assert_revalidation_order(reads: list[str]) -> None:
     assert reads, "the publication must read the chain at all"
     for index, step in enumerate(reads):
         if step != "revalidate":
-            assert "revalidate" in reads[:index], f"{step} ran before any identity check"
+            assert "revalidate" in reads[:index], (
+                f"{step} ran before any identity check"
+            )
     assert "wait_for_receipt" in reads, "this path must have waited for a receipt"
     after_wait = reads[reads.index("wait_for_receipt") + 1 :]
     assert after_wait[:2] == ["revalidate", "receipt_state"], (
@@ -794,7 +795,9 @@ def test_a_rotated_out_signer_cannot_still_send(tmp_path: Path) -> None:
         successor: REGISTRY_LINEAGE,
     }
 
-    with pytest.raises(PendingSubmission, match="no longer this deployment's publisher"):
+    with pytest.raises(
+        PendingSubmission, match="no longer this deployment's publisher"
+    ):
         PublisherClient(
             rotated,
             TransparencyLog(tmp_path / "transparency.jsonl"),
@@ -889,7 +892,9 @@ def test_a_reread_that_disagrees_with_the_wait_keeps_the_journal(
     )
 
     assert result.reconciled is True
-    assert backend.prepared == prepared_once, "recovery must not prepare a new transaction"
+    assert backend.prepared == prepared_once, (
+        "recovery must not prepare a new transaction"
+    )
     assert len(set(backend.broadcasts)) == 1, "and must reuse the same signed bytes"
     assert len(backend.submissions) == 1
 
@@ -965,4 +970,58 @@ def test_the_published_report_is_the_one_that_was_verified(tmp_path: Path) -> No
 
     verify_signed_report(
         logged["signed_report"], {REPORTER.kid: REPORTER.public_key_record()}
+    )
+
+
+class _ShiftingReceipt(Mapping):
+    """A backend receipt whose status changes between reads, as a live node's would."""
+
+    def __init__(self, receipt: Mapping[str, object]) -> None:
+        self._receipt = dict(receipt)
+        self.status_reads = 0
+
+    def __getitem__(self, key: str) -> object:
+        if key != "status":
+            return self._receipt[key]
+        self.status_reads += 1
+        # Settled on the first read, failed on every one after it.
+        return 1 if self.status_reads == 1 else 0
+
+    def __iter__(self):
+        return iter(self._receipt)
+
+    def __len__(self) -> int:
+        return len(self._receipt)
+
+
+def test_the_receipt_that_settles_a_publication_is_the_receipt_recorded(
+    tmp_path: Path,
+) -> None:
+    """The status that decided and the status written down were two separate reads.
+
+    The publisher judged the transaction settled from one reading and then built the
+    transparency-log entry from another, so a receipt that changed in between produced a
+    durable record contradicting the decision that produced it — a log saying the
+    transaction failed, written by the branch that concluded it had succeeded.
+    """
+    backend = FakeBackend()
+    client = _client(tmp_path, backend)
+    shifting = {"receipt": None}
+    real_receipt_state = backend.receipt_state
+
+    def shifting_receipt(transaction_hash):
+        state, receipt = real_receipt_state(transaction_hash)
+        if receipt is not None and shifting["receipt"] is None:
+            shifting["receipt"] = _ShiftingReceipt(receipt)
+        return state, shifting["receipt"] if receipt is not None else None
+
+    backend.receipt_state = shifting_receipt
+
+    result = client.publish(_signed_report(1), report_uri="urn:touchstone:report:1")
+
+    assert shifting["receipt"].status_reads == 1, "the status was read exactly once"
+    assert result.receipt["status"] == 1
+    entry = client.transparency_log.verify()[-1]
+    assert entry["publication"]["receipt"]["status"] == 1, (
+        "and the log carries the reading that settled it"
     )

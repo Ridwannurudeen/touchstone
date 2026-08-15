@@ -5,7 +5,6 @@ from __future__ import annotations
 import socket
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import math
 from types import MappingProxyType
 from typing import Mapping, Protocol
 from urllib.error import HTTPError, URLError
@@ -13,6 +12,7 @@ from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from touchstone.evidence import EvidenceStore
+from touchstone.quantities import finite_positive
 
 
 DEFAULT_TIMEOUT_SECONDS = 10.0
@@ -160,13 +160,7 @@ def fetch_source(
     manifest = USTB_SOURCE_BY_ID.get(source_id)
     if manifest is None:
         raise SourcePolicyError(f"unknown source_id: {source_id}")
-    if (
-        isinstance(timeout, bool)
-        or not isinstance(timeout, (int, float))
-        or not math.isfinite(timeout)
-        or timeout <= 0
-    ):
-        raise ValueError("timeout must be a positive number")
+    timeout = finite_positive(timeout, "timeout")
     if retrieved_at is not None and (
         not isinstance(retrieved_at, datetime)
         or retrieved_at.tzinfo is None

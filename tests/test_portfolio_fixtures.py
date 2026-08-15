@@ -125,7 +125,9 @@ def test_liquidity_is_a_dated_series_not_a_single_figure() -> None:
 
     assert (first_date, first_daily, first_weekly) == ("2026-07-01", "0.6742", "0.7462")
     assert (last_date, last_daily, last_weekly) == ("2026-07-31", "0.6528", "0.7455")
-    assert first_daily != last_daily, "the series moves; a positional read would misdate it"
+    assert first_daily != last_daily, (
+        "the series moves; a positional read would misdate it"
+    )
 
 
 def test_the_manifest_does_not_misdate_the_liquidity_figures() -> None:
@@ -183,8 +185,11 @@ def test_no_manifest_persists_a_rotating_credential() -> None:
 def test_probe_revalidates_a_hand_built_target() -> None:
     """A ProbeTarget built directly must not reach the network on weaker terms."""
     unsafe = ProbeTarget(
-        manifest="x", source_id="s", url="http://example.com/x",
-        max_bytes=1, expected_mime=None,
+        manifest="x",
+        source_id="s",
+        url="http://example.com/x",
+        max_bytes=1,
+        expected_mime=None,
     )
 
     with pytest.raises(ValueError, match="https"):
@@ -194,7 +199,8 @@ def test_probe_revalidates_a_hand_built_target() -> None:
 def test_probe_refuses_a_forged_cap_on_a_declared_url() -> None:
     """Membership by URL alone let a hand-built target widen its own byte cap."""
     declared = next(
-        target for target in load_targets()
+        target
+        for target in load_targets()
         if target.source_id == "superstate-ustb-yield"
     )
     forged = ProbeTarget(
@@ -213,7 +219,9 @@ def test_probe_refuses_a_forged_cap_on_a_declared_url() -> None:
 def test_the_discovery_fixture_points_at_the_filing_fixture() -> None:
     """Discovery is only useful if it resolves to the filing actually retained."""
     submissions = json.loads(
-        (ROOT / "fixtures" / "fobxx-submissions-20260815.json").read_text(encoding="utf-8")
+        (ROOT / "fixtures" / "fobxx-submissions-20260815.json").read_text(
+            encoding="utf-8"
+        )
     )
     recent = submissions["filings"]["recent"]
     index = recent["form"].index("N-MFP3")
@@ -224,7 +232,8 @@ def test_the_discovery_fixture_points_at_the_filing_fixture() -> None:
 
     manifest = json.loads((MANIFESTS / "fobxx.json").read_text(encoding="utf-8"))
     filing = next(
-        record for record in manifest["fixtures"]
+        record
+        for record in manifest["fixtures"]
         if record["source_id"] == "sec-edgar-fobxx-nmfp3"
     )
     assert filing["accession"] == recent["accessionNumber"][index]
@@ -233,8 +242,11 @@ def test_the_discovery_fixture_points_at_the_filing_fixture() -> None:
 def test_probe_refuses_an_undeclared_https_target() -> None:
     """HTTPS alone is not enough: the module promises only manifest-declared URLs."""
     undeclared = ProbeTarget(
-        manifest="x", source_id="s", url="https://example.com/anything",
-        max_bytes=1024, expected_mime=None,
+        manifest="x",
+        source_id="s",
+        url="https://example.com/anything",
+        max_bytes=1024,
+        expected_mime=None,
     )
 
     with pytest.raises(ValueError, match="not exactly as declared"):

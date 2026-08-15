@@ -110,15 +110,18 @@ class _ShiftingEnvelope(Mapping):
 
     def __init__(self, envelope: Mapping[str, object]) -> None:
         self._envelope = dict(envelope)
+        self._envelope["report"] = dict(self._envelope["report"])
         self.reads = 0
 
     def __getitem__(self, key: str) -> object:
         if key != "report":
             return self._envelope[key]
         self.reads += 1
-        report = dict(self._envelope["report"])
-        report["sequence"] = self.reads
-        return report
+        # The *same* nested object every time, mutated in place. Returning a fresh dict
+        # meant a shallow `dict(envelope)` already captured an independent report, so the
+        # test passed against a copy shallow enough to leave the real hazard open.
+        self._envelope["report"]["sequence"] = self.reads
+        return self._envelope["report"]
 
     def __iter__(self):
         return iter(self._envelope)
@@ -155,7 +158,7 @@ def test_append_records_the_report_it_hashed_even_if_the_caller_changes_it(
 def test_append_records_the_receipt_it_was_given(tmp_path: Path) -> None:
     """The receipt is caller-owned too, and it is the on-chain half of the record."""
     log = TransparencyLog(tmp_path / "transparency.jsonl")
-    receipt = {"block_number": 1, "status": 1}
+    receipt = {"block_number": 1, "confirmations": {"depth": 12}, "status": 1}
 
     entry = log.append(
         _signed_report(),
@@ -164,6 +167,12 @@ def test_append_records_the_receipt_it_was_given(tmp_path: Path) -> None:
     )
     receipt["status"] = 0
     receipt["block_number"] = 999
+    # Nested as well as flat. A shallow copy passes the flat case and shares this one.
+    receipt["confirmations"]["depth"] = 0
 
-    assert entry["publication"]["receipt"] == {"block_number": 1, "status": 1}
+    assert entry["publication"]["receipt"] == {
+        "block_number": 1,
+        "confirmations": {"depth": 12},
+        "status": 1,
+    }
     assert log.verify() == [entry]

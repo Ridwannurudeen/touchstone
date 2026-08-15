@@ -572,7 +572,9 @@ def _manifest_shape() -> dict:
         "publisher_address": publisher,
         "publisher_identity_address": publisher,
         "deployer_address": Account.from_key(bytes.fromhex(DEPLOYER_SECRET)).address,
-        "operations_address": Account.from_key(bytes.fromhex(OPERATIONS_SECRET)).address,
+        "operations_address": Account.from_key(
+            bytes.fromhex(OPERATIONS_SECRET)
+        ).address,
         "confirmations": 1,
         "deployment_block": 3,
         "reporting_keys": [

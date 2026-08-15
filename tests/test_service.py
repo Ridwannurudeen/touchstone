@@ -12,6 +12,7 @@ import pytest
 
 from touchstone.incidents import (
     EPOCH_FAILED,
+    SCHEDULE_UNUSABLE,
     PUBLICATION_UNRESOLVED,
     SOURCE_UNAVAILABLE,
     IncidentLog,
@@ -994,3 +995,110 @@ def test_an_incident_is_stamped_with_one_reading_of_the_clock(tmp_path: Path) ->
     assert entry["state"] == "CONFIRMED", (
         "the state was projected for the same moment the incident was stamped with"
     )
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["record_escaped_failure", "record_outage", "close", "record_clock_error"],
+)
+def test_every_incident_path_reads_the_clock_once(tmp_path: Path, path: str) -> None:
+    """All four recorders, not only the one the first regression happened to exercise.
+
+    Each of them stamps an incident and projects a state, and each could regress
+    independently. The state below is CONFIRMED through the 15th and STALE from the 16th,
+    so a second reading of the clock across midnight changes the recorded word.
+    """
+    backend = FakeBackend()
+    signer = Ed25519Signer.from_seed(bytes(range(32)))
+    report = signer.sign_report(
+        {
+            "asset_key": ASSET_KEY_OF,
+            "control_set_root": "22" * 32,
+            "correction_of": None,
+            "evidence_root": "33" * 32,
+            "observed_at": "2026-08-15T09:00:00Z",
+            "publisher_kid": signer.kid,
+            "sequence": 1,
+            "state": "CONFIRMED",
+            "state_transition": {
+                "as_of": "2026-08-15",
+                "evidence_deadline": "2026-08-15",
+            },
+            "valid_until": "2026-08-15T23:59:59Z",
+        }
+    )
+    before_midnight = datetime(2026, 8, 15, 23, 59, 59, tzinfo=timezone.utc)
+    readings = iter(
+        [before_midnight]
+        + [
+            datetime(2026, 8, 16, 0, 0, second, tzinfo=timezone.utc)
+            for second in range(1, 12)
+        ]
+    )
+    service = build(tmp_path, backend, now=lambda: next(readings))
+    service.operations.save_state(report, updated_at=before_midnight)
+
+    if path == "close":
+        # Closing reads the clock too, so it gets the same single-reading treatment. It
+        # needs something open to close, opened before the clock is under test.
+        opener = build(tmp_path, backend, now=lambda: before_midnight)
+        opener.record_outage(AT, 3)
+        service._close_open_incidents("recovered")
+        entries = [e for e in service.incidents.verify() if e["closes"] is not None]
+    else:
+        getattr(service, path)(
+            AT, RuntimeError("boom") if path != "record_outage" else 3
+        )
+        entries = [e for e in service.incidents.verify() if e["closes"] is None]
+
+    assert entries, f"{path} wrote an incident"
+    entry = entries[-1]
+    assert entry["occurred_at"].startswith("2026-08-15T23:59:59")
+    assert entry["state"] == "CONFIRMED", (
+        "the state was projected for the same moment the entry was stamped with"
+    )
+
+
+def test_a_schedule_that_cannot_continue_is_not_recorded_as_a_failed_epoch(
+    tmp_path: Path,
+) -> None:
+    """The slot succeeded; naming the *next* one is what failed.
+
+    Routing this through `record_escaped_failure` wrote "the slot at X failed
+    unexpectedly" about a slot that had just published, sending an operator to look for a
+    broken epoch that does not exist.
+    """
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+
+    service.record_clock_error(AT, OverflowError("a slot 1e20 seconds after X"))
+
+    open_incidents = service.incidents.open_incidents()
+    assert [i.kind for i in open_incidents] == [SCHEDULE_UNUSABLE]
+    assert "the schedule stopped after" in open_incidents[0].detail
+    assert "failed unexpectedly" not in open_incidents[0].detail
+
+
+def test_serve_routes_a_clock_error_to_the_schedule_incident(tmp_path: Path) -> None:
+    """The adapter, not only the recorder: `serve` has to hand the callback across."""
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    clock = Clock()
+
+    def die_on_the_second_slot(at):
+        clock.t += 1e12  # an outage no clock can name the far side of
+        return _signed_report(1)
+
+    outcome = serve(
+        service,
+        die_on_the_second_slot,
+        report_uri=uri,
+        interval_seconds=2e10,
+        max_runs=2,
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+        now=lambda: AT,
+    )
+
+    assert outcome.clock_error is not None
+    assert [i.kind for i in service.incidents.open_incidents()] == [SCHEDULE_UNUSABLE]

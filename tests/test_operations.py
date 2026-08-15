@@ -1,5 +1,6 @@
 """Durable operational state: what survives a crash, and what it means afterwards."""
 
+from collections.abc import Mapping
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -204,3 +205,64 @@ def test_an_instant_must_be_timezone_aware(tmp_path: Path) -> None:
             correction_of=None,
             scheduled_for=datetime(2026, 8, 15, 9, 0),
         )
+
+
+class _ShiftingReport(Mapping):
+    """A caller's envelope whose report changes on every read."""
+
+    def __init__(self, envelope: Mapping[str, object]) -> None:
+        self._envelope = dict(envelope)
+        self._envelope["report"] = dict(self._envelope["report"])
+        self.reads = 0
+
+    def __getitem__(self, key: str) -> object:
+        if key != "report":
+            return self._envelope[key]
+        self.reads += 1
+        # The same nested object, mutated in place, so a shallow copy shares it.
+        self._envelope["report"]["sequence"] = self.reads
+        return self._envelope["report"]
+
+    def __iter__(self):
+        return iter(self._envelope)
+
+    def __len__(self) -> int:
+        return len(self._envelope)
+
+
+def test_an_operation_records_the_report_it_validated(tmp_path: Path) -> None:
+    """The durable record's top-level fields and its embedded report are one report.
+
+    `begin_operation` reads the caller's envelope at several separate moments — the asset
+    key here, the sequence there, the whole envelope again at serialisation. A caller that
+    still holds it can produce a record whose top-level sequence and embedded report
+    disagree, and `load_operation` then rejects the store's own durable record as
+    contradictory. A real mutation invalidates the signature too.
+    """
+    operations = OperationsStore(tmp_path / "operations")
+    envelope = _ShiftingReport(_signed_report(1))
+
+    operation = operations.begin_operation(
+        envelope,
+        report_uri="urn:touchstone:report:1",
+        correction_of=None,
+        scheduled_for=AT,
+    )
+
+    assert envelope.reads == 1, "the caller's envelope was read exactly once"
+    reloaded = operations.load_operation()
+    assert reloaded is not None
+    assert reloaded.sequence == operation.sequence
+    assert reloaded.signed_report["report"]["sequence"] == reloaded.sequence
+
+
+def test_saved_state_records_the_report_it_read(tmp_path: Path) -> None:
+    """`save_state` has the same multi-read shape: state, deadline, asset key, sequence."""
+    operations = OperationsStore(tmp_path / "operations")
+    envelope = _ShiftingReport(_signed_report(1))
+
+    state = operations.save_state(envelope, updated_at=AT)
+
+    assert envelope.reads == 1
+    reloaded = operations.load_state(state.asset_key)
+    assert reloaded == state

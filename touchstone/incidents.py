@@ -64,8 +64,18 @@ SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"
 EPOCH_FAILED = "EPOCH_FAILED"
 SLOT_MISSED = "SLOT_MISSED"
 PUBLICATION_UNRESOLVED = "PUBLICATION_UNRESOLVED"
+# The schedule can no longer name its next slot, so it stopped. Recording this as an epoch
+# failure claimed a slot had been attempted and failed; depending on where the overflow
+# happened, that slot either succeeded or was never attempted at all.
+SCHEDULE_UNUSABLE = "SCHEDULE_UNUSABLE"
 KINDS = frozenset(
-    {SOURCE_UNAVAILABLE, EPOCH_FAILED, SLOT_MISSED, PUBLICATION_UNRESOLVED}
+    {
+        SOURCE_UNAVAILABLE,
+        EPOCH_FAILED,
+        SLOT_MISSED,
+        PUBLICATION_UNRESOLVED,
+        SCHEDULE_UNUSABLE,
+    }
 )
 
 
@@ -88,13 +98,36 @@ class IncidentLog:
     """A hash-chained JSON-lines log with a separately persisted head."""
 
     def __init__(self, path: str | os.PathLike[str]) -> None:
-        self.path = Path(path)
+        # Resolved once. The lock's identity is the log's inode, but the completeness
+        # witness beside it is named after the path — so two *spellings* of one log
+        # (relative and absolute, or through a symlink) would serialise correctly on the
+        # log and then advance two different heads. Resolving makes those one store.
+        self.path = Path(path).resolve()
         if self.path.exists() and not self.path.is_file():
             raise ValueError(f"incident log path must be a file: {self.path}")
+        # A hardlink is the one alias resolving cannot collapse: two real directory
+        # entries, one inode, and therefore two heads over a single shared log. The
+        # writers serialise on the lock and still diverge — the first name sees three
+        # entries attested by a head claiming one, which is past the single-entry repair
+        # window and is reported as corruption after perfectly valid appends. A two-file
+        # store cannot have one identity under hardlinks, so this refuses to open one
+        # rather than detect the damage afterwards.
+        self._refuse_hardlink()
         self.head_path = self.path.with_name(self.path.name + ".head")
         # The log itself, not a sidecar named after it: see touchstone.locking.
         self.lock_path = self.path
         self._sleep = time.sleep
+
+    def _refuse_hardlink(self) -> None:
+        try:
+            links = self.path.stat().st_nlink
+        except OSError:
+            return
+        if links > 1:
+            raise ValueError(
+                f"incident log {self.path} has {links} names; its completeness head "
+                "cannot be shared between them, so this log must have exactly one"
+            )
 
     def _exclusive(self):
         """An OS-level lock, so a killed writer does not lock the log out forever.

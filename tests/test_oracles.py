@@ -207,7 +207,9 @@ def test_a_reading_is_a_frozen_record() -> None:
         reading.answer = Decimal("0")  # type: ignore[misc]
 
 
-def test_publication_date_and_effective_date_differ_and_only_the_stated_one_counts() -> None:
+def test_publication_date_and_effective_date_differ_and_only_the_stated_one_counts() -> (
+    None
+):
     """The audit records an 08-12 publication carrying the 08/11 NAV.
 
     The fixture reproduces that gap: the reading publishes on 08-12, and the comparison
@@ -250,7 +252,9 @@ def test_an_effective_date_must_be_supplied() -> None:
 def test_a_different_address_is_refused_even_if_it_has_code() -> None:
     with pytest.raises(OracleIdentityError, match="is not the pinned USTB oracle"):
         read_ustb_oracle(
-            FakeRPC(), block_number=1, address="0x0000000000000000000000000000000000000001"
+            FakeRPC(),
+            block_number=1,
+            address="0x0000000000000000000000000000000000000001",
         )
 
 
@@ -284,14 +288,17 @@ def test_the_committed_transcript_matches_the_pinned_identity() -> None:
     from pathlib import Path
 
     transcript = json.loads(
-        (Path(__file__).parents[1] / "fixtures" / "ustb-oracle-transcript.json").read_text(
-            encoding="utf-8"
-        )
+        (
+            Path(__file__).parents[1] / "fixtures" / "ustb-oracle-transcript.json"
+        ).read_text(encoding="utf-8")
     )
 
     assert transcript["chain_id"] == "0x1"
     assert transcript["address"] == USTB_ORACLE_ADDRESS
-    assert transcript["block_hash"].startswith("0x") and len(transcript["block_hash"]) == 66
+    assert (
+        transcript["block_hash"].startswith("0x")
+        and len(transcript["block_hash"]) == 66
+    )
     assert int(transcript["calls"]["decimals"]["result"], 16) == 6
     assert transcript["code_bytes"] > 0
     assert "NAV date" in transcript["_note"]

@@ -22,7 +22,6 @@ from datetime import date, datetime, time, timezone
 import hashlib
 import os
 from pathlib import Path
-import math
 import re
 import time as clock
 from typing import Protocol
@@ -823,17 +822,11 @@ class PublisherClient:
         self.backend = backend
         self.transparency_log = transparency_log
         self.pending_path = Path(pending_path)
-        if (
-            isinstance(receipt_timeout, bool)
-            or not isinstance(receipt_timeout, (int, float))
-            or not math.isfinite(receipt_timeout)
-            or receipt_timeout <= 0
-        ):
-            # Finite as well as positive. web3 waits while `time.time() > begun_at +
-            # timeout` is false, which NaN and infinity never make true — so a timeout
-            # that cannot expire is not a long timeout, it is no timeout at all.
-            raise ValueError("receipt_timeout must be a positive, finite number")
-        self.receipt_timeout = float(receipt_timeout)
+        # web3 waits while `time.time() > begun_at + timeout` is false, which NaN and
+        # infinity never make true — so a timeout that cannot expire is not a long
+        # timeout, it is no timeout at all. An integer too large to be a float used to
+        # raise a bare OverflowError from inside the check itself.
+        self.receipt_timeout = finite_positive(receipt_timeout, "receipt_timeout")
 
     @property
     def manifest(self) -> DeploymentManifest:
@@ -977,11 +970,15 @@ class PublisherClient:
                         f"sequence {sequence} was published by {transaction_hash}, but "
                         f"the journal records {prepared.transaction_hash}"
                     )
-            if _receipt_status(receipt) != 1:
+            # Derived once, here. The status that decides and the status that is
+            # recorded are now the same value rather than two reads of a mapping this
+            # client does not own.
+            receipt_record = _receipt_record(receipt)
+            if receipt_record["status"] != 1:
                 raise SubmissionFailed(f"transaction {transaction_hash} failed")
             return self._finalize(
                 signed_report,
-                receipt,
+                receipt_record,
                 transaction_hash,
                 correction_of,
                 reconciled=True,
@@ -1028,8 +1025,8 @@ class PublisherClient:
                         f"reached the required confirmation depth"
                     ) from error
             transaction_hash = prepared.transaction_hash
-            receipt = self._settled_receipt(transaction_hash)
-            if _receipt_status(receipt) != 1:
+            receipt_record = _receipt_record(self._settled_receipt(transaction_hash))
+            if receipt_record["status"] != 1:
                 self._clear_pending()
                 raise SubmissionFailed(f"transaction {transaction_hash} failed")
             if self.backend.latest_sequence(asset_key) != sequence:
@@ -1039,7 +1036,7 @@ class PublisherClient:
             self.ensure_onchain_match(asset_key, report, report_uri)
             return self._finalize(
                 signed_report,
-                receipt,
+                receipt_record,
                 transaction_hash,
                 correction_of,
                 reconciled=True,
@@ -1073,8 +1070,8 @@ class PublisherClient:
         # it was before the wait. Everything the receipt decides — including declaring
         # failure, which destroys the only record of what was sent — is decided from a
         # reading taken after the endpoint has been proved again.
-        receipt = self._settled_receipt(transaction_hash)
-        if _receipt_status(receipt) != 1:
+        receipt_record = _receipt_record(self._settled_receipt(transaction_hash))
+        if receipt_record["status"] != 1:
             self._clear_pending()
             raise SubmissionFailed(f"transaction {transaction_hash} failed")
         if self.backend.latest_sequence(asset_key) != sequence:
@@ -1084,7 +1081,7 @@ class PublisherClient:
         self.ensure_onchain_match(asset_key, report, report_uri)
         return self._finalize(
             signed_report,
-            receipt,
+            receipt_record,
             transaction_hash,
             correction_of,
             reconciled=False,
@@ -1152,12 +1149,18 @@ class PublisherClient:
     def _finalize(
         self,
         signed_report: Mapping[str, object],
-        receipt: Mapping[str, object],
+        receipt_record: dict[str, object],
         transaction_hash: str,
         correction_of: int | None,
         *,
         reconciled: bool,
     ) -> PublicationResult:
+        """Record a publication from the receipt reading that decided it.
+
+        Takes the derived record, not the backend's mapping. Taking the mapping meant this
+        method read it again — so the status written to the transparency log need never
+        have been the status that judged the transaction settled.
+        """
         entries = self.transparency_log.verify()
         existing = next(
             (
@@ -1167,7 +1170,6 @@ class PublisherClient:
             ),
             None,
         )
-        receipt_record = _receipt_record(receipt)
         if existing is None:
             supersedes = None
             if correction_of is not None:

@@ -203,7 +203,9 @@ def test_a_crash_after_the_publisher_finalized_still_leaves_one_report(
     assert (root / "operations" / "operation.json").exists(), (
         "and only this service's operation was left behind"
     )
-    assert len(json.loads((root / "transparency.jsonl").read_bytes().splitlines()[0])) > 0
+    assert (
+        len(json.loads((root / "transparency.jsonl").read_bytes().splitlines()[0])) > 0
+    )
 
     restarted = run_child("resolve", root)
     result = json.loads(restarted.stdout)

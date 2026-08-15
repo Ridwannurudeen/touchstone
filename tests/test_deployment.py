@@ -96,7 +96,11 @@ def test_a_role_address_may_not_be_left_unstated() -> None:
     a manifest that simply omitted the deployer and operations addresses passed every
     check while proving nothing about either.
     """
-    for field in ("deployer_address", "operations_address", "publisher_identity_address"):
+    for field in (
+        "deployer_address",
+        "operations_address",
+        "publisher_identity_address",
+    ):
         value = manifest()
         del value[field]
         with pytest.raises(DeploymentError, match=f"missing fields.*{field}"):

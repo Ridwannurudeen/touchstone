@@ -6,7 +6,12 @@ import subprocess
 
 import pytest
 
-from touchstone.schedule import MAX_NAMED_MISSES, main, run_schedule
+from touchstone.schedule import (
+    MAX_NAMED_MISSES,
+    ScheduleOutcome,
+    main,
+    run_schedule,
+)
 
 
 START = datetime(2026, 8, 15, 9, 0, tzinfo=timezone.utc)
@@ -500,6 +505,7 @@ def test_an_outage_beyond_the_clocks_reach_ends_the_schedule_in_the_open(
     """
     clock = FakeTime()
     failures = []
+    clock_errors = []
     ran = []
 
     def job(scheduled_at: datetime) -> None:
@@ -515,17 +521,21 @@ def test_an_outage_beyond_the_clocks_reach_ends_the_schedule_in_the_open(
         sleep=clock.sleep,
         now=lambda: START,
         on_failure=lambda at, error: failures.append(error),
+        on_clock_error=lambda at, error: clock_errors.append(error),
     )
 
     assert len(ran) == 1, "the schedule stopped rather than crashing"
-    assert failures and "cannot be represented" in str(failures[0]), (
+    assert clock_errors and "cannot be represented" in str(clock_errors[0]), (
         f"it reported the overflow while {overflows_while}"
     )
-    assert outcome.clock_error == str(failures[0])
+    assert outcome.clock_error == str(clock_errors[0])
     # The slot that ran *succeeded*. Recording it as failed too said two things had
-    # happened when one had, and made completed + failed exceed the jobs attempted.
+    # happened when one had, and made completed + failed exceed the jobs attempted. It
+    # must not reach `on_failure` either: a consumer that only knows about failed slots
+    # would open an incident saying a slot it had just completed had failed.
     assert outcome.completed == 1
     assert outcome.failed == ()
+    assert failures == []
 
 
 def test_an_unbounded_schedule_proves_the_slot_it_will_actually_need() -> None:
@@ -575,3 +585,63 @@ def test_a_finished_schedule_does_not_compute_a_slot_nobody_will_use(
     # One advancement between the two slots, plus the single up-front span check. A third
     # would be the slot after the last run.
     assert len(calls) == 2, f"advancements: {calls}"
+
+
+def test_the_cli_reports_a_schedule_that_could_not_continue(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """A clock error is not a failed slot — but it did end the schedule early.
+
+    Reporting success because no *slot* failed said the work had all happened when the
+    schedule had in fact stopped and would never run again. Only an outage can produce
+    this at runtime, and its size is unbounded by definition, so the schedule itself is
+    stubbed: what is under test here is the CLI's two obligations — pass the callback
+    through, and let the outcome reach the exit status.
+    """
+    import touchstone.schedule as schedule_module
+
+    def stopped_by_the_clock(job, *, on_clock_error=None, **arguments):
+        job(START)
+        on_clock_error(START, OverflowError("a slot 1e20 seconds after X"))
+        return ScheduleOutcome(
+            completed=1, failed=(), clock_error="a slot 1e20 seconds after X"
+        )
+
+    monkeypatch.setattr(schedule_module, "run_schedule", stopped_by_the_clock)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda command, *, check: subprocess.CompletedProcess(command, 0),
+    )
+
+    assert main(["--runs", "2", "--", "true"]) == 1, (
+        "a schedule that stopped is not a schedule that finished"
+    )
+    assert "the schedule stopped after" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "reading",
+    [datetime(2026, 8, 15, 9, 0), "2026-08-15T09:00:00Z", 1786_000_000, None],
+)
+def test_the_scheduler_refuses_a_clock_with_no_timezone(reading: object) -> None:
+    """A naive datetime has no offset, so it is not a moment — it is a moment shape.
+
+    Every later `_advanced` call reinterprets it through whatever the host timezone
+    happens to be and returns an aware value, so one schedule ends up mixing naive and
+    aware slot identities that no longer compare or serialise consistently. It has to be
+    caught before the first job, because after that the identities are already written.
+    """
+    ran = []
+
+    with pytest.raises((TypeError, ValueError), match="now()"):
+        run_schedule(
+            ran.append,
+            interval_seconds=60,
+            max_runs=1,
+            monotonic=FakeTime().monotonic,
+            sleep=lambda _: None,
+            now=lambda: reading,
+        )
+
+    assert ran == [], "and it refused before the first job, not after it"

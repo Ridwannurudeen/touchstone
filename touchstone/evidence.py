@@ -157,17 +157,6 @@ class EvidenceStore:
             default=None,
         )
 
-    def _entries(self) -> list[dict[str, Any]]:
-        if not self.index_path.exists():
-            return []
-        index_bytes = self.index_path.read_bytes()
-        if not index_bytes:
-            return []
-        return [
-            self._decode_entry(line, number)
-            for number, line in enumerate(index_bytes.splitlines(), 1)
-        ]
-
     def verify(self) -> int:
         """Verify the complete index chain and all referenced objects."""
         return len(self.verified_entries())

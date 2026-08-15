@@ -108,7 +108,11 @@ def test_fetch_stores_exact_fixture_bytes_and_records_response_content_type(
     del cadence
     raw = (FIXTURES / fixture_name).read_bytes()
     transport = FakeTransport(
-        {url: response(raw, headers={"content-type": "application/json; charset=utf-8"})}
+        {
+            url: response(
+                raw, headers={"content-type": "application/json; charset=utf-8"}
+            )
+        }
     )
 
     result = fetch_source(
@@ -135,11 +139,7 @@ def test_fetch_stores_exact_fixture_bytes_and_records_response_content_type(
 def test_missing_content_type_is_refused(tmp_path: Path) -> None:
     source = USTB_SOURCES[1]
     transport = FakeTransport(
-        {
-            source.url: response(
-                (FIXTURES / "ustb-yield.json").read_bytes(), headers={}
-            )
-        }
+        {source.url: response((FIXTURES / "ustb-yield.json").read_bytes(), headers={})}
     )
 
     with pytest.raises(SourceResponseError, match="no Content-Type"):
@@ -160,9 +160,7 @@ def with_aliases(monkeypatch, source, *aliases: str):
     aliased = replace(source, redirect_aliases=tuple(aliases))
     patched = dict(sources_module.USTB_SOURCE_BY_ID)
     patched[source.source_id] = aliased
-    monkeypatch.setattr(
-        sources_module, "USTB_SOURCE_BY_ID", MappingProxyType(patched)
-    )
+    monkeypatch.setattr(sources_module, "USTB_SOURCE_BY_ID", MappingProxyType(patched))
     return aliased
 
 
@@ -207,9 +205,7 @@ def test_a_redirect_to_another_approved_source_is_refused(tmp_path: Path) -> Non
             nav.url: response(
                 b"", status_code=302, headers={"Location": USTB_SOURCES[1].url}
             ),
-            USTB_SOURCES[1].url: response(
-                (FIXTURES / "ustb-yield.json").read_bytes()
-            ),
+            USTB_SOURCES[1].url: response((FIXTURES / "ustb-yield.json").read_bytes()),
         }
     )
 
@@ -229,9 +225,7 @@ def test_same_host_redirect_off_the_allowlist_is_refused(tmp_path: Path) -> None
     elsewhere = "https://api.superstate.com/v1/funds/1/yield?version=attacker"
     transport = FakeTransport(
         {
-            source.url: response(
-                b"", status_code=302, headers={"Location": elsewhere}
-            ),
+            source.url: response(b"", status_code=302, headers={"Location": elsewhere}),
             elsewhere: response(b'{"as_of_date":"1970-01-01"}'),
         }
     )
@@ -299,11 +293,7 @@ def test_cross_host_or_non_https_redirect_is_refused(
 ) -> None:
     source = USTB_SOURCES[1]
     transport = FakeTransport(
-        {
-            source.url: response(
-                b"", status_code=302, headers={"Location": location}
-            )
-        }
+        {source.url: response(b"", status_code=302, headers={"Location": location})}
     )
 
     with pytest.raises(SourcePolicyError, match="redirect"):
@@ -377,13 +367,9 @@ def test_oversize_response_is_refused_without_storage(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("status_code", [199, 400, 500])
-def test_non_success_response_is_refused(
-    tmp_path: Path, status_code: int
-) -> None:
+def test_non_success_response_is_refused(tmp_path: Path, status_code: int) -> None:
     source = USTB_SOURCES[1]
-    transport = FakeTransport(
-        {source.url: response(b"error", status_code=status_code)}
-    )
+    transport = FakeTransport({source.url: response(b"error", status_code=status_code)})
 
     with pytest.raises(SourceResponseError, match=str(status_code)):
         fetch_source(
@@ -529,15 +515,12 @@ def test_an_explicit_identity_encoding_is_accepted(tmp_path: Path) -> None:
         }
     )
 
-    assert (
-        fetch_source(
-            source.source_id,
-            store=EvidenceStore(tmp_path),
-            transport=transport,
-            retrieved_at=RETRIEVED_AT,
-        ).byte_size
-        == len(raw)
-    )
+    assert fetch_source(
+        source.source_id,
+        store=EvidenceStore(tmp_path),
+        transport=transport,
+        retrieved_at=RETRIEVED_AT,
+    ).byte_size == len(raw)
 
 
 def test_identity_with_a_parameter_is_refused(tmp_path: Path) -> None:
