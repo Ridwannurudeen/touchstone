@@ -434,7 +434,29 @@ MUTATIONS = (
         path="touchstone/backup.py",
         old="        if hashlib.sha256(raw).hexdigest() != member.sha256:",
         new="        if False:",
-        tests=("tests/test_backup.py::test_a_tampered_archive_creates_no_target",),
+        # Not the tampered-archive test: that one fails at decryption and never reaches
+        # this check. The attacker here holds the key and forged the inventory.
+        tests=(
+            "tests/test_backup.py::test_a_valid_archive_whose_inventory_lies_is_refused",
+        ),
+    ),
+    Mutation(
+        name="a-restore-trusts-the-size-it-was-given",
+        path="touchstone/backup.py",
+        old="        if len(raw) != member.size:",
+        new="        if False:",
+        tests=(
+            "tests/test_backup.py::test_a_valid_archive_whose_size_lies_is_refused",
+        ),
+    ),
+    Mutation(
+        name="an-archive-path-may-escape-its-target",
+        path="touchstone/backup.py",
+        old="    posix, windows = PurePosixPath(path), PureWindowsPath(path)",
+        new="    posix, windows = PurePosixPath('safe'), PureWindowsPath('safe')",
+        tests=(
+            "tests/test_backup.py::test_a_valid_archive_cannot_write_outside_its_target",
+        ),
     ),
     Mutation(
         name="a-restore-may-overwrite-an-existing-tree",
