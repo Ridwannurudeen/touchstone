@@ -90,10 +90,11 @@ def test_an_unusable_workspace_fails_the_service_rather_than_crashing_it(
 ) -> None:
     """Refusing to start is correct. Refusing with a traceback is not.
 
-    The stores judge a workspace usable at construction, and every one of those refusals
-    is a `ValueError` — which `main` did not catch, so a deliberate, well-worded refusal
-    reached the operator as an uncaught traceback instead of the service's own failure
-    line. A new way to fail still has to fit the startup contract.
+    The stores judge a workspace usable at construction. Those refusals come in two
+    kinds: the `ValueError`s this project words itself, and the `OSError`s the workspace's
+    own filesystem issues. `main` caught neither at first and then only the former, so a
+    deliberate refusal reached the operator as an uncaught traceback instead of the
+    service's own failure line. A new way to fail still has to fit the startup contract.
     """
     workspace = make_workspace(tmp_path)
     # Everything before the durable stores is stubbed out, because a missing manifest

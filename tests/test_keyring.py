@@ -238,15 +238,20 @@ def test_revocation_withdraws_trust_and_is_not_a_way_to_disarm_a_deployment() ->
         revoked(withdrawn, kid="ed25519:" + "00" * 32, at=AT)
 
 
-def test_a_lifecycle_instant_must_be_timezone_aware() -> None:
-    with pytest.raises(DeploymentError, match="timezone-aware"):
-        rolled_over(
-            manifest(),
-            new_public_key=bytes.fromhex(
-                Ed25519Signer.from_seed(NEXT_SEED).public_key_record()["public_key"]
-            ),
-            at=datetime(2026, 8, 15, 12, 0, 0),
-        )
+def test_a_lifecycle_instant_must_be_timezone_aware(
+    offsetless_instant: datetime,
+) -> None:
+    for naive in (datetime(2026, 8, 15, 12, 0, 0), offsetless_instant):
+        # The second answers `tzinfo is not None` and still has no offset, so the recorded
+        # moment a key was rolled over would depend on the host that recorded it.
+        with pytest.raises(DeploymentError, match="timezone-aware"):
+            rolled_over(
+                manifest(),
+                new_public_key=bytes.fromhex(
+                    Ed25519Signer.from_seed(NEXT_SEED).public_key_record()["public_key"]
+                ),
+                at=naive,
+            )
 
 
 def test_a_published_key_record_matches_what_the_signer_publishes() -> None:

@@ -91,10 +91,19 @@ MUTATIONS = (
     Mutation(
         name="observations-read-once-per-control",
         path="touchstone/evaluate.py",
-        old="    observed = dict(observations)\n    prior = dict(prior_observations)",
-        new="    observed = observations\n    prior = prior_observations",
+        old="    observed = dict(observations)",
+        new="    observed = observations",
         tests=(
             "tests/test_evaluate.py::test_one_report_describes_one_set_of_observations",
+        ),
+    ),
+    Mutation(
+        name="prior-observations-read-once-per-control",
+        path="touchstone/evaluate.py",
+        old="    prior = dict(prior_observations)",
+        new="    prior = prior_observations",
+        tests=(
+            "tests/test_evaluate.py::test_one_report_describes_one_set_of_prior_observations",
         ),
     ),
     Mutation(
@@ -125,6 +134,74 @@ MUTATIONS = (
         ),
     ),
     Mutation(
+        name="oracle-tolerance-may-be-unbounded",
+        path="touchstone/oracles.py",
+        old="    if not isinstance(tolerance, Decimal) or not tolerance.is_finite():",
+        new="    if not isinstance(tolerance, Decimal) or False:",
+        tests=(
+            "tests/test_oracles.py::test_a_tolerance_that_is_not_a_number_is_refused",
+        ),
+    ),
+    Mutation(
+        name="oracle-block-number-unchecked",
+        path="touchstone/oracles.py",
+        old="    elif type(block_number) is not int or block_number < 0:",
+        new="    elif False:",
+        tests=(
+            "tests/test_oracles.py::test_a_block_that_is_not_a_block_number_is_refused",
+        ),
+    ),
+    Mutation(
+        name="oracle-round-data-checked-by-length-only",
+        path="touchstone/oracles.py",
+        old='        or len(answer_raw) != 2 + 64 * 5\n        or any(\n            character not in "0123456789abcdefABCDEF"\n            for character in answer_raw[2:]\n        )',
+        new="        or len(answer_raw) < 2 + 64 * 5",
+        tests=(
+            "tests/test_oracles.py::test_malformed_round_data_is_this_modules_failure",
+        ),
+    ),
+    Mutation(
+        name="oracle-timestamp-overflow-escapes-untyped",
+        path="touchstone/oracles.py",
+        old="    except (OSError, OverflowError, ValueError) as error:",
+        new="    except OSError as error:",
+        tests=(
+            "tests/test_oracles.py::test_an_unrepresentable_round_timestamp_is_this_modules_failure",
+        ),
+    ),
+    Mutation(
+        name="incident-instant-may-lack-an-offset",
+        path="touchstone/incidents.py",
+        old="        or occurred_at.utcoffset() is None\n",
+        new="",
+        tests=("tests/test_incidents.py::test_an_instant_must_be_timezone_aware",),
+    ),
+    Mutation(
+        name="operation-instant-may-lack-an-offset",
+        path="touchstone/operations.py",
+        old="        or moment.utcoffset() is None\n",
+        new="",
+        tests=("tests/test_operations.py::test_an_instant_must_be_timezone_aware",),
+    ),
+    Mutation(
+        name="key-lifecycle-instant-may-lack-an-offset",
+        path="touchstone/keyring.py",
+        old="        or at.utcoffset() is None\n",
+        new="",
+        tests=(
+            "tests/test_keyring.py::test_a_lifecycle_instant_must_be_timezone_aware",
+        ),
+    ),
+    Mutation(
+        name="retrieval-instant-may-lack-an-offset",
+        path="touchstone/compiler.py",
+        old="        or retrieved_at.utcoffset() is None\n",
+        new="",
+        tests=(
+            "tests/test_compiler.py::test_a_retrieval_instant_must_be_timezone_aware",
+        ),
+    ),
+    Mutation(
         name="identity-not-established-at-each-observation",
         path="touchstone/incidents.py",
         old="        self._refuse_hardlink()\n        entries = self._read()",
@@ -146,73 +223,135 @@ MUTATIONS = (
 )
 
 
-def tree_is_clean() -> bool:
-    """Report whether the working tree has no tracked modifications."""
-    finished = subprocess.run(["git", "diff", "--quiet"], cwd=ROOT, capture_output=True)
-    return finished.returncode == 0
+# pytest's documented exit codes. Only TESTS_FAILED means a mutant was noticed by an
+# assertion. Every other nonzero code means the run did not happen as intended — a
+# mistyped node id collects nothing and exits USAGE_ERROR — and counting those as kills
+# is how a harness reports full coverage while executing none of it.
+_TESTS_FAILED = 1
+_NO_TESTS_COLLECTED = 5
 
 
-def run_mutation(mutation: Mutation) -> bool:
-    """Apply one mutation, report whether its tests noticed, and always restore."""
+def tree_is_clean() -> tuple[bool, str]:
+    """Report whether the tree matches HEAD, including the index and untracked files.
+
+    `git diff` alone sees neither, so a staged source change or an untracked `conftest.py`
+    could shape every result while the harness announced a clean tree.
+    """
+    finished = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if finished.returncode != 0:
+        return False, finished.stderr.strip()
+    return not finished.stdout.strip(), finished.stdout.strip()
+
+
+def run_tests(tests: tuple[str, ...]) -> subprocess.CompletedProcess[str]:
+    """Run exactly these test nodes, capturing everything."""
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            *tests,
+            "-q",
+            "--no-header",
+            "-p",
+            "no:cacheprovider",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+
+def run_mutation(mutation: Mutation) -> tuple[str, str]:
+    """Apply one mutation, judge the run, and always restore.
+
+    Returns a verdict of "killed", "survived" or "broken", with the detail worth printing.
+    """
     target = ROOT / mutation.path
     original = target.read_text(encoding="utf-8")
     occurrences = original.count(mutation.old)
     if occurrences != 1:
-        raise SystemExit(
-            f"{mutation.name}: found {occurrences} matches in {mutation.path}, "
-            "expected exactly one — the harness is stale"
+        return (
+            "broken",
+            f"found {occurrences} matches in {mutation.path}, expected exactly one — "
+            "the harness anchor is stale",
         )
     try:
         target.write_text(
             original.replace(mutation.old, mutation.new), encoding="utf-8"
         )
-        finished = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                *mutation.tests,
-                "-q",
-                "--no-header",
-                "-x",
-                "-p",
-                "no:cacheprovider",
-            ],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-        )
+        finished = run_tests(mutation.tests)
     finally:
         target.write_text(original, encoding="utf-8")
-    return finished.returncode != 0
+
+    if finished.returncode == _TESTS_FAILED:
+        failed = [
+            line
+            for line in finished.stdout.splitlines()
+            if line.startswith("FAILED") or line.startswith("ERROR")
+        ]
+        return "killed", "; ".join(failed[:2])
+    if finished.returncode == 0:
+        return "survived", "every named test still passed"
+    reason = (
+        "no tests were collected"
+        if finished.returncode == _NO_TESTS_COLLECTED
+        else f"pytest exited {finished.returncode}"
+    )
+    return "broken", f"{reason}\n{finished.stdout.strip()[-800:]}"
 
 
 def main() -> int:
-    if not tree_is_clean():
+    clean, detail = tree_is_clean()
+    if not clean:
         print(
-            "refusing to run: the working tree has uncommitted changes, and this "
-            "harness edits tracked files in place",
+            "refusing to run: the tree does not match HEAD, and this harness edits "
+            f"tracked files in place\n{detail}",
             file=sys.stderr,
         )
         return 2
 
-    survivors = []
-    for mutation in MUTATIONS:
-        killed = run_mutation(mutation)
-        print(f"{'killed ' if killed else 'SURVIVED'}  {mutation.name}")
-        if not killed:
-            survivors.append(mutation.name)
-
-    if not tree_is_clean():
+    # Every mutation's tests must pass before anything is mutated. Otherwise a node that
+    # was renamed, or a test already failing for an unrelated reason, is indistinguishable
+    # from a mutant that was caught.
+    baseline = run_tests(tuple(dict.fromkeys(t for m in MUTATIONS for t in m.tests)))
+    if baseline.returncode != 0:
         print(
-            "the tree was not restored — inspect it before committing", file=sys.stderr
+            "refusing to run: the unmutated tests do not all pass, so no result would "
+            f"mean anything\n{baseline.stdout.strip()[-2000:]}",
+            file=sys.stderr,
         )
         return 2
 
-    print(f"\n{len(MUTATIONS) - len(survivors)}/{len(MUTATIONS)} mutants killed")
+    survivors, broken = [], []
+    for mutation in MUTATIONS:
+        verdict, detail = run_mutation(mutation)
+        print(f"{verdict:9} {mutation.name}" + (f"  ({detail})" if detail else ""))
+        if verdict == "survived":
+            survivors.append(mutation.name)
+        elif verdict == "broken":
+            broken.append(mutation.name)
+
+    clean, detail = tree_is_clean()
+    if not clean:
+        print(
+            f"the tree was not restored — inspect it before committing\n{detail}",
+            file=sys.stderr,
+        )
+        return 2
+
+    killed = len(MUTATIONS) - len(survivors) - len(broken)
+    print(f"\n{killed}/{len(MUTATIONS)} mutants killed")
     for name in survivors:
         print(f"  survived: {name}", file=sys.stderr)
-    return 1 if survivors else 0
+    for name in broken:
+        print(f"  broken:   {name}", file=sys.stderr)
+    return 1 if survivors or broken else 0
 
 
 if __name__ == "__main__":

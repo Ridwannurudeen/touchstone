@@ -184,6 +184,12 @@ def read_ustb_oracle(
 
     if block_number is None:
         block_number = _hex_to_int(rpc.call("eth_blockNumber", []), "block number")
+    # A caller-supplied block was sent to the endpoint unexamined. `bool` is an `int`
+    # subclass, so `True` travelled as block 1 and was then stored as `True` in the
+    # reading; a negative number was formatted as "-0x1", which is not a quantity any
+    # node will answer. Both produce a reading that names a block nobody read.
+    elif type(block_number) is not int or block_number < 0:
+        raise ValueError("block_number must be a non-negative integer")
     block = hex(block_number)
 
     code = rpc.call("eth_getCode", [address, block])
@@ -212,7 +218,18 @@ def read_ustb_oracle(
     answer_raw = rpc.call(
         "eth_call", [{"to": address, "data": _SELECTOR_LATEST_ROUND_DATA}, block]
     )
-    if not isinstance(answer_raw, str) or len(answer_raw) < 2 + 64 * 5:
+    # Length alone let a malformed payload through to `int(..., 16)`, which raises a bare
+    # ValueError, and a round-data word large enough to overflow a struct_time reached
+    # `datetime.fromtimestamp` and raised OverflowError. Neither is this module's typed
+    # failure, so a caller catching OracleUnavailable saw the process die instead.
+    if (
+        not isinstance(answer_raw, str)
+        or not answer_raw.startswith("0x")
+        or len(answer_raw) != 2 + 64 * 5
+        or any(
+            character not in "0123456789abcdefABCDEF" for character in answer_raw[2:]
+        )
+    ):
         raise OracleUnavailable("latestRoundData returned an unexpected payload")
     words = answer_raw[2:]
     answer_word = int(words[64:128], 16)
@@ -222,6 +239,12 @@ def read_ustb_oracle(
         raise OracleUnavailable("oracle answer is not positive")
     if updated_at_word == 0:
         raise OracleUnavailable("oracle round has no update timestamp")
+    try:
+        updated_at = datetime.fromtimestamp(updated_at_word, timezone.utc)
+    except (OSError, OverflowError, ValueError) as error:
+        raise OracleUnavailable(
+            f"oracle round timestamp {updated_at_word} is not a representable instant"
+        ) from error
 
     return OracleReading(
         chain_id=chain_id,
@@ -229,7 +252,7 @@ def read_ustb_oracle(
         block_number=block_number,
         decimals=decimals,
         answer=Decimal(answer) / (Decimal(10) ** decimals),
-        updated_at=datetime.fromtimestamp(updated_at_word, timezone.utc),
+        updated_at=updated_at,
     )
 
 
@@ -256,7 +279,14 @@ def compare_confirmed_row(
     """
     if row is None:
         raise OracleUnavailable("no confirmed row is available to compare")
-    if not isinstance(tolerance, Decimal) or tolerance < 0:
+    # `is_finite()` before the comparison, and before any ordering is attempted on it.
+    # An infinite tolerance is not a lenient bound, it is the absence of one: every
+    # finite difference satisfies it, so the control reports agreement without ever
+    # comparing anything. NaN is worse — it fails `< 0` by raising InvalidOperation,
+    # which is not this function's refusal.
+    if not isinstance(tolerance, Decimal) or not tolerance.is_finite():
+        raise ValueError("tolerance must be a finite Decimal")
+    if tolerance < 0:
         raise ValueError("tolerance must be a non-negative Decimal")
     if type(effective_date) is not date:
         raise ValueError("effective_date must be a date")

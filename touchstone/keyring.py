@@ -325,6 +325,6 @@ def revoked(
 
 
 def _stamp(at: datetime) -> str:
-    if not isinstance(at, datetime) or at.tzinfo is None:
+    if not isinstance(at, datetime) or at.tzinfo is None or at.utcoffset() is None:
         raise DeploymentError("a key lifecycle instant must be timezone-aware")
     return at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")

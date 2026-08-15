@@ -473,3 +473,28 @@ def test_one_report_describes_one_set_of_observations() -> None:
         prior_observations=prior(),
         now=date(2026, 8, 14),
     )
+
+
+def test_one_report_describes_one_set_of_prior_observations() -> None:
+    """The qualifying earlier capture is a caller mapping on the same terms.
+
+    It decides which rows count as confirmed, so reading it once per control lets three
+    controls confirm against three different predecessors while the report says nothing
+    about which capture it compared against.
+    """
+    shifting = _ShiftingObservations(prior(), prior("ustb-nav-20260814.json"))
+
+    report = evaluate_ustb(
+        default_ustb_controls(),
+        observations(),
+        prior_observations=shifting,
+        now=date(2026, 8, 14),
+    )
+
+    assert shifting.nav_reads == 1, "the prior capture was read exactly once"
+    assert report == evaluate_ustb(
+        default_ustb_controls(),
+        observations(),
+        prior_observations=prior(),
+        now=date(2026, 8, 14),
+    )

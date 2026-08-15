@@ -153,6 +153,69 @@ def test_a_real_disagreement_is_reported() -> None:
     assert comparison.difference > comparison.tolerance
 
 
+@pytest.mark.parametrize("unbounded", ["Infinity", "-Infinity", "NaN"])
+def test_a_tolerance_that_is_not_a_number_is_refused(unbounded: str) -> None:
+    """An infinite tolerance is the absence of a bound, not a lenient one.
+
+    Every finite difference satisfies it, so the control reports agreement without having
+    compared anything — the one outcome this comparison exists to make impossible. NaN
+    never reached the refusal at all: it raised `InvalidOperation` out of the ordering
+    test written to catch it.
+    """
+    reading = read_ustb_oracle(FakeRPC(), block_number=1)
+
+    with pytest.raises(ValueError, match="finite"):
+        compare_confirmed_row(
+            row(EFFECTIVE_DATE, "999.00000000"),
+            reading,
+            tolerance=Decimal(unbounded),
+            effective_date=EFFECTIVE_DATE,
+        )
+
+
+@pytest.mark.parametrize("block_number", [-1, True])
+def test_a_block_that_is_not_a_block_number_is_refused(block_number: object) -> None:
+    """The supplied block was formatted and sent without being examined.
+
+    `bool` is an `int` subclass, so `True` travelled as block 1 and was then recorded as
+    `True` in the reading; a negative number was formatted as "-0x1", which is not a
+    quantity any node answers. Both name a block that was never read.
+    """
+    with pytest.raises(ValueError, match="block_number"):
+        read_ustb_oracle(FakeRPC(), block_number=block_number)
+
+
+@pytest.mark.parametrize(
+    ("payload", "reason"),
+    [
+        ("0x" + "zz" * 160, "non-hexadecimal round data"),
+        ("0x" + "11" * 200, "an over-long payload"),
+    ],
+)
+def test_malformed_round_data_is_this_modules_failure(
+    payload: str, reason: str
+) -> None:
+    """Length alone let malformed payloads reach `int(..., 16)`, which raises bare.
+
+    A caller catching `OracleUnavailable` saw the process die instead, which is the same
+    outcome as trusting the payload. Checked for shape as well as size now: {reason}.
+    """
+    with pytest.raises(OracleUnavailable, match="unexpected payload"):
+        read_ustb_oracle(FakeRPC(latestRoundData=payload), block_number=1)
+
+
+def test_an_unrepresentable_round_timestamp_is_this_modules_failure() -> None:
+    """A word large enough to overflow a struct_time reached `datetime.fromtimestamp`.
+
+    It raised `OverflowError` from inside the constructor — not a typed refusal, so the
+    reading neither succeeded nor failed in a way any caller could handle.
+    """
+    payload = round_data(11_175_588, updated_at=(1 << 63) - 1)
+
+    with pytest.raises(OracleUnavailable, match="representable instant"):
+        read_ustb_oracle(FakeRPC(latestRoundData=payload), block_number=1)
+
+
 def test_a_date_mismatch_refuses_to_compare() -> None:
     """The oracle updates on its own schedule; comparing across dates invents a conflict."""
     reading = read_ustb_oracle(FakeRPC(), block_number=1)

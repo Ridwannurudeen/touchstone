@@ -97,9 +97,15 @@ def test_an_incident_must_say_what_happened(tmp_path: Path) -> None:
             opened(log(tmp_path), detail=detail)
 
 
-def test_an_instant_must_be_timezone_aware(tmp_path: Path) -> None:
+def test_an_instant_must_be_timezone_aware(
+    tmp_path: Path, offsetless_instant: datetime
+) -> None:
     with pytest.raises(IncidentLogError, match="timezone-aware"):
         opened(log(tmp_path), occurred_at=datetime(2026, 8, 15, 9, 0))
+    # A tzinfo that declines to give an offset is naive with a disguise, and this record
+    # is durable: accepting it makes the stored instant depend on which host wrote it.
+    with pytest.raises(IncidentLogError, match="timezone-aware"):
+        opened(log(tmp_path), occurred_at=offsetless_instant)
 
 
 def test_editing_an_entry_breaks_verification(tmp_path: Path) -> None:

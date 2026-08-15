@@ -498,3 +498,25 @@ def test_a_compliant_injected_candidate_is_still_only_a_proposal(
     assert outcome.control.approval_state == "proposed", (
         "an accepted candidate is a proposal; it must never arrive already approved"
     )
+
+
+def test_a_retrieval_instant_must_be_timezone_aware(
+    tmp_path: Path, offsetless_instant: datetime
+) -> None:
+    """Compilation provenance is durable, so the instant cannot be host-dependent.
+
+    A naive datetime was already refused. One carrying a `tzinfo` that declines to give an
+    offset was not, and it is naive on every count that matters: `astimezone` resolves it
+    against whichever machine happened to run the compiler.
+    """
+    store, digest = stored_evidence(tmp_path)
+
+    for naive in (datetime(2026, 8, 13, 14, 0), offsetless_instant):
+        with pytest.raises(ValueError, match="timezone-aware"):
+            compile_evidence(
+                DeterministicFixtureProvider(raw_output({})),
+                evidence_sha256=digest,
+                source_manifest=SOURCE,
+                store=store,
+                retrieved_at=naive,
+            )

@@ -195,16 +195,22 @@ def test_an_operation_that_contradicts_its_report_is_refused(tmp_path: Path) -> 
         operations.load_operation()
 
 
-def test_an_instant_must_be_timezone_aware(tmp_path: Path) -> None:
+def test_an_instant_must_be_timezone_aware(
+    tmp_path: Path, offsetless_instant: datetime
+) -> None:
     operations = store(tmp_path)
 
-    with pytest.raises(OperationsError, match="timezone-aware"):
-        operations.begin_operation(
-            _signed_report(1),
-            report_uri="urn:touchstone:report:1",
-            correction_of=None,
-            scheduled_for=datetime(2026, 8, 15, 9, 0),
-        )
+    for naive in (datetime(2026, 8, 15, 9, 0), offsetless_instant):
+        # The second declines to give an offset, which `astimezone` resolves against the
+        # host's local zone — so the same scheduled instant means different things on
+        # different machines, in a record written to survive a restart.
+        with pytest.raises(OperationsError, match="timezone-aware"):
+            operations.begin_operation(
+                _signed_report(1),
+                report_uri="urn:touchstone:report:1",
+                correction_of=None,
+                scheduled_for=naive,
+            )
 
 
 class _ShiftingReport(Mapping):

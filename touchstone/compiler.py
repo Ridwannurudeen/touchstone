@@ -218,7 +218,11 @@ def compile_evidence(
     """Compile one stored artifact, validate every proposal, and persist the record."""
     if not isinstance(source_manifest, SourceManifest):
         raise TypeError("source_manifest must be a SourceManifest")
-    if not isinstance(retrieved_at, datetime) or retrieved_at.tzinfo is None:
+    if (
+        not isinstance(retrieved_at, datetime)
+        or retrieved_at.tzinfo is None
+        or retrieved_at.utcoffset() is None
+    ):
         raise ValueError("retrieved_at must be a timezone-aware datetime")
     if (
         type(excerpt_limit) is not int

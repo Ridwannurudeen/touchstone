@@ -439,6 +439,10 @@ def _slug(asset_key: str) -> str:
 
 
 def _stamp(moment: datetime) -> str:
-    if not isinstance(moment, datetime) or moment.tzinfo is None:
+    if (
+        not isinstance(moment, datetime)
+        or moment.tzinfo is None
+        or moment.utcoffset() is None
+    ):
         raise OperationsError("an operational instant must be timezone-aware")
     return moment.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")

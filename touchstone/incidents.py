@@ -551,6 +551,10 @@ def _entry_hash(entry: Mapping[str, object]) -> str:
 
 
 def _stamp(occurred_at: datetime) -> str:
-    if not isinstance(occurred_at, datetime) or occurred_at.tzinfo is None:
+    if (
+        not isinstance(occurred_at, datetime)
+        or occurred_at.tzinfo is None
+        or occurred_at.utcoffset() is None
+    ):
         raise IncidentLogError("an incident instant must be timezone-aware")
     return occurred_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
