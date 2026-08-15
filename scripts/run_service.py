@@ -41,6 +41,7 @@ from touchstone.incidents import (  # noqa: E402
     SOURCE_UNAVAILABLE,
     IncidentLog,
 )
+from touchstone.locking import LockUnavailable, exclusive_lock  # noqa: E402
 from touchstone.keyring import (  # noqa: E402
     IdentityError,
     PublisherKey,
@@ -89,6 +90,7 @@ class Service:
         incidents: IncidentLog,
         *,
         asset_key: str,
+        lock_path: str | Path | None = None,
         retries: int = DEFAULT_RETRIES,
         backoff_seconds: float = DEFAULT_BACKOFF_SECONDS,
         sleep: Callable[[float], None] = time.sleep,
@@ -98,6 +100,14 @@ class Service:
         self.operations = operations
         self.incidents = incidents
         self.asset_key = asset_key
+        # One daemon per workspace. Checking for an outstanding operation and then acting
+        # on it is a read-modify-write across several files, and two services interleaving
+        # there can both pass the check and both go on to produce.
+        self.lock_path = Path(
+            lock_path
+            if lock_path is not None
+            else Path(operations.directory).parent / "service.lock"
+        )
         if type(retries) is not int or retries < 0:
             raise ValueError("retries must be a non-negative integer")
         if not isinstance(backoff_seconds, (int, float)) or backoff_seconds < 0:
@@ -121,6 +131,14 @@ class Service:
                 f"the recorded operation cannot be read: {error}"
             ) from error
         if operation is None:
+            # The operation may have been cleared by a run that died before it could
+            # close the incident it had opened. Nothing is outstanding, so the incident
+            # is stale, and leaving it open would report a service as stuck for ever.
+            if self.client.pending_transaction() is None:
+                self._close_open_incidents(
+                    "no publication is outstanding",
+                    kinds={PUBLICATION_UNRESOLVED},
+                )
             return None
         moment = self.now()
         try:
@@ -138,11 +156,12 @@ class Service:
             raise UnresolvedPublication(
                 f"startup could not settle sequence {operation.sequence}: {error}"
             ) from error
-        # A failed startup opened PUBLICATION_UNRESOLVED. Succeeding now is exactly the
-        # recovery that incident was waiting for, and leaving it open would make the log
-        # read as though the service were still stuck.
+        # Only the publication incidents. Settling a publication says nothing about
+        # whether the source came back, and closing a SOURCE_UNAVAILABLE here would have
+        # claimed a recovery nobody observed.
         self._close_open_incidents(
-            f"sequence {operation.sequence} was settled on a later start"
+            f"sequence {operation.sequence} was settled on a later start",
+            kinds={PUBLICATION_UNRESOLVED},
         )
         return SlotOutcome(
             scheduled_at=moment,
@@ -190,12 +209,22 @@ class Service:
                 scheduled_at,
             )
 
-        self.operations.begin_operation(
-            signed_report,
-            report_uri=report_uri(signed_report),
-            correction_of=correction_of,
-            scheduled_for=scheduled_at,
-        )
+        try:
+            # Inside the boundary: naming the report and recording the operation can both
+            # fail — a bad URI, a full disk — and outside it those failures ended the slot
+            # with nothing written down at all.
+            self.operations.begin_operation(
+                signed_report,
+                report_uri=report_uri(signed_report),
+                correction_of=correction_of,
+                scheduled_for=scheduled_at,
+            )
+        except Exception as error:  # noqa: BLE001 - recorded, like every other failure
+            return self._record_incident(
+                PUBLICATION_UNRESOLVED,
+                f"the report could not be recorded for publication: {error}",
+                scheduled_at,
+            )
         try:
             # The retry belongs here, around the publication, because this is where a
             # transport failure actually arises — preflight and submission. Wrapping the
@@ -220,10 +249,33 @@ class Service:
         )
 
     def _resolve_outstanding(self) -> None:
-        """Settle a publication left over from an earlier slot, if there is one."""
+        """Settle a publication left over from an earlier slot, if there is one.
+
+        When a transaction has already been journalled this calls the publisher **once**,
+        without the retry loop. Routing it through the loop meant the loop's own guard —
+        refuse while a journal exists — fired before the work ran, so a publication that
+        timed out waiting for a receipt could never reconcile while the daemon stayed
+        alive, even after the transaction confirmed. Disabling the retry is right;
+        disabling reconciliation is not.
+        """
         if self.operations.load_operation() is None:
             return
+        if self.client.pending_transaction() is not None:
+            self.operations.resolve(self.client)
+            return
         self._with_retry(lambda: self.operations.resolve(self.client))
+
+    def record_escaped_failure(
+        self, scheduled_at: datetime, error: BaseException
+    ) -> None:
+        """Record a slot failure that got past run_slot's own handling."""
+        self.incidents.open_incident(
+            asset_key=self.asset_key,
+            kind=EPOCH_FAILED,
+            detail=f"the slot at {scheduled_at.isoformat()} failed unexpectedly: {error}",
+            occurred_at=self.now(),
+            state=self._projected_state(),
+        )
 
     def record_outage(self, first_missed: datetime, count: int) -> None:
         """One incident per outage, carrying the exact number of slots it covered.
@@ -289,8 +341,12 @@ class Service:
             return None
         return state.projected(self.now().date()).value
 
-    def _close_open_incidents(self, detail: str) -> None:
+    def _close_open_incidents(
+        self, detail: str, *, kinds: frozenset[str] | set[str] | None = None
+    ) -> None:
         for incident in self.incidents.open_incidents(self.asset_key):
+            if kinds is not None and incident.kind not in kinds:
+                continue
             self.incidents.close_incident(
                 incident.incident_id,
                 detail=detail,
@@ -309,6 +365,26 @@ def serve(
     **schedule_arguments: object,
 ) -> ScheduleOutcome:
     """Resolve what was left in flight, then run slots until asked to stop."""
+    with exclusive_lock(service.lock_path):
+        return _serve_locked(
+            service,
+            produce,
+            report_uri=report_uri,
+            interval_seconds=interval_seconds,
+            max_runs=max_runs,
+            **schedule_arguments,
+        )
+
+
+def _serve_locked(
+    service: Service,
+    produce: Callable[[datetime], Mapping[str, object] | None],
+    *,
+    report_uri: Callable[[Mapping[str, object]], str],
+    interval_seconds: float,
+    max_runs: int | None = None,
+    **schedule_arguments: object,
+) -> ScheduleOutcome:
     service.resolve_startup()
     return run_schedule(
         lambda scheduled_at: service.run_slot(
@@ -317,6 +393,10 @@ def serve(
         interval_seconds=interval_seconds,
         max_runs=max_runs,
         on_outage=service.record_outage,
+        # A last resort. run_slot records everything it can, but anything that escapes it
+        # would otherwise leave the schedule running and the log silent — the worst
+        # combination, because it looks exactly like working.
+        on_failure=service.record_escaped_failure,
         **schedule_arguments,
     )
 
@@ -356,17 +436,19 @@ def main(argv: list[str] | None = None) -> int:
         service = build_service(
             arguments.manifest, arguments.workspace, asset_key=arguments.asset_key
         )
-        if not arguments.resolve_only:
+        if not arguments.resolve_only:  # noqa: SIM102
             # A slot needs an epoch runner, and this project has no live-source runner
             # yet: PLAN-T10 and PLAN-T11 own the adapters. Refusing is honest; a service
             # that started and silently published nothing would look like it was working.
             parser.error(
                 "no live epoch adapter is wired yet; --resolve-only is the supported mode"
             )
-        outcome = service.resolve_startup()
+        with exclusive_lock(service.lock_path):
+            outcome = service.resolve_startup()
     except (
         DeploymentError,
         IdentityError,
+        LockUnavailable,
         OperationsError,
         PublicationError,
     ) as error:

@@ -27,6 +27,8 @@ from datetime import date, datetime, timezone
 import os
 from pathlib import Path
 
+from web3 import Web3
+
 from touchstone.controls import AssetState
 from touchstone.publish import DuplicateSequence, PublicationResult, PublisherClient
 from touchstone.signing import canonical_json_bytes, strict_json_loads
@@ -208,12 +210,7 @@ class OperationsStore:
         try:
             result = publish(operation.signed_report, report_uri=operation.report_uri)
         except DuplicateSequence as error:
-            entry = self._logged_entry(client, operation)
-            if entry is None:
-                raise UnresolvedPublication(
-                    f"sequence {operation.sequence} for {operation.asset_key} is already "
-                    f"onchain but this service has no record of publishing it: {error}"
-                ) from error
+            self._prove_settled(client, operation, error)
             self._settle(operation)
             return None
         self._settle(operation)
@@ -230,6 +227,47 @@ class OperationsStore:
         """
         self.save_state(operation.signed_report, updated_at=self.now())
         self.clear_operation()
+
+    def _prove_settled(
+        self,
+        client: PublisherClient,
+        operation: PendingOperation,
+        error: Exception,
+    ) -> None:
+        """Establish that *this* operation is what settled, not merely something at it.
+
+        A duplicate sequence proves only that the slot is taken. The transparency log
+        shows this service published this report; the chain shows under which URI and by
+        whom. Checking the log alone left a real gap: after the publisher finalised, an
+        operation carrying the same report under a *different* URI was cleared as done,
+        while the chain held the first URI. The report URI is not inside the signed
+        report, so the chain is the only place to settle that question.
+        """
+        if self._logged_entry(client, operation) is None:
+            raise UnresolvedPublication(
+                f"sequence {operation.sequence} for {operation.asset_key} is already "
+                f"onchain but this service has no record of publishing it: {error}"
+            ) from error
+        asset_key = bytes(Web3.keccak(text=operation.asset_key))
+        try:
+            onchain = client.backend.get_report(asset_key, operation.sequence)
+        except Exception as read_error:  # noqa: BLE001 - unreadable means unproven
+            raise UnresolvedPublication(
+                f"sequence {operation.sequence} is onchain but could not be read back "
+                f"to confirm it is this operation: {read_error}"
+            ) from read_error
+        if onchain.report_uri != operation.report_uri:
+            raise UnresolvedPublication(
+                f"sequence {operation.sequence} is onchain under "
+                f"{onchain.report_uri!r}, but this operation is for "
+                f"{operation.report_uri!r}"
+            )
+        lineage = client.backend.publisher_lineage(onchain.publisher)
+        if lineage != client.manifest.publisher_identity_address:
+            raise UnresolvedPublication(
+                f"sequence {operation.sequence} was published by {onchain.publisher}, "
+                f"whose lineage {lineage} is not this deployment's"
+            )
 
     def _logged_entry(
         self, client: PublisherClient, operation: PendingOperation

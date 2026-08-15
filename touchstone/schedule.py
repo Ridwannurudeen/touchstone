@@ -19,6 +19,7 @@ import argparse
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import math
 import subprocess
 import sys
 import time
@@ -111,7 +112,10 @@ def run_schedule(
             # a long outage or a clock that jumped would otherwise iterate once per missed
             # slot, and a scheduler that hangs while recording downtime is worse than one
             # that records it roughly.
-            skipped = int((current - next_run) // interval) + 1
+            # Ceiling, not floor-plus-one. A slot due at exactly this moment is due, not
+            # missed: the old form counted it as skipped and then jumped past it, so an
+            # outage of an exact multiple of the interval silently dropped a live slot.
+            skipped = math.ceil((current - next_run) / interval)
             # Only the slots actually named cost anything. Iterating over every skipped
             # slot to discard most of them made the work proportional to the outage, which
             # is the opposite of what a recovering service needs.

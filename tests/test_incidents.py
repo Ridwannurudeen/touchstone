@@ -141,9 +141,18 @@ def test_truncating_the_final_entry_is_detected(tmp_path: Path) -> None:
         incidents.verify()
 
 
-def test_a_log_without_its_head_cannot_be_shown_complete(tmp_path: Path) -> None:
+def test_a_multi_entry_log_without_its_head_cannot_be_shown_complete(
+    tmp_path: Path,
+) -> None:
+    """With several entries and no head, there is no way to know how many were lost.
+
+    A single entry with no head is different — that is an append interrupted before its
+    head was written, and it is repaired. Past one entry the two cases are indistinguishable
+    from the log alone, so the safe reading is that completeness is unproven.
+    """
     incidents = log(tmp_path)
     opened(incidents)
+    opened(incidents, detail="a second failure")
     incidents.head_path.unlink()
 
     with pytest.raises(IncidentLogError, match="completeness cannot be established"):
@@ -208,3 +217,45 @@ def test_the_head_survives_a_crash_between_entries(tmp_path: Path) -> None:
     assert head["count"] == 1
     assert head["head_entry_hash"] == entry["entry_hash"]
     assert incidents.path.stat().st_size > 0
+
+
+def test_a_killed_writer_does_not_lock_the_log_out_forever(tmp_path: Path) -> None:
+    """The sentinel-file version left a lock nobody could clear.
+
+    It was removed in a ``finally``, which a hard kill skips — so a crash left every later
+    append failing until a human deleted the file, at exactly the moment a service was
+    trying to record why it crashed.
+    """
+    import subprocess
+    import sys
+
+    incidents = log(tmp_path)
+    opened(incidents)
+    script = f"""
+import os, sys
+sys.path.insert(0, r"{Path.cwd()}")
+from touchstone.locking import exclusive_lock
+with exclusive_lock(r"{incidents.lock_path}"):
+    os._exit(9)
+"""
+    killed = subprocess.run([sys.executable, "-c", script], capture_output=True)
+    assert killed.returncode == 9
+
+    # The lock file may well still exist; what matters is that it no longer locks.
+    entry = opened(incidents, detail="recorded after the crash")
+
+    assert entry["index"] == 1
+    assert len(incidents.verify()) == 2
+
+
+def test_a_crash_before_the_very_first_head_is_repairable(tmp_path: Path) -> None:
+    """The first entry deserves the same recovery as every later one."""
+    incidents = log(tmp_path)
+    entry = opened(incidents)
+    incidents.head_path.unlink()
+
+    assert len(incidents.verify()) == 1, "the entry survives"
+    assert incidents.head_path.exists(), "and the head was completed"
+    assert strict_json_loads(incidents.head_path.read_bytes())["head_entry_hash"] == (
+        entry["entry_hash"]
+    )

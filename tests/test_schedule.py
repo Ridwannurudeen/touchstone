@@ -126,7 +126,9 @@ def test_a_long_outage_is_counted_exactly_and_named_in_part() -> None:
     outcome = schedule(job, clock, max_runs=2)
 
     assert outcome.completed == 2
-    assert outcome.missed_count == 86_400_000 // 60
+    # Ceiling, not floor-plus-one: the slot due at the moment the clock lands is due,
+    # not missed, so the count is one lower than a naive division suggests.
+    assert outcome.missed_count == 86_400_000 // 60 - 1
     assert len(outcome.missed) == MAX_NAMED_MISSES
     assert outcome.misses_were_truncated
     assert outcome.missed[0] == START + timedelta(seconds=60)
@@ -207,7 +209,7 @@ def test_recording_an_outage_costs_no_more_than_naming_its_slots(
 
     outcome = schedule(job, clock, max_runs=2)
 
-    assert outcome.missed_count == 1000, "the count is exact"
+    assert outcome.missed_count == 999, "the count is exact"
     assert len(outcome.missed) == MAX_NAMED_MISSES
     assert calls["n"] <= MAX_NAMED_MISSES + 8, (
         f"work must stay near the bound, not the outage; took {calls['n']} steps"
@@ -227,4 +229,32 @@ def test_an_outage_is_reported_once_with_its_exact_size() -> None:
 
     schedule(job, clock, max_runs=2, on_outage=lambda first, count: outages.append((first, count)))
 
-    assert outages == [(START + timedelta(seconds=60), 5)]
+    # Four slots passed (60, 120, 180, 240); the 300 slot is due now and is run.
+    assert outages == [(START + timedelta(seconds=60), 4)]
+
+
+def test_a_slot_due_at_this_exact_moment_is_run_not_skipped() -> None:
+    """The boundary the catch-up arithmetic got wrong.
+
+    Counting the skipped slots as floor-plus-one treated a slot due at precisely the
+    current moment as already missed, then jumped past it — so an outage lasting an exact
+    multiple of the interval silently dropped a live slot.
+    """
+    clock = FakeTime()
+    starts = []
+    missed = []
+
+    def job(scheduled_at: datetime) -> None:
+        starts.append(clock.current)
+        if len(starts) == 1:
+            clock.current += 240  # exactly four intervals
+
+    outcome = schedule(job, clock, max_runs=2, on_missed=missed.append)
+
+    assert starts == [0.0, 240.0], "the slot due at 240 ran"
+    assert outcome.missed_count == 3
+    assert missed == [
+        START + timedelta(seconds=60),
+        START + timedelta(seconds=120),
+        START + timedelta(seconds=180),
+    ]

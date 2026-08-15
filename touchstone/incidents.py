@@ -15,8 +15,7 @@ way rather than described as tamper-proof.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -24,6 +23,7 @@ import os
 from pathlib import Path
 import re
 
+from touchstone.locking import exclusive_lock
 from touchstone.signing import canonical_json_bytes, strict_json_loads
 
 
@@ -86,31 +86,14 @@ class IncidentLog:
         self.head_path = self.path.with_name(self.path.name + ".head")
         self.lock_path = self.path.with_name(self.path.name + ".lock")
 
-    @contextmanager
-    def _exclusive(self) -> Iterator[None]:
-        """Hold an exclusive lock across the read-modify-write of an append.
+    def _exclusive(self):
+        """An OS-level lock, so a killed writer does not lock the log out forever.
 
-        Appending is a check-then-write: verify the chain, then extend it. Two processes
-        interleaving there produce two entries claiming the same index and the same
-        predecessor, which is a corrupt chain rather than a race that resolves itself. A
-        second daemon on one workspace is a configuration mistake, and it should fail
-        loudly instead of quietly damaging the record of everything else.
+        The first version created a sentinel file and removed it in a ``finally``, which a
+        hard kill skips entirely — leaving a file that blocked every later append until
+        someone deleted it by hand, at exactly the moment a service is trying to recover.
         """
-        try:
-            handle = os.open(
-                self.lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY
-            )
-        except FileExistsError as error:
-            raise IncidentLogError(
-                f"another writer holds {self.lock_path.name}; two services must not "
-                "share one incident log"
-            ) from error
-        try:
-            os.write(handle, str(os.getpid()).encode("ascii"))
-            os.close(handle)
-            yield
-        finally:
-            self.lock_path.unlink(missing_ok=True)
+        return exclusive_lock(self.lock_path)
 
     # ------------------------------------------------------------------ writing
     def open_incident(
@@ -142,24 +125,33 @@ class IncidentLog:
         occurred_at: datetime,
         state: str | None = None,
     ) -> dict[str, object]:
-        """Record that it started working again, by appending rather than editing."""
-        entries = self.verify()
-        opened = {
-            entry["entry_hash"]: entry for entry in entries if entry["closes"] is None
-        }
-        target = opened.get(incident_id)
-        if target is None:
-            raise IncidentLogError(f"no incident was opened with id {incident_id}")
-        if any(entry["closes"] == incident_id for entry in entries):
-            raise IncidentLogError(f"incident {incident_id} is already closed")
-        return self._append(
-            asset_key=target["asset_key"],
-            kind=target["kind"],
-            detail=detail,
-            occurred_at=occurred_at,
-            closes=incident_id,
-            state=state,
-        )
+        """Record that it started working again, by appending rather than editing.
+
+        The check and the append are one critical section. Validating first and locking
+        afterwards let two callers each see the incident as open and each append a
+        closure — leaving a log that fails verification for ever after, on the strength of
+        two callers both doing the right thing.
+        """
+        with self._exclusive():
+            entries = self.verify()
+            opened = {
+                entry["entry_hash"]: entry
+                for entry in entries
+                if entry["closes"] is None
+            }
+            target = opened.get(incident_id)
+            if target is None:
+                raise IncidentLogError(f"no incident was opened with id {incident_id}")
+            if any(entry["closes"] == incident_id for entry in entries):
+                raise IncidentLogError(f"incident {incident_id} is already closed")
+            return self._append_locked(
+                asset_key=target["asset_key"],
+                kind=target["kind"],
+                detail=detail,
+                occurred_at=occurred_at,
+                closes=incident_id,
+                state=state,
+            )
 
     # ------------------------------------------------------------------ reading
     def verify(self) -> list[dict[str, object]]:
@@ -321,6 +313,12 @@ class IncidentLog:
         write both files can forge both consistently — it detects loss and partial edits.
         """
         if not self.head_path.exists():
+            if len(entries) == 1:
+                # The very first entry was fsynced and the head never written. Same
+                # interrupted append as below, and equally repairable — refusing it would
+                # make a service's first recorded incident unrecoverable.
+                self._write_head(1, entries[0]["entry_hash"])
+                return
             if entries:
                 raise IncidentLogError(
                     "the incident log has entries but no head to attest to them; its "

@@ -260,3 +260,139 @@ def test_recovery_closes_the_incident_that_recorded_the_failure(
     assert entries[1]["closes"] == entries[0]["entry_hash"], (
         "the closure references the incident rather than editing it"
     )
+
+
+def test_a_journalled_publication_can_still_reconcile_on_a_later_slot(
+    tmp_path: Path,
+) -> None:
+    """Refusing to *retry* must not mean refusing to *reconcile*.
+
+    Routing reconciliation through the retry loop meant the loop's own guard fired before
+    the work ran, so a publication that timed out waiting for a receipt could never settle
+    while the daemon stayed alive — every later slot recorded another incident and never
+    once asked the publisher to look at the chain.
+    """
+    backend = FakeBackend()
+    backend.time_out_once = True
+    service = build(tmp_path, backend)
+
+    first = service.run_slot(AT, lambda at: _signed_report(1), report_uri=uri)
+    assert first.published is False, "the receipt wait timed out"
+    assert service.client.pending_transaction() is not None
+    assert service.operations.load_operation() is not None
+
+    # The transaction did confirm; the next slot must notice.
+    second = service.run_slot(AT, lambda at: _signed_report(1), report_uri=uri)
+
+    assert service.operations.load_operation() is None, "it reconciled"
+    assert service.client.pending_transaction() is None
+    assert len(backend.submissions) == 1, "and published nothing extra"
+    assert second.published is True
+
+
+def test_a_settled_sequence_under_another_uri_is_not_accepted_as_ours(
+    tmp_path: Path,
+) -> None:
+    """A duplicate sequence proves the slot is taken, not that this operation filled it.
+
+    The report URI is not inside the signed report, so comparing the signed report alone
+    let an operation under a different URI be cleared as settled while the chain held the
+    first one.
+    """
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    service.run_slot(AT, lambda at: _signed_report(1), report_uri=uri)
+    assert len(backend.submissions) == 1
+
+    # The same report, recorded for publication under a different URI.
+    service.operations.begin_operation(
+        _signed_report(1),
+        report_uri="urn:touchstone:report:elsewhere",
+        correction_of=None,
+        scheduled_for=AT,
+    )
+
+    with pytest.raises(Exception, match="is onchain under"):
+        service.operations.resolve(service.client)
+    assert service.operations.load_operation() is not None, "kept for review"
+
+
+def test_settling_a_publication_does_not_claim_the_source_recovered(
+    tmp_path: Path,
+) -> None:
+    """Closing every incident kind asserted a recovery nobody observed."""
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+
+    def unavailable(scheduled_at):
+        raise SourceUnavailable("the feed returned 403")
+
+    service.run_slot(AT, unavailable, report_uri=uri)
+    service.operations.begin_operation(
+        _signed_report(1), report_uri=uri(_signed_report(1)), correction_of=None,
+        scheduled_for=AT,
+    )
+
+    service.resolve_startup()
+
+    open_kinds = [i.kind for i in service.incidents.open_incidents()]
+    assert SOURCE_UNAVAILABLE in open_kinds, (
+        "the source incident stays open: settling a publication says nothing about it"
+    )
+
+
+def test_a_stale_publication_incident_is_closed_when_nothing_is_outstanding(
+    tmp_path: Path,
+) -> None:
+    """A run that died between clearing the operation and closing its incident."""
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    service.incidents.open_incident(
+        asset_key=ASSET_KEY_OF,
+        kind=PUBLICATION_UNRESOLVED,
+        detail="left over from a run that died",
+        occurred_at=AT,
+    )
+
+    assert service.resolve_startup() is None
+    assert service.incidents.open_incidents() == [], "the stale incident was closed"
+
+
+def test_a_failure_recording_the_operation_is_still_recorded(tmp_path: Path) -> None:
+    """Naming the report and writing the operation are inside the boundary now."""
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+
+    def bad_uri(signed_report):
+        raise RuntimeError("disk full")
+
+    outcome = service.run_slot(AT, lambda at: _signed_report(1), report_uri=bad_uri)
+
+    assert outcome.published is False
+    assert [i.kind for i in service.incidents.open_incidents()] == [
+        PUBLICATION_UNRESOLVED
+    ]
+    assert backend.submissions == []
+
+
+def test_two_services_cannot_share_one_workspace(tmp_path: Path) -> None:
+    """The check-to-produce window is only closed by a lock spanning both."""
+    from touchstone.locking import LockUnavailable, exclusive_lock
+
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    clock = Clock()
+
+    with exclusive_lock(service.lock_path):
+        with pytest.raises(LockUnavailable):
+            serve(
+                service,
+                lambda at: _signed_report(1),
+                report_uri=uri,
+                interval_seconds=60,
+                max_runs=1,
+                monotonic=clock.monotonic,
+                sleep=clock.sleep,
+                now=lambda: AT,
+            )
+    assert backend.submissions == [], "the second service did no work at all"
