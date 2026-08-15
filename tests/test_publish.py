@@ -98,6 +98,11 @@ class FakeBackend:
         self.drop_first_broadcast = False
         self.withhold_confirmation = False
         self.failing_receipt = False
+        # Set to make the state *after* the wait differ from the state during it, which is
+        # the only way to show which of the two readings actually decides the outcome.
+        self.state_after_wait: str | None = None
+        self.status_after_wait: int | None = None
+        self.waited = False
         self.publisher_override: str | None = None
         # address -> the publishing identity the registry recorded for it
         self.lineage: dict[str, str] = {}
@@ -201,6 +206,15 @@ class FakeBackend:
 
     def receipt_state(self, transaction_hash):
         self.reads.append("receipt_state")
+        if self.waited and self.state_after_wait is not None:
+            receipt = self.receipts.get(transaction_hash)
+            if self.state_after_wait == MISSING:
+                return MISSING, None
+            return self.state_after_wait, receipt
+        if self.waited and self.status_after_wait is not None:
+            receipt = dict(self.receipts[transaction_hash])
+            receipt["status"] = self.status_after_wait
+            return CONFIRMED, receipt
         return self._state(transaction_hash)
 
     def _state(self, transaction_hash):
@@ -219,6 +233,7 @@ class FakeBackend:
     def wait_for_receipt(self, transaction_hash, timeout):
         del timeout
         self.reads.append("wait_for_receipt")
+        self.waited = True
         if self.time_out_once:
             self.time_out_once = False
             raise TimeExhausted("pending")
@@ -650,8 +665,10 @@ def _assert_revalidation_order(reads: list[str]) -> None:
             assert "revalidate" in reads[:index], f"{step} ran before any identity check"
     assert "wait_for_receipt" in reads, "this path must have waited for a receipt"
     after_wait = reads[reads.index("wait_for_receipt") + 1 :]
-    assert after_wait and after_wait[0] == "revalidate", (
-        f"the first step after the receipt wait must be revalidate, got {after_wait[:1]}"
+    assert after_wait[:2] == ["revalidate", "receipt_state"], (
+        "after waiting, the endpoint must be proved again and the receipt read again — "
+        f"revalidating and then judging the wait's own receipt proves nothing; got "
+        f"{after_wait[:2]}"
     )
 
 
@@ -816,3 +833,78 @@ def test_revalidation_actually_verifies_rather_than_only_dropping_a_cache() -> N
     assert "self.preflight()" in source, (
         "revalidate must re-run preflight, not just clear the cached result"
     )
+
+
+def test_a_reread_that_disagrees_with_the_wait_keeps_the_journal(
+    tmp_path: Path,
+) -> None:
+    """Only the reading taken after revalidation may decide anything.
+
+    The wait's receipt came from the endpoint as it was before the wait began. If the
+    re-verified endpoint no longer has the transaction, that is not a settled publication,
+    and the journal must survive so the next run can resolve it.
+    """
+    backend = FakeBackend()
+    backend.state_after_wait = MISSING
+
+    with pytest.raises(PendingSubmission, match="re-verified endpoint"):
+        _client(tmp_path, backend).publish(
+            _signed_report(1), report_uri="urn:touchstone:report:1"
+        )
+
+    assert (tmp_path / "pending.json").exists(), "the journal must be kept"
+    prepared_once = backend.prepared
+
+    # The next run resolves the same transaction; it does not sign a second one.
+    backend.state_after_wait = None
+    result = _client(tmp_path, backend).publish(
+        _signed_report(1), report_uri="urn:touchstone:report:1"
+    )
+
+    assert result.reconciled is True
+    assert backend.prepared == prepared_once, "recovery must not prepare a new transaction"
+    assert len(set(backend.broadcasts)) == 1, "and must reuse the same signed bytes"
+    assert len(backend.submissions) == 1
+
+
+def test_a_reread_that_is_merely_included_also_keeps_the_journal(
+    tmp_path: Path,
+) -> None:
+    backend = FakeBackend()
+    backend.state_after_wait = INCLUDED
+
+    with pytest.raises(PendingSubmission, match="re-verified endpoint"):
+        _client(tmp_path, backend).publish(
+            _signed_report(1), report_uri="urn:touchstone:report:1"
+        )
+    assert (tmp_path / "pending.json").exists()
+    broadcasts_before = len(backend.broadcasts)
+
+    backend.state_after_wait = None
+    result = _client(tmp_path, backend).publish(
+        _signed_report(1), report_uri="urn:touchstone:report:1"
+    )
+
+    assert result.reconciled is True
+    assert len(backend.broadcasts) == broadcasts_before, (
+        "an included transaction that later confirms needs no rebroadcast"
+    )
+
+
+def test_only_the_reread_decides_success_or_failure(tmp_path: Path) -> None:
+    """The defect this proves absent: a stale status-0 clearing a live publication.
+
+    The wait sees a failure; the re-verified endpoint reports success. If the wait's
+    receipt still controlled, this would raise and discard the journal for a publication
+    that had in fact settled.
+    """
+    backend = FakeBackend()
+    backend.failing_receipt = True  # what the wait sees
+    backend.status_after_wait = 1  # what the re-verified endpoint reports
+
+    result = _client(tmp_path, backend).publish(
+        _signed_report(1), report_uri="urn:touchstone:report:1"
+    )
+
+    assert result.receipt["status"] == 1
+    assert not (tmp_path / "pending.json").exists()

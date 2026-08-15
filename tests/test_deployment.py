@@ -171,6 +171,49 @@ def test_a_public_endpoint_may_carry_a_path_but_never_a_secret() -> None:
             )
 
 
+def test_every_spelling_of_loopback_is_refused_for_a_public_network() -> None:
+    """One literal comparison missed every alias.
+
+    Each of these reaches this machine: the rest of 127.0.0.0/8, the IPv4-mapped IPv6
+    form, and the numeric shorthands the platform resolver expands — 127.1, 2130706433 and
+    0x7f000001 all mean 127.0.0.1.
+    """
+    for host in (
+        "https://127.0.0.1",
+        "https://127.0.0.2",
+        "https://127.255.255.254",
+        "https://[::1]",
+        "https://[::ffff:127.0.0.1]",
+        "https://localhost",
+        "https://LOCALHOST",
+        "https://localhost.",
+        "https://api.localhost",
+        "https://127.1",
+        "https://2130706433",
+        "https://0x7f000001",
+    ):
+        with pytest.raises(DeploymentError):
+            DeploymentManifest.from_mapping(
+                manifest(
+                    network="xlayer-mainnet",
+                    chain_id=196,
+                    rpc_url=host,
+                    max_fee_wei=1,
+                )
+            )
+
+    # And a real endpoint, path and all, still loads.
+    accepted = DeploymentManifest.from_mapping(
+        manifest(
+            network="xlayer-testnet",
+            chain_id=1952,
+            rpc_url="https://testrpc.xlayer.tech/terigon",
+            max_fee_wei=1,
+        )
+    )
+    assert accepted.rpc_url == "https://testrpc.xlayer.tech/terigon"
+
+
 def test_a_public_network_must_be_https_without_credentials() -> None:
     for url in (
         "http://rpc.example",

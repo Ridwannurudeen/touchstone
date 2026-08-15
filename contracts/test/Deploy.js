@@ -344,6 +344,27 @@ describe("deploy script", function () {
     ).to.be.rejectedWith("must be a positive exact integer");
   });
 
+  it("does not depend on a globally injected ethers", async function () {
+    // Every test runs inside Hardhat, which injects `ethers` as a global — so a bare
+    // reference resolves here and the defect only appears when deploy() is called from
+    // plain Node. Removing the global for the duration reproduces that condition.
+    const { publisher, operations } = await roles();
+    const injected = globalThis.ethers;
+    delete globalThis.ethers;
+    try {
+      const { manifest } = await deploy({
+        publisherAddress: publisher.address,
+        operationsAddress: operations.address,
+        reporterPublicKey: REPORTER_PUBLIC_KEY,
+      });
+      expect(manifest.publisher_address).to.equal(publisher.address);
+    } finally {
+      if (injected !== undefined) {
+        globalThis.ethers = injected;
+      }
+    }
+  });
+
   it("names the confirmation variable a stale export cannot satisfy", function () {
     // The guard is a positive confirmation of the exact chain id rather than a boolean,
     // so an old export left in a shell cannot enable a deployment to a different chain.
