@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from touchstone.evidence import EvidenceIntegrityError, EvidenceStore
+from touchstone.evidence import EvidenceIntegrityError, EvidenceStore, read_object
 
 
 RETRIEVED_AT = datetime(2026, 8, 13, 14, 16, 17, 123456, tzinfo=timezone.utc)
@@ -321,9 +321,7 @@ def test_confirmation_capture_requires_a_full_day_of_separation(tmp_path: Path) 
     store_observation(store, b"older", retrieved_at=RETRIEVED_AT)
     current = RETRIEVED_AT + timedelta(hours=23, minutes=59)
 
-    assert (
-        store.confirmation_capture("superstate-ustb-nav", before=current) is None
-    )
+    assert store.confirmation_capture("superstate-ustb-nav", before=current) is None
     assert (
         store.confirmation_capture(
             "superstate-ustb-nav", before=RETRIEVED_AT + timedelta(hours=24)
@@ -381,6 +379,69 @@ def test_confirmation_capture_accepts_identical_bytes_from_a_later_day(
 
     assert capture is not None
     assert capture.sha256 == digest
+
+
+def test_confirmation_capture_acts_on_the_snapshot_it_verified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifying one copy of the index and then reading another verifies nothing.
+
+    The two reads are separate syscalls with a window between them, and everything that
+    matters — selection, and the signed report built on it — happens on the second. A
+    forgery that arrives inside that window is chosen without ever being checked. The fix
+    is not a tighter window: it is returning the entries that were verified, so there is
+    only ever one snapshot to act on.
+    """
+    store = EvidenceStore(tmp_path)
+    store_observation(store, b"first-day", retrieved_at=RETRIEVED_AT)
+    honest = store_observation(
+        store, b"second-day", retrieved_at=RETRIEVED_AT + timedelta(days=1)
+    )
+
+    honest_index = store.index_path.read_bytes()
+    forged_entry = json.loads(honest_index.splitlines()[-1])
+    forged_entry["sha256"] = hashlib.sha256(b"never-captured").hexdigest()
+    forged_entry["retrieved_at"] = (
+        (RETRIEVED_AT + timedelta(days=2)).isoformat().replace("+00:00", "Z")
+    )
+    forged_index = honest_index + json.dumps(forged_entry).encode() + b"\n"
+
+    reads = []
+    real_read_bytes = Path.read_bytes
+
+    def one_honest_read(self: Path) -> bytes:
+        if self != store.index_path:
+            return real_read_bytes(self)
+        reads.append(self)
+        # The first read is clean; anything after it sees the forgery. Code that reads
+        # once cannot be reached by this at all.
+        return honest_index if len(reads) == 1 else forged_index
+
+    monkeypatch.setattr(Path, "read_bytes", one_honest_read)
+
+    capture = store.confirmation_capture(
+        "superstate-ustb-nav", before=RETRIEVED_AT + timedelta(days=3)
+    )
+
+    assert reads == [store.index_path], "the index was read exactly once"
+    assert capture is not None
+    assert capture.sha256 == honest, "and the capture came from the verified snapshot"
+
+
+def test_read_object_refuses_bytes_that_no_longer_match_their_digest(
+    tmp_path: Path,
+) -> None:
+    """The index and the object are separate files; verifying one does not vouch for the other.
+
+    Evaluation consumes the object, not the index entry, so reading it on the strength of
+    the index's verification binds a signed report to bytes nobody checked.
+    """
+    store = EvidenceStore(tmp_path)
+    digest = store_observation(store, b'{"nav":"11.17558800"}')
+    (store.objects_dir / digest).write_bytes(b'{"nav":"99.99999999"}')
+
+    with pytest.raises(EvidenceIntegrityError, match="now hashes to"):
+        read_object(store, digest)
 
 
 def test_confirmation_capture_rejects_naive_timestamps(tmp_path: Path) -> None:

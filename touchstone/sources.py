@@ -76,9 +76,7 @@ class TransportResponse:
 class Transport(Protocol):
     """Injectable HTTP GET boundary used by the source fetcher."""
 
-    def get(
-        self, url: str, *, timeout: float, max_bytes: int
-    ) -> TransportResponse:
+    def get(self, url: str, *, timeout: float, max_bytes: int) -> TransportResponse:
         """Retrieve one URL without following redirects."""
         ...
 
@@ -124,9 +122,7 @@ class _NoRedirectHandler(HTTPRedirectHandler):
 class LiveTransport:
     """Stdlib HTTPS transport that exposes redirects to the policy layer."""
 
-    def get(
-        self, url: str, *, timeout: float, max_bytes: int
-    ) -> TransportResponse:
+    def get(self, url: str, *, timeout: float, max_bytes: int) -> TransportResponse:
         request = Request(
             url,
             method="GET",
@@ -146,7 +142,9 @@ class LiveTransport:
             finally:
                 error.close()
         except (URLError, TimeoutError, socket.timeout, OSError) as error:
-            raise SourceTransportError(f"transport failed for {url}: {error}") from error
+            raise SourceTransportError(
+                f"transport failed for {url}: {error}"
+            ) from error
 
 
 def fetch_source(

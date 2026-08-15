@@ -65,6 +65,7 @@ from touchstone.signing import (  # noqa: E402
     strict_json_loads,
 )
 from touchstone.translog import TransparencyLog  # noqa: E402
+from touchstone.workspace import Workspace  # noqa: E402
 
 
 DEFAULT_RETRIES = 3
@@ -72,6 +73,9 @@ DEFAULT_BACKOFF_SECONDS = 2.0
 # The longest single wait a retry may derive. An hour is already far past the point where
 # waiting is the right answer; beyond it the configuration is a mistake, not a policy.
 MAX_BACKOFF_SECONDS = 3600.0
+# 2 ** 1024 is the first power of two no float can hold. Past it the delay is infinite
+# whatever the base, so the count can be refused without the integer ever being built.
+_MAX_DOUBLINGS = 1024
 
 
 class SourceUnavailable(RuntimeError):
@@ -134,10 +138,14 @@ class Service:
         # product, which surfaced as a raw OverflowError instead of a refusal.
         longest = 0.0
         if retries > 0 and backoff_seconds > 0:
-            try:
-                longest = backoff_seconds * float(2 ** (retries - 1))
-            except OverflowError:
-                longest = math.inf
+            # A retry count large enough to overflow is refused without being exponentiated.
+            # `2 ** (retries - 1)` for retries=10**9 is a multi-hundred-megabyte integer
+            # built only to be thrown away, so the check itself was the denial of service.
+            longest = (
+                math.inf
+                if retries - 1 >= _MAX_DOUBLINGS
+                else backoff_seconds * float(2 ** (retries - 1))
+            )
         if not math.isfinite(longest) or longest > MAX_BACKOFF_SECONDS:
             raise ValueError(
                 f"backoff_seconds={backoff_seconds!r} with retries={retries} reaches "
@@ -430,12 +438,13 @@ class Service:
         self, scheduled_at: datetime, error: BaseException
     ) -> None:
         """Record a slot failure that got past run_slot's own handling."""
+        moment = self._moment()
         self.incidents.open_incident(
             asset_key=self.asset_key,
             kind=EPOCH_FAILED,
             detail=f"the slot at {scheduled_at.isoformat()} failed unexpectedly: {error}",
-            occurred_at=self.now(),
-            state=self._projected_state(),
+            occurred_at=moment,
+            state=self._projected_state(moment),
         )
 
     def record_outage(self, first_missed: datetime, count: int) -> None:  # noqa: D401
@@ -445,6 +454,7 @@ class Service:
         outage and bury everything else in the log. The count is exact even though only
         one entry is written for it.
         """
+        moment = self._moment()
         self.incidents.open_incident(
             asset_key=self.asset_key,
             kind=SLOT_MISSED,
@@ -453,8 +463,8 @@ class Service:
                 if count > 1
                 else f"the slot scheduled for {first_missed.isoformat()} did not run"
             ),
-            occurred_at=self.now(),
-            state=self._projected_state(),
+            occurred_at=moment,
+            state=self._projected_state(moment),
         )
 
     # ----------------------------------------------------------------- internals
@@ -466,6 +476,7 @@ class Service:
         second opinion about a transaction that may already be on the wire.
         """
         attempt = 0
+        delay = self.backoff_seconds
         while True:
             if self.client.pending_transaction() is not None:
                 raise UnresolvedPublication(
@@ -476,18 +487,25 @@ class Service:
             except TransportUnavailable:
                 if attempt >= self.retries:
                     raise
-                self.sleep(self.backoff_seconds * (2**attempt))
+                self.sleep(delay)
+                # Doubled, not exponentiated. `2 ** attempt` builds an integer that grows
+                # without bound, and `0.0 * huge_int` raises OverflowError converting the
+                # int — so a zero backoff, which is accepted precisely because it can never
+                # grow, crashed the retry loop it was configured to make free. Doubling a
+                # float keeps the runtime value inside the domain proved at construction.
+                delay *= 2
                 attempt += 1
 
     def _record_incident(
         self, kind: str, detail: str, scheduled_at: datetime
     ) -> SlotOutcome:
+        moment = self._moment()
         entry = self.incidents.open_incident(
             asset_key=self.asset_key,
             kind=kind,
             detail=detail,
-            occurred_at=self.now(),
-            state=self._projected_state(),
+            occurred_at=moment,
+            state=self._projected_state(moment),
         )
         return SlotOutcome(
             scheduled_at=scheduled_at,
@@ -496,23 +514,39 @@ class Service:
             detail=detail,
         )
 
-    def _projected_state(self) -> str | None:
+    def _moment(self) -> datetime:
+        """The single clock reading an incident is described by.
+
+        `occurred_at` and the projected state are two facts about one event. Reading the
+        clock for each of them let an incident be stamped 23:59:59 on one day and carry the
+        state projected for the next — a record that is internally inconsistent, and only
+        ever at the moment when the date boundary is what matters.
+        """
+        moment = self.now()
+        if not isinstance(moment, datetime):
+            raise TypeError("now() must return a datetime")
+        if moment.tzinfo is None or moment.utcoffset() is None:
+            raise ValueError("now() must return a timezone-aware datetime")
+        return moment
+
+    def _projected_state(self, moment: datetime) -> str | None:
         state = self.operations.load_state(self.asset_key)
         if state is None:
             return None
-        return state.projected(self.now().date()).value
+        return state.projected(moment.astimezone(timezone.utc).date()).value
 
     def _close_open_incidents(
         self, detail: str, *, kinds: frozenset[str] | set[str] | None = None
     ) -> None:
+        moment = self._moment()
         for incident in self.incidents.open_incidents(self.asset_key):
             if kinds is not None and incident.kind not in kinds:
                 continue
             self.incidents.close_incident(
                 incident.incident_id,
                 detail=detail,
-                occurred_at=self.now(),
-                state=self._projected_state(),
+                occurred_at=moment,
+                state=self._projected_state(moment),
             )
 
 
@@ -586,17 +620,18 @@ def build_service(manifest_path: str, workspace: str, *, asset_key: str) -> Serv
     manifest = DeploymentManifest.load(manifest_path)
     assert_role_separation()
     backend = SignedRegistryBackend(manifest, PublisherKey.from_env(manifest))
-    root = Path(workspace)
+    root = Workspace(workspace)
     client = PublisherClient(
         backend,
-        TransparencyLog(root / "transparency.jsonl"),
-        root / "pending.json",
+        TransparencyLog(root.transparency_log),
+        root.pending_journal,
     )
     return Service(
         client,
-        OperationsStore(root / "operations"),
-        IncidentLog(root / "incidents.jsonl"),
+        OperationsStore(root.operations),
+        IncidentLog(root.incidents),
         asset_key=asset_key,
+        lock_path=root.lock,
     )
 
 

@@ -18,6 +18,7 @@ from touchstone.incidents import (
 )
 from touchstone.operations import OperationsStore, UnresolvedPublication
 from touchstone.publish import PublisherClient, TransportUnavailable
+from touchstone.signing import Ed25519Signer
 from touchstone.translog import TransparencyLog
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
@@ -381,7 +382,9 @@ def test_settling_a_publication_does_not_claim_the_source_recovered(
 
     service.run_slot(AT, unavailable, report_uri=uri)
     service.operations.begin_operation(
-        _signed_report(1), report_uri=uri(_signed_report(1)), correction_of=None,
+        _signed_report(1),
+        report_uri=uri(_signed_report(1)),
+        correction_of=None,
         scheduled_for=AT,
     )
 
@@ -896,10 +899,98 @@ def test_a_report_that_cannot_be_represented_is_recorded_not_raised(
     service = build(tmp_path, backend)
 
     outcome = service.run_slot(
-        AT, lambda at: {"report": {"asset_key": ASSET_KEY_OF, "x": object()}},
+        AT,
+        lambda at: {"report": {"asset_key": ASSET_KEY_OF, "x": object()}},
         report_uri=uri,
     )
 
     assert outcome.published is False
     assert [i.kind for i in service.incidents.open_incidents()] == [EPOCH_FAILED]
     assert backend.submissions == []
+
+
+def test_a_zero_backoff_survives_the_retry_count_it_was_accepted_with(
+    tmp_path: Path,
+) -> None:
+    """Construction accepts (0.0, 2000); the retry loop has to survive it too.
+
+    The delay was computed as `backoff * 2 ** attempt`. That builds an integer of `attempt`
+    bits, and multiplying a float by it converts the integer first — so on attempt 1024 a
+    zero backoff, accepted precisely because it can never grow, raised OverflowError from
+    inside the recovery it was configured to make free.
+    """
+    backend = FakeBackend()
+    slept: list[float] = []
+    service = build(
+        tmp_path, backend, sleep=slept.append, backoff_seconds=0.0, retries=2000
+    )
+    attempts = {"count": 0}
+    real_prepare = backend.prepare
+
+    def flaky(asset_key, report, report_uri, correction_of):
+        attempts["count"] += 1
+        if attempts["count"] <= 1500:
+            raise TransportUnavailable("rpc down for a long time")
+        return real_prepare(asset_key, report, report_uri, correction_of)
+
+    backend.prepare = flaky
+
+    outcome = service.run_slot(AT, lambda at: _signed_report(1), report_uri=uri)
+
+    assert outcome.published is True
+    assert attempts["count"] == 1501
+    assert slept == [0.0] * 1500, "every wait was the zero it was configured to be"
+
+
+def test_an_incident_is_stamped_with_one_reading_of_the_clock(tmp_path: Path) -> None:
+    """`occurred_at` and the projected state are two facts about one event.
+
+    Reading the clock separately for each let an incident be stamped one second before
+    midnight and carry the state projected for the *following* day. It shows up only at a
+    date boundary — which is precisely when the projection is the thing an operator is
+    reading the incident for. The state below is CONFIRMED through the 15th and STALE from
+    the 16th, so the two readings disagree by exactly one word.
+    """
+    backend = FakeBackend()
+    signer = Ed25519Signer.from_seed(bytes(range(32)))
+    report = signer.sign_report(
+        {
+            "asset_key": ASSET_KEY_OF,
+            "control_set_root": "22" * 32,
+            "correction_of": None,
+            "evidence_root": "33" * 32,
+            "observed_at": "2026-08-15T09:00:00Z",
+            "publisher_kid": signer.kid,
+            "sequence": 1,
+            "state": "CONFIRMED",
+            "state_transition": {
+                "as_of": "2026-08-15",
+                "evidence_deadline": "2026-08-15",
+            },
+            "valid_until": "2026-08-15T23:59:59Z",
+        }
+    )
+    before_midnight = datetime(2026, 8, 15, 23, 59, 59, tzinfo=timezone.utc)
+    readings = iter(
+        [before_midnight]
+        + [
+            datetime(2026, 8, 16, 0, 0, second, tzinfo=timezone.utc)
+            for second in range(1, 9)
+        ]
+    )
+    service = build(tmp_path, backend, now=lambda: next(readings))
+    service.operations.save_state(report, updated_at=before_midnight)
+
+    def unavailable(at):
+        raise SourceUnavailable("the issuer endpoint did not answer")
+
+    outcome = service.run_slot(AT, unavailable, report_uri=uri)
+
+    assert outcome.published is False
+    entry = next(
+        e for e in service.incidents.verify() if e["entry_hash"] == outcome.incident_id
+    )
+    assert entry["occurred_at"].startswith("2026-08-15T23:59:59")
+    assert entry["state"] == "CONFIRMED", (
+        "the state was projected for the same moment the incident was stamped with"
+    )

@@ -33,6 +33,7 @@ from touchstone.publish import (  # noqa: E402
 )
 from touchstone.signing import strict_json_loads  # noqa: E402
 from touchstone.translog import TransparencyLog  # noqa: E402
+from touchstone.workspace import Workspace  # noqa: E402
 
 
 def run(arguments: argparse.Namespace) -> dict[str, object]:
@@ -62,17 +63,18 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
     signed_report = strict_json_loads(Path(arguments.signed_report).read_bytes())
     if not isinstance(signed_report, dict):
         raise PublicationError("the signed report must be an object")
+    workspace = Workspace(arguments.workspace)
     client = PublisherClient(
-        backend, TransparencyLog(arguments.transparency_log), arguments.pending
+        backend, TransparencyLog(workspace.transparency_log), workspace.pending_journal
     )
-    # The same workspace lock the service holds. Without it this command could publish
-    # alongside a running service, and both would verify the same transparency-log head
-    # before either appended to it.
-    lock_path = Path(arguments.pending).with_name("service.lock")
+    # The same workspace lock the service holds, derived the same way from the same
+    # argument. Naming the log and the journal separately here let this command and the
+    # service share their state while locking different files, so both would verify one
+    # transparency-log head before either appended to it.
     # The active-key rule lives in PublisherClient, not here. It used to live here, which
     # meant anything calling the client directly bypassed it entirely.
     publish = client.publish_correction if arguments.correction else client.publish
-    with exclusive_lock(lock_path):
+    with exclusive_lock(workspace.lock):
         publication = publish(signed_report, report_uri=arguments.report_uri)
     result.update(
         {
@@ -97,8 +99,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--signed-report", help="signed observation report envelope")
     parser.add_argument("--report-uri", help="URI recorded onchain for this report")
-    parser.add_argument("--transparency-log", help="append-only publication log path")
-    parser.add_argument("--pending", help="pending-submission journal path")
+    parser.add_argument(
+        "--workspace",
+        help="directory holding this asset's transparency log, journal and lock",
+    )
     parser.add_argument(
         "--correction",
         action="store_true",
@@ -108,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     if not arguments.preflight:
         missing = [
             name
-            for name in ("signed_report", "report_uri", "transparency_log", "pending")
+            for name in ("signed_report", "report_uri", "workspace")
             if getattr(arguments, name) is None
         ]
         if missing:

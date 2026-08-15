@@ -350,10 +350,8 @@ def test_the_cli_refuses_to_publish_under_an_untrusted_reporting_key(
                 str(report),
                 "--report-uri",
                 "urn:touchstone:test:1",
-                "--transparency-log",
-                str(tmp_path / "log.jsonl"),
-                "--pending",
-                str(tmp_path / "pending.json"),
+                "--workspace",
+                str(tmp_path / "workspace"),
             ]
         )
         sent = [call for call in node.calls if "send" in call.lower()]
@@ -403,10 +401,8 @@ def test_a_superseded_key_verifies_history_but_cannot_publish_anew(
                 str(report),
                 "--report-uri",
                 "urn:touchstone:test:1",
-                "--transparency-log",
-                str(tmp_path / "log.jsonl"),
-                "--pending",
-                str(tmp_path / "pending.json"),
+                "--workspace",
+                str(tmp_path / "workspace"),
             ]
         )
         sent = [call for call in node.calls if "send" in call.lower()]

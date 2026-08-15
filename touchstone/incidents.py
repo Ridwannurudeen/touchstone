@@ -92,7 +92,8 @@ class IncidentLog:
         if self.path.exists() and not self.path.is_file():
             raise ValueError(f"incident log path must be a file: {self.path}")
         self.head_path = self.path.with_name(self.path.name + ".head")
-        self.lock_path = self.path.with_name(self.path.name + ".lock")
+        # The log itself, not a sidecar named after it: see touchstone.locking.
+        self.lock_path = self.path
         self._sleep = time.sleep
 
     def _exclusive(self):

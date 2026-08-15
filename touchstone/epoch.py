@@ -10,7 +10,7 @@ from pathlib import Path
 import tempfile
 
 from touchstone.controls import AssetState, EvaluationResult
-from touchstone.evidence import CaptureRecord, EvidenceStore
+from touchstone.evidence import read_object, CaptureRecord, EvidenceStore
 from touchstone.evaluate import USTB_ASSET_KEY, default_ustb_controls, evaluate_ustb
 from touchstone.normalize.ustb import (
     USTB_NAV_SOURCE_ID,
@@ -176,7 +176,7 @@ def run_ustb_epoch(
     if confirmation is not None:
         prior_observations[USTB_NAV_SOURCE_ID] = normalize_ustb_payload(
             USTB_NAV_SOURCE_ID,
-            (store.objects_dir / confirmation.sha256).read_bytes(),
+            read_object(store, confirmation.sha256),
             max_bytes=nav_manifest.max_bytes,
             isolated=True,
         )
@@ -191,7 +191,7 @@ def run_ustb_epoch(
             retrieved_at=retrieved_at,
         )
         fetches.append(fetched)
-        raw = (store.objects_dir / fetched.evidence_sha256).read_bytes()
+        raw = read_object(store, fetched.evidence_sha256)
         observations[manifest.source_id] = normalize_ustb_payload(
             manifest.source_id,
             raw,

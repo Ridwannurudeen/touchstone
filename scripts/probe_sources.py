@@ -27,6 +27,7 @@ ROOT = Path(__file__).parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from touchstone.quantities import finite_positive  # noqa: E402 - after the path insert
 from touchstone.sources import _NoRedirectHandler  # noqa: E402 - shared redirect policy
 
 
@@ -125,6 +126,10 @@ def probe(target: ProbeTarget, *, timeout: float = DEFAULT_TIMEOUT) -> ProbeResu
     URL alone was not enough: a hand-built target could reuse a declared URL while widening
     its byte cap, and the read would have been bounded by the forged value.
     """
+    # Refused before the socket and before anything else, because it is a configuration
+    # error: urlopen turns NaN or infinity into a read that never returns, and a prober
+    # that hangs reports nothing at all.
+    timeout = finite_positive(timeout, "timeout")
     url = _checked_url(target.url, target.source_id)
     max_bytes = _checked_cap(target.max_bytes, target.source_id)
     if target not in load_targets():

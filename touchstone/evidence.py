@@ -75,7 +75,7 @@ class EvidenceStore:
         # One critical section for verify-then-append, for the same reason as the
         # transparency log: two writers that both verify before either appends agree on a
         # predecessor that only one of them can truthfully claim.
-        with exclusive_lock(self.index_path.with_name(self.index_path.name + ".lock")):
+        with exclusive_lock(self.index_path):
             return self._capture_locked(
                 raw,
                 source_id=source_id,
@@ -131,12 +131,14 @@ class EvidenceStore:
         if before.tzinfo is None or before.utcoffset() is None:
             raise ValueError("before must be timezone-aware")
 
-        self.verify()
+        # One snapshot for the whole decision. Verifying and then re-reading meant a
+        # capture could be selected from an index that had never been verified.
+        entries = self.verified_entries()
         deadline = before.astimezone(timezone.utc) - timedelta(
             seconds=CONFIRMATION_INTERVAL_SECONDS
         )
         qualifying: list[CaptureRecord] = []
-        for position, entry in enumerate(self._entries()):
+        for position, entry in enumerate(entries):
             if entry["source_id"] != source_id:
                 continue
             retrieved_at = datetime.fromisoformat(entry["retrieved_at"][:-1] + "+00:00")
@@ -168,8 +170,17 @@ class EvidenceStore:
 
     def verify(self) -> int:
         """Verify the complete index chain and all referenced objects."""
+        return len(self.verified_entries())
+
+    def verified_entries(self) -> list[dict[str, Any]]:
+        """Verify the index and return the very entries that were verified.
+
+        A caller that verifies and then re-reads holds two snapshots, so the entry it acts
+        on need never have been part of the index that was checked. Returning the verified
+        list closes that by construction rather than by discipline.
+        """
         if not self.index_path.exists():
-            return 0
+            return []
         if not self.index_path.is_file():
             raise EvidenceIntegrityError(f"index is not a file: {self.index_path}")
 
@@ -178,21 +189,21 @@ class EvidenceStore:
         except OSError as error:
             raise EvidenceIntegrityError(f"cannot read index: {error}") from error
         if not index_bytes:
-            return 0
+            return []
         if not index_bytes.endswith(b"\n"):
             raise EvidenceIntegrityError(
                 "index is truncated: final line has no newline"
             )
 
         expected_previous: str | None = None
-        entries = 0
+        entries: list[dict[str, Any]] = []
         for line_number, raw_line in enumerate(
             index_bytes.splitlines(keepends=True), 1
         ):
             entry = self._decode_entry(raw_line[:-1], line_number)
             self._verify_entry(entry, raw_line[:-1], line_number, expected_previous)
             expected_previous = entry["entry_hash"]
-            entries += 1
+            entries.append(entry)
         return entries
 
     def _write_object_once(self, digest: str, content: bytes) -> None:
@@ -327,6 +338,23 @@ class EvidenceStore:
             ) from error
         if actual_digest != digest:
             raise EvidenceIntegrityError(f"{context}: object {digest} has wrong digest")
+
+
+def read_object(store: EvidenceStore, digest: str) -> bytes:
+    """Read a stored artifact and prove it is still the artifact that digest names.
+
+    The index records what was captured; the object file is what evaluation consumes. They
+    are separate files, so reading one on the strength of the other's verification binds a
+    signed report to bytes nobody checked. Rehashing costs one hash and removes the gap.
+    """
+    raw = (store.objects_dir / digest).read_bytes()
+    actual = hashlib.sha256(raw).hexdigest()
+    if actual != digest:
+        raise EvidenceIntegrityError(
+            f"stored object {digest} now hashes to {actual}; the evidence store has been "
+            "altered since it was captured"
+        )
+    return raw
 
 
 def _validate_content(content: object) -> bytes:

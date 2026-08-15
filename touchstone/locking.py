@@ -9,6 +9,9 @@ So the lock is an OS-level lock on an open descriptor — ``fcntl.flock`` where 
 ``msvcrt.locking`` on Windows. The kernel drops it when the process exits, however it
 exits, so a crash leaves the workspace usable and a live second daemon is still refused.
 
+The descriptor is opened on the protected file itself, which makes the lock's identity the
+file's inode rather than the spelling of its path.
+
 This protects one workspace from two *processes*. It is not a distributed lock and makes no
 claim about a shared filesystem where the underlying primitives are unreliable.
 """
@@ -28,6 +31,19 @@ except ImportError:  # Windows
     import msvcrt
 
     _WINDOWS = True
+
+
+# The lock is taken on a byte range far past any content a durable file of this project
+# will ever hold, so the protected file can be locked *directly* rather than through a
+# sidecar named after its path. A path is not an identity: a symlink, a hardlink, and an
+# absolute and relative spelling of one file are four names for one inode, and four
+# path-derived sidecars are four locks that all succeed at once. The inode is the identity
+# the kernel cannot be fooled about.
+#
+# Verified on Windows: locking here neither extends the file nor blocks appends through a
+# separate handle, and a hardlink alias is refused. On POSIX ``flock`` is per-inode by
+# construction and ignores the offset entirely.
+_LOCK_OFFSET = 1 << 40
 
 
 class LockUnavailable(RuntimeError):
@@ -50,8 +66,6 @@ def exclusive_lock(path: str | os.PathLike[str]) -> Iterator[None]:
         os.close(descriptor)
         raise
     try:
-        os.truncate(descriptor, 0)
-        os.write(descriptor, str(os.getpid()).encode("ascii"))
         yield
     finally:
         try:
@@ -63,7 +77,7 @@ def exclusive_lock(path: str | os.PathLike[str]) -> Iterator[None]:
 def _acquire(descriptor: int, location: Path) -> None:
     try:
         if _WINDOWS:
-            os.lseek(descriptor, 0, os.SEEK_SET)
+            os.lseek(descriptor, _LOCK_OFFSET, os.SEEK_SET)
             msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
         else:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -74,7 +88,7 @@ def _acquire(descriptor: int, location: Path) -> None:
 def _release(descriptor: int) -> None:
     try:
         if _WINDOWS:
-            os.lseek(descriptor, 0, os.SEEK_SET)
+            os.lseek(descriptor, _LOCK_OFFSET, os.SEEK_SET)
             msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
         else:
             fcntl.flock(descriptor, fcntl.LOCK_UN)

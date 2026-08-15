@@ -41,8 +41,10 @@ from cryptography.exceptions import InvalidSignature
 from touchstone.controls import AssetState
 from touchstone.deployment import DeploymentManifest, runtime_bytecode_sha256
 from touchstone.keyring import PublisherKey, decoded_transaction
+from touchstone.quantities import finite_positive
 from touchstone.signing import (
     canonical_json_bytes,
+    frozen_snapshot,
     strict_json_loads,
     verify_signed_report,
 )
@@ -379,7 +381,9 @@ class SignedRegistryBackend:
         self.web3 = Web3(
             Web3.HTTPProvider(
                 manifest.rpc_url,
-                request_kwargs={"timeout": float(request_timeout)},
+                request_kwargs={
+                    "timeout": finite_positive(request_timeout, "request_timeout")
+                },
                 # web3 retries five times by default and its allowlist includes
                 # eth_sendRawTransaction, so a broadcast could be resent from inside the
                 # provider — beneath the journal, beneath reconciliation, and invisible
@@ -514,8 +518,9 @@ class SignedRegistryBackend:
     ) -> bytes:
         """The exact call this publication is. Used to sign it and to recognise it later."""
         return bytes.fromhex(
-            self._function(asset_key, report, report_uri, correction_of)
-            ._encode_transaction_data()[2:]
+            self._function(
+                asset_key, report, report_uri, correction_of
+            )._encode_transaction_data()[2:]
         )
 
     def _function(
@@ -877,7 +882,7 @@ class PublisherClient:
         # verification and submission is a chance for that object to change — so a
         # signature checked against one report could be published over another, leaving a
         # log entry whose own signature no longer verifies.
-        signed_report = _frozen_envelope(signed_report)
+        signed_report = frozen_snapshot(signed_report, "signed_report")
         report = _verified_report(signed_report, self._active_key(signed_report))
         if report.get("correction_of") is not None:
             raise ValueError("correction reports require publish_correction")
@@ -892,7 +897,7 @@ class PublisherClient:
         report_uri: str,
     ) -> PublicationResult:
         """Publish a correction through the registry's distinct correction function."""
-        signed_report = _frozen_envelope(signed_report)
+        signed_report = frozen_snapshot(signed_report, "signed_report")
         report = _verified_report(signed_report, self._active_key(signed_report))
         correction_of = report.get("correction_of")
         if type(correction_of) is not int:
@@ -1238,13 +1243,6 @@ class PublisherClient:
 
     def _clear_pending(self) -> None:
         self.pending_path.unlink(missing_ok=True)
-
-
-def _frozen_envelope(signed_report: object) -> Mapping[str, object]:
-    """An independent copy of a signed envelope, so nothing can change it afterwards."""
-    if not isinstance(signed_report, Mapping):
-        raise ValueError("signed_report must be a mapping")
-    return strict_json_loads(canonical_json_bytes(dict(signed_report)))
 
 
 def _verified_report(

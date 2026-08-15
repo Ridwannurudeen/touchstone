@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -97,3 +98,72 @@ def test_log_rejects_correction_without_matching_supersession(tmp_path: Path) ->
             receipt={"block_number": 2, "status": 1},
             supersedes=first["entry_hash"],
         )
+
+
+class _ShiftingEnvelope(Mapping):
+    """A caller's mapping whose report changes on every read.
+
+    Not a contrived input: any envelope a caller still holds a reference to can be
+    rewritten by that caller — or by a retry, a callback, or another thread — between the
+    log's separate reads of it.
+    """
+
+    def __init__(self, envelope: Mapping[str, object]) -> None:
+        self._envelope = dict(envelope)
+        self.reads = 0
+
+    def __getitem__(self, key: str) -> object:
+        if key != "report":
+            return self._envelope[key]
+        self.reads += 1
+        report = dict(self._envelope["report"])
+        report["sequence"] = self.reads
+        return report
+
+    def __iter__(self):
+        return iter(self._envelope)
+
+    def __len__(self) -> int:
+        return len(self._envelope)
+
+
+def test_append_records_the_report_it_hashed_even_if_the_caller_changes_it(
+    tmp_path: Path,
+) -> None:
+    """The log checks, hashes, and persists the report at three separate moments.
+
+    Reading the caller's mapping at each of them lets it hash report A and persist report
+    B, producing an entry whose `report_sha256` names something the entry does not contain
+    — a log that fails its own verification, written by code that succeeded. Freezing at
+    the boundary means there is only one report to read.
+    """
+    log = TransparencyLog(tmp_path / "transparency.jsonl")
+    envelope = _ShiftingEnvelope(_signed_report())
+
+    entry = log.append(
+        envelope,
+        transaction_hash="0x" + "aa" * 32,
+        receipt={"block_number": 1, "status": 1},
+    )
+
+    assert envelope.reads == 1, "the caller's mapping was read exactly once"
+    assert log.verify() == [entry], (
+        "and the persisted entry verifies against its digest"
+    )
+
+
+def test_append_records_the_receipt_it_was_given(tmp_path: Path) -> None:
+    """The receipt is caller-owned too, and it is the on-chain half of the record."""
+    log = TransparencyLog(tmp_path / "transparency.jsonl")
+    receipt = {"block_number": 1, "status": 1}
+
+    entry = log.append(
+        _signed_report(),
+        transaction_hash="0x" + "aa" * 32,
+        receipt=receipt,
+    )
+    receipt["status"] = 0
+    receipt["block_number"] = 999
+
+    assert entry["publication"]["receipt"] == {"block_number": 1, "status": 1}
+    assert log.verify() == [entry]

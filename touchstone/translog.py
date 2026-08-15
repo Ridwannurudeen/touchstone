@@ -13,6 +13,7 @@ from touchstone.locking import exclusive_lock
 from touchstone.signing import (
     Ed25519Signer,
     canonical_json_bytes,
+    frozen_snapshot,
     strict_json_loads,
 )
 
@@ -59,12 +60,20 @@ class TransparencyLog:
         appending as two steps lets two writers agree on the same head and append entries
         claiming the same predecessor, which breaks the chain for good — and does so at
         the moment two publishers are both working, not at an idle one.
+
+        The caller's mappings are copied before the lock is even taken. They are checked,
+        hashed, and persisted at three separate moments; a caller that still holds a
+        reference can change the report between the hash and the write, producing an entry
+        whose `report_sha256` names a report the entry does not contain. This is a public
+        boundary, so it cannot rely on its callers being careful.
         """
-        with exclusive_lock(self.path.with_name(self.path.name + ".lock")):
+        frozen_report = frozen_snapshot(signed_report, "signed_report")
+        frozen_receipt = frozen_snapshot(receipt, "receipt")
+        with exclusive_lock(self.path):
             return self._append_locked(
-                signed_report,
+                frozen_report,
                 transaction_hash=transaction_hash,
-                receipt=receipt,
+                receipt=frozen_receipt,
                 supersedes=supersedes,
             )
 
@@ -83,10 +92,6 @@ class TransparencyLog:
             entry["publication"]["transaction_hash"] for entry in entries
         }:
             raise ValueError("transaction_hash is already recorded")
-        if not isinstance(signed_report, Mapping):
-            raise TypeError("signed_report must be a mapping")
-        if not isinstance(receipt, Mapping):
-            raise TypeError("receipt must be a mapping")
         if supersedes is not None:
             _digest(supersedes, "supersedes")
             if supersedes not in {entry["entry_hash"] for entry in entries}:

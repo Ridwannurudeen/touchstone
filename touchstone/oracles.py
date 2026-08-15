@@ -32,6 +32,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
 
 from touchstone.normalize.ustb import USTBNavRow
+from touchstone.quantities import finite_positive
 
 
 DEFAULT_TIMEOUT = 20.0
@@ -106,7 +107,10 @@ class HTTPRPC:
         if not isinstance(endpoint, str) or not endpoint.startswith("https://"):
             raise ValueError("RPC endpoint must be an HTTPS URL")
         self.endpoint = endpoint
-        self.timeout = float(timeout)
+        # A timeout of NaN or infinity is not a long timeout — it is the absence of one,
+        # and urlopen turns it into a socket that waits forever. Refusing it here means the
+        # daemon stops at configuration rather than hanging in the middle of an epoch.
+        self.timeout = finite_positive(timeout, "timeout")
 
     def call(self, method: str, params: list[object]) -> object:
         body = json.dumps(

@@ -70,6 +70,25 @@ def strict_json_loads(value: bytes | str) -> object:
     )
 
 
+def frozen_snapshot(value: object, field: str) -> Mapping[str, object]:
+    """Take an independent copy of a caller's mapping before anything is decided from it.
+
+    A mapping the caller still holds can change between the moment it is checked and the
+    moment it is hashed or persisted. Every use after this point reads a copy nobody else
+    has a reference to, so validation and the durable record describe the same object by
+    construction rather than by asking callers not to mutate what they passed in.
+
+    The round-trip through canonical JSON is the copy: it is deep, so nested mappings are
+    covered too, and it rejects anything that could not have been persisted anyway.
+    """
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{field} must be a mapping")
+    try:
+        return strict_json_loads(canonical_json_bytes(dict(value)))
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{field} is not canonical JSON: {error}") from error
+
+
 class Ed25519Signer:
     """Ed25519 signer constructed only from explicit key material."""
 

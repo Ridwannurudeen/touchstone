@@ -231,7 +231,12 @@ def test_an_outage_is_reported_once_with_its_exact_size() -> None:
         if len(runs) == 1:
             clock.current += 300  # five slots
 
-    schedule(job, clock, max_runs=2, on_outage=lambda first, count: outages.append((first, count)))
+    schedule(
+        job,
+        clock,
+        max_runs=2,
+        on_outage=lambda first, count: outages.append((first, count)),
+    )
 
     # Four slots passed (60, 120, 180, 240); the 300 slot is due now and is run.
     assert outages == [(START + timedelta(seconds=60), 4)]
@@ -335,7 +340,9 @@ def test_an_outage_is_never_reported_with_a_count_of_zero() -> None:
                 outages = []
                 runs = []
 
-                def job(scheduled_at: datetime, clock=clock, runs=runs, overrun=overrun):
+                def job(
+                    scheduled_at: datetime, clock=clock, runs=runs, overrun=overrun
+                ):
                     runs.append(scheduled_at)
                     if len(runs) == 1:
                         clock.current += overrun
@@ -399,7 +406,12 @@ def test_a_cadence_the_clock_cannot_resolve_is_refused() -> None:
         schedule(lambda at: None, clock, interval_seconds=1.02e-6, max_runs=1)
 
     # A realistic cadence at the same uptime is unaffected.
-    assert schedule(lambda at: None, FakeTime(1e9), interval_seconds=60, max_runs=1).completed == 1
+    assert (
+        schedule(
+            lambda at: None, FakeTime(1e9), interval_seconds=60, max_runs=1
+        ).completed
+        == 1
+    )
 
 
 @pytest.mark.parametrize("interval", [float("nan"), float("inf"), float("-inf")])
@@ -451,17 +463,40 @@ def test_a_span_the_clock_can_reach_is_not_refused() -> None:
     """
     clock = FakeTime()
 
-    assert schedule(lambda at: None, clock, interval_seconds=1e20, max_runs=1).completed == 1
+    assert (
+        schedule(lambda at: None, clock, interval_seconds=1e20, max_runs=1).completed
+        == 1
+    )
     # Two runs a long way apart: the second slot is in the year 2660, which is fine.
-    assert schedule(lambda at: None, FakeTime(), interval_seconds=2e10, max_runs=2).completed == 2
+    assert (
+        schedule(
+            lambda at: None, FakeTime(), interval_seconds=2e10, max_runs=2
+        ).completed
+        == 2
+    )
 
 
-def test_an_outage_beyond_the_clocks_reach_ends_the_schedule_in_the_open() -> None:
+@pytest.mark.parametrize(
+    ("interval_seconds", "overflows_while"),
+    [
+        # 1e7 leaves every individually named miss representable, so only the aggregate
+        # jump past all of them overflows.
+        (1e7, "advancing past the whole outage"),
+        # 2e10 overflows on the very first named miss — 49 slots of 634 years each reaches
+        # the year 33000 — which happens *before* the aggregate advancement. Guarding only
+        # the aggregate left this call to escape as a bare OSError.
+        (2e10, "naming one missed slot"),
+    ],
+)
+def test_an_outage_beyond_the_clocks_reach_ends_the_schedule_in_the_open(
+    interval_seconds: float, overflows_while: str
+) -> None:
     """The one span that cannot be proved in advance, because the jump is unbounded.
 
     A long enough outage pushes the next slot past any representable date. That has to end
-    the schedule through the same reported, recorded path as any other failure rather than
-    escaping as a bare OSError once the work is done.
+    the schedule through the same reported path as any other failure rather than escaping
+    as a bare OSError once the work is done — and it has to do so at *whichever* of the two
+    advancements overflows first.
     """
     clock = FakeTime()
     failures = []
@@ -474,7 +509,7 @@ def test_an_outage_beyond_the_clocks_reach_ends_the_schedule_in_the_open() -> No
 
     outcome = run_schedule(
         job,
-        interval_seconds=1e7,
+        interval_seconds=interval_seconds,
         max_runs=2,
         monotonic=clock.monotonic,
         sleep=clock.sleep,
@@ -483,8 +518,34 @@ def test_an_outage_beyond_the_clocks_reach_ends_the_schedule_in_the_open() -> No
     )
 
     assert len(ran) == 1, "the schedule stopped rather than crashing"
-    assert outcome.failed, "and it recorded that it stopped"
-    assert failures and "cannot be represented" in str(failures[0])
+    assert failures and "cannot be represented" in str(failures[0]), (
+        f"it reported the overflow while {overflows_while}"
+    )
+    assert outcome.clock_error == str(failures[0])
+    # The slot that ran *succeeded*. Recording it as failed too said two things had
+    # happened when one had, and made completed + failed exceed the jobs attempted.
+    assert outcome.completed == 1
+    assert outcome.failed == ()
+
+
+def test_an_unbounded_schedule_proves_the_slot_it_will_actually_need() -> None:
+    """`max_runs=None` has no last slot, but it always needs its next one.
+
+    Collapsing an unbounded run to a zero-span check proved nothing at all, so an
+    impossible cadence was accepted, ran one side-effecting job, and only then discovered
+    it could not name slot two.
+    """
+    ran = []
+    with pytest.raises(ValueError, match="cannot be added to the clock"):
+        run_schedule(
+            ran.append,
+            interval_seconds=1e20,
+            max_runs=None,
+            monotonic=FakeTime().monotonic,
+            sleep=lambda _: None,
+            now=lambda: START,
+        )
+    assert ran == [], "and it refused before the first job, not after it"
 
 
 def test_a_finished_schedule_does_not_compute_a_slot_nobody_will_use(

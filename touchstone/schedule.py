@@ -24,6 +24,8 @@ import subprocess
 import sys
 import time
 
+from touchstone.quantities import finite_positive
+
 
 DEFAULT_INTERVAL_SECONDS = 86_400.0
 
@@ -52,6 +54,10 @@ class ScheduleOutcome:
     failed: tuple[datetime, ...] = field(default_factory=tuple)
     missed: tuple[datetime, ...] = field(default_factory=tuple)
     missed_count: int = 0
+    # Set when the schedule stopped because it could not name the next slot. That is not a
+    # failed slot — the slot that ran succeeded — so it is reported separately rather than
+    # counted among the failures.
+    clock_error: str | None = None
 
     @property
     def attempted(self) -> int:
@@ -84,17 +90,10 @@ def run_schedule(
     """
     if not callable(job):
         raise TypeError("job must be callable")
-    if (
-        isinstance(interval_seconds, bool)
-        or not isinstance(interval_seconds, (int, float))
-        or not math.isfinite(interval_seconds)
-        or interval_seconds <= 0
-    ):
-        # Finiteness before anything runs. NaN compares false against every bound, and
-        # infinity passes them all, so both slipped through and were only discovered after
-        # the first slot had already executed — a configuration error reported as a
-        # mid-flight crash.
-        raise ValueError("interval_seconds must be a positive, finite number")
+    # Finiteness before anything runs. NaN compares false against every bound, infinity
+    # passes them all, and an integer too large to be a float raised from inside the check
+    # itself — so all three were discovered only after the first slot had executed.
+    finite_positive(interval_seconds, "interval_seconds")
     if max_runs is not None and (type(max_runs) is not int or max_runs < 1):
         raise ValueError("max_runs must be a positive integer or None")
 
@@ -105,17 +104,20 @@ def run_schedule(
     _slot_slack(max(abs(next_run), interval), interval)
     scheduled_at = now()
     try:
-        # One advancement, proved before the first slot runs. A finite but enormous
-        # interval passes every bound and then overflows the wall clock *after* a job has
-        # already executed — a configuration error reported as a mid-flight crash, with
-        # side effects already taken.
-        # Every timestamp the run will need, not merely the first. A finite schedule
-        # knows exactly how far it must reach, and proving one step said nothing about
-        # the last one.
-        # The last slot a finite run reaches is start + (max_runs - 1) * interval. Proving
-        # start + max_runs * interval rejected schedules whose every used timestamp was
-        # perfectly representable — a validation stricter than the thing it validates.
-        _advanced(scheduled_at, interval * max(0, (max_runs or 1) - 1))
+        # Every timestamp the run will need, proved before the first slot runs. A finite
+        # but enormous interval passes every numeric bound and then overflows the wall
+        # clock *after* a job has executed — a configuration error reported as a mid-flight
+        # crash with side effects already taken.
+        #
+        # The span is exactly what the schedule reaches and no more. A finite run ends at
+        # start + (max_runs - 1) * interval; proving start + max_runs * interval rejected
+        # schedules whose every used timestamp was representable. An unbounded run has no
+        # last slot, but it always needs its next one, so it is proved for one interval —
+        # collapsing None to a zero span proved nothing and let an impossible cadence run a
+        # side-effecting job before failing.
+        _advanced(
+            scheduled_at, interval * (1 if max_runs is None else max(0, max_runs - 1))
+        )
     except ScheduleClockError as error:
         raise ValueError(
             f"interval_seconds={interval_seconds!r} cannot be added to the clock: {error}"
@@ -124,6 +126,7 @@ def run_schedule(
     failed: list[datetime] = []
     missed: list[datetime] = []
     missed_count = 0
+    clock_error: str | None = None
 
     while max_runs is None or completed + len(failed) < max_runs:
         delay = next_run - monotonic()
@@ -148,11 +151,10 @@ def run_schedule(
         try:
             scheduled_at = _advanced(scheduled_at, interval)
         except ScheduleClockError as error:
-            # Reached only through an outage, whose size is unbounded and therefore cannot
-            # be proved in advance. It ends the schedule through the same path as any
-            # other failure — reported, recorded, and returned — rather than escaping as a
-            # bare OSError after the work is done.
-            failed.append(scheduled_at)
+            # The slot that just ran succeeded; what failed is naming the next one. Adding
+            # it to `failed` counted one slot as both completed and failed, so the outcome
+            # said two things had happened when one had.
+            clock_error = str(error)
             if on_failure is not None:
                 on_failure(scheduled_at, error)
             break
@@ -177,8 +179,20 @@ def run_schedule(
             # slot to discard most of them made the work proportional to the outage, which
             # is the opposite of what a recovering service needs.
             names = min(skipped, MAX_NAMED_MISSES - len(missed))
-            for index in range(max(names, 0)):
-                slot = _advanced(scheduled_at, interval * index)
+            try:
+                named_slots = [
+                    _advanced(scheduled_at, interval * index)
+                    for index in range(max(names, 0))
+                ]
+            except ScheduleClockError as error:
+                # Naming an individual missed slot can overflow just as the aggregate
+                # advancement can, and it happens first. Guarding only the aggregate left
+                # the earlier call to escape unreported.
+                clock_error = str(error)
+                if on_failure is not None:
+                    on_failure(scheduled_at, error)
+                break
+            for slot in named_slots:
                 missed.append(slot)
                 if on_missed is not None:
                     on_missed(slot)
@@ -192,7 +206,7 @@ def run_schedule(
             try:
                 scheduled_at = _advanced(scheduled_at, interval * skipped)
             except ScheduleClockError as error:
-                failed.append(scheduled_at)
+                clock_error = str(error)
                 if on_failure is not None:
                     on_failure(scheduled_at, error)
                 break
@@ -202,6 +216,7 @@ def run_schedule(
         failed=tuple(failed),
         missed=tuple(missed),
         missed_count=missed_count,
+        clock_error=clock_error,
     )
 
 
