@@ -238,6 +238,15 @@ class DeploymentManifest:
             operations_address,
         }:
             raise DeploymentError("no role address may be the registry itself")
+        # Lineage is not a fourth role — it is which publishing identity the registry
+        # recorded, and for a first authorization it equals the publisher. What it must
+        # never be is one of the other roles, which would mean the deployer or the
+        # funding identity had once been authorized to publish.
+        if identity_address in {deployer_address, operations_address}:
+            raise DeploymentError(
+                "publisher_identity_address must not be the deployer or the operations "
+                "identity; neither may ever have been an authorized publisher"
+            )
 
         bytecode_hash = value["registry_runtime_bytecode_sha256"]
         if (

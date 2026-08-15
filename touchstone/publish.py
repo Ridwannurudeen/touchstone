@@ -289,6 +289,11 @@ class PreflightReport:
 
 
 class RegistryBackend(Protocol):
+    # The deployment a backend publishes to is the backend's own, not something a caller
+    # supplies alongside it. Two manifests meant two answers to "which reporting key is
+    # active", and the client believed whichever one it was handed.
+    manifest: DeploymentManifest
+
     def revalidate(self) -> None: ...
 
     def receipt_state(
@@ -296,6 +301,14 @@ class RegistryBackend(Protocol):
     ) -> tuple[str, Mapping[str, object] | None]: ...
 
     def identity(self) -> DeploymentIdentity: ...
+
+    def calldata(
+        self,
+        asset_key: bytes,
+        report: Mapping[str, object],
+        report_uri: str,
+        correction_of: int | None,
+    ) -> bytes: ...
 
     def latest_sequence(self, asset_key: bytes) -> int: ...
 
@@ -464,14 +477,26 @@ class SignedRegistryBackend:
             report_uri=value[7],
         )
 
-    def prepare(
+    def calldata(
         self,
         asset_key: bytes,
         report: Mapping[str, object],
         report_uri: str,
         correction_of: int | None,
-    ) -> PreparedTransaction:
-        """Verify, price and sign. Refuses definitively; broadcasts nothing."""
+    ) -> bytes:
+        """The exact call this publication is. Used to sign it and to recognise it later."""
+        return bytes.fromhex(
+            self._function(asset_key, report, report_uri, correction_of)
+            ._encode_transaction_data()[2:]
+        )
+
+    def _function(
+        self,
+        asset_key: bytes,
+        report: Mapping[str, object],
+        report_uri: str,
+        correction_of: int | None,
+    ):
         common = (
             asset_key,
             bytes.fromhex(report["control_set_root"]),
@@ -483,11 +508,20 @@ class SignedRegistryBackend:
             report_uri,
         )
         if correction_of is None:
-            function = self.contract.functions.publish(*common)
-        else:
-            function = self.contract.functions.publishCorrection(
-                common[0], correction_of, *common[1:]
-            )
+            return self.contract.functions.publish(*common)
+        return self.contract.functions.publishCorrection(
+            common[0], correction_of, *common[1:]
+        )
+
+    def prepare(
+        self,
+        asset_key: bytes,
+        report: Mapping[str, object],
+        report_uri: str,
+        correction_of: int | None,
+    ) -> PreparedTransaction:
+        """Verify, price and sign. Refuses definitively; broadcasts nothing."""
+        function = self._function(asset_key, report, report_uri, correction_of)
 
         # Re-run in full rather than reusing a cached result: authorization can be
         # revoked between reading the sequence and signing, and revocation during an
@@ -730,16 +764,25 @@ class PublisherClient:
         transparency_log: TransparencyLog,
         pending_path: str | os.PathLike[str],
         *,
-        manifest: DeploymentManifest,
         receipt_timeout: float = 120.0,
     ) -> None:
         self.backend = backend
         self.transparency_log = transparency_log
         self.pending_path = Path(pending_path)
-        self.manifest = manifest
         if receipt_timeout <= 0:
             raise ValueError("receipt_timeout must be positive")
         self.receipt_timeout = float(receipt_timeout)
+
+    @property
+    def manifest(self) -> DeploymentManifest:
+        """The backend's deployment, never a separately supplied one.
+
+        Accepting a manifest here alongside the backend let a caller hand over a stale
+        copy in which a retired key was still active, while the backend published to the
+        rotated deployment. The lifecycle rule then read from one manifest and the chain
+        from another.
+        """
+        return self.backend.manifest
 
     def _active_key(self, signed_report: Mapping[str, object]) -> Mapping[str, object]:
         """Resolve the verifying key from the manifest, never from the caller.
@@ -834,24 +877,33 @@ class PublisherClient:
             if pending is None:
                 raise DuplicateSequence(f"sequence {sequence} is already published")
             self._ensure_onchain_match(asset_key, report, report_uri)
-            transaction_hash = pending["transaction_hash"]
-            state, receipt = self.backend.receipt_state(transaction_hash)
-            if state == INCLUDED:
-                raise PendingSubmission(
-                    f"sequence {sequence} is onchain and {transaction_hash} is included, "
-                    f"but it has not reached {self.manifest.confirmations} confirmations"
-                )
-            if receipt is None:
-                # The chain holds this exact report, so the publication happened. A node
-                # that has pruned the receipt, or a re-mine under a different hash, must
-                # not turn a settled publication into a permanent refusal.
-                found = self.backend.find_receipt(asset_key, sequence, correction_of)
-                if found is None:
+            # Validate the journalled bytes even though the report is already onchain.
+            # Skipping this recorded whatever hash the journal claimed, so an unrelated
+            # confirmed transaction could be entered in the transparency log as the
+            # publication's provenance.
+            prepared = _prepared_from_pending(
+                pending,
+                self.backend.identity(),
+                self.backend.calldata(asset_key, report, report_uri, correction_of),
+            )
+            # The publishing transaction is whichever one the registry emitted for this
+            # asset, sequence and publisher — not whichever one the journal names.
+            found = self.backend.find_receipt(asset_key, sequence, correction_of)
+            if found is None:
+                state, receipt = self.backend.receipt_state(prepared.transaction_hash)
+                if state != CONFIRMED:
                     raise PendingSubmission(
-                        f"sequence {sequence} is onchain but neither the receipt for "
-                        f"{transaction_hash} nor its publication event is available yet"
+                        f"sequence {sequence} is onchain but its publication event is "
+                        f"not available and {prepared.transaction_hash} is {state}"
                     )
+                transaction_hash = prepared.transaction_hash
+            else:
                 transaction_hash, receipt = found
+                if transaction_hash != prepared.transaction_hash:
+                    raise SubmissionFailed(
+                        f"sequence {sequence} was published by {transaction_hash}, but "
+                        f"the journal records {prepared.transaction_hash}"
+                    )
             if _receipt_status(receipt) != 1:
                 raise SubmissionFailed(f"transaction {transaction_hash} failed")
             return self._finalize(
@@ -867,7 +919,11 @@ class PublisherClient:
             )
 
         if pending is not None:
-            prepared = _prepared_from_pending(pending, self.backend.identity())
+            prepared = _prepared_from_pending(
+                pending,
+                self.backend.identity(),
+                self.backend.calldata(asset_key, report, report_uri, correction_of),
+            )
             state, receipt = self.backend.receipt_state(prepared.transaction_hash)
             if state == MISSING:
                 # Nothing on the chain holds it. The journal has the exact signed bytes,
@@ -1185,7 +1241,9 @@ def _is_nonce_too_low(error: Web3RPCError) -> bool:
 
 
 def _prepared_from_pending(
-    pending: Mapping[str, object], identity: DeploymentIdentity
+    pending: Mapping[str, object],
+    identity: DeploymentIdentity,
+    expected_calldata: bytes,
 ) -> PreparedTransaction:
     """Rebuild a journalled transaction and prove it is this deployment's.
 
@@ -1227,16 +1285,27 @@ def _prepared_from_pending(
             )
     if decoded["value"] != 0:
         raise PendingSubmission("a publication must not transfer value")
+    if decoded["data"] != expected_calldata:
+        # Right chain, right registry, right signer, right nonce — and a different call.
+        # Everything checked so far describes where the transaction goes, not what it
+        # does, so without this a journal could carry any call the publisher ever signed.
+        raise PendingSubmission(
+            "the journalled transaction does not call this publication; its calldata "
+            "is not the publish this report describes"
+        )
+    # Required, not "checked if present". An optional check is one an editor can delete,
+    # and the same shape was already a defect once in the role addresses. The decode above
+    # is the real defence — it reads the deployment out of the signature, which no journal
+    # edit can influence — but a field worth recording is worth insisting on.
     for field, expected in (
         ("chain_id", identity.chain_id),
         ("registry_address", identity.registry_address),
         ("publisher_address", identity.publisher_address),
     ):
-        recorded = pending.get(field)
-        if recorded is not None and recorded != expected:
+        if pending.get(field) != expected:
             raise PendingSubmission(
-                f"pending submission was journalled for {field} {recorded}, but this "
-                f"deployment is {expected}"
+                f"pending submission was journalled for {field} {pending.get(field)!r}, "
+                f"but this deployment is {expected!r}"
             )
     return PreparedTransaction(transaction_hash=recomputed, raw=encoded, nonce=nonce)
 

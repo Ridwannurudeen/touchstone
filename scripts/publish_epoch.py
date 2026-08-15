@@ -62,10 +62,7 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
     if not isinstance(signed_report, dict):
         raise PublicationError("the signed report must be an object")
     client = PublisherClient(
-        backend,
-        TransparencyLog(arguments.transparency_log),
-        arguments.pending,
-        manifest=manifest,
+        backend, TransparencyLog(arguments.transparency_log), arguments.pending
     )
     # The active-key rule lives in PublisherClient, not here. It used to live here, which
     # meant anything calling the client directly bypassed it entirely.

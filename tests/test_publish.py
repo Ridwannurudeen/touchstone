@@ -111,6 +111,17 @@ class FakeBackend:
         self.reads.append("get_report")
         return self.reports[asset_key][sequence - 1]
 
+    def calldata(self, asset_key, report, report_uri, correction_of) -> bytes:
+        """Encode the real call, so binding the journal to it means something."""
+        return canonical_json_bytes(
+            {
+                "asset_key": asset_key.hex(),
+                "correction_of": correction_of,
+                "report_uri": report_uri,
+                "sequence": report["sequence"],
+            }
+        )
+
     def prepare(self, asset_key, report, report_uri, correction_of):
         if self.refuse_before_signing:
             raise PreflightFailed("definite refusal reached before any broadcast")
@@ -125,7 +136,9 @@ class FakeBackend:
                 "maxPriorityFeePerGas": 10**8,
                 "nonce": nonce,
                 "chainId": self.manifest.chain_id,
-                "data": canonical_json_bytes({"sequence": report["sequence"]}),
+                "data": self.calldata(
+                    asset_key, report, report_uri, correction_of
+                ),
             }
         )
         self.intents[transaction_hash] = (
@@ -170,6 +183,11 @@ class FakeBackend:
         return prepared.transaction_hash
 
     def receipt_state(self, transaction_hash):
+        self.reads.append("receipt_state")
+        return self._state(transaction_hash)
+
+    def _state(self, transaction_hash):
+        """The same answer without recording it, for the fake's own internal use."""
         receipt = self.receipts.get(transaction_hash)
         if receipt is None:
             return MISSING, None
@@ -178,25 +196,27 @@ class FakeBackend:
         return CONFIRMED, receipt
 
     def get_receipt(self, transaction_hash):
-        state, receipt = self.receipt_state(transaction_hash)
+        state, receipt = self._state(transaction_hash)
         return receipt if state == CONFIRMED else None
 
     def wait_for_receipt(self, transaction_hash, timeout):
         del timeout
+        self.reads.append("wait_for_receipt")
         if self.time_out_once:
             self.time_out_once = False
             raise TimeExhausted("pending")
-        state, receipt = self.receipt_state(transaction_hash)
+        state, receipt = self._state(transaction_hash)
         if state != CONFIRMED:
             raise TimeExhausted("pending")
         return receipt
 
     def find_receipt(self, asset_key, sequence, correction_of):
+        """Confirmed events only, matching SignedRegistryBackend."""
         del correction_of
         for transaction_hash, (key, report, _, _) in self.intents.items():
             if key == asset_key and report["sequence"] == sequence:
-                receipt = self.receipts.get(transaction_hash)
-                if receipt is not None:
+                state, receipt = self._state(transaction_hash)
+                if state == CONFIRMED:
                     return transaction_hash, receipt
         return None
 
@@ -227,7 +247,6 @@ def _client(tmp_path: Path, backend: FakeBackend) -> PublisherClient:
         backend,
         TransparencyLog(tmp_path / "transparency.jsonl"),
         tmp_path / "pending.json",
-        manifest=backend.manifest,
     )
 
 
@@ -512,10 +531,7 @@ def test_a_journal_from_another_deployment_is_refused(tmp_path: Path) -> None:
         _manifest(registry_address=Web3.to_checksum_address("0x" + "dd" * 20))
     )
     client = PublisherClient(
-        moved,
-        TransparencyLog(tmp_path / "transparency.jsonl"),
-        pending,
-        manifest=moved.manifest,
+        moved, TransparencyLog(tmp_path / "transparency.jsonl"), pending
     )
 
     with pytest.raises(PendingSubmission, match="signed for registry"):
@@ -604,39 +620,52 @@ def test_an_included_transaction_is_waited_for_rather_than_resent(
     )
 
 
-def test_endpoint_identity_is_reproved_within_a_publication(tmp_path: Path) -> None:
-    """Caching a verified identity for the life of the process was the defect.
+def _assert_revalidation_order(reads: list[str]) -> None:
+    """No chain read may precede an identity check, and the wait must be followed by one.
 
-    An endpoint repointed between phases would otherwise serve the reads that decide a
-    publication is real under an identity checked long before.
+    Counting revalidations proved almost nothing: a read inserted between the receipt wait
+    and the revalidation would still have satisfied it. What matters is adjacency — the
+    first thing after waiting is proving the endpoint is still the one the manifest names.
     """
-    backend = FakeBackend()
-    client = _client(tmp_path, backend)
-
-    client.publish(
-        _signed_report(1),
-        report_uri="urn:touchstone:report:1",
-    )
-
-    assert backend.revalidations >= 2, (
-        "identity is reproved at the start of the publication and again after the wait"
-    )
-    # Counting revalidations is not enough: what matters is that no read which decides
-    # the outcome happens before one. An endpoint repointed during the receipt wait would
-    # otherwise serve the post-wait sequence read under an identity proved long before.
-    decisive = [step for step in backend.reads if step != "revalidate"]
-    assert decisive, "the publication must read the chain at all"
-    for index, step in enumerate(backend.reads):
+    assert reads, "the publication must read the chain at all"
+    for index, step in enumerate(reads):
         if step != "revalidate":
-            assert "revalidate" in backend.reads[:index], (
-                f"{step} ran before any identity check"
-            )
-    first_read = backend.reads.index("latest_sequence")
-    last_revalidate = len(backend.reads) - 1 - backend.reads[::-1].index("revalidate")
-    assert last_revalidate > first_read, (
-        "identity must be reproved again after the receipt wait, before the reads that "
-        "decide the publication is real"
+            assert "revalidate" in reads[:index], f"{step} ran before any identity check"
+    assert "wait_for_receipt" in reads, "this path must have waited for a receipt"
+    after_wait = reads[reads.index("wait_for_receipt") + 1 :]
+    assert after_wait and after_wait[0] == "revalidate", (
+        f"the first step after the receipt wait must be revalidate, got {after_wait[:1]}"
     )
+
+
+def test_endpoint_identity_is_reproved_before_every_decisive_read(
+    tmp_path: Path,
+) -> None:
+    backend = FakeBackend()
+
+    _client(tmp_path, backend).publish(
+        _signed_report(1), report_uri="urn:touchstone:report:1"
+    )
+
+    assert backend.revalidations >= 2
+    _assert_revalidation_order(backend.reads)
+
+
+def test_recovery_also_reproves_identity_after_its_wait(tmp_path: Path) -> None:
+    """The reconciliation path needs the same ordering, and had no coverage at all."""
+    backend = FakeBackend()
+    backend.drop_first_broadcast = True
+    with pytest.raises(PendingSubmission):
+        _client(tmp_path, backend).publish(
+            _signed_report(1), report_uri="urn:touchstone:report:1"
+        )
+    backend.reads.clear()
+
+    _client(tmp_path, backend).publish(
+        _signed_report(1), report_uri="urn:touchstone:report:1"
+    )
+
+    _assert_revalidation_order(backend.reads)
 
 
 def test_publishing_has_no_unlocked_account_path() -> None:

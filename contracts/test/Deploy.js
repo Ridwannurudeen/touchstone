@@ -2,7 +2,11 @@ const { createHash } = require("node:crypto");
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-const { deploy, CONFIRM_ENV } = require("../scripts/deploy");
+const {
+  deploy,
+  CONFIRM_ENV,
+  serializeManifest,
+} = require("../scripts/deploy");
 
 // 32 bytes standing in for a reporting public key. It is not derived from a private key
 // and never signs anything; only its digest matters to these assertions.
@@ -210,6 +214,33 @@ describe("deploy script", function () {
         reporterPublicKey: REPORTER_PUBLIC_KEY,
       }),
     ).to.be.rejectedWith("operationsAddress is required");
+  });
+
+  it("records a fee ceiling exactly rather than rounding it", function () {
+    // Number silently rounds above 2^53-1, so a ceiling of ...993 was recorded as ...992.
+    const out = serializeManifest({ max_fee_wei: 9007199254740993n });
+    expect(out).to.contain("9007199254740993");
+    // Asserted on the text, not on JSON.parse: JavaScript cannot hold this value as a
+    // number at all, which is the whole reason it must never pass through Number here.
+    // Python reads the same text with arbitrary precision and gets the exact integer.
+    expect(out).to.not.contain("9007199254740992");
+  });
+
+  it("refuses a public rpc_url that names no host", async function () {
+    // "https:///no-host" starts with https:// and contains no forbidden character, so a
+    // pattern check passed it straight through to deployContract.
+    const { publisher, operations } = await roles();
+
+    await expect(
+      deploy({
+        publisherAddress: publisher.address,
+        operationsAddress: operations.address,
+        reporterPublicKey: REPORTER_PUBLIC_KEY,
+        network: "xlayer-mainnet",
+        rpcUrl: "https:///no-host",
+        maxFeeWei: 1,
+      }),
+    ).to.be.rejected;
   });
 
   it("names the confirmation variable a stale export cannot satisfy", function () {

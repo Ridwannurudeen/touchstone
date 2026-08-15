@@ -30,7 +30,9 @@ from datetime import datetime, timezone
 import os
 import re
 
+import rlp
 from eth_account import Account
+from eth_account._utils.legacy_transactions import Transaction as LegacyTransaction
 from eth_account.signers.local import LocalAccount
 from eth_account.typed_transactions import TypedTransaction
 from hexbytes import HexBytes
@@ -130,8 +132,17 @@ def decoded_transaction(raw: bytes) -> dict[str, object]:
     if not isinstance(raw, bytes) or not raw:
         raise ValueError("signed transaction bytes are required")
     try:
-        fields = TypedTransaction.from_bytes(HexBytes(raw)).as_dict()
         sender = Web3.to_checksum_address(Account.recover_transaction(raw))
+        # Both encodings must decode here, because the publisher signs both: a typed
+        # EIP-1559 transaction where the chain quotes a base fee, and a legacy one where
+        # it does not. Handling only the typed form left every legacy journal
+        # unrecoverable after a restart — on exactly the chains that need recovery most.
+        if raw[0] >= 0xC0:
+            fields = _decoded_legacy(raw)
+        else:
+            fields = TypedTransaction.from_bytes(HexBytes(raw)).as_dict()
+    except ValueError:
+        raise
     except Exception as error:
         raise ValueError(f"signed transaction bytes do not decode: {error}") from error
     destination = fields.get("to")
@@ -142,6 +153,26 @@ def decoded_transaction(raw: bytes) -> dict[str, object]:
         "value": int(fields.get("value", 0)),
         "data": bytes(fields.get("data") or b""),
         "sender": sender,
+    }
+
+
+def _decoded_legacy(raw: bytes) -> dict[str, object]:
+    """Decode an EIP-155 legacy transaction, whose chain id lives inside ``v``."""
+    try:
+        transaction = rlp.decode(raw, LegacyTransaction)
+    except Exception as error:
+        raise ValueError(f"signed transaction bytes do not decode: {error}") from error
+    v = int(transaction.v)
+    if v < 35:
+        raise ValueError(
+            "signed transaction is not replay-protected; it commits to no chain"
+        )
+    return {
+        "chainId": (v - 35) // 2,
+        "nonce": int(transaction.nonce),
+        "to": bytes(transaction.to),
+        "value": int(transaction.value),
+        "data": bytes(transaction.data),
     }
 
 

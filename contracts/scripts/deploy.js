@@ -117,11 +117,22 @@ async function deploy({
       );
     }
   } else {
-    if (!resolvedRpcUrl.startsWith("https://")) {
-      throw new Error("a public network must record an HTTPS rpc_url");
+    // Parsed rather than pattern-matched: "https:///no-host" starts with https:// and
+    // contains none of the forbidden characters, yet names no host at all.
+    let parsed;
+    try {
+      parsed = new URL(resolvedRpcUrl);
+    } catch {
+      throw new Error("rpc_url is not a URL");
     }
-    if (/[?#@]/.test(resolvedRpcUrl)) {
+    if (parsed.protocol !== "https:" || !parsed.hostname) {
+      throw new Error("a public network must record an HTTPS rpc_url with a host");
+    }
+    if (parsed.username || parsed.password || parsed.search || parsed.hash) {
       throw new Error("rpc_url must not carry credentials, a query or a fragment");
+    }
+    if (["127.0.0.1", "localhost", "::1"].includes(parsed.hostname)) {
+      throw new Error("a public network cannot be served from loopback");
     }
     if (maxFeeWei === null) {
       throw new Error("maxFeeWei is required off the local chain");
@@ -180,7 +191,10 @@ async function deploy({
     ],
   };
   if (maxFeeWei !== null) {
-    manifest.max_fee_wei = Number(maxFeeWei);
+    // Kept as BigInt through serialisation. Converting back to Number reintroduced
+    // exactly the rounding the BigInt check was added to prevent: a ceiling of
+    // 9007199254740993 wei was recorded as ...992.
+    manifest.max_fee_wei = maxFeeWei;
   }
   return { registry, manifest };
 }
@@ -202,7 +216,7 @@ async function main() {
     maxFeeWei: process.env.TOUCHSTONE_MAX_FEE_WEI ?? null,
     rpcUrl: process.env.TOUCHSTONE_RPC_URL ?? null,
   });
-  const serialized = `${JSON.stringify(manifest, null, 2)}\n`;
+  const serialized = `${serializeManifest(manifest)}\n`;
   const destination = process.env.TOUCHSTONE_MANIFEST_OUT;
   if (destination) {
     writeFileSync(destination, serialized, { encoding: "utf-8" });
@@ -210,7 +224,18 @@ async function main() {
   process.stdout.write(serialized);
 }
 
-module.exports = { deploy, CONFIRM_ENV };
+function serializeManifest(manifest) {
+  // JSON.stringify throws on a BigInt, and Number would round it. Marking the value and
+  // unquoting it afterwards writes the exact integer the operator chose.
+  const marked = JSON.stringify(
+    manifest,
+    (_key, value) => (typeof value === "bigint" ? `@bigint:${value}@` : value),
+    2,
+  );
+  return marked.replace(/"@bigint:(\d+)@"/g, "$1");
+}
+
+module.exports = { deploy, CONFIRM_ENV, serializeManifest };
 
 if (require.main === module) {
   main().catch((error) => {

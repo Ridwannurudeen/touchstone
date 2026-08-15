@@ -161,7 +161,7 @@ These distinctions are load-bearing and must not be collapsed:
 
 | Requirement | Status |
 |---|---|
-| Separated deployer / publisher / Ed25519 / operations keys | **Partially implemented 2026-08-15 (PLAN-T6).** The four EVM addresses are required manifest fields, must be distinct, and the loaded publisher key must derive the declared publisher, so *address* separation is enforced. Reporter-versus-publisher **secret** separation is only checked where both variables are present on one host; a split-host deployment could reuse one secret undetected. Custody remains a residual: **R-5** |
+| Separated deployer / publisher / Ed25519 / operations keys | **Partially implemented 2026-08-15 (PLAN-T6).** Precisely: **three** EVM role addresses — publisher, deployer, operations — are required manifest fields and must be pairwise distinct, and the loaded publisher key must derive the declared publisher, so that separation is enforced. The reporter is **Ed25519 and has no EVM address at all**, so it is not among them. (`publisher_identity_address` is publisher *lineage*, not a fourth role; it equals the publisher on a first authorization and is refused if it is the deployer or operations.) Reporter-versus-publisher **secret** separation is checked only where both variables are present on one host; a split-host deployment could reuse one secret undetected. Custody remains a residual: **R-5** |
 | No secrets in code, logs, bundles or clients | Holds today; no secret is committed. The E2E now warns when a Hardhat log containing development keys cannot be removed |
 | Onchain key rotation | Implemented in the registry, with preserved historical attribution and lineage |
 | Monotonic sequences + replay protection | Implemented (registry + `touchstone/publish.py:381`) |
@@ -215,8 +215,10 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   publication, distribution or external pinning path for them. The only genuinely external
   record is what has been published onchain, and that is a root, not the evidence.
 - **R-5 — Keys are separated but not custodied.** *Revised 2026-08-15 by PLAN-T6.* The
-  four identities are now distinct and the separation is enforced at every point a key is
-  loaded or used, so the original form of this residual is closed. What remains is
+  three EVM role addresses are distinct and enforced wherever an EVM key is loaded or
+  used; the Ed25519 reporter is separated by construction but its *secret* is only proved
+  distinct from the publisher's where both sit on one host. So the original form of this
+  residual is narrowed rather than closed. What remains is
   custody: both runtime keys are plain environment variables on their host, with no HSM,
   KMS, passphrase at rest, threshold or multisig. Anything that can read the process
   environment can publish. The mitigation is scope — the publisher key can only append

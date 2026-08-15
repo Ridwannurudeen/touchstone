@@ -155,9 +155,7 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
             manifest, PublisherKey.from_hex(_publisher_private_key(publisher), manifest)
         )
         preflight = backend.preflight()
-        client = PublisherClient(
-            backend, log, workspace / "pending.json", manifest=manifest
-        )
+        client = PublisherClient(backend, log, workspace / "pending.json")
         first = client.publish(signed, report_uri="urn:touchstone:ustb:fixture:1")
         asset_key = Web3.keccak(text=report["asset_key"])
         allowed, reason = gate.functions.check(asset_key).call()

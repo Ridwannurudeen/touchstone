@@ -39,8 +39,12 @@ be shown not to be running as it.
 
 ## What the code enforces
 
-- All four role addresses are **required** manifest fields, and a manifest cannot declare
-  a publisher that is also the deployer or the operations address
+- The **three EVM role addresses** — publisher, deployer, operations — are required
+  manifest fields, and a manifest cannot declare a publisher that is also the deployer or
+  the operations address. The reporter is Ed25519 and has no EVM address, so it is not one
+  of them; `publisher_identity_address` is publisher lineage rather than a fourth role,
+  equals the publisher on a first authorization, and is refused if it is the deployer or
+  the operations identity
   (`touchstone/deployment.py`). Requiring them is what makes the separation provable: they
   were optional at first, which quietly made the whole thing optional — a manifest that
   simply omitted the deployer and operations addresses passed every check while
