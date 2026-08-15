@@ -217,15 +217,18 @@ class _CountingEpoch(USTBEpochReport):
 
     __slots__ = ("_stored", "_reads")
 
+    # Iterators, not tuples. A sequence attribute is not obliged to be re-readable, so a
+    # snapshot that stores whatever it was handed without materialising it holds something
+    # already spent by the time anything downstream looks.
     @property
     def sources(self):
         self._reads["sources"] += 1
-        return self._stored["sources"]
+        return iter(self._stored["sources"])
 
     @property
     def evaluations(self):
         self._reads["evaluations"] += 1
-        return self._stored["evaluations"]
+        return iter(self._stored["evaluations"])
 
 
 def _counting(epoch: USTBEpochReport) -> _CountingEpoch:

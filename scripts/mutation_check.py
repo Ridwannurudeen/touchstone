@@ -217,6 +217,13 @@ MUTATIONS = (
     Mutation(
         name="report-reads-the-epoch-more-than-once",
         path="touchstone/report.py",
+        old="    epoch = USTBEpochReport(\n        asset_key=epoch.asset_key,\n        now=epoch.now,\n        state=epoch.state,\n        evidence_deadline=epoch.evidence_deadline,\n        sources=tuple(epoch.sources),\n        evaluations=tuple(epoch.evaluations),\n        confirmation=epoch.confirmation,\n    )\n",
+        new="",
+        tests=("tests/test_report.py::test_a_report_describes_one_epoch",),
+    ),
+    Mutation(
+        name="report-snapshot-is-not-materialised",
+        path="touchstone/report.py",
         old="        sources=tuple(epoch.sources),\n        evaluations=tuple(epoch.evaluations),",
         new="        sources=epoch.sources,\n        evaluations=epoch.evaluations,",
         tests=("tests/test_report.py::test_a_report_describes_one_epoch",),
