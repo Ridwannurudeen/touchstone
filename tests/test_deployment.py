@@ -109,15 +109,31 @@ def test_an_unknown_field_is_refused_rather_than_ignored() -> None:
         DeploymentManifest.from_mapping(manifest(registry_addres=REGISTRY))
 
 
-def test_the_local_network_is_pinned_to_the_local_chain_id() -> None:
-    with pytest.raises(DeploymentError, match="chain id 31337"):
+def test_every_network_name_is_bound_to_one_chain_id() -> None:
+    """A name not bound to a chain id proves nothing.
+
+    Only the local chain was pinned at first, so any positive integer could be declared as
+    xlayer-testnet — including 195, X Layer's *deprecated* testnet. Preflight would then
+    confirm only that the endpoint agrees with an obsolete manifest, which is exactly the
+    disagreement it exists to find.
+    """
+    with pytest.raises(DeploymentError, match="hardhat-local is chain 31337"):
         DeploymentManifest.from_mapping(manifest(chain_id=196))
-    with pytest.raises(DeploymentError, match="local development chain"):
+    with pytest.raises(DeploymentError, match="xlayer-mainnet is chain 196"):
         DeploymentManifest.from_mapping(
             manifest(
                 network="xlayer-mainnet",
                 chain_id=31337,
                 rpc_url="https://rpc.example",
+                max_fee_wei=1,
+            )
+        )
+    with pytest.raises(DeploymentError, match="xlayer-testnet is chain 1952"):
+        DeploymentManifest.from_mapping(
+            manifest(
+                network="xlayer-testnet",
+                chain_id=195,
+                rpc_url="https://testrpc.xlayer.tech",
                 max_fee_wei=1,
             )
         )

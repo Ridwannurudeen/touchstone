@@ -37,13 +37,23 @@ from touchstone.signing import kid_for_public_key, strict_json_loads
 
 MANIFEST_VERSION = 1
 
-# The local development chain is the only network whose id this project is entitled to
-# assert offline, because it starts it itself. Public network ids are declared per
-# manifest and verified against the endpoint at runtime; a second hardcoded table would
-# be a second source of truth that no test could keep honest.
+# Each network name is bound to exactly one chain id. Leaving public ids to be declared
+# per manifest was wrong: preflight then proves only that the endpoint agrees with
+# whatever the manifest says, which is no help when the manifest itself names a chain that
+# is no longer the network it claims to be. X Layer's deprecated testnet on chain 195 was
+# accepted as "xlayer-testnet" under that rule.
+#
+# Values verified 2026-08-15: chainlist.org/chain/1952 (testnet, currently at
+# https://testrpc.xlayer.tech/terigon; the older chain 195 is deprecated) and
+# chainid.network/chain/196 (mainnet).
 LOCAL_NETWORK = "hardhat-local"
 LOCAL_CHAIN_ID = 31337
-NETWORKS = frozenset({LOCAL_NETWORK, "xlayer-testnet", "xlayer-mainnet"})
+NETWORK_CHAIN_IDS = {
+    LOCAL_NETWORK: LOCAL_CHAIN_ID,
+    "xlayer-testnet": 1952,
+    "xlayer-mainnet": 196,
+}
+NETWORKS = frozenset(NETWORK_CHAIN_IDS)
 KEY_STATES = frozenset({"active", "superseded", "revoked"})
 
 # A template is a shape to copy, never a target to publish to. Half-filled templates are
@@ -189,14 +199,10 @@ class DeploymentManifest:
         if network not in NETWORKS:
             raise DeploymentError(f"unsupported network: {network!r}")
         chain_id = _positive_int(value["chain_id"], "chain_id")
-        if network == LOCAL_NETWORK and chain_id != LOCAL_CHAIN_ID:
+        if chain_id != NETWORK_CHAIN_IDS[network]:
             raise DeploymentError(
-                f"{LOCAL_NETWORK} must declare chain id {LOCAL_CHAIN_ID}"
-            )
-        if network != LOCAL_NETWORK and chain_id == LOCAL_CHAIN_ID:
-            raise DeploymentError(
-                f"chain id {LOCAL_CHAIN_ID} is the local development chain and cannot "
-                f"describe {network}"
+                f"{network} is chain {NETWORK_CHAIN_IDS[network]}, manifest declares "
+                f"{chain_id}"
             )
 
         rpc_url = value["rpc_url"]

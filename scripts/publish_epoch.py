@@ -24,7 +24,6 @@ from touchstone.keyring import (  # noqa: E402
     IdentityError,
     PublisherKey,
     assert_role_separation,
-    verification_keys,
 )
 from touchstone.publish import (  # noqa: E402
     PublicationError,
@@ -62,40 +61,20 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
     signed_report = strict_json_loads(Path(arguments.signed_report).read_bytes())
     if not isinstance(signed_report, dict):
         raise PublicationError("the signed report must be an object")
-    kid = signed_report.get("kid")
-    # A new publication is signed by the active key and nothing else. Superseded keys stay
-    # published so that what they already signed keeps verifying, but that is a statement
-    # about the past: accepting one here would mean a retired key could still put new
-    # reports onchain, which is exactly what rolling over is supposed to end. A date check
-    # would not substitute, because a compromised key can backdate its own report.
-    if kid != manifest.active_key.kid:
-        known = verification_keys(manifest)
-        raise PublicationError(
-            f"{kid!r} is not this deployment's active reporting key "
-            f"({manifest.active_key.kid}); it is "
-            + (
-                "superseded or revoked"
-                if kid in known or manifest.key(kid)
-                else "unknown"
-            )
-            + " and must not sign new publications"
-        )
-    published_key = verification_keys(manifest)[kid]
     client = PublisherClient(
         backend,
         TransparencyLog(arguments.transparency_log),
         arguments.pending,
+        manifest=manifest,
     )
+    # The active-key rule lives in PublisherClient, not here. It used to live here, which
+    # meant anything calling the client directly bypassed it entirely.
     publish = client.publish_correction if arguments.correction else client.publish
-    publication = publish(
-        signed_report,
-        published_key=published_key,
-        report_uri=arguments.report_uri,
-    )
+    publication = publish(signed_report, report_uri=arguments.report_uri)
     result.update(
         {
             "published": True,
-            "reporting_kid": kid,
+            "reporting_kid": signed_report.get("kid"),
             "transaction_hash": publication.transaction_hash,
             "reconciled": publication.reconciled,
             "log_entry_hash": publication.log_entry_hash,

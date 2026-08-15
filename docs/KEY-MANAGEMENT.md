@@ -51,6 +51,21 @@ be shown not to be running as it.
   `TOUCHSTONE_PUBLISHER_PRIVATE_KEY` are the same secret. The check is on the raw secret,
   not on the derived identifiers: two algorithms over one 32-byte secret produce two
   unrelated-looking public identities, so nothing downstream would notice.
+  **This check only fires where both variables are present.** On the split-host setup
+  described above — publishing on one host, reporting on another — neither host can see
+  the other's secret, so the same 32 bytes could back both roles and each host would pass
+  independently. Nothing detects that, and nothing can from inside one host. Treat it as
+  an operator responsibility, not an enforced property.
+- A publication verifies against the deployment's **active** reporting key, resolved from
+  the manifest rather than supplied by the caller (`PublisherClient`). The rule lives
+  there, not in the command-line wrapper, because a rule that only the wrapper applies is
+  bypassed by anything that calls the client directly.
+- A publication is only accepted as ours if the onchain report's `publisher` is the
+  manifest's publisher. Another authorized publisher can place an identical payload at the
+  same sequence, and matching content alone would have let reconciliation adopt it.
+- A journalled transaction is decoded before it is ever rebroadcast, and its chain,
+  destination registry, signer and nonce must match this deployment. Comparing a hash to
+  its bytes proves only that they belong together.
 - Preflight refuses to publish if the registry's `owner()` is the publisher, or if it is
   not the deployer the manifest declares.
 - The deploy script refuses to deploy with the publisher as the deployer, or with the
@@ -179,6 +194,8 @@ what a revocation means for reports already onchain is a correction question —
 - **Rotation is not automated.** `rotatePublisher` is called by hand by the deployer, and
   the manifest is updated by hand afterwards. Nothing detects that the two have diverged
   except the next preflight, which refuses — now on lineage as well as authorization.
+- **Cross-host role separation is unverifiable from one host.** See the note above: the
+  same secret behind both roles is caught only when both variables sit on one machine.
 - **The template marker is a tripwire, not provenance.** Deleting the `notes` field makes
   a template's placeholder values load. Only preflight then refuses them, because no
   contract stands at the placeholder address. It stops a half-filled copy, not a

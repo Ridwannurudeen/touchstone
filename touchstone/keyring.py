@@ -32,6 +32,8 @@ import re
 
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
+from eth_account.typed_transactions import TypedTransaction
+from hexbytes import HexBytes
 from web3 import Web3
 
 from touchstone.deployment import DeploymentError, DeploymentManifest
@@ -112,6 +114,35 @@ class PublisherKey:
         return "0x" + signed.hash.hex().removeprefix("0x").lower(), bytes(
             signed.raw_transaction
         )
+
+
+def decoded_transaction(raw: bytes) -> dict[str, object]:
+    """Decode signed transaction bytes back into the fields they commit to.
+
+    A journalled transaction is only safe to rebroadcast if what it actually says matches
+    what it was recorded as meaning. Comparing the hash to the bytes proves they belong to
+    each other and nothing more — edit both together and they still agree — so the fields
+    are read out of the signature itself and checked against the deployment.
+
+    The sender is recovered from the signature rather than taken on trust, because that is
+    the one field no journal can assert.
+    """
+    if not isinstance(raw, bytes) or not raw:
+        raise ValueError("signed transaction bytes are required")
+    try:
+        fields = TypedTransaction.from_bytes(HexBytes(raw)).as_dict()
+        sender = Web3.to_checksum_address(Account.recover_transaction(raw))
+    except Exception as error:
+        raise ValueError(f"signed transaction bytes do not decode: {error}") from error
+    destination = fields.get("to")
+    return {
+        "chain_id": int(fields["chainId"]),
+        "nonce": int(fields["nonce"]),
+        "to": Web3.to_checksum_address(destination) if destination else None,
+        "value": int(fields.get("value", 0)),
+        "data": bytes(fields.get("data") or b""),
+        "sender": sender,
+    }
 
 
 @dataclass(frozen=True, slots=True)

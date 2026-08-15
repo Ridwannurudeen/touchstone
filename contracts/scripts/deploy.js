@@ -18,7 +18,15 @@ const CONFIRM_ENV = "TOUCHSTONE_DEPLOY_CONFIRM_CHAIN_ID";
 const NETWORK_BY_CHAIN_ID = {
   31337: "hardhat-local",
 };
-const NETWORKS = ["hardhat-local", "xlayer-testnet", "xlayer-mainnet"];
+// Must match touchstone/deployment.py NETWORK_CHAIN_IDS exactly. A name that is not
+// bound to one chain id is a name that proves nothing: X Layer's deprecated testnet on
+// chain 195 would otherwise pass as "xlayer-testnet".
+const NETWORK_CHAIN_IDS = {
+  "hardhat-local": 31337,
+  "xlayer-testnet": 1952,
+  "xlayer-mainnet": 196,
+};
+const NETWORKS = Object.keys(NETWORK_CHAIN_IDS);
 
 async function deploy({
   publisherAddress,
@@ -74,17 +82,39 @@ async function deploy({
       `network must be one of ${NETWORKS.join(", ")}; chain ${chainId} resolved to ${resolvedNetwork}`,
     );
   }
+  if (BigInt(NETWORK_CHAIN_IDS[resolvedNetwork]) !== chainId) {
+    throw new Error(
+      `${resolvedNetwork} is chain ${NETWORK_CHAIN_IDS[resolvedNetwork]}, but this endpoint is chain ${chainId}`,
+    );
+  }
   if (!Number.isInteger(confirmations) || confirmations < 1) {
     throw new Error("confirmations must be a positive integer");
   }
-  if (maxFeeWei !== null && (!Number.isInteger(maxFeeWei) || maxFeeWei < 1)) {
-    throw new Error("maxFeeWei must be a positive integer");
+  if (maxFeeWei !== null) {
+    // A wei ceiling can exceed Number.MAX_SAFE_INTEGER, where Number silently rounds and
+    // the manifest would then record a limit nobody chose. Accept only an exact integer.
+    let exact;
+    try {
+      exact = BigInt(maxFeeWei);
+    } catch {
+      throw new Error("maxFeeWei must be an exact integer");
+    }
+    if (exact < 1n || String(exact) !== String(maxFeeWei)) {
+      throw new Error("maxFeeWei must be a positive exact integer");
+    }
+    maxFeeWei = exact;
   }
   const resolvedRpcUrl =
     rpcUrl ?? hre.network.config.url ?? "http://127.0.0.1:8545";
   if (resolvedNetwork === "hardhat-local") {
-    if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(resolvedRpcUrl)) {
-      throw new Error("the local network must record a loopback rpc_url with a port");
+    const loopback = /^http:\/\/(?:127\.0\.0\.1|localhost):(\d{1,5})\/?$/.exec(
+      resolvedRpcUrl,
+    );
+    const port = loopback ? Number(loopback[1]) : 0;
+    if (port < 1 || port > 65535) {
+      throw new Error(
+        "the local network must record a loopback rpc_url with a valid port",
+      );
     }
   } else {
     if (!resolvedRpcUrl.startsWith("https://")) {
@@ -150,7 +180,7 @@ async function deploy({
     ],
   };
   if (maxFeeWei !== null) {
-    manifest.max_fee_wei = maxFeeWei;
+    manifest.max_fee_wei = Number(maxFeeWei);
   }
   return { registry, manifest };
 }
@@ -169,9 +199,7 @@ async function main() {
     reporterPublicKey: required("TOUCHSTONE_REPORTER_PUBLIC_KEY"),
     network: process.env.TOUCHSTONE_NETWORK ?? null,
     confirmations: Number(process.env.TOUCHSTONE_CONFIRMATIONS ?? 1),
-    maxFeeWei: process.env.TOUCHSTONE_MAX_FEE_WEI
-      ? Number(process.env.TOUCHSTONE_MAX_FEE_WEI)
-      : null,
+    maxFeeWei: process.env.TOUCHSTONE_MAX_FEE_WEI ?? null,
     rpcUrl: process.env.TOUCHSTONE_RPC_URL ?? null,
   });
   const serialized = `${JSON.stringify(manifest, null, 2)}\n`;

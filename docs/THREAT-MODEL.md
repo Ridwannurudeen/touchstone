@@ -54,8 +54,10 @@ Keys at B6, B7, B8 and B9 are **required to be four distinct identities**. **Ame
 manifest must state all four role addresses and cannot declare a publisher that is also
 the deployer or the operations address (`touchstone/deployment.py`); the publisher key must
 derive exactly the declared publisher address; a run refuses to start if the reporting seed
-and the publisher key are the same secret; and preflight refuses to publish if the
-registry's `owner()` is the publisher, or if the publisher belongs to a different
+and the publisher key are the same secret **when both are present on one host** — on a
+split-host deployment neither can see the other, so that particular collision is an
+operator responsibility rather than an enforced property; and preflight refuses to publish
+if the registry's `owner()` is the publisher, or if the publisher belongs to a different
 `publisherIdentity` lineage than the manifest declares. No unlocked-account path remains in
 the *publishing* code on any network — deployment and owner-administration calls still use
 an unlocked signer under Hardhat, which is an operator action rather than an unattended
@@ -159,7 +161,7 @@ These distinctions are load-bearing and must not be collapsed:
 
 | Requirement | Status |
 |---|---|
-| Separated deployer / publisher / Ed25519 / operations keys | **Implemented 2026-08-15 (PLAN-T6)** — four distinct identities, all four addresses **required** in the manifest and enforced where each key is loaded and used; deployment manifest schema and X Layer templates in `deployments/`. Custody remains a residual: **R-5** |
+| Separated deployer / publisher / Ed25519 / operations keys | **Partially implemented 2026-08-15 (PLAN-T6).** The four EVM addresses are required manifest fields, must be distinct, and the loaded publisher key must derive the declared publisher, so *address* separation is enforced. Reporter-versus-publisher **secret** separation is only checked where both variables are present on one host; a split-host deployment could reuse one secret undetected. Custody remains a residual: **R-5** |
 | No secrets in code, logs, bundles or clients | Holds today; no secret is committed. The E2E now warns when a Hardhat log containing development keys cannot be removed |
 | Onchain key rotation | Implemented in the registry, with preserved historical attribution and lineage |
 | Monotonic sequences + replay protection | Implemented (registry + `touchstone/publish.py:381`) |

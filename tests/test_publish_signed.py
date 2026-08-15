@@ -346,7 +346,7 @@ def test_the_cli_refuses_to_publish_under_an_untrusted_reporting_key(
         sent = [call for call in node.calls if "send" in call.lower()]
 
     assert code == 1
-    assert "is not this deployment's active reporting key" in capsys.readouterr().err
+    assert "active reporting key" in capsys.readouterr().err
     assert sent == []
 
 
@@ -400,8 +400,8 @@ def test_a_superseded_key_verifies_history_but_cannot_publish_anew(
 
     assert code == 1
     error = capsys.readouterr().err
-    assert "not this deployment's active reporting key" in error
-    assert "superseded or revoked" in error
+    assert "active reporting key" in error
+    assert "superseded" in error
     assert sent == []
 
 
