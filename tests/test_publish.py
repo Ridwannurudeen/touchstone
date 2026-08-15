@@ -840,15 +840,26 @@ def test_revalidation_actually_verifies_rather_than_only_dropping_a_cache() -> N
     from touchstone.publish import SignedRegistryBackend
 
     backend = SignedRegistryBackend.__new__(SignedRegistryBackend)
-    backend._preflight = object()  # a cached result that must not be trusted
-    verified = []
-    backend.preflight = lambda: verified.append(True) or "fresh"
+    stale = object()
+    backend._preflight = stale
+    seen_when_called = []
+
+    def preflight():
+        # What the cache held at the moment preflight ran. If revalidate returned the
+        # cached value, or ran preflight without clearing first, this shows it.
+        seen_when_called.append(backend._preflight)
+        backend._preflight = "fresh"
+        return "fresh"
+
+    backend.preflight = preflight
 
     result = backend.revalidate()
 
-    assert verified == [True], "revalidate must actually re-run preflight"
+    assert seen_when_called == [None], (
+        "the cache must be dropped before preflight runs, not merely afterwards"
+    )
     assert result == "fresh"
-    assert backend._preflight is None or result == "fresh"
+    assert backend._preflight == "fresh"
 
 
 def test_a_reread_that_disagrees_with_the_wait_keeps_the_journal(

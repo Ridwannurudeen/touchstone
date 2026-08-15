@@ -320,7 +320,17 @@ def test_an_outage_is_never_reported_with_a_count_of_zero() -> None:
     """
     for origin in (0.0, 1e5, 1e7):
         for interval in (0.1, 0.2, 60, 86_400):
-            for overrun in (0.0, interval, interval * 3, interval * 2.5):
+            # The last two are the ones that matter: an overrun of exactly one interval,
+            # and one representable step past it. Exact and half-interval gaps never land
+            # inside the float tolerance, so a sweep of only those passes against the
+            # broken code and proves nothing.
+            for overrun in (
+                0.0,
+                interval,
+                interval * 2.5,
+                math.nextafter(interval, math.inf),
+                math.nextafter(interval * 3, math.inf),
+            ):
                 clock = FakeTime(origin)
                 outages = []
                 runs = []

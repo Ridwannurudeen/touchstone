@@ -25,6 +25,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import math
 from pathlib import Path
 import sys
 import time
@@ -110,8 +111,13 @@ class Service:
         )
         if type(retries) is not int or retries < 0:
             raise ValueError("retries must be a non-negative integer")
-        if not isinstance(backoff_seconds, (int, float)) or backoff_seconds < 0:
-            raise ValueError("backoff_seconds must be non-negative")
+        if (
+            isinstance(backoff_seconds, bool)
+            or not isinstance(backoff_seconds, (int, float))
+            or not math.isfinite(backoff_seconds)
+            or backoff_seconds < 0
+        ):
+            raise ValueError("backoff_seconds must be a non-negative, finite number")
         self.retries = retries
         self.backoff_seconds = float(backoff_seconds)
         self.sleep = sleep
@@ -126,12 +132,19 @@ class Service:
         """
         try:
             operation = self.operations.load_operation()
-        except OperationsError as error:
+            journalled_before = self.client.pending_transaction()
+        except Exception as error:  # noqa: BLE001 - reading is a failure like any other
+            # These reads used to abort before anything was written down, so the one
+            # startup failure an operator most needs to see — "I cannot even tell what was
+            # in flight" — was the one that left no trace.
+            self._record_startup_failure(
+                f"the durable publication state cannot be read: {error}"
+            )
             raise UnresolvedPublication(
-                f"the recorded operation cannot be read: {error}"
+                f"the durable publication state cannot be read: {error}"
             ) from error
         if operation is None:
-            journalled = self.client.pending_transaction()
+            journalled = journalled_before
             if journalled is not None:
                 # Recorded before it is raised. An aborted startup that leaves no trace is
                 # exactly the kind of thing the incident log exists to make impossible.
@@ -161,13 +174,10 @@ class Service:
         try:
             self.operations.resolve(self.client)
         except Exception as error:  # noqa: BLE001 - the contract is that *any* failure is recorded
-            self.incidents.open_incident(
+            self._record_startup_failure(
+                f"sequence {operation.sequence} was in flight at startup and could not "
+                f"be settled: {error}",
                 asset_key=operation.asset_key,
-                kind=PUBLICATION_UNRESOLVED,
-                detail=(
-                    f"sequence {operation.sequence} was in flight at startup and could "
-                    f"not be settled: {error}"
-                ),
                 occurred_at=moment,
             )
             # Deliberately broad. The transparency log raises its own error type, and
@@ -190,6 +200,24 @@ class Service:
             incident_id=None,
             detail=f"settled sequence {operation.sequence} left in flight",
         )
+
+    def _record_startup_failure(
+        self,
+        detail: str,
+        *,
+        asset_key: str | None = None,
+        occurred_at: datetime | None = None,
+    ) -> None:
+        """Write the incident, and never let writing it hide the failure it describes."""
+        try:
+            self.incidents.open_incident(
+                asset_key=asset_key or self.asset_key,
+                kind=PUBLICATION_UNRESOLVED,
+                detail=detail,
+                occurred_at=occurred_at or self.now(),
+            )
+        except Exception:  # noqa: BLE001 - the original failure is the one to report
+            pass
 
     # ---------------------------------------------------------------------- slot
     def run_slot(
@@ -220,6 +248,23 @@ class Service:
             return self._record_incident(SOURCE_UNAVAILABLE, str(error), scheduled_at)
         except Exception as error:  # noqa: BLE001 - any epoch failure is an incident
             return self._record_incident(EPOCH_FAILED, str(error), scheduled_at)
+
+        produced_asset = None
+        if isinstance(signed_report, Mapping):
+            report = signed_report.get("report")
+            if isinstance(report, Mapping):
+                produced_asset = report.get("asset_key")
+        if signed_report is not None and produced_asset != self.asset_key:
+            # Nothing else checks this. The operation takes its asset from the report, so
+            # a producer returning some other asset's report was published under it and
+            # then *this* asset's incidents were closed — recording a recovery for an
+            # asset nobody had observed.
+            return self._record_incident(
+                EPOCH_FAILED,
+                f"the producer returned a report for {produced_asset!r}, but this "
+                f"service is configured for {self.asset_key!r}",
+                scheduled_at,
+            )
 
         if signed_report is None:
             # Incomplete evidence is not a finding. No report is signed, nothing reaches
@@ -255,11 +300,10 @@ class Service:
             # transport failure actually arises — preflight and submission. Wrapping the
             # producer instead meant submission was never retried at all.
             self._with_retry(lambda: self.operations.resolve(self.client))
-        except (PublicationError, OperationsError) as error:
-            # OperationsError as well as PublicationError: refusing to retry a journalled
-            # transaction raises the former, and letting it escape would end the slot
-            # rather than record it — the schedule would survive, but the reason would be
-            # lost.
+        except Exception as error:  # noqa: BLE001 - anything here is an incident
+            # Deliberately broad. Two chosen types left the transparency log's own error
+            # escaping unrecorded, and naming types one at a time is how that keeps
+            # happening: the schedule survives either way, but the reason is lost.
             return self._record_incident(
                 PUBLICATION_UNRESOLVED,
                 f"the report was signed but not published: {error}",
@@ -296,8 +340,16 @@ class Service:
             return
         if journalled is not None:
             self.operations.resolve(self.client)
-            return
-        self._with_retry(lambda: self.operations.resolve(self.client))
+        else:
+            self._with_retry(lambda: self.operations.resolve(self.client))
+        # Closed here, with the resolution that earned it, rather than at the end of a
+        # successful slot. Waiting meant a producer failing afterwards left the settled
+        # publication's incident open, reporting a service as stuck on something it had
+        # just finished.
+        self._close_open_incidents(
+            "the publication left over from an earlier slot was settled",
+            kinds={PUBLICATION_UNRESOLVED},
+        )
 
     def record_escaped_failure(
         self, scheduled_at: datetime, error: BaseException

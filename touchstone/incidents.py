@@ -179,9 +179,17 @@ class IncidentLog:
         is taken again rather than raising.
         """
         delay = _VERIFY_BACKOFF_SECONDS
-        for _ in range(_VERIFY_ATTEMPTS):
-            entries, head = self._snapshot()
-            if self._inspect(entries, head) is _HEALTHY:
+        for attempt in range(_VERIFY_ATTEMPTS):
+            try:
+                entries, head = self._snapshot()
+                healthy = self._inspect(entries, head) is _HEALTHY
+            except IncidentLogError:
+                # Reading can fail on a transient state as easily as judging can: a
+                # half-written final line is what an append in progress looks like from
+                # outside. Letting that escape made a writer mid-flight indistinguishable
+                # from a damaged log, so it too waits for the lock before deciding.
+                healthy = False
+            if healthy:
                 return entries
             # Anything other than healthy was judged from an unlocked read, and a writer
             # mid-append makes such a read transiently wrong in *both* directions: the
@@ -193,9 +201,12 @@ class IncidentLog:
                     return self._verified_locked()
             except LockUnavailable:
                 # Someone is writing. Wait a little and look again rather than spinning:
-                # five immediate retries only re-read the same instant five times.
-                self._sleep(delay)
-                delay *= 2
+                # five immediate retries only re-read the same instant five times. No
+                # sleep after the last attempt — waiting for a look nobody takes is time
+                # spent for nothing.
+                if attempt + 1 < _VERIFY_ATTEMPTS:
+                    self._sleep(delay)
+                    delay *= 2
         raise IncidentLogError(
             "the incident log could not be read while a writer held it; it may be "
             "healthy, but that cannot be established right now"

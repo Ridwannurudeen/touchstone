@@ -200,10 +200,10 @@ def test_state_is_written_before_the_operation_is_forgotten(tmp_path: Path) -> N
 
     operations.clear_operation = clear_and_die
 
-    with pytest.raises(RuntimeError, match="crash after"):
-        service.run_slot(AT, lambda at: _signed_report(1), report_uri=uri)
+    outcome = service.run_slot(AT, lambda at: _signed_report(1), report_uri=uri)
 
     assert cleared["called"], "the crash happened at the clear, not before it"
+    assert outcome.published is False, "and it was recorded rather than propagated"
     state = operations.load_state(ASSET_KEY_OF)
     assert state is not None, "the projection was already durable when the crash hit"
     assert state.sequence == 1

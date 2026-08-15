@@ -287,8 +287,9 @@ def test_a_crash_before_the_very_first_head_is_repairable(tmp_path: Path) -> Non
 
     assert len(incidents.verify()) == 1, "the entry survives"
     assert incidents.head_path.exists(), "and the head was completed"
-    assert strict_json_loads(incidents.head_path.read_bytes())["head_entry_hash"] == (
-        entry["entry_hash"]
+    assert (
+        strict_json_loads(incidents.head_path.read_bytes())["head_entry_hash"]
+        == (entry["entry_hash"])
     )
 
 
@@ -355,10 +356,122 @@ def test_contention_is_waited_out_rather_than_called_corruption(
             incidents.verify()
 
     assert waits, "it waited between attempts rather than spinning"
-    assert waits == sorted(waits), "and backed off rather than retrying at one rate"
+    assert all(later > earlier for earlier, later in zip(waits, waits[1:])), (
+        f"each wait must be longer than the last, got {waits}"
+    )
+    assert len(waits) == 4, (
+        "no wait after the final attempt: sleeping for a look nobody takes is time spent "
+        f"for nothing, got {len(waits)} waits"
+    )
 
     # With the lock free, the same log verifies and repairs.
     assert len(incidents.verify()) == 1
-    assert strict_json_loads(incidents.head_path.read_bytes())["head_entry_hash"] == (
-        first["entry_hash"]
+    assert (
+        strict_json_loads(incidents.head_path.read_bytes())["head_entry_hash"]
+        == (first["entry_hash"])
     )
+
+
+# "VALID" means the head names the entry that genuinely is last; every other value is
+# written literally. Spelled out rather than computed, because a clever default made one
+# case write the *correct* hash and quietly test nothing.
+VALID = object()
+
+
+@pytest.mark.parametrize(
+    ("count", "named"),
+    [
+        ("1", VALID),  # a string count reached arithmetic and raised a bare TypeError
+        (-1, VALID),  # a negative count indexed off the end of an empty log
+        (True, VALID),  # True == 1, so a head claiming True entries passed as healthy
+        (1.0, VALID),
+        (1, "not-a-digest"),
+        (1, 7),
+        (0, "ab" * 32),  # names an entry while counting none
+        (1, None),  # counts one while naming nothing
+    ],
+)
+def test_a_malformed_head_is_refused_precisely(
+    tmp_path: Path, count: object, named: object
+) -> None:
+    """Types are checked before arithmetic, and the diagnosis says which field.
+
+    Without this a count of "1" raised a bare TypeError from inside a comparison, a
+    negative count indexed off the end of an empty log, and True passed as healthy because
+    True equals 1 in Python.
+    """
+    incidents = log(tmp_path)
+    entry = opened(incidents)
+    head = strict_json_loads(incidents.head_path.read_bytes())
+    head["count"] = count
+    head["head_entry_hash"] = entry["entry_hash"] if named is VALID else named
+    incidents.head_path.write_bytes(canonical_json_bytes(head) + b"\n")
+
+    with pytest.raises(IncidentLogError):
+        incidents.verify()
+
+
+def test_a_partial_final_line_waits_for_the_lock_before_it_is_called_damage(
+    tmp_path: Path,
+) -> None:
+    """A half-written line is what an append in progress looks like from outside.
+
+    Raising straight from the unlocked read made a writer mid-flight indistinguishable
+    from a damaged log, so the reader had to re-check under the lock before deciding.
+    """
+    incidents = log(tmp_path)
+    opened(incidents)
+    real_snapshot = incidents._snapshot
+    seen = {"unlocked": 0}
+
+    def snapshot_that_is_torn_the_first_time():
+        seen["unlocked"] += 1
+        if seen["unlocked"] == 1:
+            raise IncidentLogError("the incident log does not end at a line boundary")
+        return real_snapshot()
+
+    incidents._snapshot = snapshot_that_is_torn_the_first_time
+
+    entries = incidents.verify()
+
+    assert len(entries) == 1, "it looked again under the lock instead of giving up"
+    assert seen["unlocked"] >= 2
+
+
+def test_contention_is_recovered_within_a_single_verification(tmp_path: Path) -> None:
+    """The retry must succeed in the same call, not merely leave the log usable later.
+
+    An earlier version let the first verification fail, released the lock, and started a
+    second — which proves the log recovers, not that contention does.
+    """
+    import threading
+
+    from touchstone.locking import exclusive_lock
+
+    incidents = log(tmp_path)
+    opened(incidents)
+    released = threading.Event()
+    holding = threading.Event()
+
+    def hold_briefly() -> None:
+        with exclusive_lock(incidents.lock_path):
+            holding.set()
+            released.wait(timeout=5)
+
+    # Force the verifier down the locked path even though the log is healthy.
+    real_inspect = incidents._inspect
+    incidents._inspect = lambda entries, head: (
+        real_inspect(entries, head) if released.is_set() else object()
+    )
+    waits = []
+    incidents._sleep = lambda seconds: (waits.append(seconds), released.set())
+
+    holder = threading.Thread(target=hold_briefly)
+    holder.start()
+    holding.wait(timeout=5)
+
+    entries = incidents.verify()
+    holder.join(timeout=5)
+
+    assert len(entries) == 1, "the same call recovered once the lock was free"
+    assert waits, "and it waited rather than failing immediately"

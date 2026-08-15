@@ -87,9 +87,14 @@ def run_schedule(
     if (
         isinstance(interval_seconds, bool)
         or not isinstance(interval_seconds, (int, float))
+        or not math.isfinite(interval_seconds)
         or interval_seconds <= 0
     ):
-        raise ValueError("interval_seconds must be positive")
+        # Finiteness before anything runs. NaN compares false against every bound, and
+        # infinity passes them all, so both slipped through and were only discovered after
+        # the first slot had already executed — a configuration error reported as a
+        # mid-flight crash.
+        raise ValueError("interval_seconds must be a positive, finite number")
     if max_runs is not None and (type(max_runs) is not int or max_runs < 1):
         raise ValueError("max_runs must be a positive integer or None")
 
