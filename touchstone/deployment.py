@@ -27,6 +27,7 @@ from datetime import datetime
 import hashlib
 import ipaddress
 import os
+import socket
 from pathlib import Path
 import re
 from urllib.parse import urlsplit
@@ -414,9 +415,20 @@ def _is_loopback(hostname: str | None) -> bool:
     if bare in {"::1", "0:0:0:0:0:0:0:1"}:
         return True
     try:
-        return ipaddress.ip_address(bare).is_loopback
+        address = ipaddress.ip_address(bare)
     except ValueError:
-        return False
+        # Not a canonical address — but the resolver may still read it as one. "127.1",
+        # "2130706433" and "0x7f000001" all mean 127.0.0.1, and each was accepted as a
+        # public host. Anything the platform parses as a bare number is refused here
+        # regardless of where it points; a public endpoint is never addressed that way.
+        try:
+            packed = socket.inet_aton(bare)
+        except OSError:
+            return False
+        del packed
+        return True
+    mapped = getattr(address, "ipv4_mapped", None)
+    return address.is_loopback or bool(mapped and mapped.is_loopback)
 
 
 def _reporting_keys(value: object) -> tuple[ReportingKey, ...]:

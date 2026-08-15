@@ -64,9 +64,14 @@ be shown not to be running as it.
   the manifest rather than supplied by the caller (`PublisherClient`). The rule lives
   there, not in the command-line wrapper, because a rule that only the wrapper applies is
   bypassed by anything that calls the client directly.
-- A publication is only accepted as ours if the onchain report's `publisher` is the
-  manifest's publisher. Another authorized publisher can place an identical payload at the
-  same sequence, and matching content alone would have let reconciliation adopt it.
+- A publication is only accepted as ours if the onchain report's publisher shares our
+  **lineage** — the identity the registry recorded, which a rotation carries forward.
+  Another authorized publisher can place an identical payload at the same sequence, and
+  matching content alone would have let reconciliation adopt it; matching the current
+  address alone would have orphaned every publication made before a rotation.
+- Every decision taken from a receipt — including declaring failure, which discards the
+  journal — is taken from a receipt read *after* the endpoint's identity has been proved
+  again, never from the one the wait returned.
 - A journalled transaction is decoded before it is ever rebroadcast, and its chain,
   destination registry, signer and nonce must match this deployment. Comparing a hash to
   its bytes proves only that they belong together.

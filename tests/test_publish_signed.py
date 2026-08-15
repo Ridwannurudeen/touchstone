@@ -28,7 +28,11 @@ from touchstone.keyring import (
     rolled_over,
     verification_keys,
 )
-from touchstone.publish import PreflightFailed, SignedRegistryBackend
+from touchstone.publish import (
+    PreflightFailed,
+    SignedRegistryBackend,
+    SubmissionFailed,
+)
 from touchstone.signing import SIGNING_SEED_ENV, Ed25519Signer
 
 import scripts.publish_epoch as publish_epoch
@@ -129,6 +133,9 @@ class StubNode:
 
     def answer(self, payload: dict[str, object]) -> object:
         method = payload["method"]
+        if method == "eth_getLogs":
+            self.calls.append(method)
+            return self.answers.get("eth_getLogs", [])
         if method != "eth_call":
             self.calls.append(method)
             return self.answers.get(method, "0x")
@@ -136,7 +143,13 @@ class StubNode:
         for name, prefix in SELECTORS.items():
             if data.startswith(prefix):
                 self.calls.append(name)
-                return self.answers[name]
+                answer = self.answers[name]
+                if isinstance(answer, dict):
+                    # Per-address answers, so lineage can differ between the publisher and
+                    # whoever a Published event names.
+                    queried = Web3.to_checksum_address("0x" + data[-40:])
+                    return answer[queried]
+                return answer
         raise AssertionError(f"unscripted eth_call: {data}")
 
 
@@ -421,3 +434,76 @@ def test_the_cli_reports_a_refusal_rather_than_raising(
 
     assert code == 1
     assert "PUBLISH FAIL" in capsys.readouterr().err
+
+
+PUBLISHED_TOPIC = Web3.keccak(
+    text="Published(bytes32,uint64,address,bytes32,bytes32,uint8,uint64,uint64,string)"
+).hex()
+
+
+def published_log(asset_key: bytes, sequence: int, publisher: str) -> dict:
+    """One Published event, encoded the way a node would return it."""
+    body = Web3().codec.encode(
+        ["bytes32", "bytes32", "uint8", "uint64", "uint64", "string"],
+        [b"\x22" * 32, b"\x33" * 32, 0, 1_786_630_577, 1_786_665_599, "urn:t:1"],
+    )
+    return {
+        "address": REGISTRY,
+        "topics": [
+            "0x" + PUBLISHED_TOPIC.removeprefix("0x"),
+            "0x" + asset_key.hex(),
+            word(sequence),
+            address_word(publisher),
+        ],
+        "data": "0x" + body.hex(),
+        "blockNumber": hex(100),
+        "blockHash": "0x" + "bb" * 32,
+        "transactionHash": "0x" + "cd" * 32,
+        "transactionIndex": "0x0",
+        "logIndex": "0x0",
+        "removed": False,
+    }
+
+
+def test_the_production_event_path_accepts_our_lineage_and_refuses_another() -> None:
+    """Exercises SignedRegistryBackend.find_receipt itself, not a fake standing in for it.
+
+    The rotation regression uses a fake, so it could not show that the real event lookup —
+    which no longer filters by publisher address — still refuses a foreign publisher.
+    """
+    asset_key = b"\x44" * 32
+    rotated_publisher = Account.from_key(bytes.fromhex(STRANGER_SECRET)).address
+    ours = Account.from_key(bytes.fromhex(PUBLISHER_SECRET)).address
+
+    # A publication by a rotated-out address that still carries our lineage is ours.
+    with StubNode(
+        eth_getLogs=[published_log(asset_key, 1, rotated_publisher)],
+        publisherIdentity={
+            ours: address_word(ours),
+            rotated_publisher: address_word(ours),
+        },
+        eth_getTransactionReceipt={
+            "transactionHash": "0x" + "cd" * 32,
+            "blockNumber": hex(100),
+            "blockHash": "0x" + "bb" * 32,
+            "status": "0x1",
+        },
+        eth_getBlockByNumber={"hash": "0x" + "bb" * 32, "number": hex(100)},
+    ) as node:
+        found = backend_for(node).find_receipt(asset_key, 1, None)
+        assert found is not None
+        assert found[0] == "0x" + "cd" * 32
+
+    # The same event from a publisher on a different lineage is refused, not adopted.
+    stranger_lineage = Account.from_key(bytes.fromhex("e5" * 32)).address
+    with StubNode(
+        eth_getLogs=[published_log(asset_key, 1, rotated_publisher)],
+        publisherIdentity={
+            # Our own publisher still passes preflight; the event's publisher does not
+            # share our lineage, which is the case under test.
+            ours: address_word(ours),
+            rotated_publisher: address_word(stranger_lineage),
+        },
+    ) as node:
+        with pytest.raises(SubmissionFailed, match="different publisher lineage"):
+            backend_for(node).find_receipt(asset_key, 1, None)

@@ -899,7 +899,6 @@ class PublisherClient:
         if current == sequence:
             if pending is None:
                 raise DuplicateSequence(f"sequence {sequence} is already published")
-            self._ensure_onchain_match(asset_key, report, report_uri)
             # Validate the journalled bytes even though the report is already onchain.
             # Skipping this recorded whatever hash the journal claimed, so an unrelated
             # confirmed transaction could be entered in the transparency log as the
@@ -909,8 +908,13 @@ class PublisherClient:
                 self.backend.identity(),
                 self.backend.calldata(asset_key, report, report_uri, correction_of),
             )
+            # Everything from here decides that a publication is real and records it, so
+            # it all runs after the endpoint has been proved again — not on reads taken
+            # when this branch was entered.
+            self.backend.revalidate()
+            self._ensure_onchain_match(asset_key, report, report_uri)
             # The publishing transaction is whichever one the registry emitted for this
-            # asset, sequence and publisher — not whichever one the journal names.
+            # asset and sequence under our lineage — not whichever one the journal names.
             found = self.backend.find_receipt(asset_key, sequence, correction_of)
             if found is None:
                 state, receipt = self.backend.receipt_state(prepared.transaction_hash)
@@ -969,7 +973,7 @@ class PublisherClient:
                 # Included but not yet buried deep enough is not a reason to send
                 # anything; it is a reason to wait.
                 try:
-                    receipt = self.backend.wait_for_receipt(
+                    self.backend.wait_for_receipt(
                         prepared.transaction_hash, self.receipt_timeout
                     )
                 except TimeExhausted as error:
@@ -978,7 +982,7 @@ class PublisherClient:
                         f"reached the required confirmation depth"
                     ) from error
             transaction_hash = prepared.transaction_hash
-            self.backend.revalidate()
+            receipt = self._settled_receipt(transaction_hash)
             if _receipt_status(receipt) != 1:
                 self._clear_pending()
                 raise SubmissionFailed(f"transaction {transaction_hash} failed")
@@ -1014,18 +1018,16 @@ class PublisherClient:
         )
         transaction_hash = self.backend.broadcast(prepared)
         try:
-            receipt = self.backend.wait_for_receipt(
-                transaction_hash, self.receipt_timeout
-            )
+            self.backend.wait_for_receipt(transaction_hash, self.receipt_timeout)
         except TimeExhausted as error:
             raise PendingSubmission(
                 f"transaction {transaction_hash} remains pending"
             ) from error
-        # Before anything the receipt is allowed to decide — including declaring failure
-        # and discarding the journal. Reading a failure destroys the only record of what
-        # was sent, so it must not be taken on the word of an endpoint nobody has
-        # rechecked since before the wait.
-        self.backend.revalidate()
+        # The wait's own receipt is deliberately discarded: it came from the endpoint as
+        # it was before the wait. Everything the receipt decides — including declaring
+        # failure, which destroys the only record of what was sent — is decided from a
+        # reading taken after the endpoint has been proved again.
+        receipt = self._settled_receipt(transaction_hash)
         if _receipt_status(receipt) != 1:
             self._clear_pending()
             raise SubmissionFailed(f"transaction {transaction_hash} failed")
@@ -1041,6 +1043,24 @@ class PublisherClient:
             correction_of,
             reconciled=False,
         )
+
+    def _settled_receipt(self, transaction_hash: str) -> Mapping[str, object]:
+        """Re-prove the endpoint, then read the receipt again and require it settled.
+
+        Revalidating and then judging the receipt the *wait* returned proved nothing: that
+        receipt came from the endpoint as it was before the wait, so the decision was
+        still taken on the old endpoint's word. A receipt read after the identity is
+        re-proved is the only one that may decide anything — and deciding failure discards
+        the journal, which is why anything short of a confirmed receipt keeps it.
+        """
+        self.backend.revalidate()
+        state, receipt = self.backend.receipt_state(transaction_hash)
+        if state != CONFIRMED or receipt is None:
+            raise PendingSubmission(
+                f"transaction {transaction_hash} is {state} against the re-verified "
+                f"endpoint; the journal is kept so it can be resolved"
+            )
+        return receipt
 
     def _ensure_onchain_match(
         self, asset_key: bytes, report: Mapping[str, object], report_uri: str

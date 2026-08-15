@@ -301,12 +301,47 @@ describe("deploy script", function () {
       "::1",
       "[::1]",
       "api.localhost",
+      // URL normalises [::ffff:127.0.0.1] to this, which no dotted-quad test matches.
+      "[::ffff:7f00:1]",
+      "::ffff:127.0.0.1",
     ]) {
       expect(isLoopbackHost(host), host).to.equal(true);
     }
     for (const host of ["rpc.xlayer.tech", "127.example.com", "1270.0.0.1"]) {
       expect(isLoopbackHost(host), host).to.equal(false);
     }
+  });
+
+  it("refuses a confirmation depth JavaScript has already rounded", async function () {
+    // The exactness rule was applied only to the fee ceiling, so the same defect simply
+    // moved to the next operator-supplied integer.
+    const { publisher, operations } = await roles();
+    const before = await ethers.provider.getBlockNumber();
+
+    await expect(
+      deploy({
+        publisherAddress: publisher.address,
+        operationsAddress: operations.address,
+        reporterPublicKey: REPORTER_PUBLIC_KEY,
+        confirmations: 9007199254740993,
+      }),
+    ).to.be.rejectedWith("JavaScript number");
+
+    expect(await ethers.provider.getBlockNumber()).to.equal(before);
+  });
+
+  it("refuses a boxed Number that would slip past a primitive check", async function () {
+    const { publisher, operations } = await roles();
+
+    await expect(
+      deploy({
+        publisherAddress: publisher.address,
+        operationsAddress: operations.address,
+        reporterPublicKey: REPORTER_PUBLIC_KEY,
+        // eslint-disable-next-line no-new-wrappers
+        maxFeeWei: new Number(9007199254740993),
+      }),
+    ).to.be.rejectedWith("must be a positive exact integer");
   });
 
   it("names the confirmation variable a stale export cannot satisfy", function () {

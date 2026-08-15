@@ -12,6 +12,7 @@ import pytest
 from touchstone.deployment import DeploymentError, DeploymentManifest
 from touchstone.keyring import (
     PUBLISHER_KEY_ENV,
+    decoded_transaction,
     IdentityMismatch,
     MissingKeyMaterial,
     PublisherKey,
@@ -256,3 +257,88 @@ def test_a_published_key_record_matches_what_the_signer_publishes() -> None:
 
     assert record == signer.public_key_record()
     assert record["kid"] == kid_for_public_key(bytes.fromhex(record["public_key"]))
+
+
+def signed(**overrides):
+    """Sign a transaction with the publisher key, defaulting to a type-2 envelope."""
+    fields = {
+        "to": address(DEPLOYER_SECRET),
+        "value": 0,
+        "gas": 200_000,
+        "maxFeePerGas": 10**9,
+        "maxPriorityFeePerGas": 10**8,
+        "nonce": 4,
+        "chainId": 196,
+        "data": b"\x11\x22",
+    }
+    fields.update(overrides)
+    fields = {key: value for key, value in fields.items() if value is not None}
+    account = Account.from_key(bytes.fromhex(PUBLISHER_SECRET))
+    return bytes(account.sign_transaction(fields).raw_transaction)
+
+
+def test_both_envelopes_this_publisher_signs_decode_identically() -> None:
+    """The backend emits legacy when a chain quotes no base fee, and type 2 when it does.
+
+    Only the typed form decoded at first, so every legacy journal was unrecoverable after
+    a restart — on exactly the chains most likely to need recovery.
+    """
+    typed = decoded_transaction(signed())
+    legacy = decoded_transaction(
+        signed(gasPrice=10**9, maxFeePerGas=None, maxPriorityFeePerGas=None)
+    )
+
+    for field in ("chain_id", "nonce", "to", "value", "data", "sender"):
+        assert typed[field] == legacy[field], field
+    assert typed["chain_id"] == 196
+    assert typed["sender"] == address(PUBLISHER_SECRET)
+
+
+def test_an_envelope_this_publisher_never_signs_is_refused() -> None:
+    """A type-4 transaction decodes cleanly and carries an authorization list.
+
+    Nothing compared that list, so a journal could hold the expected publication calldata
+    *and* a delegation of the publisher's account, and recovery would execute both.
+    """
+    account = Account.from_key(bytes.fromhex(PUBLISHER_SECRET))
+    authorization = account.sign_authorization(
+        {"chainId": 0, "address": address(OPERATIONS_SECRET), "nonce": 0}
+    )
+    delegating = signed(gas=300_000, authorizationList=[authorization])
+
+    assert delegating[0] == 0x04
+    with pytest.raises(ValueError, match="envelope type 4"):
+        decoded_transaction(delegating)
+
+
+def test_an_access_list_is_refused() -> None:
+    """A publication touches one contract; an access list is extra intent nobody checked."""
+    with pytest.raises(ValueError, match="access list"):
+        decoded_transaction(
+            signed(accessList=[{"address": address(OPERATIONS_SECRET), "storageKeys": []}])
+        )
+
+
+def test_a_legacy_transaction_without_replay_protection_is_refused() -> None:
+    """Pre-EIP-155 bytes commit to no chain at all, so they cannot be bound to one."""
+    account = Account.from_key(bytes.fromhex(PUBLISHER_SECRET))
+    unprotected = bytes(
+        account.sign_transaction(
+            {
+                "to": address(DEPLOYER_SECRET),
+                "value": 0,
+                "gas": 21_000,
+                "gasPrice": 10**9,
+                "nonce": 0,
+            }
+        ).raw_transaction
+    )
+
+    with pytest.raises(ValueError, match="replay-protected"):
+        decoded_transaction(unprotected)
+
+
+def test_bytes_that_are_not_a_transaction_are_refused() -> None:
+    for bad in (b"", b"\x01\x02\x03", bytes([0xC0])):
+        with pytest.raises((ValueError, Exception)):
+            decoded_transaction(bad)

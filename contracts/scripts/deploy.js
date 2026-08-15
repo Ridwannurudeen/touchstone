@@ -87,29 +87,16 @@ async function deploy({
       `${resolvedNetwork} is chain ${NETWORK_CHAIN_IDS[resolvedNetwork]}, but this endpoint is chain ${chainId}`,
     );
   }
-  if (!Number.isInteger(confirmations) || confirmations < 1) {
-    throw new Error("confirmations must be a positive integer");
-  }
+  // isInteger is true for 9007199254740992, the value 9007199254740993 silently becomes.
+  // Every operator-supplied integer goes through the same exactness rule now, because the
+  // rule was only ever applied to the fee ceiling and the defect simply moved here.
+  confirmations = exactInteger(confirmations, "confirmations");
   if (maxFeeWei !== null) {
     // A wei ceiling can exceed Number.MAX_SAFE_INTEGER. Checking exactness after
     // accepting a `number` was useless: JavaScript has already rounded the literal by
     // then, so the comparison is between two copies of the same wrong value. An unsafe
     // number is refused outright — pass a string or a BigInt for large ceilings.
-    if (typeof maxFeeWei === "number" && !Number.isSafeInteger(maxFeeWei)) {
-      throw new Error(
-        "maxFeeWei exceeds what a JavaScript number holds exactly; pass it as a string",
-      );
-    }
-    let exact;
-    try {
-      exact = BigInt(maxFeeWei);
-    } catch {
-      throw new Error("maxFeeWei must be an exact integer");
-    }
-    if (exact < 1n || String(exact) !== String(maxFeeWei)) {
-      throw new Error("maxFeeWei must be a positive exact integer");
-    }
-    maxFeeWei = exact;
+    maxFeeWei = exactBigInt(maxFeeWei, "maxFeeWei");
   }
   const resolvedRpcUrl =
     rpcUrl ?? hre.network.config.url ?? "http://127.0.0.1:8545";
@@ -219,7 +206,7 @@ async function main() {
     operationsAddress: required("TOUCHSTONE_OPERATIONS_ADDRESS"),
     reporterPublicKey: required("TOUCHSTONE_REPORTER_PUBLIC_KEY"),
     network: process.env.TOUCHSTONE_NETWORK ?? null,
-    confirmations: Number(process.env.TOUCHSTONE_CONFIRMATIONS ?? 1),
+    confirmations: process.env.TOUCHSTONE_CONFIRMATIONS ?? 1,
     maxFeeWei: process.env.TOUCHSTONE_MAX_FEE_WEI ?? null,
     rpcUrl: process.env.TOUCHSTONE_RPC_URL ?? null,
   });
@@ -231,11 +218,46 @@ async function main() {
   process.stdout.write(serialized);
 }
 
+function exactBigInt(value, field) {
+  // Accepts only what carries its value exactly: a bigint, a canonical decimal string, or
+  // a primitive number that is a safe integer. A boxed `new Number(...)` is refused
+  // because typeof reports "object" and it would slip past a primitive check.
+  if (typeof value === "bigint") {
+    if (value < 1n) throw new Error(`${field} must be positive`);
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(
+        `${field} exceeds what a JavaScript number holds exactly; pass it as a string`,
+      );
+    }
+    if (value < 1) throw new Error(`${field} must be positive`);
+    return BigInt(value);
+  }
+  if (typeof value === "string" && /^[1-9][0-9]*$/.test(value)) {
+    return BigInt(value);
+  }
+  throw new Error(
+    `${field} must be a positive exact integer: a bigint, a decimal string, or a safe number`,
+  );
+}
+
+function exactInteger(value, field) {
+  const exact = exactBigInt(value, field);
+  if (exact > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error(`${field} is implausibly large`);
+  }
+  return Number(exact);
+}
+
 function requireAddress(value, field) {
   // getAddress happily returns the zero address. Python refuses it later, which on a
   // public chain means discovering it only after the registry has been deployed.
-  const address = ethers.getAddress(value);
-  if (address === ethers.ZeroAddress) {
+  // hre.ethers, not a bare `ethers`: the bare name only resolved because Hardhat injects
+  // it as a global in its own test runner, so calling deploy() from plain Node threw.
+  const address = hre.ethers.getAddress(value);
+  if (address === hre.ethers.ZeroAddress) {
     throw new Error(`${field} must not be the zero address`);
   }
   return address;
@@ -246,8 +268,18 @@ function isLoopbackHost(hostname) {
   // IPv6 form, and a fully-qualified "localhost." with its trailing root dot.
   const name = String(hostname).trim().toLowerCase().replace(/\.$/, "");
   if (name === "localhost" || name.endsWith(".localhost")) return true;
-  const bare = name.replace(/^\[|\]$/g, "");
+  let bare = name.replace(/^\[|\]$/g, "");
   if (bare === "::1" || bare === "0:0:0:0:0:0:0:1") return true;
+  // URL normalises [::ffff:127.0.0.1] to [::ffff:7f00:1], which no dotted-quad test
+  // matches. Unwrap the mapped IPv4 back to its dotted form before testing.
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(bare);
+  if (mapped) {
+    const high = parseInt(mapped[1], 16);
+    const low = parseInt(mapped[2], 16);
+    bare = [high >> 8, high & 0xff, low >> 8, low & 0xff].join(".");
+  } else if (bare.startsWith("::ffff:")) {
+    bare = bare.slice("::ffff:".length);
+  }
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(bare);
 }
 
