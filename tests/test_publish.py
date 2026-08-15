@@ -9,7 +9,6 @@ from touchstone.publish import (
     PendingSubmission,
     PublisherClient,
     SequenceMismatch,
-    Web3RegistryBackend,
 )
 from touchstone.signing import Ed25519Signer
 from touchstone.translog import TransparencyLog
@@ -253,18 +252,17 @@ def test_publisher_recovers_crash_between_broadcast_and_hash_journal(
     assert len(TransparencyLog(tmp_path / "transparency.jsonl").verify()) == 1
 
 
-@pytest.mark.parametrize(
-    "url",
-    [
-        "https://rpc.example",
-        "http://localhost:8545@rpc.example",
-        "http://127.0.0.1:8545/path",
-    ],
-)
-def test_web3_backend_refuses_nonlocal_rpc_urls(url: str) -> None:
-    with pytest.raises(ValueError, match="local loopback"):
-        Web3RegistryBackend(
-            "0x" + "11" * 20,
-            "0x" + "22" * 20,
-            rpc_url=url,
-        )
+def test_publishing_has_no_unlocked_account_path() -> None:
+    """The only way to reach the registry is a locally signed transaction.
+
+    An unlocked-account backend existed before PLAN-T6 and was removed rather than kept
+    for local convenience: a second path that skips the manifest preflight is a path that
+    is never exercised until the day it runs against something real.
+    """
+    import touchstone.publish as publish_module
+
+    assert not hasattr(publish_module, "Web3RegistryBackend")
+    source = Path(publish_module.__file__).read_text(encoding="utf-8")
+    assert ".transact(" not in source, (
+        "transact() asks a node to sign; every send must be a signed raw transaction"
+    )

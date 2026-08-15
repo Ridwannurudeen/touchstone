@@ -1,4 +1,18 @@
-"""Idempotent local-node publication for the fixed TouchstoneRegistry ABI."""
+"""Idempotent publication for the fixed TouchstoneRegistry ABI.
+
+Every transaction is signed locally and broadcast as raw bytes. No node is ever asked to
+sign on this project's behalf, on any network including the local development chain, so
+there is exactly one code path to reason about and it is the one that runs in production.
+An unlocked account would be a second path that skips every check below.
+
+Before a signature is produced, the endpoint is made to agree with the committed
+deployment manifest: its chain id, the runtime bytecode actually deployed at the registry
+address, the chain id the registry itself was constructed with, the publisher's onchain
+authorization, and that the publisher is not the owner. Each of those can drift silently —
+an endpoint failing over to another network, an address reused for a new contract, an
+authorization revoked during an incident — and each would otherwise produce a
+correctly-signed transaction that means nothing or lands somewhere unintended.
+"""
 
 from __future__ import annotations
 
@@ -9,14 +23,23 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import time as clock
 from typing import Protocol
-from urllib.parse import urlsplit
 
 from web3 import Web3
-from web3.exceptions import TimeExhausted, TransactionNotFound
+from web3.exceptions import (
+    BlockNotFound,
+    ContractLogicError,
+    MethodUnavailable,
+    TimeExhausted,
+    TransactionNotFound,
+    Web3RPCError,
+)
 from cryptography.exceptions import InvalidSignature
 
 from touchstone.controls import AssetState
+from touchstone.deployment import DeploymentManifest, runtime_bytecode_sha256
+from touchstone.keyring import PublisherKey
 from touchstone.signing import (
     canonical_json_bytes,
     strict_json_loads,
@@ -25,7 +48,13 @@ from touchstone.signing import (
 from touchstone.translog import TransparencyLog
 
 
-DEFAULT_LOCAL_RPC_URL = "http://127.0.0.1:8545"
+# Headroom over the estimate, because the estimate is taken against the pending state and
+# the transaction executes against a later one. Unused gas is refunded, so the only cost of
+# margin is a larger balance requirement; too little margin costs a failed publication.
+GAS_MARGIN_PERCENT = 25
+# Used only where the endpoint will not quote a priority fee itself.
+FALLBACK_PRIORITY_FEE_WEI = 1_000_000_000
+_CONFIRMATION_POLL_SECONDS = 1.0
 _ASSET_KEY = re.compile(r"eip155:[1-9][0-9]*:0x[0-9a-f]{40}")
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _TX_HASH = re.compile(r"0x[0-9a-f]{64}")
@@ -73,6 +102,27 @@ REGISTRY_ABI = [
         "inputs": [{"name": "", "type": "bytes32"}],
         "name": "latestSequence",
         "outputs": [{"name": "", "type": "uint64"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "owner",
+        "outputs": [{"name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "expectedChainId",
+        "outputs": [{"name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "", "type": "address"}],
+        "name": "isPublisherAuthorized",
+        "outputs": [{"name": "", "type": "bool"}],
         "stateMutability": "view",
         "type": "function",
     },
@@ -157,6 +207,14 @@ class SubmissionFailed(PublicationError):
     """A known transaction was mined unsuccessfully or reconciled inconsistently."""
 
 
+class PreflightFailed(PublicationError):
+    """The chain does not match the manifest, so nothing was signed."""
+
+
+class FeeCeilingExceeded(PublicationError):
+    """The worst-case fee for this transaction exceeds the manifest's ceiling."""
+
+
 @dataclass(frozen=True, slots=True)
 class ChainReport:
     control_set_root: str
@@ -175,6 +233,21 @@ class PublicationResult:
     receipt: dict[str, object]
     reconciled: bool
     log_entry_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class PreflightReport:
+    """What the chain answered when it was checked against the manifest."""
+
+    chain_id: int
+    block_number: int
+    registry_address: str
+    registry_runtime_bytecode_sha256: str
+    registry_expected_chain_id: int
+    registry_owner: str
+    publisher_address: str
+    publisher_authorized: bool
+    publisher_balance_wei: int
 
 
 class RegistryBackend(Protocol):
@@ -201,29 +274,122 @@ class RegistryBackend(Protocol):
     ) -> tuple[str, Mapping[str, object]] | None: ...
 
 
-class Web3RegistryBackend:
-    """Minimal web3.py adapter for a local TouchstoneRegistry deployment."""
+class SignedRegistryBackend:
+    """Publish to a manifest-pinned registry using locally signed raw transactions.
+
+    The same class serves the local development chain and a public network. There is no
+    local-only shortcut, because a shortcut is a path that never gets audited until the
+    day it runs against something real.
+    """
 
     def __init__(
         self,
-        contract_address: str,
-        publisher_address: str,
+        manifest: DeploymentManifest,
+        publisher_key: PublisherKey,
         *,
-        rpc_url: str = DEFAULT_LOCAL_RPC_URL,
+        request_timeout: float = 30.0,
     ) -> None:
-        _validate_local_rpc_url(rpc_url)
-        self.web3 = Web3(Web3.HTTPProvider(rpc_url))
-        if not self.web3.is_connected():
-            raise ConnectionError(f"cannot connect to local node at {rpc_url}")
-        self.publisher_address = Web3.to_checksum_address(publisher_address)
-        self.contract = self.web3.eth.contract(
-            address=Web3.to_checksum_address(contract_address), abi=REGISTRY_ABI
+        if publisher_key.address != manifest.publisher_address:
+            raise PreflightFailed(
+                f"publisher key {publisher_key.address} is not the manifest's "
+                f"{manifest.publisher_address}"
+            )
+        self.manifest = manifest
+        self.publisher_key = publisher_key
+        self.publisher_address = publisher_key.address
+        self.web3 = Web3(
+            Web3.HTTPProvider(
+                manifest.rpc_url, request_kwargs={"timeout": float(request_timeout)}
+            )
         )
+        self.contract = self.web3.eth.contract(
+            address=manifest.registry_address, abi=REGISTRY_ABI
+        )
+        self._preflight: PreflightReport | None = None
+
+    def preflight(self) -> PreflightReport:
+        """Make the endpoint agree with the manifest, or refuse.
+
+        Every check here answers a way a correctly-signed transaction could still be
+        wrong: sent to another network, sent to an address that no longer holds this
+        contract, sent to a registry built for a different chain, sent from an identity
+        whose authority was revoked, or sent from the owner — an identity powerful enough
+        that it should never be the one running unattended.
+        """
+        manifest = self.manifest
+        try:
+            chain_id = int(self.web3.eth.chain_id)
+            block_number = int(self.web3.eth.block_number)
+            code = bytes(self.web3.eth.get_code(manifest.registry_address))
+        except (Web3RPCError, OSError) as error:
+            raise PreflightFailed(f"cannot read {manifest.rpc_url}: {error}") from error
+        if chain_id != manifest.chain_id:
+            raise PreflightFailed(
+                f"endpoint reports chain {chain_id}, manifest declares "
+                f"{manifest.chain_id}"
+            )
+        if not code:
+            raise PreflightFailed(
+                f"no contract is deployed at {manifest.registry_address}"
+            )
+        digest = runtime_bytecode_sha256(code)
+        if digest != manifest.registry_runtime_bytecode_sha256:
+            raise PreflightFailed(
+                f"{manifest.registry_address} holds runtime bytecode {digest}, manifest "
+                f"declares {manifest.registry_runtime_bytecode_sha256}"
+            )
+        try:
+            registry_chain_id = int(self.contract.functions.expectedChainId().call())
+            owner = Web3.to_checksum_address(self.contract.functions.owner().call())
+            authorized = bool(
+                self.contract.functions.isPublisherAuthorized(
+                    self.publisher_address
+                ).call()
+            )
+            balance = int(self.web3.eth.get_balance(self.publisher_address))
+        except (Web3RPCError, OSError) as error:
+            raise PreflightFailed(f"registry did not answer: {error}") from error
+        if registry_chain_id != manifest.chain_id:
+            raise PreflightFailed(
+                f"registry was constructed for chain {registry_chain_id}, manifest "
+                f"declares {manifest.chain_id}"
+            )
+        if owner == self.publisher_address:
+            raise PreflightFailed(
+                "the publisher is the registry owner; publishing must not run with the "
+                "authority to revoke and rotate publishers"
+            )
+        if manifest.deployer_address is not None and owner != manifest.deployer_address:
+            raise PreflightFailed(
+                f"registry owner is {owner}, manifest declares deployer "
+                f"{manifest.deployer_address}"
+            )
+        if not authorized:
+            raise PreflightFailed(
+                f"{self.publisher_address} is not an authorized publisher"
+            )
+        if balance <= 0:
+            raise PreflightFailed(f"{self.publisher_address} holds no gas")
+        report = PreflightReport(
+            chain_id=chain_id,
+            block_number=block_number,
+            registry_address=manifest.registry_address,
+            registry_runtime_bytecode_sha256=digest,
+            registry_expected_chain_id=registry_chain_id,
+            registry_owner=owner,
+            publisher_address=self.publisher_address,
+            publisher_authorized=authorized,
+            publisher_balance_wei=balance,
+        )
+        self._preflight = report
+        return report
 
     def latest_sequence(self, asset_key: bytes) -> int:
+        self._ensure_preflight()
         return int(self.contract.functions.latestSequence(asset_key).call())
 
     def get_report(self, asset_key: bytes, sequence: int) -> ChainReport:
+        self._ensure_preflight()
         value = self.contract.functions.getReport(asset_key, sequence).call()
         return ChainReport(
             control_set_root=_bytes32_hex(value[0]),
@@ -254,29 +420,118 @@ class Web3RegistryBackend:
             report_uri,
         )
         if correction_of is None:
-            transaction = self.contract.functions.publish(*common)
+            function = self.contract.functions.publish(*common)
         else:
-            transaction = self.contract.functions.publishCorrection(
+            function = self.contract.functions.publishCorrection(
                 common[0], correction_of, *common[1:]
             )
-        return _transaction_hash(transaction.transact({"from": self.publisher_address}))
+
+        # Re-run in full rather than reusing a cached result: authorization can be
+        # revoked between reading the sequence and signing, and revocation during an
+        # incident is precisely when this must not go through.
+        preflight = self.preflight()
+        try:
+            estimated = int(function.estimate_gas({"from": self.publisher_address}))
+        except (ContractLogicError, Web3RPCError) as error:
+            raise PreflightFailed(
+                f"the registry would reject this publication: {error}"
+            ) from error
+        gas = estimated * (100 + GAS_MARGIN_PERCENT) // 100
+        fees = self._fee_fields()
+        worst_case_fee = gas * fees.get("maxFeePerGas", fees.get("gasPrice", 0))
+        if (
+            self.manifest.max_fee_wei is not None
+            and worst_case_fee > self.manifest.max_fee_wei
+        ):
+            raise FeeCeilingExceeded(
+                f"worst-case fee {worst_case_fee} wei exceeds the manifest ceiling "
+                f"{self.manifest.max_fee_wei} wei"
+            )
+        if preflight.publisher_balance_wei < worst_case_fee:
+            raise PreflightFailed(
+                f"{self.publisher_address} holds {preflight.publisher_balance_wei} wei, "
+                f"below the worst-case fee of {worst_case_fee} wei"
+            )
+
+        transaction = function.build_transaction(
+            {
+                "from": self.publisher_address,
+                "chainId": self.manifest.chain_id,
+                "gas": gas,
+                "nonce": self.web3.eth.get_transaction_count(
+                    self.publisher_address, "pending"
+                ),
+                **fees,
+            }
+        )
+        transaction_hash, raw = self.publisher_key.sign_transaction(transaction)
+        broadcast = _transaction_hash(self.web3.eth.send_raw_transaction(raw))
+        if broadcast != transaction_hash:
+            raise SubmissionFailed(
+                f"endpoint acknowledged {broadcast} for a transaction signed as "
+                f"{transaction_hash}"
+            )
+        return transaction_hash
 
     def get_receipt(self, transaction_hash: str) -> Mapping[str, object] | None:
         try:
-            return self.web3.eth.get_transaction_receipt(transaction_hash)
+            receipt = self.web3.eth.get_transaction_receipt(transaction_hash)
         except TransactionNotFound:
             return None
+        return receipt if self._confirmed(receipt) else None
 
     def wait_for_receipt(
         self, transaction_hash: str, timeout: float
     ) -> Mapping[str, object]:
-        return self.web3.eth.wait_for_transaction_receipt(
+        """Wait for inclusion, then for the manifest's confirmation depth.
+
+        A receipt only says a transaction was included in some block. Until that block is
+        buried it can be reorganised away, taking the publication with it while the
+        journal records it as settled, so the wait is not over when the receipt arrives.
+        """
+        deadline = clock.monotonic() + float(timeout)
+        receipt = self.web3.eth.wait_for_transaction_receipt(
             transaction_hash, timeout=timeout
         )
+        while not self._confirmed(receipt):
+            if clock.monotonic() >= deadline:
+                raise TimeExhausted(
+                    f"transaction {transaction_hash} did not reach "
+                    f"{self.manifest.confirmations} confirmations"
+                )
+            clock.sleep(_CONFIRMATION_POLL_SECONDS)
+            try:
+                receipt = self.web3.eth.get_transaction_receipt(transaction_hash)
+            except TransactionNotFound as error:
+                raise SubmissionFailed(
+                    f"transaction {transaction_hash} left the chain before confirming"
+                ) from error
+        return receipt
+
+    def _confirmed(self, receipt: Mapping[str, object]) -> bool:
+        """Whether this receipt is buried deep enough and still on the canonical chain."""
+        block_number = receipt["blockNumber"]
+        if block_number is None:
+            return False
+        depth = int(self.web3.eth.block_number) - int(block_number) + 1
+        if depth < self.manifest.confirmations:
+            return False
+        try:
+            canonical = self.web3.eth.get_block(int(block_number))
+        except BlockNotFound as error:
+            raise SubmissionFailed(
+                f"block {block_number} is no longer retrievable"
+            ) from error
+        if bytes(canonical["hash"]) != bytes(receipt["blockHash"]):
+            raise SubmissionFailed(
+                f"block {block_number} was reorganised away from the receipt's block"
+            )
+        return True
 
     def find_receipt(
         self, asset_key: bytes, sequence: int, correction_of: int | None
     ) -> tuple[str, Mapping[str, object]] | None:
+        self._ensure_preflight()
         event = (
             self.contract.events.Published()
             if correction_of is None
@@ -285,7 +540,9 @@ class Web3RegistryBackend:
         logs = tuple(
             event.get_logs(
                 argument_filters={"assetKey": asset_key, "sequence": sequence},
-                from_block=0,
+                # A public network is not scanned from genesis. The manifest records the
+                # block the registry was deployed in; nothing before it can be relevant.
+                from_block=self.manifest.deployment_block,
                 to_block="latest",
             )
         )
@@ -299,7 +556,37 @@ class Web3RegistryBackend:
         ):
             raise SubmissionFailed("correction event references the wrong sequence")
         transaction_hash = _transaction_hash(logs[0]["transactionHash"])
-        return transaction_hash, self.web3.eth.get_transaction_receipt(transaction_hash)
+        receipt = self.web3.eth.get_transaction_receipt(transaction_hash)
+        return (transaction_hash, receipt) if self._confirmed(receipt) else None
+
+    def _ensure_preflight(self) -> PreflightReport:
+        """Refuse to read the registry until the endpoint has been shown to be the one
+        the manifest describes. A read from the wrong chain is not a harmless read: it
+        decides which sequence gets published next."""
+        return self._preflight if self._preflight is not None else self.preflight()
+
+    def _fee_fields(self) -> dict[str, int]:
+        """Price the transaction from the chain rather than from an assumption.
+
+        Whether a network prices in EIP-1559 terms is a property of that network, so it is
+        read from the latest block instead of being declared in the manifest — a manifest
+        that says 1559 about a chain that does not support it produces transactions no
+        node will accept, and the manifest would be believed over the chain.
+        """
+        block = self.web3.eth.get_block("latest")
+        base_fee = block.get("baseFeePerGas")
+        if base_fee is None:
+            return {"gasPrice": int(self.web3.eth.gas_price)}
+        try:
+            priority_fee = int(self.web3.eth.max_priority_fee)
+        except (Web3RPCError, MethodUnavailable, ValueError):
+            priority_fee = FALLBACK_PRIORITY_FEE_WEI
+        # Two base fees of headroom absorbs the protocol's maximum 12.5% per-block rise
+        # for several blocks; the excess is never spent, only reserved.
+        return {
+            "maxFeePerGas": 2 * int(base_fee) + priority_fee,
+            "maxPriorityFeePerGas": priority_fee,
+        }
 
 
 class PublisherClient:
@@ -632,27 +919,6 @@ def _asset_key_bytes(value: object) -> bytes:
     if not isinstance(value, str) or _ASSET_KEY.fullmatch(value) is None:
         raise ValueError("asset_key must be a canonical eip155 identifier")
     return bytes(Web3.keccak(text=value))
-
-
-def _validate_local_rpc_url(value: object) -> None:
-    if not isinstance(value, str):
-        raise ValueError("rpc_url must identify the local loopback host")
-    try:
-        parsed = urlsplit(value)
-        port = parsed.port
-    except ValueError as error:
-        raise ValueError("rpc_url must identify the local loopback host") from error
-    if (
-        parsed.scheme != "http"
-        or parsed.hostname not in {"127.0.0.1", "localhost"}
-        or parsed.username is not None
-        or parsed.password is not None
-        or port is None
-        or parsed.path not in {"", "/"}
-        or parsed.query
-        or parsed.fragment
-    ):
-        raise ValueError("rpc_url must identify the local loopback host")
 
 
 def _unix_timestamp(value: object, field: str) -> int:

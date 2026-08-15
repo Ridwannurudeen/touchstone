@@ -1,0 +1,154 @@
+const { createHash } = require("node:crypto");
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+const { deploy, CONFIRM_ENV } = require("../scripts/deploy");
+
+// 32 bytes standing in for a reporting public key. It is not derived from a private key
+// and never signs anything; only its digest matters to these assertions.
+const REPORTER_PUBLIC_KEY = "aa".repeat(32);
+
+describe("deploy script", function () {
+  async function roles() {
+    const [deployer, publisher, operations] = await ethers.getSigners();
+    return { deployer, publisher, operations };
+  }
+
+  it("emits a manifest describing the deployment it just made", async function () {
+    const { deployer, publisher, operations } = await roles();
+
+    const { registry, manifest } = await deploy({
+      publisherAddress: publisher.address,
+      operationsAddress: operations.address,
+      reporterPublicKey: REPORTER_PUBLIC_KEY,
+    });
+
+    const address = await registry.getAddress();
+    const chainId = (await ethers.provider.getNetwork()).chainId;
+    expect(manifest.manifest_version).to.equal(1);
+    expect(manifest.network).to.equal("hardhat-local");
+    expect(manifest.chain_id).to.equal(Number(chainId));
+    expect(manifest.registry_address).to.equal(address);
+    expect(manifest.publisher_address).to.equal(publisher.address);
+    expect(manifest.deployer_address).to.equal(deployer.address);
+    expect(manifest.operations_address).to.equal(operations.address);
+    expect(manifest.confirmations).to.equal(1);
+  });
+
+  it("digests the runtime bytecode the chain actually holds", async function () {
+    const { publisher } = await roles();
+
+    const { registry, manifest } = await deploy({
+      publisherAddress: publisher.address,
+      reporterPublicKey: REPORTER_PUBLIC_KEY,
+    });
+
+    // The digest must come from the chain, not from the build artifact: the artifact is
+    // what was compiled, and the point of the field is to prove what was deployed.
+    const code = await ethers.provider.getCode(await registry.getAddress());
+    const expected = createHash("sha256")
+      .update(Buffer.from(code.slice(2), "hex"))
+      .digest("hex");
+    expect(manifest.registry_runtime_bytecode_sha256).to.equal(expected);
+  });
+
+  it("records the deployment block so reconciliation never scans from genesis", async function () {
+    const { publisher } = await roles();
+
+    const { registry, manifest } = await deploy({
+      publisherAddress: publisher.address,
+      reporterPublicKey: REPORTER_PUBLIC_KEY,
+    });
+
+    const receipt = await registry.deploymentTransaction().wait();
+    expect(manifest.deployment_block).to.equal(receipt.blockNumber);
+    expect(manifest.deployment_block).to.be.greaterThan(0);
+  });
+
+  it("authorizes exactly the publisher it was given", async function () {
+    const { deployer, publisher, operations } = await roles();
+
+    const { registry } = await deploy({
+      publisherAddress: publisher.address,
+      operationsAddress: operations.address,
+      reporterPublicKey: REPORTER_PUBLIC_KEY,
+    });
+
+    expect(await registry.isPublisherAuthorized(publisher.address)).to.equal(
+      true,
+    );
+    expect(await registry.isPublisherAuthorized(deployer.address)).to.equal(
+      false,
+    );
+    expect(await registry.isPublisherAuthorized(operations.address)).to.equal(
+      false,
+    );
+    expect(await registry.owner()).to.equal(deployer.address);
+  });
+
+  it("derives the reporting key id from the published public key", async function () {
+    const { publisher } = await roles();
+
+    const { manifest } = await deploy({
+      publisherAddress: publisher.address,
+      reporterPublicKey: REPORTER_PUBLIC_KEY,
+    });
+
+    const digest = createHash("sha256")
+      .update(Buffer.from(REPORTER_PUBLIC_KEY, "hex"))
+      .digest("hex");
+    expect(manifest.reporting_keys).to.deep.equal([
+      {
+        kid: `ed25519:${digest}`,
+        public_key: REPORTER_PUBLIC_KEY,
+        state: "active",
+      },
+    ]);
+  });
+
+  it("refuses to deploy with the publisher as the deployer", async function () {
+    const { deployer } = await roles();
+
+    await expect(
+      deploy({
+        publisherAddress: deployer.address,
+        reporterPublicKey: REPORTER_PUBLIC_KEY,
+      }),
+    ).to.be.rejectedWith("must not be the deployer");
+  });
+
+  it("refuses to deploy with operations doubling as another role", async function () {
+    const { deployer, publisher } = await roles();
+
+    await expect(
+      deploy({
+        publisherAddress: publisher.address,
+        operationsAddress: publisher.address,
+        reporterPublicKey: REPORTER_PUBLIC_KEY,
+      }),
+    ).to.be.rejectedWith("must be distinct");
+    await expect(
+      deploy({
+        publisherAddress: publisher.address,
+        operationsAddress: deployer.address,
+        reporterPublicKey: REPORTER_PUBLIC_KEY,
+      }),
+    ).to.be.rejectedWith("must be distinct");
+  });
+
+  it("refuses a reporting key that is not 32 hexadecimal bytes", async function () {
+    const { publisher } = await roles();
+
+    for (const bad of ["", "aa", "AA".repeat(32), `0x${"aa".repeat(32)}`]) {
+      await expect(
+        deploy({ publisherAddress: publisher.address, reporterPublicKey: bad }),
+      ).to.be.rejectedWith("32 lowercase hexadecimal bytes");
+    }
+  });
+
+  it("names the confirmation variable a stale export cannot satisfy", function () {
+    // The guard is a positive confirmation of the exact chain id rather than a boolean,
+    // so an old export left in a shell cannot enable a deployment to a different chain.
+    expect(CONFIRM_ENV).to.equal("TOUCHSTONE_DEPLOY_CONFIRM_CHAIN_ID");
+  });
+});

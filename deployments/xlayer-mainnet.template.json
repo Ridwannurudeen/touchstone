@@ -1,0 +1,22 @@
+{
+  "manifest_version": 1,
+  "network": "xlayer-mainnet",
+  "chain_id": 196,
+  "rpc_url": "https://rpc.xlayer.tech",
+  "registry_address": "0x1111111111111111111111111111111111111111",
+  "registry_runtime_bytecode_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+  "publisher_address": "0x2222222222222222222222222222222222222222",
+  "deployer_address": "0x3333333333333333333333333333333333333333",
+  "operations_address": "0x4444444444444444444444444444444444444444",
+  "confirmations": 12,
+  "max_fee_wei": 2000000000000000,
+  "deployment_block": 0,
+  "reporting_keys": [
+    {
+      "kid": "ed25519:66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925",
+      "public_key": "0000000000000000000000000000000000000000000000000000000000000000",
+      "state": "active"
+    }
+  ],
+  "notes": "TEMPLATE — this file is refused by the publisher until every value is replaced with one from an actual deployment and this note is removed. Do not hand-fill it: run contracts/scripts/deploy.js, which derives the address, the runtime bytecode digest and the deployment block from the deployment itself. Chain id 196 and https://rpc.xlayer.tech are X Layer's published mainnet values as of 2026-08-15; confirm both against the endpoint's own eth_chainId before use — the publisher verifies this at preflight and will refuse on a mismatch. The addresses and the reporting key above are placeholders and are not derived from any key. Mainnet deployment is an owner decision and is gated: contracts/scripts/deploy.js refuses to send until TOUCHSTONE_DEPLOY_CONFIRM_CHAIN_ID names this exact chain."
+}

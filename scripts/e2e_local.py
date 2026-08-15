@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import date, datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ import sys
 import tempfile
 import time
 
+from eth_account import Account
 from web3 import Web3
 
 
@@ -27,10 +29,15 @@ from touchstone.compiler import (  # noqa: E402
     DeterministicFixtureProvider,
     compile_evidence,
 )
+from touchstone.deployment import (  # noqa: E402
+    DeploymentManifest,
+    runtime_bytecode_sha256,
+)
 from touchstone.epoch import FixtureTransport, run_ustb_epoch  # noqa: E402
 from touchstone.evidence import EvidenceStore  # noqa: E402
 from touchstone.evaluate import default_ustb_controls  # noqa: E402
-from touchstone.publish import PublisherClient, Web3RegistryBackend  # noqa: E402
+from touchstone.keyring import PublisherKey  # noqa: E402
+from touchstone.publish import PublisherClient, SignedRegistryBackend  # noqa: E402
 from touchstone.report import (  # noqa: E402
     build_observation_report,
     evidence_references,
@@ -43,6 +50,13 @@ from touchstone.sources import USTB_SOURCES  # noqa: E402
 
 CONTRACTS = ROOT / "contracts"
 RPC_URL = "http://127.0.0.1:8545"
+
+# Hardhat's published development mnemonic. Its keys are known to everyone, which is the
+# point: this run signs its own transactions locally, exactly as production does, without
+# a secret existing anywhere. Deriving the key rather than pasting one means the run fails
+# loudly if the node ever stops using these accounts, instead of signing as a stranger.
+DEV_MNEMONIC = "test test test test test test test test test test test junk"
+PUBLISHER_ACCOUNT_INDEX = 1
 
 
 def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
@@ -126,15 +140,20 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
             address=gate_receipt.contractAddress, abi=gate_artifact["abi"]
         )
         log = TransparencyLog(workspace / "transparency.jsonl")
-        client = PublisherClient(
-            Web3RegistryBackend(
-                registry_receipt.contractAddress,
-                publisher,
-                rpc_url=rpc_url,
-            ),
-            log,
-            workspace / "pending.json",
+        manifest = _local_manifest(
+            web3,
+            rpc_url=rpc_url,
+            registry_address=registry_receipt.contractAddress,
+            deployment_block=registry_receipt.blockNumber,
+            deployer=owner,
+            publisher=publisher,
+            reporter_public_key=signer.public_key_record()["public_key"],
         )
+        backend = SignedRegistryBackend(
+            manifest, PublisherKey.from_hex(_publisher_private_key(publisher), manifest)
+        )
+        preflight = backend.preflight()
+        client = PublisherClient(backend, log, workspace / "pending.json")
         first = client.publish(
             signed,
             published_key=signer.public_key_record(),
@@ -197,8 +216,69 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
             "first_transaction": first.transaction_hash,
             "historical_sequence": historical[6],
             "log_entries": len(log.verify()),
+            "publisher_authorized": preflight.publisher_authorized,
             "registry": registry_receipt.contractAddress,
+            "registry_runtime_bytecode_sha256": (
+                preflight.registry_runtime_bytecode_sha256
+            ),
         }
+
+
+def _publisher_private_key(expected_address: str) -> str:
+    """Derive the local publisher key and refuse to sign as anyone else."""
+    Account.enable_unaudited_hdwallet_features()
+    account = Account.from_mnemonic(
+        DEV_MNEMONIC, account_path=f"m/44'/60'/0'/0/{PUBLISHER_ACCOUNT_INDEX}"
+    )
+    if Web3.to_checksum_address(account.address) != Web3.to_checksum_address(
+        expected_address
+    ):
+        raise AssertionError(
+            f"derived {account.address} but the node's publisher account is "
+            f"{expected_address}"
+        )
+    return account.key.hex()
+
+
+def _local_manifest(
+    web3: Web3,
+    *,
+    rpc_url: str,
+    registry_address: str,
+    deployment_block: int,
+    deployer: str,
+    publisher: str,
+    reporter_public_key: str,
+) -> DeploymentManifest:
+    """Describe the deployment this run just made, the way an operator's file would.
+
+    The bytecode digest is read back from the chain rather than computed from the build
+    artifact, so the manifest describes what is actually deployed — which is the claim the
+    publisher's preflight goes on to verify.
+    """
+    return DeploymentManifest.from_mapping(
+        {
+            "manifest_version": 1,
+            "network": "hardhat-local",
+            "chain_id": web3.eth.chain_id,
+            "rpc_url": rpc_url,
+            "registry_address": registry_address,
+            "registry_runtime_bytecode_sha256": runtime_bytecode_sha256(
+                bytes(web3.eth.get_code(registry_address))
+            ),
+            "publisher_address": publisher,
+            "deployer_address": deployer,
+            "confirmations": 1,
+            "deployment_block": deployment_block,
+            "reporting_keys": [
+                {
+                    "kid": f"ed25519:{hashlib.sha256(bytes.fromhex(reporter_public_key)).hexdigest()}",
+                    "public_key": reporter_public_key,
+                    "state": "active",
+                }
+            ],
+        }
+    )
 
 
 def _artifact(contract_name: str) -> dict[str, object]:

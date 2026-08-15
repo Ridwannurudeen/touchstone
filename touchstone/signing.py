@@ -111,7 +111,7 @@ class Ed25519Signer:
     @property
     def kid(self) -> str:
         """Return the deterministic key ID derived from the raw public key."""
-        return _kid_for_public_key(self._public_key_bytes())
+        return kid_for_public_key(self._public_key_bytes())
 
     def public_key_record(self) -> dict[str, object]:
         """Return the exact version-1 published-key record."""
@@ -189,12 +189,15 @@ def _public_key_from_record(value: object, *, expected_kid: str) -> Ed25519Publi
         pattern=_LOWER_HEX_32,
         field="key record public_key",
     )
-    if _kid_for_public_key(public_key_bytes) != expected_kid:
+    if kid_for_public_key(public_key_bytes) != expected_kid:
         raise ValueError("key record kid does not match its public key")
     return Ed25519PublicKey.from_public_bytes(public_key_bytes)
 
 
-def _kid_for_public_key(public_key: bytes) -> str:
+def kid_for_public_key(public_key: bytes) -> str:
+    """Derive the key ID a raw Ed25519 public key must be published under."""
+    if not isinstance(public_key, bytes) or len(public_key) != 32:
+        raise ValueError("public key must be exactly 32 bytes")
     return "ed25519:" + hashlib.sha256(public_key).hexdigest()
 
 

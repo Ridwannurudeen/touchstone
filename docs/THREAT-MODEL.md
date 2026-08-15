@@ -37,10 +37,10 @@ assumptions are the product, so they are enumerated rather than minimised.
 | B3 | **Model provider** (control compiler) | Proposing candidate controls only | A hostile model cannot itself change state: compilation only ever emits `proposed` records. But the evaluator's admission rule is the `approval_state` field alone (`touchstone/evaluate.py:201`), and it is **not bound to a compiler record** — see R-11 |
 | B4 | **Parsing worker** | Normalising bytes into typed observations | Process isolation only, not a kernel sandbox — see R-3 |
 | B5 | **Evidence store** | Retaining exact bytes and their order | Local filesystem trust; chain verification detects modification, not a privileged rewrite of both objects and index |
-| B6 | **Ed25519 reporting key** | Authenticity of a report's content | A compromised key can sign false reports. A bundle verifies against the key it carries, so a consumer must decide which key it trusts out of band; reporting-key rollover is not built (R-5) |
+| B6 | **Ed25519 reporting key** | Authenticity of a report's content | A compromised key can sign false reports. A bundle verifies against the key it carries, so a consumer must decide which key it trusts out of band. Rollover is built (`touchstone/keyring.py`) and is additive: a superseded key stays published and trusted, so nothing it already signed becomes unverifiable. Custody is the open part — R-5 |
 | B7 | **EVM publisher key** | Authority to write to the registry | A compromised key can publish authentic-looking state; the owner can revoke it onchain |
 | B8 | **Deployer / owner key** | Contract deployment and publisher authorisation | Full control of the registry's publisher set |
-| B9 | **Operations / backup identity** | Service continuity and archive integrity | Backup loss or forgery; separated from publishing keys by policy — see PLAN-T6/PLAN-T8 |
+| B9 | **Operations / backup identity** | Service continuity and archive integrity | Backup loss or forgery; separated from publishing keys and enforced as of PLAN-T6; archive integrity is PLAN-T8 |
 | B10 | **Registry contract** (X Layer) | Immutable, ordered, append-only history | Chain reorganisation or a wrong-chain deployment; guarded by an immutable expected chain id compared on every report publication, including corrections (`contracts/contracts/TouchstoneRegistry.sol:239`); publisher-authorisation writes are not chain-checked |
 | B11 | **Consumer contract** (`AssetGate`) | Enforcing its own freshness policy | A permissive policy admits stale state; the gate reacts to verification freshness, never to asset safety |
 | B12 | **Public projection** (dossier, heartbeat) | Displaying only signed, verified data | Claim inflation in the UI — see T26 |
@@ -49,9 +49,14 @@ assumptions are the product, so they are enumerated rather than minimised.
 | B15 | **Host clock / time source** | Retrieval timestamps, freshness deadlines, confirmation windows | Every freshness and staleness decision and the 24h confirmation separation derive from it. The chain provides a partial check — the registry rejects an `observedAt` in the future against `block.timestamp` (`contracts/contracts/TouchstoneRegistry.sol:257`) and the gate measures age the same way — so a clock fast enough that `observedAt` is *still* ahead of chain time when the transaction executes is rejected. Publication delay masks a moderately fast clock, and offchain-only decisions are never checked. See R-10 |
 | B16 | **JSON-RPC endpoint** | Reporting chain state honestly | Reads and writes go through one configured endpoint, so it can both accept a transaction and describe the resulting state. See R-12 |
 
-Keys at B6, B7, B8 and B9 are **required to be four distinct identities**. Today the local
-publisher path uses an unlocked development account, so that separation exists as stated
-policy only — the identities, manifests and templates are not in the repository yet. That is PLAN-T6, tracked as R-5.
+Keys at B6, B7, B8 and B9 are **required to be four distinct identities**. **Amended
+2026-08-15 by PLAN-T6:** the separation is now enforced rather than stated. A deployment
+manifest cannot declare a publisher that is also the deployer or the operations address
+(`touchstone/deployment.py`); the publisher key must derive exactly the declared publisher
+address; a run refuses to start if the reporting seed and the publisher key are the same
+secret; and preflight refuses to publish if the registry's `owner()` is the publisher. No
+unlocked-account path remains anywhere in the codebase, on any network. What is *not*
+enforced is custody: see the revised R-5 and `docs/KEY-MANAGEMENT.md`.
 
 ## 3. Threats and current disposition
 
@@ -95,11 +100,11 @@ threat identifiers `T1`–`T27` used in this section.
 
 | ID | Threat | Disposition |
 |---|---|---|
-| T17 | **Signature or key compromise** | **Partially implemented.** Reports are Ed25519-signed and offline-verifiable; the registry supports onchain publisher rotation with preserved historical attribution. Reporting-key rollover is built in **PLAN-T6**, which now names it explicitly, and exercised in **PLAN-T12**. Hardware-backed or multisig custody is **not a Phase 1 item at all** — `ROADMAP.md` places it in the "before external production dependence" ladder; see **R-5** |
+| T17 | **Signature or key compromise** | **Partially implemented.** Reports are Ed25519-signed and offline-verifiable; the registry supports onchain publisher rotation with preserved historical attribution. Reporting-key rollover is **implemented** (`touchstone/keyring.py`): the outgoing key is superseded rather than dropped, so bundles it already signed stay verifiable, and revocation is a separate, later step that cannot leave a deployment unable to sign. Rollover under load is exercised in **PLAN-T12**. Hardware-backed or multisig custody is **not a Phase 1 item at all** — `ROADMAP.md` places it in the "before external production dependence" ladder; see **R-5** |
 | T18 | **Sequence replay / gap** | **Implemented.** The registry enforces a monotonic per-asset sequence, and the publisher refuses a sequence already onchain or not exactly next (`touchstone/publish.py:381`) |
 | T19 | **Duplicate publication after a crash** | **Implemented.** A persisted pending journal plus onchain reconciliation resolves an interrupted send instead of resending it (`touchstone/publish.py:372`). Real subprocess-restart coverage is **PLAN-T7/PLAN-T12** |
-| T20 | **Chain or deployment mismatch** — publishing to the wrong chain or a wrong contract | **Partially implemented.** The registry stores an immutable expected chain id (`contracts/contracts/TouchstoneRegistry.sol:72`) and compares it on every report publication, including corrections (`contracts/contracts/TouchstoneRegistry.sol:239`); publisher-authorisation writes are not chain-checked. Manifest-pinned RPC, chain id, address and runtime-bytecode verification on the client side are **PLAN-T6** |
-| T21 | **RPC failure** | **Partially implemented.** No value is ever invented on failure, and an interrupted send is reconciled rather than resent (see T19). Not built: endpoint pinning and client-side chain-id and runtime-bytecode verification (**PLAN-T6**), and retry/backoff on a failed submission (**PLAN-T7**) |
+| T20 | **Chain or deployment mismatch** — publishing to the wrong chain or a wrong contract | **Partially implemented.** The registry stores an immutable expected chain id (`contracts/contracts/TouchstoneRegistry.sol:72`) and compares it on every report publication, including corrections (`contracts/contracts/TouchstoneRegistry.sol:239`); publisher-authorisation writes are not chain-checked. **Amended 2026-08-15:** client-side verification is now **implemented**. Before signing, the publisher compares the endpoint's own chain id, the runtime bytecode actually deployed at the registry address, and the chain id the registry was constructed with, against a committed deployment manifest, and refuses on any disagreement (`touchstone/publish.py`) |
+| T21 | **RPC failure** | **Partially implemented.** No value is ever invented on failure, and an interrupted send is reconciled rather than resent (see T19). **Amended 2026-08-15:** endpoint pinning and client-side chain-id and runtime-bytecode verification are **implemented** (see T20), and a typed `PreflightFailed` is raised without signing. Not built: retry/backoff on a failed submission (**PLAN-T7**) |
 | T27 | **Dishonest RPC endpoint** | **Not defended — residual R-12.** Every fact the publisher reconciles against — latest sequence, receipts, events, stored reports — is read back from the same single configured endpoint that it writes through |
 
 ### Operations and presentation
@@ -151,7 +156,7 @@ These distinctions are load-bearing and must not be collapsed:
 
 | Requirement | Status |
 |---|---|
-| Separated deployer / publisher / Ed25519 / operations keys | **Not yet** — stated policy only; no distinct identities or manifest templates exist in the repository. Backlog: **PLAN-T6**, residual **R-5** |
+| Separated deployer / publisher / Ed25519 / operations keys | **Implemented 2026-08-15 (PLAN-T6)** — four distinct identities, enforced where each key is loaded and used; deployment manifest schema and X Layer templates in `deployments/`. Custody remains a residual: **R-5** |
 | No secrets in code, logs, bundles or clients | Holds today; no secret is committed. The E2E now warns when a Hardhat log containing development keys cannot be removed |
 | Onchain key rotation | Implemented in the registry, with preserved historical attribution and lineage |
 | Monotonic sequences + replay protection | Implemented (registry + `touchstone/publish.py:381`) |
@@ -204,10 +209,18 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   it can produce signed checkpoints, those are only returned to the caller — there is no
   publication, distribution or external pinning path for them. The only genuinely external
   record is what has been published onchain, and that is a root, not the evidence.
-- **R-5 — Key separation is not yet enforced in a runtime path.** The local publisher uses
-  an unlocked development account. Distinct deployer, publisher, reporter and operations
-  identities are required and specified but arrive with PLAN-T6; no hardware or multisig custody
-  exists in Phase 1.
+- **R-5 — Keys are separated but not custodied.** *Revised 2026-08-15 by PLAN-T6.* The
+  four identities are now distinct and the separation is enforced at every point a key is
+  loaded or used, so the original form of this residual is closed. What remains is
+  custody: both runtime keys are plain environment variables on their host, with no HSM,
+  KMS, passphrase at rest, threshold or multisig. Anything that can read the process
+  environment can publish. The mitigation is scope — the publisher key can only append
+  reports, never revoke, rotate or rewrite — and recovery is the deployer calling
+  `rotatePublisher`. The deployer key itself is a single key whose loss or theft is
+  unrecoverable, because the registry has no owner-rotation path. Compromise *detection*
+  does not exist: nothing watches for a publication from an unexpected publisher or a
+  report signed by a retired key. PLAN-T7 and PLAN-T8 own that. See
+  `docs/KEY-MANAGEMENT.md`.
 - **R-6 — Verification bundles carry digests, not artifacts, and no chain state.** A bundle
   holds the signed report, its canonical bytes, the control records, the evidence
   references and the published key (`touchstone/verify.py:38`). An offline verifier can
