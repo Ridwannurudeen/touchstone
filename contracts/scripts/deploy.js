@@ -18,10 +18,11 @@ const CONFIRM_ENV = "TOUCHSTONE_DEPLOY_CONFIRM_CHAIN_ID";
 const NETWORK_BY_CHAIN_ID = {
   31337: "hardhat-local",
 };
+const NETWORKS = ["hardhat-local", "xlayer-testnet", "xlayer-mainnet"];
 
 async function deploy({
   publisherAddress,
-  operationsAddress = null,
+  operationsAddress,
   reporterPublicKey,
   network = null,
   confirmations = 1,
@@ -39,26 +40,62 @@ async function deploy({
     }
   }
 
+  // --------------------------------------------------------------------------------
+  // Everything below is validated BEFORE the first transaction is sent. A field checked
+  // afterwards is a field that cannot be fixed: on a public chain, an invalid manifest
+  // discovered after deployment leaves a deployed and authorized registry that nothing
+  // can publish to, and neither send can be undone.
+  // --------------------------------------------------------------------------------
   const [deployer] = await ethers.getSigners();
+  const deployerAddress = await deployer.getAddress();
   const publisher = ethers.getAddress(publisherAddress);
-  if (publisher === (await deployer.getAddress())) {
+  if (publisher === deployerAddress) {
     throw new Error(
       "the publisher must not be the deployer; the identity that owns the registry must not run unattended",
     );
   }
-  const operations = operationsAddress
-    ? ethers.getAddress(operationsAddress)
-    : null;
-  if (
-    operations !== null &&
-    (operations === publisher || operations === (await deployer.getAddress()))
-  ) {
+  if (!operationsAddress) {
+    throw new Error(
+      "operationsAddress is required; an unstated role address cannot be shown to be separate",
+    );
+  }
+  const operations = ethers.getAddress(operationsAddress);
+  if (operations === publisher || operations === deployerAddress) {
     throw new Error(
       "the operations identity must be distinct from the deployer and the publisher",
     );
   }
   if (!/^[0-9a-f]{64}$/.test(reporterPublicKey)) {
     throw new Error("reporterPublicKey must be 32 lowercase hexadecimal bytes");
+  }
+  const resolvedNetwork = network ?? NETWORK_BY_CHAIN_ID[String(chainId)] ?? null;
+  if (!NETWORKS.includes(resolvedNetwork)) {
+    throw new Error(
+      `network must be one of ${NETWORKS.join(", ")}; chain ${chainId} resolved to ${resolvedNetwork}`,
+    );
+  }
+  if (!Number.isInteger(confirmations) || confirmations < 1) {
+    throw new Error("confirmations must be a positive integer");
+  }
+  if (maxFeeWei !== null && (!Number.isInteger(maxFeeWei) || maxFeeWei < 1)) {
+    throw new Error("maxFeeWei must be a positive integer");
+  }
+  const resolvedRpcUrl =
+    rpcUrl ?? hre.network.config.url ?? "http://127.0.0.1:8545";
+  if (resolvedNetwork === "hardhat-local") {
+    if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(resolvedRpcUrl)) {
+      throw new Error("the local network must record a loopback rpc_url with a port");
+    }
+  } else {
+    if (!resolvedRpcUrl.startsWith("https://")) {
+      throw new Error("a public network must record an HTTPS rpc_url");
+    }
+    if (/[?#@]/.test(resolvedRpcUrl)) {
+      throw new Error("rpc_url must not carry credentials, a query or a fragment");
+    }
+    if (maxFeeWei === null) {
+      throw new Error("maxFeeWei is required off the local chain");
+    }
   }
 
   const registry = await ethers.deployContract("TouchstoneRegistry", [chainId]);
@@ -80,15 +117,26 @@ async function deploy({
     .update(Buffer.from(code.slice(2), "hex"))
     .digest("hex");
 
+  // The lineage the registry recorded when it authorized this publisher. A later owner
+  // who calls authorizePublisher on a replacement instead of rotatePublisher creates a
+  // second, unrelated lineage; pinning it here lets the publisher refuse that case, which
+  // authorization alone cannot distinguish.
+  const identity = await registry.publisherIdentity(publisher);
+  if (identity === ethers.ZeroAddress) {
+    throw new Error("publisher lineage was not recorded by authorization");
+  }
+
   const manifest = {
     manifest_version: 1,
-    network: network ?? NETWORK_BY_CHAIN_ID[String(chainId)] ?? null,
+    network: resolvedNetwork,
     chain_id: Number(chainId),
-    rpc_url: rpcUrl ?? hre.network.config.url ?? "http://127.0.0.1:8545",
+    rpc_url: resolvedRpcUrl,
     registry_address: address,
     registry_runtime_bytecode_sha256: runtimeSha256,
     publisher_address: publisher,
-    deployer_address: await deployer.getAddress(),
+    publisher_identity_address: identity,
+    deployer_address: deployerAddress,
+    operations_address: operations,
     confirmations,
     deployment_block: deploymentReceipt.blockNumber,
     reporting_keys: [
@@ -101,16 +149,8 @@ async function deploy({
       },
     ],
   };
-  if (operations !== null) {
-    manifest.operations_address = operations;
-  }
   if (maxFeeWei !== null) {
     manifest.max_fee_wei = maxFeeWei;
-  }
-  if (manifest.network === null) {
-    throw new Error(
-      `chain ${chainId} has no manifest network name; pass one explicitly so the manifest is not written with a null`,
-    );
   }
   return { registry, manifest };
 }
@@ -125,7 +165,7 @@ async function main() {
   };
   const { manifest } = await deploy({
     publisherAddress: required("TOUCHSTONE_PUBLISHER_ADDRESS"),
-    operationsAddress: process.env.TOUCHSTONE_OPERATIONS_ADDRESS ?? null,
+    operationsAddress: required("TOUCHSTONE_OPERATIONS_ADDRESS"),
     reporterPublicKey: required("TOUCHSTONE_REPORTER_PUBLIC_KEY"),
     network: process.env.TOUCHSTONE_NETWORK ?? null,
     confirmations: Number(process.env.TOUCHSTONE_CONFIRMATIONS ?? 1),

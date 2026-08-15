@@ -60,6 +60,7 @@ _MANIFEST_FIELDS = frozenset(
         "registry_address",
         "registry_runtime_bytecode_sha256",
         "publisher_address",
+        "publisher_identity_address",
         "deployer_address",
         "operations_address",
         "confirmations",
@@ -78,6 +79,9 @@ _REQUIRED_MANIFEST_FIELDS = frozenset(
         "registry_address",
         "registry_runtime_bytecode_sha256",
         "publisher_address",
+        "publisher_identity_address",
+        "deployer_address",
+        "operations_address",
         "confirmations",
         "reporting_keys",
     }
@@ -124,8 +128,9 @@ class DeploymentManifest:
     registry_address: str
     registry_runtime_bytecode_sha256: str
     publisher_address: str
-    deployer_address: str | None
-    operations_address: str | None
+    publisher_identity_address: str
+    deployer_address: str
+    operations_address: str
     confirmations: int
     max_fee_wei: int | None
     deployment_block: int
@@ -202,25 +207,21 @@ class DeploymentManifest:
 
         registry_address = _address(value["registry_address"], "registry_address")
         publisher_address = _address(value["publisher_address"], "publisher_address")
-        deployer_address = (
-            _address(value["deployer_address"], "deployer_address")
-            if value.get("deployer_address") is not None
-            else None
+        identity_address = _address(
+            value["publisher_identity_address"], "publisher_identity_address"
         )
-        operations_address = (
-            _address(value["operations_address"], "operations_address")
-            if value.get("operations_address") is not None
-            else None
-        )
-        if deployer_address is not None and deployer_address == publisher_address:
+        deployer_address = _address(value["deployer_address"], "deployer_address")
+        operations_address = _address(value["operations_address"], "operations_address")
+        # Every one of these is required rather than optional. An absent role address is
+        # not a relaxed check, it is an unprovable one: nothing can then show that the
+        # publisher is not also the identity funding it or the identity that owns the
+        # registry, and "we did not say" reads identically to "they are separate".
+        if deployer_address == publisher_address:
             raise DeploymentError(
                 "publisher_address must differ from deployer_address; the identity that "
                 "owns the registry must not be the identity that runs unattended"
             )
-        if operations_address is not None and operations_address in {
-            publisher_address,
-            deployer_address,
-        }:
+        if operations_address in {publisher_address, deployer_address}:
             raise DeploymentError(
                 "operations_address must differ from the publisher and deployer; it "
                 "funds them and must not also be able to act as them"
@@ -273,6 +274,7 @@ class DeploymentManifest:
             registry_address=registry_address,
             registry_runtime_bytecode_sha256=bytecode_hash,
             publisher_address=publisher_address,
+            publisher_identity_address=identity_address,
             deployer_address=deployer_address,
             operations_address=operations_address,
             confirmations=confirmations,
@@ -292,6 +294,9 @@ class DeploymentManifest:
             "registry_address": self.registry_address,
             "registry_runtime_bytecode_sha256": self.registry_runtime_bytecode_sha256,
             "publisher_address": self.publisher_address,
+            "publisher_identity_address": self.publisher_identity_address,
+            "deployer_address": self.deployer_address,
+            "operations_address": self.operations_address,
             "confirmations": self.confirmations,
             "deployment_block": self.deployment_block,
             "reporting_keys": [
@@ -303,10 +308,6 @@ class DeploymentManifest:
                 for key in self.reporting_keys
             ],
         }
-        if self.deployer_address is not None:
-            value["deployer_address"] = self.deployer_address
-        if self.operations_address is not None:
-            value["operations_address"] = self.operations_address
         if self.max_fee_wei is not None:
             value["max_fee_wei"] = self.max_fee_wei
         if self.notes is not None:
@@ -350,8 +351,15 @@ def validate_local_rpc_url(value: object) -> None:
 def _validate_remote_rpc_url(value: object) -> None:
     """A public network is reached over HTTPS, without credentials in the URL.
 
-    A key or token embedded in the endpoint would be copied into every log line and
-    committed alongside the manifest, so it is refused rather than redacted.
+    Userinfo credentials and a query or fragment are refused. Both are places an API key
+    is conventionally carried, and a manifest is committed, so a key there would be in the
+    repository and in every log line that echoes the endpoint.
+
+    A **path** is allowed, because a path is not evidence of a secret: X Layer's own
+    testnet endpoint is ``https://testrpc.xlayer.tech/terigon``. This is the honest limit
+    of the check — a provider that puts a key in the path is indistinguishable from a
+    required path segment, so this refuses what it can prove and does not pretend to
+    catch the rest.
     """
     if not isinstance(value, str):
         raise DeploymentError("rpc_url must be an HTTPS endpoint")
@@ -364,6 +372,11 @@ def _validate_remote_rpc_url(value: object) -> None:
         raise DeploymentError("rpc_url must be an HTTPS endpoint")
     if parsed.username is not None or parsed.password is not None:
         raise DeploymentError("rpc_url must not carry credentials")
+    if parsed.query or parsed.fragment:
+        raise DeploymentError(
+            "rpc_url must not carry a query or fragment; an API key belongs in the "
+            "environment, not in a committed manifest"
+        )
     if parsed.hostname in {"127.0.0.1", "localhost"}:
         raise DeploymentError("a public network cannot be served from loopback")
 

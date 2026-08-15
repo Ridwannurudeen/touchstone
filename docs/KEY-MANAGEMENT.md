@@ -39,10 +39,14 @@ be shown not to be running as it.
 
 ## What the code enforces
 
-- A manifest cannot declare a publisher that is also the deployer or the operations
-  address (`touchstone/deployment.py`). Every downstream separation rests on this: the
-  publisher key is checked to derive exactly the declared publisher address, and that one
-  comparison then guarantees it is neither of the others.
+- All four role addresses are **required** manifest fields, and a manifest cannot declare
+  a publisher that is also the deployer or the operations address
+  (`touchstone/deployment.py`). Requiring them is what makes the separation provable: they
+  were optional at first, which quietly made the whole thing optional — a manifest that
+  simply omitted the deployer and operations addresses passed every check while
+  establishing nothing about either. Every downstream separation rests on this, because
+  the publisher key is checked to derive exactly the declared publisher address, and that
+  one comparison then guarantees it is neither of the others.
 - A run refuses to start if `TOUCHSTONE_SIGNING_SEED` and
   `TOUCHSTONE_PUBLISHER_PRIVATE_KEY` are the same secret. The check is on the raw secret,
   not on the derived identifiers: two algorithms over one 32-byte secret produce two
@@ -51,9 +55,15 @@ be shown not to be running as it.
   not the deployer the manifest declares.
 - The deploy script refuses to deploy with the publisher as the deployer, or with the
   operations identity doubling as either.
-- No transaction is ever signed by a node. There is no unlocked-account path in the
-  codebase, on any network, and a test asserts `.transact(` never reappears in
-  `touchstone/publish.py`.
+- **No report publication is ever signed by a node.** There is no unlocked-account path
+  in the publishing code, on any network, and a test asserts `.transact(` never reappears
+  in `touchstone/publish.py`. This is deliberately narrower than "nothing is ever signed
+  by a node": *deployment and owner-administration* calls do use an unlocked signer, in
+  `contracts/scripts/deploy.js` under Hardhat and in the local E2E. Those are operator
+  actions taken at a keyboard, not unattended ones, and they are not report publications.
+- Preflight verifies publisher **lineage**, not only authorization. `publisherIdentity` is
+  compared against the manifest, so an owner who authorizes a replacement publisher
+  directly — creating a second, unrelated lineage — is refused rather than accepted.
 
 ## Environment variables
 
@@ -82,7 +92,7 @@ accepting both would hide that.
 | Variable | Meaning |
 |---|---|
 | `TOUCHSTONE_PUBLISHER_ADDRESS` | Address to authorize as publisher. |
-| `TOUCHSTONE_OPERATIONS_ADDRESS` | Optional. Recorded, never authorized. |
+| `TOUCHSTONE_OPERATIONS_ADDRESS` | Required. Recorded, never authorized. |
 | `TOUCHSTONE_REPORTER_PUBLIC_KEY` | 32-byte Ed25519 public key, lowercase hex. |
 | `TOUCHSTONE_NETWORK` | Manifest network name. |
 | `TOUCHSTONE_RPC_URL` | Endpoint recorded in the manifest. |
@@ -102,22 +112,33 @@ returns a new manifest in which the outgoing key is `superseded` with the instan
 stopped signing, and the incoming key is `active`. Only the selection of the key for
 *future* reports changes.
 
-Nothing already published becomes unverifiable. Two independent reasons:
+Nothing already published becomes cryptographically unverifiable. Two independent reasons:
 
-1. Every verification bundle embeds its own published-key record, so an offline verifier
-   never consults the manifest at all. A bundle from 2026 verifies in 2030 with no
-   network, no registry, and no knowledge of what has been rotated since.
+1. Every verification bundle embeds its own published-key record, so `verify_bundle` never
+   consults the manifest at all (`touchstone/verify.py`). A bundle from 2026 checks out in
+   2030 with no network, no registry, and no knowledge of what has been rotated since.
 2. The manifest keeps listing the superseded key, so anything resolving a key id — an
    operator, a dossier — still finds it and still finds it trusted.
 
+**This is a claim about internal consistency, not about current trust, and the difference
+matters most for revocation.** Because a bundle carries its own key, a bundle signed by a
+*revoked* key still passes `verify_bundle`: the signature really was produced by that key
+over those bytes. What revocation withdraws is the statement that the key's signatures
+should be *believed*, and that statement lives in the manifest. A consumer that cares must
+therefore check the key's state against the deployment manifest; verifying the bundle
+alone will not tell them.
+
 The three states are distinct claims:
 
-- **active** — signs new reports. Exactly one key is active; a manifest with zero or two
-  is refused.
-- **superseded** — no longer signs, still trusted. It signed reports that were true when
-  signed and remain published.
-- **revoked** — no longer trusted, retroactively. This is the claim that the key may have
-  signed something its holder did not intend.
+- **active** — the only key that may sign or publish new reports. Exactly one key is
+  active; a manifest with zero or two is refused. Both halves are enforced: signing checks
+  the loaded seed against the active kid (`load_identities`), and publication refuses any
+  kid that is not the active one (`scripts/publish_epoch.py`).
+- **superseded** — no longer signs, still trusted for what it already signed. It cannot
+  place a new report; that refusal is what makes rolling over mean anything.
+- **revoked** — no longer to be trusted, retroactively, as a manifest-level statement.
+  Excluded from `verification_keys()` and refused for publication. It does not and cannot
+  invalidate the mathematics of a signature already published.
 
 `revoked()` refuses to revoke the active key. A deployment with no active key cannot sign
 anything, so a compromise is handled in two steps that each leave the deployment able to
@@ -134,7 +155,9 @@ what a revocation means for reports already onchain is a correction question —
 
 1. **Local.** `scripts/e2e_local.py` runs the full loop on a private Hardhat chain,
    signing locally exactly as production does. The publisher key is derived from Hardhat's
-   published development mnemonic, so no secret exists anywhere in the flow.
+   published development mnemonic — still key material, and treated as such, but **no
+   production secret** is involved and the key it derives controls nothing on any real
+   network.
 2. **Preflight against a real deployment.** `scripts/publish_epoch.py --preflight` runs
    every chain check and stops before signing. This is how a new deployment is proved
    reachable, correctly authorized and holding the expected bytecode **without sending a
@@ -155,7 +178,11 @@ what a revocation means for reports already onchain is a correction question —
   path.
 - **Rotation is not automated.** `rotatePublisher` is called by hand by the deployer, and
   the manifest is updated by hand afterwards. Nothing detects that the two have diverged
-  except the next preflight, which refuses.
+  except the next preflight, which refuses — now on lineage as well as authorization.
+- **The template marker is a tripwire, not provenance.** Deleting the `notes` field makes
+  a template's placeholder values load. Only preflight then refuses them, because no
+  contract stands at the placeholder address. It stops a half-filled copy, not a
+  determined one.
 - **Compromise detection does not exist.** Nothing watches for publications from an
   unexpected publisher or reports signed by a retired key. PLAN-T7 and PLAN-T8 own that
   work; until then, detection is manual.

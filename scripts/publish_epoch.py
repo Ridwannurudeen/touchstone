@@ -50,6 +50,8 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
         ),
         "publisher": preflight.publisher_address,
         "publisher_authorized": preflight.publisher_authorized,
+        "publisher_identity": preflight.publisher_identity,
+        "active_reporting_kid": manifest.active_key.kid,
         "publisher_balance_wei": preflight.publisher_balance_wei,
         "block_number": preflight.block_number,
     }
@@ -61,12 +63,24 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
     if not isinstance(signed_report, dict):
         raise PublicationError("the signed report must be an object")
     kid = signed_report.get("kid")
-    published_key = verification_keys(manifest).get(kid)
-    if published_key is None:
+    # A new publication is signed by the active key and nothing else. Superseded keys stay
+    # published so that what they already signed keeps verifying, but that is a statement
+    # about the past: accepting one here would mean a retired key could still put new
+    # reports onchain, which is exactly what rolling over is supposed to end. A date check
+    # would not substitute, because a compromised key can backdate its own report.
+    if kid != manifest.active_key.kid:
+        known = verification_keys(manifest)
         raise PublicationError(
-            f"the manifest does not carry a trusted reporting key for {kid!r}; an "
-            "unknown or revoked key must not be published under this deployment"
+            f"{kid!r} is not this deployment's active reporting key "
+            f"({manifest.active_key.kid}); it is "
+            + (
+                "superseded or revoked"
+                if kid in known or manifest.key(kid)
+                else "unknown"
+            )
+            + " and must not sign new publications"
         )
+    published_key = verification_keys(manifest)[kid]
     client = PublisherClient(
         backend,
         TransparencyLog(arguments.transparency_log),

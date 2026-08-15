@@ -13,23 +13,39 @@
     "registry_address",
     "registry_runtime_bytecode_sha256",
     "publisher_address",
+    "publisher_identity_address",
+    "deployer_address",
+    "operations_address",
     "confirmations",
     "reporting_keys"
   ],
   "properties": {
-    "manifest_version": {"const": 1},
+    "manifest_version": {
+      "const": 1
+    },
     "network": {
-      "description": "Human label. Never used to choose behaviour — chain_id is the authority.",
+      "description": "Human label. Never used to choose behaviour \u2014 chain_id is the authority.",
       "type": "string",
-      "enum": ["hardhat-local", "xlayer-testnet", "xlayer-mainnet"]
+      "enum": [
+        "hardhat-local",
+        "xlayer-testnet",
+        "xlayer-mainnet"
+      ]
     },
     "chain_id": {
       "description": "Compared against the endpoint's own eth_chainId before signing.",
       "type": "integer",
       "minimum": 1
     },
-    "rpc_url": {"type": "string", "pattern": "^https?://"},
-    "registry_address": {"type": "string", "pattern": "^0x[0-9a-fA-F]{40}$"},
+    "rpc_url": {
+      "type": "string",
+      "pattern": "^https?://",
+      "description": "HTTPS off the local chain. A path is allowed (X Layer's testnet endpoint ends in /terigon); userinfo, query and fragment are refused because that is where an API key would sit in a committed file."
+    },
+    "registry_address": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$"
+    },
     "registry_runtime_bytecode_sha256": {
       "description": "SHA-256 of the runtime bytecode actually deployed at registry_address. A mismatch means the address holds a different contract than the one this release was tested against.",
       "type": "string",
@@ -40,20 +56,20 @@
       "type": "string",
       "pattern": "^0x[0-9a-fA-F]{40}$"
     },
+    "publisher_identity_address": {
+      "description": "The publisher lineage the registry recorded (publisherIdentity). Authorization alone says some owner call let this address publish; lineage says it is the same publishing identity this manifest was written for.",
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$"
+    },
     "deployer_address": {
-      "description": "Recorded so the publisher can refuse to run as the deployer. Never used for runtime signing.",
+      "description": "Owns the registry. Required: an unstated role address cannot be shown to be separate from the publisher. Never used for runtime signing.",
       "type": "string",
       "pattern": "^0x[0-9a-fA-F]{40}$"
     },
     "operations_address": {
-      "description": "The identity that funds gas and runs the host. Holds no registry authority; recorded so the publisher can refuse to run as it.",
+      "description": "Funds gas and runs the host. Required, and holds no registry authority; recorded so the publisher can be shown not to be running as it.",
       "type": "string",
       "pattern": "^0x[0-9a-fA-F]{40}$"
-    },
-    "deployment_block": {
-      "description": "Block the registry was deployed in. Event reconciliation scans from here, so a public network is not scanned from genesis.",
-      "type": "integer",
-      "minimum": 0
     },
     "confirmations": {
       "description": "Blocks required before a publication is treated as settled.",
@@ -65,6 +81,11 @@
       "type": "integer",
       "minimum": 1
     },
+    "deployment_block": {
+      "description": "Block the registry was deployed in. Event reconciliation scans from here, so a public network is not scanned from genesis.",
+      "type": "integer",
+      "minimum": 0
+    },
     "reporting_keys": {
       "description": "Ed25519 report-signing keys. Exactly one is active; superseded keys stay listed so existing bundles remain verifiable.",
       "type": "array",
@@ -72,11 +93,27 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["kid", "public_key", "state"],
+        "required": [
+          "kid",
+          "public_key",
+          "state"
+        ],
         "properties": {
-          "kid": {"type": "string", "minLength": 1},
-          "public_key": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-          "state": {"enum": ["active", "superseded", "revoked"]},
+          "kid": {
+            "type": "string",
+            "minLength": 1
+          },
+          "public_key": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "superseded",
+              "revoked"
+            ]
+          },
           "not_after": {
             "description": "Recorded when a key is superseded or revoked, so its bundles can still be dated.",
             "type": "string"
@@ -84,6 +121,8 @@
         }
       }
     },
-    "notes": {"type": "string"}
+    "notes": {
+      "type": "string"
+    }
   }
 }

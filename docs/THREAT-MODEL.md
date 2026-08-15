@@ -37,10 +37,10 @@ assumptions are the product, so they are enumerated rather than minimised.
 | B3 | **Model provider** (control compiler) | Proposing candidate controls only | A hostile model cannot itself change state: compilation only ever emits `proposed` records. But the evaluator's admission rule is the `approval_state` field alone (`touchstone/evaluate.py:201`), and it is **not bound to a compiler record** — see R-11 |
 | B4 | **Parsing worker** | Normalising bytes into typed observations | Process isolation only, not a kernel sandbox — see R-3 |
 | B5 | **Evidence store** | Retaining exact bytes and their order | Local filesystem trust; chain verification detects modification, not a privileged rewrite of both objects and index |
-| B6 | **Ed25519 reporting key** | Authenticity of a report's content | A compromised key can sign false reports. A bundle verifies against the key it carries, so a consumer must decide which key it trusts out of band. Rollover is built (`touchstone/keyring.py`) and is additive: a superseded key stays published and trusted, so nothing it already signed becomes unverifiable. Custody is the open part — R-5 |
+| B6 | **Ed25519 reporting key** | Authenticity of a report's content | A compromised key can sign false reports. A bundle verifies against the key it carries, so a consumer must decide which key it trusts out of band. Rollover is built (`touchstone/keyring.py`) and is additive: a superseded key stays published and trusted, and only the active key may sign or publish anew. Note the limit this creates — because a bundle carries its own key, a bundle signed by a **revoked** key still passes `verify_bundle` (`touchstone/verify.py:133`). Revocation is a manifest-level withdrawal of trust, not a cryptographic one, so a consumer who cares must consult the manifest. Custody is the open part — R-5 |
 | B7 | **EVM publisher key** | Authority to write to the registry | A compromised key can publish authentic-looking state; the owner can revoke it onchain |
 | B8 | **Deployer / owner key** | Contract deployment and publisher authorisation | Full control of the registry's publisher set |
-| B9 | **Operations / backup identity** | Service continuity and archive integrity | Backup loss or forgery; separated from publishing keys and enforced as of PLAN-T6; archive integrity is PLAN-T8 |
+| B9 | **Operations / backup identity** | Service continuity and archive integrity | Backup loss or forgery. Its address is a required manifest field as of PLAN-T6, so the publisher can be shown not to be running as it; that is an *address* separation only. Nothing yet verifies who actually funds the publisher or holds the archive, and archive integrity is PLAN-T8 |
 | B10 | **Registry contract** (X Layer) | Immutable, ordered, append-only history | Chain reorganisation or a wrong-chain deployment; guarded by an immutable expected chain id compared on every report publication, including corrections (`contracts/contracts/TouchstoneRegistry.sol:239`); publisher-authorisation writes are not chain-checked |
 | B11 | **Consumer contract** (`AssetGate`) | Enforcing its own freshness policy | A permissive policy admits stale state; the gate reacts to verification freshness, never to asset safety |
 | B12 | **Public projection** (dossier, heartbeat) | Displaying only signed, verified data | Claim inflation in the UI — see T26 |
@@ -51,12 +51,15 @@ assumptions are the product, so they are enumerated rather than minimised.
 
 Keys at B6, B7, B8 and B9 are **required to be four distinct identities**. **Amended
 2026-08-15 by PLAN-T6:** the separation is now enforced rather than stated. A deployment
-manifest cannot declare a publisher that is also the deployer or the operations address
-(`touchstone/deployment.py`); the publisher key must derive exactly the declared publisher
-address; a run refuses to start if the reporting seed and the publisher key are the same
-secret; and preflight refuses to publish if the registry's `owner()` is the publisher. No
-unlocked-account path remains anywhere in the codebase, on any network. What is *not*
-enforced is custody: see the revised R-5 and `docs/KEY-MANAGEMENT.md`.
+manifest must state all four role addresses and cannot declare a publisher that is also
+the deployer or the operations address (`touchstone/deployment.py`); the publisher key must
+derive exactly the declared publisher address; a run refuses to start if the reporting seed
+and the publisher key are the same secret; and preflight refuses to publish if the
+registry's `owner()` is the publisher, or if the publisher belongs to a different
+`publisherIdentity` lineage than the manifest declares. No unlocked-account path remains in
+the *publishing* code on any network — deployment and owner-administration calls still use
+an unlocked signer under Hardhat, which is an operator action rather than an unattended
+one. What is *not* enforced is custody: see the revised R-5 and `docs/KEY-MANAGEMENT.md`.
 
 ## 3. Threats and current disposition
 
@@ -102,8 +105,8 @@ threat identifiers `T1`–`T27` used in this section.
 |---|---|---|
 | T17 | **Signature or key compromise** | **Partially implemented.** Reports are Ed25519-signed and offline-verifiable; the registry supports onchain publisher rotation with preserved historical attribution. Reporting-key rollover is **implemented** (`touchstone/keyring.py`): the outgoing key is superseded rather than dropped, so bundles it already signed stay verifiable, and revocation is a separate, later step that cannot leave a deployment unable to sign. Rollover under load is exercised in **PLAN-T12**. Hardware-backed or multisig custody is **not a Phase 1 item at all** — `ROADMAP.md` places it in the "before external production dependence" ladder; see **R-5** |
 | T18 | **Sequence replay / gap** | **Implemented.** The registry enforces a monotonic per-asset sequence, and the publisher refuses a sequence already onchain or not exactly next (`touchstone/publish.py:381`) |
-| T19 | **Duplicate publication after a crash** | **Implemented.** A persisted pending journal plus onchain reconciliation resolves an interrupted send instead of resending it (`touchstone/publish.py:372`). Real subprocess-restart coverage is **PLAN-T7/PLAN-T12** |
-| T20 | **Chain or deployment mismatch** — publishing to the wrong chain or a wrong contract | **Partially implemented.** The registry stores an immutable expected chain id (`contracts/contracts/TouchstoneRegistry.sol:72`) and compares it on every report publication, including corrections (`contracts/contracts/TouchstoneRegistry.sol:239`); publisher-authorisation writes are not chain-checked. **Amended 2026-08-15:** client-side verification is now **implemented**. Before signing, the publisher compares the endpoint's own chain id, the runtime bytecode actually deployed at the registry address, and the chain id the registry was constructed with, against a committed deployment manifest, and refuses on any disagreement (`touchstone/publish.py`) |
+| T19 | **Duplicate publication after a crash** | **Implemented, revised 2026-08-15.** The transaction is signed *before* anything is journalled, and the journal records the exact signed bytes and nonce, so recovery re-sends those bytes rather than re-signing: identical nonce, identical hash, at most one publication however many attempts occur. This also fixed two defects in the first T6 implementation — a definite pre-broadcast refusal used to leave a journal entry claiming an unknown broadcast outcome, and a dropped transaction had no path back. The journalled hash is recomputed from its bytes on load, so an edited journal is refused. Real subprocess-restart coverage is **PLAN-T7/PLAN-T12** |
+| T20 | **Chain or deployment mismatch** — publishing to the wrong chain or a wrong contract | **Partially implemented.** The registry stores an immutable expected chain id (`contracts/contracts/TouchstoneRegistry.sol:72`) and compares it on every report publication, including corrections (`contracts/contracts/TouchstoneRegistry.sol:239`); publisher-authorisation writes are not chain-checked. **Amended 2026-08-15:** client-side verification is now **implemented**. Before signing, the publisher compares the endpoint's own chain id, the runtime bytecode actually deployed at the registry address, and the chain id the registry was constructed with, against a committed deployment manifest, and refuses on any disagreement (`touchstone/publish.py`). Publisher **lineage** is verified too: `publisherIdentity` must match the manifest, so an owner who authorizes a replacement publisher directly instead of rotating — creating a second, unrelated lineage that reads as authorized — is refused |
 | T21 | **RPC failure** | **Partially implemented.** No value is ever invented on failure, and an interrupted send is reconciled rather than resent (see T19). **Amended 2026-08-15:** endpoint pinning and client-side chain-id and runtime-bytecode verification are **implemented** (see T20), and a typed `PreflightFailed` is raised without signing. Not built: retry/backoff on a failed submission (**PLAN-T7**) |
 | T27 | **Dishonest RPC endpoint** | **Not defended — residual R-12.** Every fact the publisher reconciles against — latest sequence, receipts, events, stored reports — is read back from the same single configured endpoint that it writes through |
 
@@ -156,7 +159,7 @@ These distinctions are load-bearing and must not be collapsed:
 
 | Requirement | Status |
 |---|---|
-| Separated deployer / publisher / Ed25519 / operations keys | **Implemented 2026-08-15 (PLAN-T6)** — four distinct identities, enforced where each key is loaded and used; deployment manifest schema and X Layer templates in `deployments/`. Custody remains a residual: **R-5** |
+| Separated deployer / publisher / Ed25519 / operations keys | **Implemented 2026-08-15 (PLAN-T6)** — four distinct identities, all four addresses **required** in the manifest and enforced where each key is loaded and used; deployment manifest schema and X Layer templates in `deployments/`. Custody remains a residual: **R-5** |
 | No secrets in code, logs, bundles or clients | Holds today; no secret is committed. The E2E now warns when a Hardhat log containing development keys cannot be removed |
 | Onchain key rotation | Implemented in the registry, with preserved historical attribution and lineage |
 | Monotonic sequences + replay protection | Implemented (registry + `touchstone/publish.py:381`) |

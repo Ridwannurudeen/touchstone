@@ -53,6 +53,7 @@ def manifest(**overrides: object) -> DeploymentManifest:
         "registry_address": "0x" + "ab" * 20,
         "registry_runtime_bytecode_sha256": "cd" * 32,
         "publisher_address": address(PUBLISHER_SECRET),
+        "publisher_identity_address": address(PUBLISHER_SECRET),
         "deployer_address": address(DEPLOYER_SECRET),
         "operations_address": address(OPERATIONS_SECRET),
         "confirmations": 1,
@@ -66,7 +67,9 @@ def manifest(**overrides: object) -> DeploymentManifest:
         ],
     }
     value.update(overrides)
-    return DeploymentManifest.from_mapping(value)
+    return DeploymentManifest.from_mapping(
+        {key: item for key, item in value.items() if item is not None}
+    )
 
 
 def test_the_publisher_key_must_derive_the_declared_address() -> None:
@@ -98,6 +101,11 @@ def test_the_publisher_may_not_be_the_deployer_or_operations() -> None:
     for foreign in (DEPLOYER_SECRET, OPERATIONS_SECRET):
         with pytest.raises(IdentityMismatch, match="derives"):
             PublisherKey.from_hex(foreign, manifest())
+
+    # And the addresses cannot simply be left out to sidestep the comparison.
+    for field in ("deployer_address", "operations_address"):
+        with pytest.raises(DeploymentError, match="missing fields"):
+            manifest(**{field: None})
 
 
 def test_one_secret_cannot_hold_both_signing_roles(monkeypatch) -> None:

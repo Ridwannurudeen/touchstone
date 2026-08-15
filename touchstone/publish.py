@@ -58,6 +58,7 @@ _CONFIRMATION_POLL_SECONDS = 1.0
 _ASSET_KEY = re.compile(r"eip155:[1-9][0-9]*:0x[0-9a-f]{40}")
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _TX_HASH = re.compile(r"0x[0-9a-f]{64}")
+_LOWER_HEX = re.compile(r"(?:[0-9a-f]{2})+")
 _STATUS = {
     AssetState.CONFIRMED.value: 0,
     AssetState.STALE.value: 1,
@@ -123,6 +124,13 @@ REGISTRY_ABI = [
         "inputs": [{"name": "", "type": "address"}],
         "name": "isPublisherAuthorized",
         "outputs": [{"name": "", "type": "bool"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "", "type": "address"}],
+        "name": "publisherIdentity",
+        "outputs": [{"name": "", "type": "address"}],
         "stateMutability": "view",
         "type": "function",
     },
@@ -236,6 +244,21 @@ class PublicationResult:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedTransaction:
+    """Signed bytes that have not been broadcast, and the hash they will carry.
+
+    Preparation and broadcast are separate because they fail differently. Everything up to
+    and including signing either succeeds or refuses definitively, and a refusal must leave
+    no trace. Once these bytes exist they may reach the wire, so they are journalled before
+    they are sent and re-sending them is always idempotent.
+    """
+
+    transaction_hash: str
+    raw: bytes
+    nonce: int
+
+
+@dataclass(frozen=True, slots=True)
 class PreflightReport:
     """What the chain answered when it was checked against the manifest."""
 
@@ -247,21 +270,26 @@ class PreflightReport:
     registry_owner: str
     publisher_address: str
     publisher_authorized: bool
+    publisher_identity: str
     publisher_balance_wei: int
 
 
 class RegistryBackend(Protocol):
+    def revalidate(self) -> None: ...
+
     def latest_sequence(self, asset_key: bytes) -> int: ...
 
     def get_report(self, asset_key: bytes, sequence: int) -> ChainReport: ...
 
-    def submit(
+    def prepare(
         self,
         asset_key: bytes,
         report: Mapping[str, object],
         report_uri: str,
         correction_of: int | None,
-    ) -> str: ...
+    ) -> PreparedTransaction: ...
+
+    def broadcast(self, prepared: PreparedTransaction) -> str: ...
 
     def get_receipt(self, transaction_hash: str) -> Mapping[str, object] | None: ...
 
@@ -346,6 +374,11 @@ class SignedRegistryBackend:
                     self.publisher_address
                 ).call()
             )
+            identity = Web3.to_checksum_address(
+                self.contract.functions.publisherIdentity(
+                    self.publisher_address
+                ).call()
+            )
             balance = int(self.web3.eth.get_balance(self.publisher_address))
         except (Web3RPCError, OSError) as error:
             raise PreflightFailed(f"registry did not answer: {error}") from error
@@ -368,6 +401,16 @@ class SignedRegistryBackend:
             raise PreflightFailed(
                 f"{self.publisher_address} is not an authorized publisher"
             )
+        if identity != manifest.publisher_identity_address:
+            # Authorization alone says only that *some* owner call let this address
+            # publish. Lineage says it is the same publishing identity the manifest was
+            # written for. An owner who calls authorizePublisher(B) instead of
+            # rotatePublisher(A, B) creates a second, unrelated lineage that reads as
+            # authorized and that no consumer gated on isPublisherFor would accept.
+            raise PreflightFailed(
+                f"{self.publisher_address} belongs to publisher lineage {identity}, "
+                f"manifest declares {manifest.publisher_identity_address}"
+            )
         if balance <= 0:
             raise PreflightFailed(f"{self.publisher_address} holds no gas")
         report = PreflightReport(
@@ -379,6 +422,7 @@ class SignedRegistryBackend:
             registry_owner=owner,
             publisher_address=self.publisher_address,
             publisher_authorized=authorized,
+            publisher_identity=identity,
             publisher_balance_wei=balance,
         )
         self._preflight = report
@@ -402,13 +446,14 @@ class SignedRegistryBackend:
             report_uri=value[7],
         )
 
-    def submit(
+    def prepare(
         self,
         asset_key: bytes,
         report: Mapping[str, object],
         report_uri: str,
         correction_of: int | None,
-    ) -> str:
+    ) -> PreparedTransaction:
+        """Verify, price and sign. Refuses definitively; broadcasts nothing."""
         common = (
             asset_key,
             bytes.fromhex(report["control_set_root"]),
@@ -436,7 +481,7 @@ class SignedRegistryBackend:
             raise PreflightFailed(
                 f"the registry would reject this publication: {error}"
             ) from error
-        gas = estimated * (100 + GAS_MARGIN_PERCENT) // 100
+        gas = -(-estimated * (100 + GAS_MARGIN_PERCENT) // 100)
         fees = self._fee_fields()
         worst_case_fee = gas * fees.get("maxFeePerGas", fees.get("gasPrice", 0))
         if (
@@ -465,13 +510,32 @@ class SignedRegistryBackend:
             }
         )
         transaction_hash, raw = self.publisher_key.sign_transaction(transaction)
-        broadcast = _transaction_hash(self.web3.eth.send_raw_transaction(raw))
-        if broadcast != transaction_hash:
-            raise SubmissionFailed(
-                f"endpoint acknowledged {broadcast} for a transaction signed as "
-                f"{transaction_hash}"
+        return PreparedTransaction(
+            transaction_hash=transaction_hash,
+            raw=raw,
+            nonce=int(transaction["nonce"]),
+        )
+
+    def broadcast(self, prepared: PreparedTransaction) -> str:
+        """Send exact signed bytes. Safe to call again with the same bytes."""
+        try:
+            acknowledged = _transaction_hash(
+                self.web3.eth.send_raw_transaction(prepared.raw)
             )
-        return transaction_hash
+        except Web3RPCError as error:
+            if _is_already_known(error):
+                # The node already holds these exact bytes. Same nonce, same hash, same
+                # publication — this is the rebroadcast succeeding, not a conflict.
+                return prepared.transaction_hash
+            raise SubmissionFailed(
+                f"endpoint refused transaction {prepared.transaction_hash}: {error}"
+            ) from error
+        if acknowledged != prepared.transaction_hash:
+            raise SubmissionFailed(
+                f"endpoint acknowledged {acknowledged} for a transaction signed as "
+                f"{prepared.transaction_hash}"
+            )
+        return prepared.transaction_hash
 
     def get_receipt(self, transaction_hash: str) -> Mapping[str, object] | None:
         try:
@@ -558,6 +622,16 @@ class SignedRegistryBackend:
         transaction_hash = _transaction_hash(logs[0]["transactionHash"])
         receipt = self.web3.eth.get_transaction_receipt(transaction_hash)
         return (transaction_hash, receipt) if self._confirmed(receipt) else None
+
+    def revalidate(self) -> None:
+        """Discard the verified identity so the next read proves it again.
+
+        Called at the start of a publication or reconciliation and again once a receipt
+        has confirmed. Caching for the life of the process was wrong: an endpoint that is
+        repointed between two phases would then serve reads under an identity that was
+        checked long ago and is no longer true.
+        """
+        self._preflight = None
 
     def _ensure_preflight(self) -> PreflightReport:
         """Refuse to read the registry until the endpoint has been shown to be the one
@@ -656,6 +730,10 @@ class PublisherClient:
         if type(sequence) is not int or sequence < 1:
             raise ValueError("report sequence must be a positive integer")
         _validate_publishable_report(report)
+        # One publication is one phase. The endpoint's identity is proved at its start and
+        # again before the result is written down, so a repointed endpoint cannot be read
+        # under an identity that was verified for an earlier phase.
+        self.backend.revalidate()
         pending = self._load_pending()
         expected_pending = _pending_record(
             report, report_uri=report_uri, correction_of=correction_of
@@ -675,19 +753,18 @@ class PublisherClient:
                 raise DuplicateSequence(f"sequence {sequence} is already published")
             self._ensure_onchain_match(asset_key, report, report_uri)
             transaction_hash = pending["transaction_hash"]
-            if transaction_hash is None:
+            receipt = self.backend.get_receipt(transaction_hash)
+            if receipt is None:
+                # The chain holds this exact report, so the publication happened. A node
+                # that has pruned the receipt, or a re-mine under a different hash, must
+                # not turn a settled publication into a permanent refusal.
                 found = self.backend.find_receipt(asset_key, sequence, correction_of)
                 if found is None:
                     raise PendingSubmission(
-                        "chain advanced but its publication event is unavailable"
+                        f"sequence {sequence} is onchain but neither the receipt for "
+                        f"{transaction_hash} nor its publication event is available yet"
                     )
                 transaction_hash, receipt = found
-            else:
-                receipt = self.backend.get_receipt(transaction_hash)
-                if receipt is None:
-                    raise PendingSubmission(
-                        "chain advanced but the persisted transaction receipt is unavailable"
-                    )
             if _receipt_status(receipt) != 1:
                 raise SubmissionFailed(f"transaction {transaction_hash} failed")
             return self._finalize(
@@ -703,16 +780,24 @@ class PublisherClient:
             )
 
         if pending is not None:
-            transaction_hash = pending["transaction_hash"]
-            if transaction_hash is None:
-                raise PendingSubmission(
-                    "broadcast outcome is unknown; refusing to resubmit before chain reconciliation"
-                )
-            receipt = self.backend.get_receipt(transaction_hash)
+            prepared = _prepared_from_pending(pending)
+            receipt = self.backend.get_receipt(prepared.transaction_hash)
             if receipt is None:
-                raise PendingSubmission(
-                    f"transaction {transaction_hash} is still pending; refusing to resubmit"
-                )
+                # The journal holds the exact signed bytes, so re-sending them is
+                # idempotent: identical nonce, identical hash, and no second publication
+                # is possible. This is the difference between a transaction that was
+                # dropped from a mempool and one this process must abandon forever.
+                self.backend.broadcast(prepared)
+                try:
+                    receipt = self.backend.wait_for_receipt(
+                        prepared.transaction_hash, self.receipt_timeout
+                    )
+                except TimeExhausted as error:
+                    raise PendingSubmission(
+                        f"transaction {prepared.transaction_hash} remains pending after "
+                        "rebroadcast"
+                    ) from error
+            transaction_hash = prepared.transaction_hash
             if _receipt_status(receipt) != 1:
                 self._clear_pending()
                 raise SubmissionFailed(f"transaction {transaction_hash} failed")
@@ -729,11 +814,20 @@ class PublisherClient:
                 reconciled=True,
             )
 
-        self._write_pending({**expected_pending, "transaction_hash": None})
-        transaction_hash = self.backend.submit(
-            asset_key, report, report_uri, correction_of
+        # Preparation comes first and is journalled only once it has produced signed
+        # bytes. Everything that can refuse definitively — preflight, gas estimation, the
+        # fee ceiling, signing itself — happens before anything is written down, because a
+        # journal entry means "this may be on the wire" and a refusal never is.
+        prepared = self.backend.prepare(asset_key, report, report_uri, correction_of)
+        self._write_pending(
+            {
+                **expected_pending,
+                "nonce": prepared.nonce,
+                "raw_transaction": prepared.raw.hex(),
+                "transaction_hash": prepared.transaction_hash,
+            }
         )
-        self._write_pending({**expected_pending, "transaction_hash": transaction_hash})
+        transaction_hash = self.backend.broadcast(prepared)
         try:
             receipt = self.backend.wait_for_receipt(
                 transaction_hash, self.receipt_timeout
@@ -761,6 +855,9 @@ class PublisherClient:
     def _ensure_onchain_match(
         self, asset_key: bytes, report: Mapping[str, object], report_uri: str
     ) -> None:
+        # This is the read that decides a publication is real, so it is taken under a
+        # freshly proved endpoint identity rather than the one checked before the send.
+        self.backend.revalidate()
         onchain = self.backend.get_report(asset_key, report["sequence"])
         expected = (
             report["control_set_root"],
@@ -847,7 +944,7 @@ class PublisherClient:
         if not isinstance(value, dict):
             raise PendingSubmission("pending submission must be an object")
         transaction_hash = value.get("transaction_hash")
-        if transaction_hash is not None and (
+        if (
             not isinstance(transaction_hash, str)
             or _TX_HASH.fullmatch(transaction_hash) is None
         ):
@@ -951,6 +1048,53 @@ def _pending_record(
         "report_uri": report_uri,
         "sequence": report["sequence"],
     }
+
+
+def _is_already_known(error: Web3RPCError) -> bool:
+    """Whether a node is saying it already holds these exact bytes.
+
+    There is no standard code for it, so the text is matched. The phrasings below are the
+    ones Geth, Erigon, Nethermind and Besu use; anything else is re-raised rather than
+    guessed at, because treating an unknown refusal as success would report a publication
+    that never happened.
+    """
+    message = str(error).lower()
+    return any(
+        phrase in message
+        for phrase in (
+            "already known",
+            "already imported",
+            "alreadyknown",
+            "known transaction",
+            "transaction already in",
+            "duplicate transaction",
+        )
+    )
+
+
+def _prepared_from_pending(pending: Mapping[str, object]) -> PreparedTransaction:
+    """Rebuild the exact signed transaction a previous run journalled.
+
+    The hash is recomputed from the bytes rather than trusted: a transaction hash *is*
+    the digest of its signed encoding, so if the two disagree the journal was edited and
+    rebroadcasting it would send something nobody signed for this report.
+    """
+    raw = pending.get("raw_transaction")
+    nonce = pending.get("nonce")
+    if not isinstance(raw, str) or _LOWER_HEX.fullmatch(raw) is None or not raw:
+        raise PendingSubmission("pending submission has no signed transaction bytes")
+    if type(nonce) is not int or nonce < 0:
+        raise PendingSubmission("pending submission has an invalid nonce")
+    encoded = bytes.fromhex(raw)
+    recomputed = _transaction_hash(Web3.keccak(encoded))
+    if recomputed != pending["transaction_hash"]:
+        raise PendingSubmission(
+            f"pending submission claims {pending['transaction_hash']} but its signed "
+            f"bytes hash to {recomputed}"
+        )
+    return PreparedTransaction(
+        transaction_hash=recomputed, raw=encoded, nonce=nonce
+    )
 
 
 def _receipt_status(receipt: Mapping[str, object]) -> int:

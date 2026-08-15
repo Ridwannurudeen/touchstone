@@ -3,23 +3,46 @@ from pathlib import Path
 import pytest
 from web3.exceptions import TimeExhausted
 
+from web3 import Web3
+
 from touchstone.publish import (
     ChainReport,
     DuplicateSequence,
     PendingSubmission,
+    PreflightFailed,
+    PreparedTransaction,
     PublisherClient,
     SequenceMismatch,
 )
-from touchstone.signing import Ed25519Signer
+from touchstone.signing import (
+    Ed25519Signer,
+    canonical_json_bytes,
+    strict_json_loads,
+)
 from touchstone.translog import TransparencyLog
 
 
 class FakeBackend:
+    """Records what was prepared and what was actually broadcast, separately.
+
+    The distinction is the point: preparation can refuse, and a refusal must leave nothing
+    behind. Broadcasting the same prepared bytes twice must land exactly one publication.
+    """
+
     def __init__(self) -> None:
         self.reports: dict[bytes, list[ChainReport]] = {}
         self.receipts: dict[str, dict[str, object]] = {}
         self.submissions: list[int | None] = []
+        self.intents: dict[str, tuple] = {}
+        self.broadcasts: list[str] = []
+        self.revalidations = 0
+        self.prepared = 0
         self.time_out_once = False
+        self.refuse_before_signing = False
+        self.drop_first_broadcast = False
+
+    def revalidate(self) -> None:
+        self.revalidations += 1
 
     def latest_sequence(self, asset_key: bytes) -> int:
         return len(self.reports.get(asset_key, []))
@@ -27,9 +50,38 @@ class FakeBackend:
     def get_report(self, asset_key: bytes, sequence: int) -> ChainReport:
         return self.reports[asset_key][sequence - 1]
 
-    def submit(self, asset_key, report, report_uri, correction_of):
+    def prepare(self, asset_key, report, report_uri, correction_of):
+        """Produce bytes whose hash is genuinely their digest, as a real signer would."""
+        if self.refuse_before_signing:
+            raise PreflightFailed("definite refusal reached before any broadcast")
+        self.prepared += 1
+        raw = canonical_json_bytes(
+            {"nonce": self.prepared - 1, "sequence": report["sequence"]}
+        )
+        transaction_hash = "0x" + Web3.keccak(raw).hex().removeprefix("0x")
+        self.intents[transaction_hash] = (
+            asset_key,
+            dict(report),
+            report_uri,
+            correction_of,
+        )
+        return PreparedTransaction(
+            transaction_hash=transaction_hash, raw=raw, nonce=self.prepared - 1
+        )
+
+    def broadcast(self, prepared) -> str:
+        self.broadcasts.append(prepared.transaction_hash)
+        if self.drop_first_broadcast:
+            # The node accepted it and then the transaction never appeared: the
+            # mempool-eviction case a rebroadcast is supposed to survive.
+            self.drop_first_broadcast = False
+            return prepared.transaction_hash
+        if prepared.transaction_hash in self.receipts:
+            return prepared.transaction_hash
+        asset_key, report, report_uri, correction_of = self.intents[
+            prepared.transaction_hash
+        ]
         self.submissions.append(correction_of)
-        transaction_hash = "0x" + f"{len(self.submissions):064x}"
         self.reports.setdefault(asset_key, []).append(
             ChainReport(
                 control_set_root=report["control_set_root"],
@@ -42,13 +94,13 @@ class FakeBackend:
                 report_uri=report_uri,
             )
         )
-        self.receipts[transaction_hash] = {
+        self.receipts[prepared.transaction_hash] = {
             "blockHash": bytes.fromhex("aa" * 32),
             "blockNumber": len(self.submissions),
             "gasUsed": 200_000,
             "status": 1,
         }
-        return transaction_hash
+        return prepared.transaction_hash
 
     def get_receipt(self, transaction_hash):
         return self.receipts.get(transaction_hash)
@@ -58,14 +110,17 @@ class FakeBackend:
         if self.time_out_once:
             self.time_out_once = False
             raise TimeExhausted("pending")
+        if transaction_hash not in self.receipts:
+            raise TimeExhausted("pending")
         return self.receipts[transaction_hash]
 
     def find_receipt(self, asset_key, sequence, correction_of):
         del correction_of
-        for index, report in enumerate(self.reports.get(asset_key, []), 1):
-            if report.sequence == sequence:
-                transaction_hash = "0x" + f"{index:064x}"
-                return transaction_hash, self.receipts[transaction_hash]
+        for transaction_hash, (key, report, _, _) in self.intents.items():
+            if key == asset_key and report["sequence"] == sequence:
+                receipt = self.receipts.get(transaction_hash)
+                if receipt is not None:
+                    return transaction_hash, receipt
         return None
 
 
@@ -219,37 +274,153 @@ def test_publisher_rejects_signed_freshness_extension(tmp_path: Path) -> None:
         )
 
 
-def test_publisher_recovers_crash_between_broadcast_and_hash_journal(
-    tmp_path: Path,
-) -> None:
+def test_publisher_recovers_crash_between_journal_and_broadcast(tmp_path: Path) -> None:
+    """The journal now precedes the send, so this is the crash that can actually happen.
+
+    The record names a transaction that may never have reached the wire. Because it holds
+    the exact signed bytes, recovery re-sends those bytes rather than guessing: same nonce,
+    same hash, and therefore exactly one publication however many times it is attempted.
+    """
     backend = FakeBackend()
     client = _client(tmp_path, backend)
-    original_write = client._write_pending
-    writes = 0
+    backend_broadcast = backend.broadcast
 
-    def crash_on_hash(value):
-        nonlocal writes
-        writes += 1
-        if writes == 2:
-            raise RuntimeError("simulated crash")
-        original_write(value)
+    def crash_before_sending(prepared):
+        raise RuntimeError("simulated crash")
 
-    client._write_pending = crash_on_hash
+    backend.broadcast = crash_before_sending
     with pytest.raises(RuntimeError, match="simulated crash"):
         client.publish(
             _signed_report(1),
             published_key=_published_key(),
             report_uri="urn:touchstone:report:1",
         )
+    assert (tmp_path / "pending.json").exists(), (
+        "the signed bytes must survive the crash"
+    )
+    assert backend.submissions == []
 
+    backend.broadcast = backend_broadcast
     recovered = _client(tmp_path, backend).publish(
         _signed_report(1),
         published_key=_published_key(),
         report_uri="urn:touchstone:report:1",
     )
+
     assert recovered.reconciled is True
     assert len(backend.submissions) == 1
+    assert backend.prepared == 1, (
+        "recovery re-sends the signed bytes, it does not re-sign"
+    )
     assert len(TransparencyLog(tmp_path / "transparency.jsonl").verify()) == 1
+
+
+def test_a_refusal_before_signing_leaves_no_pending_record(tmp_path: Path) -> None:
+    """A definite refusal is not an unknown broadcast outcome.
+
+    Journalling before `submit` meant that preflight, gas estimation, the fee ceiling and
+    signing — all of which refuse without touching the wire — left a record saying a
+    transaction might be out there. The next run then refused forever to protect a
+    transaction that never existed.
+    """
+    backend = FakeBackend()
+    backend.refuse_before_signing = True
+    client = _client(tmp_path, backend)
+
+    with pytest.raises(PreflightFailed, match="before any broadcast"):
+        client.publish(
+            _signed_report(1),
+            published_key=_published_key(),
+            report_uri="urn:touchstone:report:1",
+        )
+
+    assert not (tmp_path / "pending.json").exists()
+    assert backend.broadcasts == []
+
+    backend.refuse_before_signing = False
+    result = client.publish(
+        _signed_report(1),
+        published_key=_published_key(),
+        report_uri="urn:touchstone:report:1",
+    )
+
+    assert result.reconciled is False
+    assert len(backend.submissions) == 1
+
+
+def test_a_dropped_transaction_is_rebroadcast_rather_than_abandoned(
+    tmp_path: Path,
+) -> None:
+    """A node that accepts bytes and then loses them must not end publication forever."""
+    backend = FakeBackend()
+    backend.drop_first_broadcast = True
+    client = _client(tmp_path, backend)
+
+    with pytest.raises(PendingSubmission, match="remains pending"):
+        client.publish(
+            _signed_report(1),
+            published_key=_published_key(),
+            report_uri="urn:touchstone:report:1",
+        )
+    assert backend.submissions == []
+
+    result = _client(tmp_path, backend).publish(
+        _signed_report(1),
+        published_key=_published_key(),
+        report_uri="urn:touchstone:report:1",
+    )
+
+    assert result.reconciled is True
+    assert len(backend.broadcasts) == 2, "the same bytes were sent again"
+    assert len(set(backend.broadcasts)) == 1, "and they were the same bytes"
+    assert len(backend.submissions) == 1, "landing exactly one publication"
+
+
+def test_an_edited_pending_record_is_refused(tmp_path: Path) -> None:
+    """A transaction hash is the digest of its signed bytes, so the two must agree."""
+    backend = FakeBackend()
+    backend.drop_first_broadcast = True
+    client = _client(tmp_path, backend)
+    with pytest.raises(PendingSubmission):
+        client.publish(
+            _signed_report(1),
+            published_key=_published_key(),
+            report_uri="urn:touchstone:report:1",
+        )
+
+    pending = tmp_path / "pending.json"
+    tampered = strict_json_loads(pending.read_bytes())
+    tampered["raw_transaction"] = canonical_json_bytes({"nonce": 99}).hex()
+    pending.write_bytes(canonical_json_bytes(tampered) + b"\n")
+
+    with pytest.raises(PendingSubmission, match="signed bytes hash to"):
+        _client(tmp_path, backend).publish(
+            _signed_report(1),
+            published_key=_published_key(),
+            report_uri="urn:touchstone:report:1",
+        )
+    assert len(backend.broadcasts) == 1, "nothing further was sent"
+
+
+def test_endpoint_identity_is_reproved_within_a_publication(tmp_path: Path) -> None:
+    """Caching a verified identity for the life of the process was the defect.
+
+    An endpoint repointed between phases would otherwise serve the reads that decide a
+    publication is real under an identity checked long before.
+    """
+    backend = FakeBackend()
+    client = _client(tmp_path, backend)
+
+    client.publish(
+        _signed_report(1),
+        published_key=_published_key(),
+        report_uri="urn:touchstone:report:1",
+    )
+
+    assert backend.revalidations >= 2, (
+        "identity is reproved at the start of the publication and again before the "
+        "onchain result is accepted"
+    )
 
 
 def test_publishing_has_no_unlocked_account_path() -> None:

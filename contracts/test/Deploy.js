@@ -36,10 +36,11 @@ describe("deploy script", function () {
   });
 
   it("digests the runtime bytecode the chain actually holds", async function () {
-    const { publisher } = await roles();
+    const { publisher, operations } = await roles();
 
     const { registry, manifest } = await deploy({
       publisherAddress: publisher.address,
+      operationsAddress: operations.address,
       reporterPublicKey: REPORTER_PUBLIC_KEY,
     });
 
@@ -53,10 +54,11 @@ describe("deploy script", function () {
   });
 
   it("records the deployment block so reconciliation never scans from genesis", async function () {
-    const { publisher } = await roles();
+    const { publisher, operations } = await roles();
 
     const { registry, manifest } = await deploy({
       publisherAddress: publisher.address,
+      operationsAddress: operations.address,
       reporterPublicKey: REPORTER_PUBLIC_KEY,
     });
 
@@ -87,10 +89,11 @@ describe("deploy script", function () {
   });
 
   it("derives the reporting key id from the published public key", async function () {
-    const { publisher } = await roles();
+    const { publisher, operations } = await roles();
 
     const { manifest } = await deploy({
       publisherAddress: publisher.address,
+      operationsAddress: operations.address,
       reporterPublicKey: REPORTER_PUBLIC_KEY,
     });
 
@@ -107,11 +110,12 @@ describe("deploy script", function () {
   });
 
   it("refuses to deploy with the publisher as the deployer", async function () {
-    const { deployer } = await roles();
+    const { deployer, operations } = await roles();
 
     await expect(
       deploy({
         publisherAddress: deployer.address,
+        operationsAddress: operations.address,
         reporterPublicKey: REPORTER_PUBLIC_KEY,
       }),
     ).to.be.rejectedWith("must not be the deployer");
@@ -137,13 +141,75 @@ describe("deploy script", function () {
   });
 
   it("refuses a reporting key that is not 32 hexadecimal bytes", async function () {
-    const { publisher } = await roles();
+    const { publisher, operations } = await roles();
 
     for (const bad of ["", "aa", "AA".repeat(32), `0x${"aa".repeat(32)}`]) {
       await expect(
-        deploy({ publisherAddress: publisher.address, reporterPublicKey: bad }),
+        deploy({
+          publisherAddress: publisher.address,
+          operationsAddress: operations.address,
+          reporterPublicKey: bad,
+        }),
       ).to.be.rejectedWith("32 lowercase hexadecimal bytes");
     }
+  });
+
+  it("pins the publisher lineage the registry recorded", async function () {
+    // Authorization says an owner call let this address publish. Lineage says it is the
+    // same publishing identity the manifest was written for, which authorization alone
+    // cannot distinguish from an unrelated second authorization.
+    const { publisher, operations } = await roles();
+
+    const { registry, manifest } = await deploy({
+      publisherAddress: publisher.address,
+      operationsAddress: operations.address,
+      reporterPublicKey: REPORTER_PUBLIC_KEY,
+    });
+
+    expect(manifest.publisher_identity_address).to.equal(
+      await registry.publisherIdentity(publisher.address),
+    );
+    expect(manifest.publisher_identity_address).to.not.equal(ethers.ZeroAddress);
+  });
+
+  it("validates every operator-controlled field before it sends anything", async function () {
+    // A field checked after deployment cannot be fixed: on a public chain an invalid
+    // manifest discovered afterwards leaves a deployed, authorized registry that nothing
+    // can publish to, and neither send can be undone.
+    const { publisher, operations } = await roles();
+    const before = await ethers.provider.getBlockNumber();
+
+    for (const invalid of [
+      { network: "not-a-supported-network" },
+      { confirmations: 0 },
+      { confirmations: 1.5 },
+      { maxFeeWei: 0 },
+    ]) {
+      await expect(
+        deploy({
+          publisherAddress: publisher.address,
+          operationsAddress: operations.address,
+          reporterPublicKey: REPORTER_PUBLIC_KEY,
+          ...invalid,
+        }),
+      ).to.be.rejected;
+    }
+
+    expect(await ethers.provider.getBlockNumber()).to.equal(
+      before,
+      "no transaction may be sent before the inputs are known to be valid",
+    );
+  });
+
+  it("requires an operations identity rather than treating it as optional", async function () {
+    const { publisher } = await roles();
+
+    await expect(
+      deploy({
+        publisherAddress: publisher.address,
+        reporterPublicKey: REPORTER_PUBLIC_KEY,
+      }),
+    ).to.be.rejectedWith("operationsAddress is required");
   });
 
   it("names the confirmation variable a stale export cannot satisfy", function () {

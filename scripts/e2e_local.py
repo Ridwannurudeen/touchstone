@@ -65,9 +65,9 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
     if not web3.is_connected():
         raise ConnectionError(f"no local Hardhat node at {rpc_url}")
     accounts = web3.eth.accounts
-    if len(accounts) < 2:
-        raise RuntimeError("local node must expose at least two unlocked accounts")
-    owner, publisher = accounts[:2]
+    if len(accounts) < 3:
+        raise RuntimeError("local node must expose at least three accounts")
+    owner, publisher, operations = accounts[:3]
     registry_artifact = _artifact("TouchstoneRegistry")
     gate_artifact = _artifact("AssetGate")
 
@@ -142,11 +142,13 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
         log = TransparencyLog(workspace / "transparency.jsonl")
         manifest = _local_manifest(
             web3,
+            registry=registry,
             rpc_url=rpc_url,
             registry_address=registry_receipt.contractAddress,
             deployment_block=registry_receipt.blockNumber,
             deployer=owner,
             publisher=publisher,
+            operations=operations,
             reporter_public_key=signer.public_key_record()["public_key"],
         )
         backend = SignedRegistryBackend(
@@ -217,6 +219,7 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
             "historical_sequence": historical[6],
             "log_entries": len(log.verify()),
             "publisher_authorized": preflight.publisher_authorized,
+            "publisher_identity": preflight.publisher_identity,
             "registry": registry_receipt.contractAddress,
             "registry_runtime_bytecode_sha256": (
                 preflight.registry_runtime_bytecode_sha256
@@ -243,11 +246,13 @@ def _publisher_private_key(expected_address: str) -> str:
 def _local_manifest(
     web3: Web3,
     *,
+    registry,
     rpc_url: str,
     registry_address: str,
     deployment_block: int,
     deployer: str,
     publisher: str,
+    operations: str,
     reporter_public_key: str,
 ) -> DeploymentManifest:
     """Describe the deployment this run just made, the way an operator's file would.
@@ -267,7 +272,11 @@ def _local_manifest(
                 bytes(web3.eth.get_code(registry_address))
             ),
             "publisher_address": publisher,
+            "publisher_identity_address": registry.functions.publisherIdentity(
+                publisher
+            ).call(),
             "deployer_address": deployer,
+            "operations_address": operations,
             "confirmations": 1,
             "deployment_block": deployment_block,
             "reporting_keys": [

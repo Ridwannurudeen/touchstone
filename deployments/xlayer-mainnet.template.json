@@ -6,6 +6,7 @@
   "registry_address": "0x1111111111111111111111111111111111111111",
   "registry_runtime_bytecode_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
   "publisher_address": "0x2222222222222222222222222222222222222222",
+  "publisher_identity_address": "0x2222222222222222222222222222222222222222",
   "deployer_address": "0x3333333333333333333333333333333333333333",
   "operations_address": "0x4444444444444444444444444444444444444444",
   "confirmations": 12,
@@ -18,5 +19,5 @@
       "state": "active"
     }
   ],
-  "notes": "TEMPLATE — this file is refused by the publisher until every value is replaced with one from an actual deployment and this note is removed. Do not hand-fill it: run contracts/scripts/deploy.js, which derives the address, the runtime bytecode digest and the deployment block from the deployment itself. Chain id 196 and https://rpc.xlayer.tech are X Layer's published mainnet values as of 2026-08-15; confirm both against the endpoint's own eth_chainId before use — the publisher verifies this at preflight and will refuse on a mismatch. The addresses and the reporting key above are placeholders and are not derived from any key. Mainnet deployment is an owner decision and is gated: contracts/scripts/deploy.js refuses to send until TOUCHSTONE_DEPLOY_CONFIRM_CHAIN_ID names this exact chain."
+  "notes": "TEMPLATE \u2014 the publisher refuses this file until every value is replaced with one from an actual deployment and this note is removed. Do not hand-fill it: run contracts/scripts/deploy.js, which derives the address, the runtime bytecode digest, the publisher lineage and the deployment block from the deployment itself. The addresses and the reporting key above are placeholders and are not derived from any key. Note the marker is a tripwire, not provenance: deleting this note makes the placeholders load, and only preflight then refuses them. Chain id 196 and https://rpc.xlayer.tech are X Layer's mainnet values, verified 2026-08-15 against chainid.network/chain/196. Confirm against the endpoint's own eth_chainId before use. Mainnet deployment is an owner decision and is gated: contracts/scripts/deploy.js refuses to send until TOUCHSTONE_DEPLOY_CONFIRM_CHAIN_ID names this exact chain."
 }

@@ -10,6 +10,7 @@ each is the same: nothing is signed, and nothing is sent.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import hashlib
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,7 +22,12 @@ import pytest
 from web3 import Web3
 
 from touchstone.deployment import DeploymentManifest
-from touchstone.keyring import PUBLISHER_KEY_ENV, PublisherKey
+from touchstone.keyring import (
+    PUBLISHER_KEY_ENV,
+    PublisherKey,
+    rolled_over,
+    verification_keys,
+)
 from touchstone.publish import PreflightFailed, SignedRegistryBackend
 from touchstone.signing import SIGNING_SEED_ENV, Ed25519Signer
 
@@ -30,6 +36,8 @@ import scripts.publish_epoch as publish_epoch
 
 PUBLISHER_SECRET = "a1" * 32
 DEPLOYER_SECRET = "b2" * 32
+OPERATIONS_SECRET = "c3" * 32
+STRANGER_SECRET = "d4" * 32
 REPORTER_SEED = bytes(range(32))
 RUNTIME_CODE = bytes.fromhex("60806040523480156100")
 RUNTIME_SHA256 = hashlib.sha256(RUNTIME_CODE).hexdigest()
@@ -45,6 +53,7 @@ SELECTORS = {
     "owner": selector("owner()"),
     "expectedChainId": selector("expectedChainId()"),
     "isPublisherAuthorized": selector("isPublisherAuthorized(address)"),
+    "publisherIdentity": selector("publisherIdentity(address)"),
     "latestSequence": selector("latestSequence(bytes32)"),
 }
 
@@ -63,6 +72,8 @@ class StubNode:
     def __init__(self, **overrides: object) -> None:
         publisher = Account.from_key(bytes.fromhex(PUBLISHER_SECRET)).address
         deployer = Account.from_key(bytes.fromhex(DEPLOYER_SECRET)).address
+        # Lineage defaults to the publisher itself, which is what authorizePublisher
+        # records for a first authorization.
         self.answers: dict[str, object] = {
             "eth_chainId": hex(CHAIN_ID),
             "eth_blockNumber": hex(120),
@@ -71,6 +82,7 @@ class StubNode:
             "owner": address_word(deployer),
             "expectedChainId": word(CHAIN_ID),
             "isPublisherAuthorized": word(1),
+            "publisherIdentity": address_word(publisher),
             "latestSequence": word(0),
         }
         self.answers.update(overrides)
@@ -138,7 +150,13 @@ def manifest_for(node: StubNode, **overrides: object) -> DeploymentManifest:
         "registry_address": REGISTRY,
         "registry_runtime_bytecode_sha256": RUNTIME_SHA256,
         "publisher_address": Account.from_key(bytes.fromhex(PUBLISHER_SECRET)).address,
+        "publisher_identity_address": Account.from_key(
+            bytes.fromhex(PUBLISHER_SECRET)
+        ).address,
         "deployer_address": Account.from_key(bytes.fromhex(DEPLOYER_SECRET)).address,
+        "operations_address": Account.from_key(
+            bytes.fromhex(OPERATIONS_SECRET)
+        ).address,
         "confirmations": 1,
         "deployment_block": 3,
         "reporting_keys": [
@@ -220,9 +238,23 @@ def test_publishing_as_the_owner_is_refused() -> None:
 
 def test_an_owner_that_is_not_the_declared_deployer_is_refused() -> None:
     """Ownership moving without the manifest saying so is a change nobody recorded."""
-    stranger = Account.from_key(bytes.fromhex("c3" * 32)).address
+    stranger = Account.from_key(bytes.fromhex(STRANGER_SECRET)).address
     with StubNode(owner=address_word(stranger)) as node:
         with pytest.raises(PreflightFailed, match="registry owner is"):
+            backend_for(node).preflight()
+
+
+def test_a_publisher_from_another_lineage_is_refused() -> None:
+    """Authorization says an owner call let this address publish. Lineage says it is the
+    same publishing identity the manifest was written for.
+
+    An owner who calls authorizePublisher(B) instead of rotatePublisher(A, B) creates a
+    second, unrelated lineage. It reads as authorized, and no consumer gated on
+    isPublisherFor would accept it.
+    """
+    stranger = Account.from_key(bytes.fromhex(STRANGER_SECRET)).address
+    with StubNode(publisherIdentity=address_word(stranger)) as node:
+        with pytest.raises(PreflightFailed, match="belongs to publisher lineage"):
             backend_for(node).preflight()
 
 
@@ -243,14 +275,16 @@ def test_the_registry_is_not_read_through_an_unverified_endpoint() -> None:
 def test_a_key_that_is_not_the_declared_publisher_cannot_build_a_backend() -> None:
     with StubNode() as node:
         manifest = manifest_for(node)
+        deployer_as_publisher = Account.from_key(bytes.fromhex(DEPLOYER_SECRET)).address
         foreign = PublisherKey.from_hex(
             DEPLOYER_SECRET,
             manifest_for(
                 node,
-                publisher_address=Account.from_key(
-                    bytes.fromhex(DEPLOYER_SECRET)
+                publisher_address=deployer_as_publisher,
+                publisher_identity_address=deployer_as_publisher,
+                deployer_address=Account.from_key(
+                    bytes.fromhex(STRANGER_SECRET)
                 ).address,
-                deployer_address=None,
             ),
         )
         with pytest.raises(PreflightFailed, match="is not the manifest's"):
@@ -312,7 +346,62 @@ def test_the_cli_refuses_to_publish_under_an_untrusted_reporting_key(
         sent = [call for call in node.calls if "send" in call.lower()]
 
     assert code == 1
-    assert "does not carry a trusted reporting key" in capsys.readouterr().err
+    assert "is not this deployment's active reporting key" in capsys.readouterr().err
+    assert sent == []
+
+
+def test_a_superseded_key_verifies_history_but_cannot_publish_anew(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """Rollover has to actually change which key can publish, or it changed nothing.
+
+    The retired key stays published so that what it already signed keeps verifying. That
+    is a statement about the past. Letting it place a *new* report would leave a retired
+    key still able to write to the registry, which is the thing rolling over exists to end.
+    A date check would not substitute: a compromised key can backdate its own report.
+    """
+    monkeypatch.setenv(PUBLISHER_KEY_ENV, PUBLISHER_SECRET)
+    retired = Ed25519Signer.from_seed(REPORTER_SEED)
+    successor = Ed25519Signer.from_seed(bytes(range(1, 33)))
+    report = tmp_path / "signed.json"
+    report.write_text(
+        json.dumps(retired.sign_report({"asset_key": "x", "sequence": 1})),
+        encoding="utf-8",
+    )
+    with StubNode() as node:
+        rotated = rolled_over(
+            manifest_for(node),
+            new_public_key=bytes.fromhex(successor.public_key_record()["public_key"]),
+            at=datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc),
+        )
+        path = tmp_path / "rotated.json"
+        path.write_text(json.dumps(rotated.to_mapping()), encoding="utf-8")
+
+        # It is still trusted for verification...
+        assert retired.kid in verification_keys(rotated)
+        assert rotated.key(retired.kid).state == "superseded"
+
+        # ...and it can no longer publish.
+        code = publish_epoch.main(
+            [
+                "--manifest",
+                str(path),
+                "--signed-report",
+                str(report),
+                "--report-uri",
+                "urn:touchstone:test:1",
+                "--transparency-log",
+                str(tmp_path / "log.jsonl"),
+                "--pending",
+                str(tmp_path / "pending.json"),
+            ]
+        )
+        sent = [call for call in node.calls if "send" in call.lower()]
+
+    assert code == 1
+    error = capsys.readouterr().err
+    assert "not this deployment's active reporting key" in error
+    assert "superseded or revoked" in error
     assert sent == []
 
 

@@ -20,6 +20,7 @@ from touchstone.signing import Ed25519Signer, kid_for_public_key
 # Lowercase and letter-bearing, so checksumming is observable rather than a no-op.
 REGISTRY = "0x" + "ab" * 20
 PUBLISHER = "0x" + "cd" * 20
+IDENTITY = "0x" + "cd" * 20
 DEPLOYER = "0x" + "ef" * 20
 OPERATIONS = "0x" + "ba" * 20
 PUBLIC_KEY = Ed25519Signer.from_seed(bytes(range(32))).public_key_record()["public_key"]
@@ -35,6 +36,7 @@ def manifest(**overrides: object) -> dict[str, object]:
         "registry_address": REGISTRY,
         "registry_runtime_bytecode_sha256": "ab" * 32,
         "publisher_address": PUBLISHER,
+        "publisher_identity_address": IDENTITY,
         "deployer_address": DEPLOYER,
         "operations_address": OPERATIONS,
         "confirmations": 1,
@@ -72,6 +74,9 @@ def test_a_manifest_round_trips_through_its_on_disk_shape() -> None:
         "registry_address",
         "registry_runtime_bytecode_sha256",
         "publisher_address",
+        "publisher_identity_address",
+        "deployer_address",
+        "operations_address",
         "confirmations",
         "reporting_keys",
     ],
@@ -82,6 +87,20 @@ def test_every_required_field_is_required(field: str) -> None:
 
     with pytest.raises(DeploymentError, match="missing fields"):
         DeploymentManifest.from_mapping(value)
+
+
+def test_a_role_address_may_not_be_left_unstated() -> None:
+    """An unstated role address cannot be shown to be separate from the publisher.
+
+    These were optional at first, which made the whole four-identity separation optional:
+    a manifest that simply omitted the deployer and operations addresses passed every
+    check while proving nothing about either.
+    """
+    for field in ("deployer_address", "operations_address", "publisher_identity_address"):
+        value = manifest()
+        del value[field]
+        with pytest.raises(DeploymentError, match=f"missing fields.*{field}"):
+            DeploymentManifest.from_mapping(value)
 
 
 def test_an_unknown_field_is_refused_rather_than_ignored() -> None:
@@ -102,6 +121,38 @@ def test_the_local_network_is_pinned_to_the_local_chain_id() -> None:
                 max_fee_wei=1,
             )
         )
+
+
+def test_a_public_endpoint_may_carry_a_path_but_never_a_secret() -> None:
+    """X Layer's own testnet endpoint ends in /terigon, so a path cannot be refused.
+
+    A query or fragment can be, and is: that is where an API key would sit in a file that
+    gets committed. A key hidden in a path segment is indistinguishable from a required
+    one, and this check does not pretend otherwise.
+    """
+    accepted = DeploymentManifest.from_mapping(
+        manifest(
+            network="xlayer-testnet",
+            chain_id=1952,
+            rpc_url="https://testrpc.xlayer.tech/terigon",
+            max_fee_wei=1,
+        )
+    )
+    assert accepted.rpc_url.endswith("/terigon")
+
+    for url in (
+        "https://rpc.example?apikey=secret",
+        "https://rpc.example/v2#token",
+    ):
+        with pytest.raises(DeploymentError, match="query or fragment"):
+            DeploymentManifest.from_mapping(
+                manifest(
+                    network="xlayer-testnet",
+                    chain_id=1952,
+                    rpc_url=url,
+                    max_fee_wei=1,
+                )
+            )
 
 
 def test_a_public_network_must_be_https_without_credentials() -> None:
@@ -125,7 +176,7 @@ def test_a_public_network_requires_a_fee_ceiling() -> None:
     with pytest.raises(DeploymentError, match="max_fee_wei is required"):
         DeploymentManifest.from_mapping(
             manifest(
-                network="xlayer-testnet", chain_id=195, rpc_url="https://rpc.example"
+                network="xlayer-testnet", chain_id=1952, rpc_url="https://rpc.example"
             )
         )
 
