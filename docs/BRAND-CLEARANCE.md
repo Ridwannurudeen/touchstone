@@ -1,6 +1,7 @@
 # Brand-collision report — "Touchstone"
 
-**Searches run:** 2026-08-14, 21:27–21:50 UTC · **Compiled:** 2026-08-14
+**Searches run:** 2026-08-14, 21:27–21:50 UTC (main sweep) and 23:47–23:56 UTC
+(registrar attempt §4, phonetic set §8.1, CoinMarketCap re-check §6) · **Compiled:** 2026-08-14
 
 This is a record of searches performed and what they returned. **It is not a legal clearance
 opinion and must never be described as one.** Nothing here was registered, purchased,
@@ -96,12 +97,16 @@ reality — and a trust layer — for agents"*, 16 priced endpoints settling via
 
 ### 1.4 A factual correction owed to `ROADMAP.md`
 
-`ROADMAP.md` states: *"Verified the same day: no existing crypto/web3 project uses the
-name."* Dated 2026-08-13. The Morpho announcement (2026-07-15) and the mainnet contracts
-(deployed 2026-07-07) predate it. The claim appears **twice** — `ROADMAP.md:5` and
-`ROADMAP.md:141`. Both have been corrected in place to point at this report, on the audit
-ruling that this is a factual status reference rather than owner-authored policy. The
-surrounding brand-clearance policy text was left untouched.
+`ROADMAP.md` **formerly stated**, in two places and dated 2026-08-13, that no existing
+crypto/web3 project used the name. The Morpho announcement (2026-07-15) and the mainnet
+contracts (deployed 2026-07-07) both predate that claim, so it was false when written.
+
+On the audit ruling that this is a factual status reference rather than owner-authored
+policy, **both occurrences were corrected in place on 2026-08-14** and now point at this
+report: the naming note records that the claim was corrected and names the two collisions,
+and the brand-clearance section records that the earlier finding was wrong. The surrounding
+brand-clearance policy text was left untouched. No line references are given here because
+they move with the file.
 
 ---
 
@@ -288,7 +293,7 @@ prediction about whether they could be registered is made here.
 |---|---|---|---|
 | CoinGecko search + full coin list (18,412 coins parsed) | complete | `no_match_found` | No coin named or symbolled Touchstone/TSTONE |
 | CoinGecko inactive/delisted — `api.coingecko.com/api/v3/coins/list?status=inactive` | **not_completed** | indeterminate | HTTP 401, error 10005 — pro-API only. Delisted tokens unchecked |
-| CoinMarketCap — `api.coinmarketcap.com/data-api/v3/search`, `/data-api/v4/search`, `/aggr/v3/search/multi`, `/dexer/v3/.../search`, `coinmarketcap.com/search/?q=touchstone` | **not_completed** | **indeterminate** | HTTP 404 (v3/v4), *"The system is busy, please try again later!"* (aggr), 503 `no healthy upstream` (dexer), host DNS-blocked in sandbox, `ETIMEOUT` via fetcher |
+| CoinMarketCap — see the re-check below | **not_completed** | **indeterminate** | Every route refused; calibrated against a control |
 | DefiLlama protocols (8,056 parsed) | complete | `no_match_found` | — |
 | DefiLlama raises — `api.llama.fi/raises`; curators — `api.llama.fi/curators`, `defillama.com/api/curators` | **not_completed** | indeterminate | HTTP 402 (paid endpoint) / HTTP 404 (endpoint does not exist). **The live collision in §1.2 is a Morpho *curator*, so precisely this surface is unchecked** |
 | Dexscreener (4 queries) | complete | `no_match_found` | No pool-bearing Touchstone token on indexed chains |
@@ -304,6 +309,27 @@ prediction about whether they could be registered is made here.
 and Basescan returned empty while four exist on Base. Those indexes cover labelled or priced
 tokens only. **This is direct proof, within this report, that `no_match_found` on a tracker
 does not mean the name is unused on that chain.**
+
+#### CoinMarketCap re-check, with exact requests
+
+The first pass recorded elided paths. These were re-run at **2026-08-14T23:56:38Z** with the
+exact URLs below, all `GET`, no request body, no authentication:
+
+| URL | HTTP | Body |
+|---|---|---|
+| `https://api.coinmarketcap.com/data-api/v3/search?keyword=touchstone` | **404** | — |
+| `https://api.coinmarketcap.com/aggr/v3/search/multi?keyword=touchstone` | **200** | `{"status":{"error_code":"500","error_message":"The system is busy, please try again later!"}}` |
+| `https://coinmarketcap.com/search/?q=touchstone` | **404** | — |
+
+**Control:** the same `aggr/v3/search/multi` route queried with `keyword=bitcoin` returned
+the **identical** `error_code 500 / "The system is busy"` body. The endpoint is therefore
+refusing uniformly — it is **not** returning "no result" for this name. `search_execution`
+stays **not_completed** and `search_result` stays **indeterminate**; a human must use the
+site in a browser (§9 item 9).
+
+The earlier pass additionally reported `/data-api/v4/search` and a `/dexer/v3/…/search`
+route returning 404 and 503 `no healthy upstream`; **those exact URLs were not captured at
+the time and are not reconstructed here.**
 
 ### X Layer — the intended deployment chain, and the weakest coverage here
 
