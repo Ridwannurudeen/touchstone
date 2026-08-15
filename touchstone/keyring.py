@@ -140,7 +140,19 @@ def decoded_transaction(raw: bytes) -> dict[str, object]:
         if raw[0] >= 0xC0:
             fields = _decoded_legacy(raw)
         else:
+            if raw[0] != 0x02:
+                # Only the two envelopes this project actually signs are accepted. A
+                # type-4 transaction decodes perfectly well and carries an authorization
+                # list that nothing here compares, so a journal could hold the expected
+                # publication calldata *and* a delegation of the publisher's account —
+                # and rebroadcasting it would execute both intents.
+                raise ValueError(
+                    f"transaction envelope type {raw[0]} is not one this publisher "
+                    "signs; only EIP-155 legacy and EIP-1559 type 2 are recoverable"
+                )
             fields = TypedTransaction.from_bytes(HexBytes(raw)).as_dict()
+            if fields.get("accessList"):
+                raise ValueError("a publication must carry no access list")
     except ValueError:
         raise
     except Exception as error:

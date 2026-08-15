@@ -35,6 +35,9 @@ OPERATIONS_SECRET = "c3" * 32
 REGISTRY = Web3.to_checksum_address("0x" + "ab" * 20)
 REPORTER = Ed25519Signer.from_seed(bytes(range(32)))
 CHAIN_ID = 31337
+STRANGER_SECRET = "d4" * 32
+# The publishing identity the registry recorded; it survives a rotation of the address.
+REGISTRY_LINEAGE = Account.from_key(bytes.fromhex(PUBLISHER_SECRET)).address
 
 
 def address(secret: str) -> str:
@@ -75,9 +78,13 @@ class FakeBackend:
     production path cannot.
     """
 
-    def __init__(self, manifest: DeploymentManifest | None = None) -> None:
+    def __init__(
+        self,
+        manifest: DeploymentManifest | None = None,
+        secret: str = PUBLISHER_SECRET,
+    ) -> None:
         self.manifest = manifest if manifest is not None else _manifest()
-        self.key = PublisherKey.from_hex(PUBLISHER_SECRET, self.manifest)
+        self.key = PublisherKey.from_hex(secret, self.manifest)
         self.reports: dict[bytes, list[ChainReport]] = {}
         self.receipts: dict[str, dict[str, object]] = {}
         self.submissions: list[int | None] = []
@@ -90,11 +97,21 @@ class FakeBackend:
         self.refuse_before_signing = False
         self.drop_first_broadcast = False
         self.withhold_confirmation = False
+        self.failing_receipt = False
         self.publisher_override: str | None = None
+        # address -> the publishing identity the registry recorded for it
+        self.lineage: dict[str, str] = {}
 
     def revalidate(self) -> None:
         self.revalidations += 1
         self.reads.append("revalidate")
+
+    def publisher_lineage(self, address: str) -> str:
+        """Lineage follows the registry: rotation carries it, strangers do not share it."""
+        self.reads.append("publisher_lineage")
+        return self.lineage.get(
+            Web3.to_checksum_address(address), Web3.to_checksum_address(address)
+        )
 
     def identity(self) -> DeploymentIdentity:
         return DeploymentIdentity(
@@ -178,7 +195,7 @@ class FakeBackend:
             "blockHash": bytes.fromhex("aa" * 32),
             "blockNumber": len(self.submissions),
             "gasUsed": 200_000,
-            "status": 1,
+            "status": 0 if self.failing_receipt else 1,
         }
         return prepared.transaction_hash
 
@@ -681,4 +698,121 @@ def test_publishing_has_no_unlocked_account_path() -> None:
     source = Path(publish_module.__file__).read_text(encoding="utf-8")
     assert ".transact(" not in source, (
         "transact() asks a node to sign; every send must be a signed raw transaction"
+    )
+
+
+def test_a_rotated_publisher_can_still_reconcile_what_the_old_one_published(
+    tmp_path: Path,
+) -> None:
+    """Pinning reconciliation to the current address broke every rotation.
+
+    A publication confirms, the process dies before it is recorded, the owner rotates the
+    publisher, and the restart then refused its own settled publication forever — while
+    the journal it could not clear blocked everything after it. The registry carries the
+    lineage across a rotation precisely so this case works.
+    """
+    outgoing = FakeBackend()
+    outgoing.time_out_once = True
+    with pytest.raises(PendingSubmission):
+        _client(tmp_path, outgoing).publish(
+            _signed_report(1), report_uri="urn:touchstone:report:1"
+        )
+    assert len(outgoing.submissions) == 1, "the publication did settle"
+
+    # The owner rotates: a new address, the same lineage.
+    successor = address(STRANGER_SECRET)
+    rotated = FakeBackend(
+        _manifest(
+            publisher_address=successor, publisher_identity_address=REGISTRY_LINEAGE
+        ),
+        secret=STRANGER_SECRET,
+    )
+    rotated.reports = outgoing.reports
+    rotated.receipts = outgoing.receipts
+    rotated.intents = outgoing.intents
+    rotated.submissions = outgoing.submissions
+    rotated.lineage = {
+        address(PUBLISHER_SECRET): REGISTRY_LINEAGE,
+        successor: REGISTRY_LINEAGE,
+    }
+
+    result = PublisherClient(
+        rotated,
+        TransparencyLog(tmp_path / "transparency.jsonl"),
+        tmp_path / "pending.json",
+    ).publish(_signed_report(1), report_uri="urn:touchstone:report:1")
+
+    assert result.reconciled is True
+    assert len(rotated.submissions) == 1, "nothing was published a second time"
+    assert not (tmp_path / "pending.json").exists()
+
+
+def test_a_rotated_out_signer_cannot_still_send(tmp_path: Path) -> None:
+    """Reconciling what an old key already published is fine. Sending for it is not."""
+    stranded = FakeBackend()
+    stranded.drop_first_broadcast = True
+    with pytest.raises(PendingSubmission):
+        _client(tmp_path, stranded).publish(
+            _signed_report(1), report_uri="urn:touchstone:report:1"
+        )
+    assert stranded.submissions == []
+
+    successor = address(STRANGER_SECRET)
+    rotated = FakeBackend(
+        _manifest(
+            publisher_address=successor, publisher_identity_address=REGISTRY_LINEAGE
+        ),
+        secret=STRANGER_SECRET,
+    )
+    rotated.lineage = {
+        address(PUBLISHER_SECRET): REGISTRY_LINEAGE,
+        successor: REGISTRY_LINEAGE,
+    }
+
+    with pytest.raises(PendingSubmission, match="no longer this deployment's publisher"):
+        PublisherClient(
+            rotated,
+            TransparencyLog(tmp_path / "transparency.jsonl"),
+            tmp_path / "pending.json",
+        ).publish(_signed_report(1), report_uri="urn:touchstone:report:1")
+    assert rotated.broadcasts == []
+
+
+def test_a_failed_receipt_is_not_believed_before_identity_is_reproved(
+    tmp_path: Path,
+) -> None:
+    """Declaring failure destroys the journal, so it is a decision like any other.
+
+    The ordering rule was written for the success path only: a status-0 receipt was read,
+    believed, and the journal discarded, all before the endpoint was rechecked. A
+    repointed endpoint could therefore both invent the failure and erase the record of
+    what had actually been sent.
+    """
+    backend = FakeBackend()
+    backend.failing_receipt = True
+
+    with pytest.raises(SubmissionFailed, match="failed"):
+        _client(tmp_path, backend).publish(
+            _signed_report(1), report_uri="urn:touchstone:report:1"
+        )
+
+    after_wait = backend.reads[backend.reads.index("wait_for_receipt") + 1 :]
+    assert after_wait and after_wait[0] == "revalidate", (
+        "identity must be reproved before a receipt is allowed to mean failure"
+    )
+
+
+def test_revalidation_actually_verifies_rather_than_only_dropping_a_cache() -> None:
+    """A revalidate that merely invalidates proves nothing on its own.
+
+    Where the next step is a client-side decision rather than a chain read — reading a
+    failed receipt, for instance — nothing would ever have re-verified the endpoint.
+    """
+    import inspect
+
+    from touchstone.publish import SignedRegistryBackend
+
+    source = inspect.getsource(SignedRegistryBackend.revalidate)
+    assert "self.preflight()" in source, (
+        "revalidate must re-run preflight, not just clear the cached result"
     )

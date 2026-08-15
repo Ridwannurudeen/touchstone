@@ -294,13 +294,15 @@ class RegistryBackend(Protocol):
     # active", and the client believed whichever one it was handed.
     manifest: DeploymentManifest
 
-    def revalidate(self) -> None: ...
+    def revalidate(self) -> object: ...
 
     def receipt_state(
         self, transaction_hash: str
     ) -> tuple[str, Mapping[str, object] | None]: ...
 
     def identity(self) -> DeploymentIdentity: ...
+
+    def publisher_lineage(self, address: str) -> str: ...
 
     def calldata(
         self,
@@ -680,14 +682,12 @@ class SignedRegistryBackend:
         )
         logs = tuple(
             event.get_logs(
-                # Filtered by publisher as well as by asset and sequence. Another
-                # authorized publisher can emit the same asset and sequence, and adopting
-                # their event would record their transaction as ours.
-                argument_filters={
-                    "assetKey": asset_key,
-                    "sequence": sequence,
-                    "publisher": self.publisher_address,
-                },
+                # Not filtered by publisher address. The registry allows one report per
+                # sequence, so at most one event matches; the publisher it names is
+                # checked below against our *lineage* rather than our current address,
+                # because a rotation changes the address and must not orphan a
+                # publication we made before it.
+                argument_filters={"assetKey": asset_key, "sequence": sequence},
                 # A public network is not scanned from genesis. The manifest records the
                 # block the registry was deployed in; nothing before it can be relevant.
                 from_block=self.manifest.deployment_block,
@@ -703,9 +703,31 @@ class SignedRegistryBackend:
             and logs[0]["args"]["correctedSequence"] != correction_of
         ):
             raise SubmissionFailed("correction event references the wrong sequence")
+        event_publisher = Web3.to_checksum_address(logs[0]["args"]["publisher"])
+        if self.publisher_lineage(event_publisher) != (
+            self.manifest.publisher_identity_address
+        ):
+            raise SubmissionFailed(
+                f"sequence {sequence} was published by {event_publisher}, which belongs "
+                f"to a different publisher lineage than this deployment"
+            )
         transaction_hash = _transaction_hash(logs[0]["transactionHash"])
         receipt = self.web3.eth.get_transaction_receipt(transaction_hash)
         return (transaction_hash, receipt) if self._confirmed(receipt) else None
+
+    def publisher_lineage(self, address: str) -> str:
+        """The publishing identity the registry recorded for an address.
+
+        Rotation deliberately carries the lineage from the outgoing publisher to the
+        incoming one, so this is what stays constant across a rotation when the address
+        does not.
+        """
+        self._ensure_preflight()
+        return Web3.to_checksum_address(
+            self.contract.functions.publisherIdentity(
+                Web3.to_checksum_address(address)
+            ).call()
+        )
 
     def identity(self) -> DeploymentIdentity:
         """What a transaction signed for this deployment must commit to."""
@@ -715,15 +737,16 @@ class SignedRegistryBackend:
             publisher_address=self.publisher_address,
         )
 
-    def revalidate(self) -> None:
-        """Discard the verified identity so the next read proves it again.
+    def revalidate(self) -> PreflightReport:
+        """Prove the endpoint's identity again, now, and cache the result.
 
-        Called at the start of a publication or reconciliation and again once a receipt
-        has confirmed. Caching for the life of the process was wrong: an endpoint that is
-        repointed between two phases would then serve reads under an identity that was
-        checked long ago and is no longer true.
+        This used to only drop the cache, which made it useless exactly where it was most
+        needed: a caller that revalidated and then made no further chain read — deciding a
+        receipt had failed, say — proceeded on an identity nobody had rechecked. Verifying
+        eagerly means the decision that follows is taken under a proved endpoint.
         """
         self._preflight = None
+        return self.preflight()
 
     def _ensure_preflight(self) -> PreflightReport:
         """Refuse to read the registry until the endpoint has been shown to be the one
@@ -930,6 +953,17 @@ class PublisherClient:
                 # so re-sending them is idempotent: identical nonce, identical hash, and
                 # no second publication is possible. This is the difference between a
                 # transaction dropped from a mempool and one to abandon forever.
+                journalled_publisher = pending.get("publisher_address")
+                if journalled_publisher != self.manifest.publisher_address:
+                    # Reconciling a publication an old key already made is fine; sending
+                    # one it never managed to is not. The registry would reject it, and
+                    # only the owner can decide what replaces it.
+                    raise PendingSubmission(
+                        f"the journalled transaction was signed by "
+                        f"{journalled_publisher}, which is no longer this deployment's "
+                        f"publisher ({self.manifest.publisher_address}); it was never "
+                        f"mined and cannot be sent now"
+                    )
                 self.backend.broadcast(prepared)
             if state != CONFIRMED:
                 # Included but not yet buried deep enough is not a reason to send
@@ -944,10 +978,10 @@ class PublisherClient:
                         f"reached the required confirmation depth"
                     ) from error
             transaction_hash = prepared.transaction_hash
+            self.backend.revalidate()
             if _receipt_status(receipt) != 1:
                 self._clear_pending()
                 raise SubmissionFailed(f"transaction {transaction_hash} failed")
-            self.backend.revalidate()
             if self.backend.latest_sequence(asset_key) != sequence:
                 raise SubmissionFailed(
                     "successful receipt did not advance registry sequence"
@@ -987,13 +1021,14 @@ class PublisherClient:
             raise PendingSubmission(
                 f"transaction {transaction_hash} remains pending"
             ) from error
+        # Before anything the receipt is allowed to decide — including declaring failure
+        # and discarding the journal. Reading a failure destroys the only record of what
+        # was sent, so it must not be taken on the word of an endpoint nobody has
+        # rechecked since before the wait.
+        self.backend.revalidate()
         if _receipt_status(receipt) != 1:
             self._clear_pending()
             raise SubmissionFailed(f"transaction {transaction_hash} failed")
-        # Before any read that decides the outcome, not merely before the last one. The
-        # endpoint can be repointed during the receipt wait, and the sequence read below
-        # is exactly as decisive as the report read that follows it.
-        self.backend.revalidate()
         if self.backend.latest_sequence(asset_key) != sequence:
             raise SubmissionFailed(
                 "successful receipt did not advance registry sequence"
@@ -1015,12 +1050,18 @@ class PublisherClient:
         # authorized publisher, including one on a different lineage, can place an
         # identical payload at the same sequence; reconciliation would then adopt their
         # transaction and record its hash as though we had sent it.
-        expected_publisher = self.manifest.publisher_address
-        if Web3.to_checksum_address(onchain.publisher) != expected_publisher:
-            raise SubmissionFailed(
-                f"sequence {onchain.sequence} was published by {onchain.publisher}, "
-                f"not by {expected_publisher}"
-            )
+        onchain_publisher = Web3.to_checksum_address(onchain.publisher)
+        if onchain_publisher != self.manifest.publisher_address:
+            # A rotation changes the publishing address while the registry preserves its
+            # lineage, precisely so a publication made before the rotation is still ours.
+            # Comparing addresses alone made every rotation orphan whatever was in flight.
+            lineage = self.backend.publisher_lineage(onchain_publisher)
+            if lineage != self.manifest.publisher_identity_address:
+                raise SubmissionFailed(
+                    f"sequence {onchain.sequence} was published by {onchain_publisher}, "
+                    f"whose lineage {lineage} is not this deployment's "
+                    f"{self.manifest.publisher_identity_address}"
+                )
         expected = (
             report["control_set_root"],
             report["evidence_root"],
@@ -1275,7 +1316,11 @@ def _prepared_from_pending(
     for field, found, expected in (
         ("chain", decoded["chain_id"], identity.chain_id),
         ("registry", decoded["to"], identity.registry_address),
-        ("sender", decoded["sender"], identity.publisher_address),
+        # Against the address the journal was written for, not against whoever publishes
+        # today. A rotation between writing and recovering is legitimate, and the
+        # signature cannot change to match it; whether the old signer may still *send* is
+        # decided separately, at the point of rebroadcast.
+        ("sender", decoded["sender"], pending.get("publisher_address")),
         ("nonce", decoded["nonce"], nonce),
     ):
         if found != expected:
@@ -1300,7 +1345,6 @@ def _prepared_from_pending(
     for field, expected in (
         ("chain_id", identity.chain_id),
         ("registry_address", identity.registry_address),
-        ("publisher_address", identity.publisher_address),
     ):
         if pending.get(field) != expected:
             raise PendingSubmission(

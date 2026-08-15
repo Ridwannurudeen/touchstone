@@ -56,7 +56,7 @@ async function deploy({
   // --------------------------------------------------------------------------------
   const [deployer] = await ethers.getSigners();
   const deployerAddress = await deployer.getAddress();
-  const publisher = ethers.getAddress(publisherAddress);
+  const publisher = requireAddress(publisherAddress, "publisherAddress");
   if (publisher === deployerAddress) {
     throw new Error(
       "the publisher must not be the deployer; the identity that owns the registry must not run unattended",
@@ -67,7 +67,7 @@ async function deploy({
       "operationsAddress is required; an unstated role address cannot be shown to be separate",
     );
   }
-  const operations = ethers.getAddress(operationsAddress);
+  const operations = requireAddress(operationsAddress, "operationsAddress");
   if (operations === publisher || operations === deployerAddress) {
     throw new Error(
       "the operations identity must be distinct from the deployer and the publisher",
@@ -91,8 +91,15 @@ async function deploy({
     throw new Error("confirmations must be a positive integer");
   }
   if (maxFeeWei !== null) {
-    // A wei ceiling can exceed Number.MAX_SAFE_INTEGER, where Number silently rounds and
-    // the manifest would then record a limit nobody chose. Accept only an exact integer.
+    // A wei ceiling can exceed Number.MAX_SAFE_INTEGER. Checking exactness after
+    // accepting a `number` was useless: JavaScript has already rounded the literal by
+    // then, so the comparison is between two copies of the same wrong value. An unsafe
+    // number is refused outright — pass a string or a BigInt for large ceilings.
+    if (typeof maxFeeWei === "number" && !Number.isSafeInteger(maxFeeWei)) {
+      throw new Error(
+        "maxFeeWei exceeds what a JavaScript number holds exactly; pass it as a string",
+      );
+    }
     let exact;
     try {
       exact = BigInt(maxFeeWei);
@@ -131,7 +138,7 @@ async function deploy({
     if (parsed.username || parsed.password || parsed.search || parsed.hash) {
       throw new Error("rpc_url must not carry credentials, a query or a fragment");
     }
-    if (["127.0.0.1", "localhost", "::1"].includes(parsed.hostname)) {
+    if (isLoopbackHost(parsed.hostname)) {
       throw new Error("a public network cannot be served from loopback");
     }
     if (maxFeeWei === null) {
@@ -224,6 +231,26 @@ async function main() {
   process.stdout.write(serialized);
 }
 
+function requireAddress(value, field) {
+  // getAddress happily returns the zero address. Python refuses it later, which on a
+  // public chain means discovering it only after the registry has been deployed.
+  const address = ethers.getAddress(value);
+  if (address === ethers.ZeroAddress) {
+    throw new Error(`${field} must not be the zero address`);
+  }
+  return address;
+}
+
+function isLoopbackHost(hostname) {
+  // Three literal strings missed every alias: the rest of 127.0.0.0/8, the bracketed
+  // IPv6 form, and a fully-qualified "localhost." with its trailing root dot.
+  const name = String(hostname).trim().toLowerCase().replace(/\.$/, "");
+  if (name === "localhost" || name.endsWith(".localhost")) return true;
+  const bare = name.replace(/^\[|\]$/g, "");
+  if (bare === "::1" || bare === "0:0:0:0:0:0:0:1") return true;
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(bare);
+}
+
 function serializeManifest(manifest) {
   // JSON.stringify throws on a BigInt, and Number would round it. Marking the value and
   // unquoting it afterwards writes the exact integer the operator chose.
@@ -235,7 +262,7 @@ function serializeManifest(manifest) {
   return marked.replace(/"@bigint:(\d+)@"/g, "$1");
 }
 
-module.exports = { deploy, CONFIRM_ENV, serializeManifest };
+module.exports = { deploy, CONFIRM_ENV, serializeManifest, isLoopbackHost };
 
 if (require.main === module) {
   main().catch((error) => {

@@ -6,6 +6,7 @@ const {
   deploy,
   CONFIRM_ENV,
   serializeManifest,
+  isLoopbackHost,
 } = require("../scripts/deploy");
 
 // 32 bytes standing in for a reporting public key. It is not derived from a private key
@@ -236,11 +237,76 @@ describe("deploy script", function () {
         publisherAddress: publisher.address,
         operationsAddress: operations.address,
         reporterPublicKey: REPORTER_PUBLIC_KEY,
-        network: "xlayer-mainnet",
+        network: "hardhat-local",
         rpcUrl: "https:///no-host",
-        maxFeeWei: 1,
       }),
-    ).to.be.rejected;
+    ).to.be.rejectedWith("loopback rpc_url");
+  });
+
+  it("refuses a zero role address before deploying anything", async function () {
+    // getAddress returns the zero address without complaint, so this reached the chain
+    // and only Python objected — after an irreversible deployment.
+    const { publisher, operations } = await roles();
+    const before = await ethers.provider.getBlockNumber();
+
+    for (const invalid of [
+      { publisherAddress: ethers.ZeroAddress, operationsAddress: operations.address },
+      { publisherAddress: publisher.address, operationsAddress: ethers.ZeroAddress },
+    ]) {
+      await expect(
+        deploy({ reporterPublicKey: REPORTER_PUBLIC_KEY, ...invalid }),
+      ).to.be.rejectedWith("must not be the zero address");
+    }
+
+    expect(await ethers.provider.getBlockNumber()).to.equal(before);
+  });
+
+  it("refuses a fee ceiling JavaScript has already rounded", async function () {
+    const { publisher, operations } = await roles();
+    const before = await ethers.provider.getBlockNumber();
+
+    await expect(
+      deploy({
+        publisherAddress: publisher.address,
+        operationsAddress: operations.address,
+        reporterPublicKey: REPORTER_PUBLIC_KEY,
+        maxFeeWei: 9007199254740993,
+      }),
+    ).to.be.rejectedWith("JavaScript number");
+
+    expect(await ethers.provider.getBlockNumber()).to.equal(before);
+  });
+
+  it("accepts a large fee ceiling given as a string, exactly", async function () {
+    const { publisher, operations } = await roles();
+
+    const { manifest } = await deploy({
+      publisherAddress: publisher.address,
+      operationsAddress: operations.address,
+      reporterPublicKey: REPORTER_PUBLIC_KEY,
+      maxFeeWei: "9007199254740993",
+    });
+
+    expect(serializeManifest(manifest)).to.contain("9007199254740993");
+  });
+
+  it("treats every loopback spelling as loopback", function () {
+    for (const host of [
+      "127.0.0.1",
+      "127.0.0.2",
+      "127.255.255.254",
+      "localhost",
+      "LOCALHOST",
+      "localhost.",
+      "::1",
+      "[::1]",
+      "api.localhost",
+    ]) {
+      expect(isLoopbackHost(host), host).to.equal(true);
+    }
+    for (const host of ["rpc.xlayer.tech", "127.example.com", "1270.0.0.1"]) {
+      expect(isLoopbackHost(host), host).to.equal(false);
+    }
   });
 
   it("names the confirmation variable a stale export cannot satisfy", function () {

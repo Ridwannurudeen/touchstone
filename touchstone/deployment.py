@@ -25,6 +25,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
+import ipaddress
 import os
 from pathlib import Path
 import re
@@ -392,8 +393,30 @@ def _validate_remote_rpc_url(value: object) -> None:
             "rpc_url must not carry a query or fragment; an API key belongs in the "
             "environment, not in a committed manifest"
         )
-    if parsed.hostname in {"127.0.0.1", "localhost"}:
+    if _is_loopback(parsed.hostname):
         raise DeploymentError("a public network cannot be served from loopback")
+
+
+def _is_loopback(hostname: str | None) -> bool:
+    """Whether a hostname resolves to this machine by any of its spellings.
+
+    Comparing against two literal strings missed every alias: the whole 127.0.0.0/8 block,
+    the IPv6 form, and a fully-qualified "localhost." with its trailing root dot. Each of
+    them reaches the same place, so each must be refused for a network claiming to be
+    public.
+    """
+    if not hostname:
+        return True
+    name = hostname.strip().lower().rstrip(".")
+    if name == "localhost" or name.endswith(".localhost"):
+        return True
+    bare = name.strip("[]")
+    if bare in {"::1", "0:0:0:0:0:0:0:1"}:
+        return True
+    try:
+        return ipaddress.ip_address(bare).is_loopback
+    except ValueError:
+        return False
 
 
 def _reporting_keys(value: object) -> tuple[ReportingKey, ...]:

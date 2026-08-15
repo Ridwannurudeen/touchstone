@@ -152,7 +152,9 @@ The three states are distinct claims:
 - **active** — the only key that may sign or publish new reports. Exactly one key is
   active; a manifest with zero or two is refused. Both halves are enforced: signing checks
   the loaded seed against the active kid (`load_identities`), and publication refuses any
-  kid that is not the active one (`scripts/publish_epoch.py`).
+  kid that is not the active one — in `PublisherClient`, which resolves the key from the
+  backend's manifest rather than accepting one from its caller. That check used to live in
+  `scripts/publish_epoch.py`, where anything calling the client directly simply missed it.
 - **superseded** — no longer signs, still trusted for what it already signed. It cannot
   place a new report; that refusal is what makes rolling over mean anything.
 - **revoked** — no longer to be trusted, retroactively, as a manifest-level statement.
@@ -195,6 +197,11 @@ what a revocation means for reports already onchain is a correction question —
 - **No key ceremony, no threshold, no multisig.** The deployer is a single key. Its loss
   is unrecoverable and its theft is unrecoverable; the registry has no owner-rotation
   path.
+- **A publication in flight across a rotation is reconcilable but not resendable.** If the
+  outgoing publisher's transaction confirmed, the restart recognises it by lineage and
+  records it. If it never reached the chain, those signed bytes can never be sent — the
+  registry would reject the rotated-out signer — so the publisher refuses and the owner
+  decides what replaces it.
 - **Rotation is not automated.** `rotatePublisher` is called by hand by the deployer, and
   the manifest is updated by hand afterwards. Nothing detects that the two have diverged
   except the next preflight, which refuses — now on lineage as well as authorization.
