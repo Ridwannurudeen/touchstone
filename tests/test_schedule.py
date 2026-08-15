@@ -400,3 +400,29 @@ def test_a_cadence_the_clock_cannot_resolve_is_refused() -> None:
 
     # A realistic cadence at the same uptime is unaffected.
     assert schedule(lambda at: None, FakeTime(1e9), interval_seconds=60, max_runs=1).completed == 1
+
+
+@pytest.mark.parametrize(
+    "interval", [float("nan"), float("inf"), float("-inf"), 1e20, 1e300]
+)
+def test_an_unusable_cadence_is_refused_before_any_slot_runs(interval: float) -> None:
+    """A configuration error must not arrive as a mid-flight crash.
+
+    NaN compares false against every bound and infinity passes them all, so both reached
+    the loop and failed only after a slot had already executed — with whatever side
+    effects that slot had. A finite but enormous interval did the same, overflowing the
+    wall clock on the first advancement.
+    """
+    ran = []
+
+    with pytest.raises(ValueError):
+        run_schedule(
+            lambda at: ran.append(at),
+            interval_seconds=interval,
+            max_runs=1,
+            monotonic=lambda: 0.0,
+            sleep=lambda seconds: None,
+            now=lambda: START,
+        )
+
+    assert ran == [], "nothing ran before the configuration was rejected"

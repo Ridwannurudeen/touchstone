@@ -585,3 +585,166 @@ def test_a_caller_handler_runs_as_well_as_the_incident_record_not_instead(
     assert [i.kind for i in service.incidents.open_incidents()] == [EPOCH_FAILED], (
         "and the incident was still recorded"
     )
+
+
+def test_a_durable_operation_for_another_asset_is_refused(tmp_path: Path) -> None:
+    """The upgrade path the produced-report check alone leaves open.
+
+    An operation persisted for another asset before a crash is still on disk afterwards,
+    and whichever service starts next would resolve and publish it. The record on disk
+    needs the same check as the record in memory.
+    """
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    # A service for a different asset wrote this operation before dying.
+    OperationsStore(tmp_path / "operations", now=lambda: AT).begin_operation(
+        _signed_report(1),
+        report_uri="urn:touchstone:report:1",
+        correction_of=None,
+        scheduled_for=AT,
+    )
+    service.asset_key = "eip155:1:0x" + "99" * 20
+
+    with pytest.raises(UnresolvedPublication, match="configured for"):
+        service.resolve_startup()
+
+    assert backend.submissions == [], "nothing was published for the other asset"
+    assert [i.kind for i in service.incidents.open_incidents()] == [
+        PUBLICATION_UNRESOLVED
+    ]
+
+
+def test_a_slot_refuses_a_durable_operation_for_another_asset(tmp_path: Path) -> None:
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    OperationsStore(tmp_path / "operations", now=lambda: AT).begin_operation(
+        _signed_report(1),
+        report_uri="urn:touchstone:report:1",
+        correction_of=None,
+        scheduled_for=AT,
+    )
+    service.asset_key = "eip155:1:0x" + "99" * 20
+    produced = []
+
+    outcome = service.run_slot(
+        AT, lambda at: produced.append(at) or _signed_report(1), report_uri=uri
+    )
+
+    assert produced == [], "nothing was fetched"
+    assert outcome.published is False
+    assert backend.submissions == []
+
+
+def test_a_produced_report_for_another_asset_is_refused(tmp_path: Path) -> None:
+    """A producer returning the wrong asset was published under it, and then this
+    asset's incidents were closed — a recovery recorded for something unobserved."""
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    service.asset_key = "eip155:1:0x" + "99" * 20
+
+    outcome = service.run_slot(AT, lambda at: _signed_report(1), report_uri=uri)
+
+    assert outcome.published is False
+    assert backend.submissions == []
+    assert [i.kind for i in service.incidents.open_incidents()] == [EPOCH_FAILED]
+
+
+def test_an_unreadable_operation_at_startup_is_recorded(tmp_path: Path) -> None:
+    """The failure most worth seeing: "I cannot tell what was in flight"."""
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    service.operations.operation_path.write_bytes(b"{not json\n")
+
+    with pytest.raises(UnresolvedPublication, match="cannot be read"):
+        service.resolve_startup()
+
+    assert [i.kind for i in service.incidents.open_incidents()] == [
+        PUBLICATION_UNRESOLVED
+    ]
+
+
+def test_a_failing_journal_read_at_startup_is_recorded(tmp_path: Path) -> None:
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+
+    def unreadable():
+        raise RuntimeError("the journal cannot be read")
+
+    service.client.pending_transaction = unreadable
+
+    with pytest.raises(UnresolvedPublication, match="cannot be read"):
+        service.resolve_startup()
+
+    assert len(service.incidents.open_incidents()) == 1
+
+
+def test_a_failing_recorder_does_not_replace_the_failure_it_describes(
+    tmp_path: Path,
+) -> None:
+    """Whatever goes wrong writing the incident, the original error is the one to report."""
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    service.client._write_pending(
+        {
+            "asset_key": ASSET_KEY_OF,
+            "chain_id": 31337,
+            "correction_of": None,
+            "nonce": 0,
+            "publisher_address": backend.manifest.publisher_address,
+            "raw_transaction": "aa",
+            "registry_address": backend.manifest.registry_address,
+            "report_sha256": "cd" * 32,
+            "report_uri": "urn:touchstone:report:1",
+            "sequence": 1,
+            "transaction_hash": "0x" + "ab" * 32,
+        }
+    )
+
+    def unavailable(**arguments):
+        raise RuntimeError("incident log unavailable")
+
+    service.incidents.open_incident = unavailable
+
+    with pytest.raises(UnresolvedPublication, match="journalled with no operation"):
+        service.resolve_startup()
+
+
+def test_reconciliation_closes_its_incident_even_if_the_next_producer_fails(
+    tmp_path: Path,
+) -> None:
+    """Closing at the end of a successful slot left it open whenever the slot failed.
+
+    The publication was settled; reporting the service as still stuck on it because the
+    *next* thing went wrong describes a state that does not exist.
+    """
+    backend = FakeBackend()
+    backend.drop_first_broadcast = True
+    service = build(tmp_path, backend)
+
+    first = service.run_slot(AT, lambda at: _signed_report(1), report_uri=uri)
+    assert first.published is False, "the broadcast was dropped"
+    assert [i.kind for i in service.incidents.open_incidents()] == [
+        PUBLICATION_UNRESOLVED
+    ]
+    assert service.operations.load_operation() is not None
+
+    def unavailable(scheduled_at):
+        raise SourceUnavailable("the feed returned 403")
+
+    # This slot resolves the outstanding publication first, then its producer fails.
+    service.run_slot(AT, unavailable, report_uri=uri)
+
+    assert service.operations.load_operation() is None, "the publication settled"
+    kinds = [i.kind for i in service.incidents.open_incidents()]
+    assert kinds == [SOURCE_UNAVAILABLE], (
+        f"only the new failure stays open; the settled publication's incident was "
+        f"closed by the resolution that earned it, got {kinds}"
+    )
+
+
+@pytest.mark.parametrize("backoff", [float("nan"), float("inf"), -1, True])
+def test_a_non_finite_backoff_is_refused(tmp_path: Path, backoff: object) -> None:
+    backend = FakeBackend()
+
+    with pytest.raises(ValueError, match="backoff_seconds"):
+        build(tmp_path, backend, backoff_seconds=backoff)

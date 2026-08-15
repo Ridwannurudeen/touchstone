@@ -379,20 +379,24 @@ VALID = object()
 
 
 @pytest.mark.parametrize(
-    ("count", "named"),
+    ("count", "named", "because"),
     [
-        ("1", VALID),  # a string count reached arithmetic and raised a bare TypeError
-        (-1, VALID),  # a negative count indexed off the end of an empty log
-        (True, VALID),  # True == 1, so a head claiming True entries passed as healthy
-        (1.0, VALID),
-        (1, "not-a-digest"),
-        (1, 7),
-        (0, "ab" * 32),  # names an entry while counting none
-        (1, None),  # counts one while naming nothing
+        # Each case names the message it must produce. Asserting only that *some*
+        # IncidentLogError is raised let five of these pass against the implementation
+        # they were written to catch, because its generic "does not name final entry"
+        # satisfied the assertion just as well.
+        ("1", VALID, "count must be a non-negative integer"),
+        (-1, VALID, "count must be a non-negative integer"),
+        (True, VALID, "count must be a non-negative integer"),
+        (1.0, VALID, "count must be a non-negative integer"),
+        (1, "not-a-digest", "must name an entry hash or nothing"),
+        (1, 7, "must name an entry hash or nothing"),
+        (0, "ab" * 32, "naming no entry must count none"),
+        (1, None, "naming no entry must count none"),
     ],
 )
 def test_a_malformed_head_is_refused_precisely(
-    tmp_path: Path, count: object, named: object
+    tmp_path: Path, count: object, named: object, because: str
 ) -> None:
     """Types are checked before arithmetic, and the diagnosis says which field.
 
@@ -407,7 +411,7 @@ def test_a_malformed_head_is_refused_precisely(
     head["head_entry_hash"] = entry["entry_hash"] if named is VALID else named
     incidents.head_path.write_bytes(canonical_json_bytes(head) + b"\n")
 
-    with pytest.raises(IncidentLogError):
+    with pytest.raises(IncidentLogError, match=because):
         incidents.verify()
 
 
@@ -431,11 +435,23 @@ def test_a_partial_final_line_waits_for_the_lock_before_it_is_called_damage(
         return real_snapshot()
 
     incidents._snapshot = snapshot_that_is_torn_the_first_time
+    # Record whether the lock was actually held for the second look. Counting reads alone
+    # would pass a mutant that simply retried the unlocked read, which is the behaviour
+    # this test exists to rule out.
+    held = []
+    real_exclusive = incidents._exclusive
+
+    def watched_lock():
+        held.append(True)
+        return real_exclusive()
+
+    incidents._exclusive = watched_lock
 
     entries = incidents.verify()
 
-    assert len(entries) == 1, "it looked again under the lock instead of giving up"
+    assert len(entries) == 1, "it looked again instead of giving up"
     assert seen["unlocked"] >= 2
+    assert held, "and the second look was taken while holding the lock"
 
 
 def test_contention_is_recovered_within_a_single_verification(tmp_path: Path) -> None:

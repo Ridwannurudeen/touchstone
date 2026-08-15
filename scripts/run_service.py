@@ -152,13 +152,9 @@ class Service:
                     f"transaction {journalled} is journalled with no operation to settle "
                     "it; this workspace must be reconciled before the service runs"
                 )
-                self.incidents.open_incident(
-                    asset_key=self.asset_key,
-                    kind=PUBLICATION_UNRESOLVED,
-                    detail=detail,
-                    occurred_at=self.now(),
-                    state=self._projected_state(),
-                )
+                # Through the recorder, so a failure writing the incident cannot
+                # replace the unresolved-publication error it was describing.
+                self._record_startup_failure(detail)
                 raise UnresolvedPublication(detail)
             # The operation may have been cleared by a run that died before it could close
             # the incident it had opened. With no operation and no journal there is
@@ -171,6 +167,7 @@ class Service:
             )
             return None
         moment = self.now()
+        self._require_our_asset(operation, moment=moment)
         try:
             self.operations.resolve(self.client)
         except Exception as error:  # noqa: BLE001 - the contract is that *any* failure is recorded
@@ -200,6 +197,25 @@ class Service:
             incident_id=None,
             detail=f"settled sequence {operation.sequence} left in flight",
         )
+
+    def _require_our_asset(self, operation, *, moment: datetime | None = None) -> None:
+        """A durable operation must be for the asset this service is configured for.
+
+        Checking only what ``produce()`` returns leaves the upgrade path open: an
+        operation persisted for another asset before a crash is still resolved — and
+        published — by whichever service starts next. The record on disk needs the same
+        check as the record in memory.
+        """
+        if operation.asset_key == self.asset_key:
+            return
+        detail = (
+            f"the recorded operation is for {operation.asset_key!r}, but this service is "
+            f"configured for {self.asset_key!r}"
+        )
+        self._record_startup_failure(
+            detail, asset_key=operation.asset_key, occurred_at=moment
+        )
+        raise UnresolvedPublication(detail)
 
     def _record_startup_failure(
         self,
@@ -328,7 +344,10 @@ class Service:
         disabling reconciliation is not.
         """
         journalled = self.client.pending_transaction()
-        if self.operations.load_operation() is None:
+        outstanding = self.operations.load_operation()
+        if outstanding is not None:
+            self._require_our_asset(outstanding)
+        if outstanding is None:
             if journalled is not None:
                 # A journal with no operation is still something unresolved on the chain.
                 # Returning here let the slot go on to fetch and sign, and only then run

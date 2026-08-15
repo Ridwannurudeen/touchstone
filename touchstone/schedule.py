@@ -104,6 +104,16 @@ def run_schedule(
     # than part-way through the first catch-up.
     _slot_slack(max(abs(next_run), interval), interval)
     scheduled_at = now()
+    try:
+        # One advancement, proved before the first slot runs. A finite but enormous
+        # interval passes every bound and then overflows the wall clock *after* a job has
+        # already executed — a configuration error reported as a mid-flight crash, with
+        # side effects already taken.
+        _advanced(scheduled_at, interval)
+    except (OverflowError, OSError, ValueError) as error:
+        raise ValueError(
+            f"interval_seconds={interval_seconds!r} cannot be added to the clock: {error}"
+        ) from error
     completed = 0
     failed: list[datetime] = []
     missed: list[datetime] = []
