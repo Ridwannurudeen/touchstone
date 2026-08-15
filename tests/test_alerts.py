@@ -255,3 +255,42 @@ def test_a_recovery_alert_exists_so_a_cleared_condition_is_reported() -> None:
 
 def test_a_webhook_constructed_directly_still_hides_its_token() -> None:
     assert TOKEN not in repr(Webhook(url=URL, token=TOKEN))
+
+
+def test_a_hand_made_webhook_with_the_credential_in_its_url_is_refused() -> None:
+    """`Webhook` is public and `send` is where bytes actually leave the process.
+
+    Validating only at construction meant a webhook built directly went straight out with
+    the credential in its path, past the validator that exists to refuse exactly that.
+    """
+    recorder = Recorder()
+
+    with pytest.raises(AlertError, match="URL contains the credential"):
+        send(
+            alert(),
+            Webhook(url=f"https://alerts.invalid/{TOKEN}", token=TOKEN),
+            opener=recorder,
+        )
+
+    assert recorder.request is None, "the request was built and sent anyway"
+
+
+def test_a_body_that_is_not_the_declared_shape_is_refused() -> None:
+    """`send` accepted any mapping, so containment held only for bodies build() made."""
+    recorder = Recorder()
+
+    with pytest.raises(AlertError, match="exactly the fields"):
+        send({"anything": TOKEN}, webhook_from_env(env()), opener=recorder)
+
+    assert recorder.request is None
+
+
+def test_a_malformed_url_is_this_modules_refusal() -> None:
+    """An unterminated IPv6 literal makes urlsplit raise a bare ValueError.
+
+    A caller catching AlertError saw a crash instead. Only inputs that genuinely fail to
+    parse are listed here — a hostname containing a space parses perfectly well and is
+    refused later by the connection, which is a different failure with a different owner.
+    """
+    with pytest.raises(AlertError, match="cannot be parsed"):
+        webhook_from_env(env(**{WEBHOOK_URL_ENV: "https://["}))

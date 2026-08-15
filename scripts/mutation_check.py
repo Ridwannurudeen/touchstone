@@ -488,6 +488,76 @@ MUTATIONS = (
         ),
     ),
     Mutation(
+        name="the-daemon-stops-beating-while-it-waits",
+        path="scripts/run_service.py",
+        old='    schedule_arguments["sleep"] = _beating_sleep(\n        service, schedule_arguments.pop("sleep", time.sleep)\n    )',
+        new="        pass",
+        tests=(
+            "tests/test_service_reliability.py::test_the_daemon_stays_alive_through_a_daily_idle_period",
+        ),
+    ),
+    Mutation(
+        name="a-backup-accepts-a-hold-on-another-lock",
+        path="touchstone/backup.py",
+        old="        held.verify(root.lock)",
+        new="        pass",
+        tests=(
+            "tests/test_backup.py::test_a_backup_requires_a_live_hold_on_this_workspaces_lock",
+        ),
+    ),
+    Mutation(
+        name="a-released-hold-still-proves-the-lock",
+        path="touchstone/locking.py",
+        old="        if not self._active:",
+        new="        if False:",
+        tests=(
+            "tests/test_backup.py::test_a_backup_requires_a_live_hold_on_this_workspaces_lock",
+        ),
+    ),
+    Mutation(
+        name="the-credential-may-ride-in-a-hand-made-url",
+        path="touchstone/alerts.py",
+        old='    _refuse_credential(webhook.url, webhook.token, "URL")',
+        new="    pass",
+        tests=(
+            "tests/test_alerts.py::test_a_hand_made_webhook_with_the_credential_in_its_url_is_refused",
+        ),
+    ),
+    Mutation(
+        name="an-alert-body-of-any-shape-is-sent",
+        path="touchstone/alerts.py",
+        old="    if set(body) != _BODY_FIELDS:",
+        new="    if False:",
+        tests=(
+            "tests/test_alerts.py::test_a_body_that_is_not_the_declared_shape_is_refused",
+        ),
+    ),
+    Mutation(
+        name="a-malformed-webhook-url-escapes-untyped",
+        path="touchstone/alerts.py",
+        old='    except ValueError as error:\n        raise AlertError(f"the webhook URL cannot be parsed: {error}") from error',
+        new='    except UnicodeDecodeError as error:\n        raise AlertError(f"the webhook URL cannot be parsed: {error}") from error',
+        tests=("tests/test_alerts.py::test_a_malformed_url_is_this_modules_refusal",),
+    ),
+    Mutation(
+        name="an-unreadable-archive-escapes-untyped",
+        path="touchstone/backup.py",
+        old='        raise BackupError(f"the archive is not readable JSON: {error}") from error',
+        new="        raise",
+        tests=(
+            "tests/test_backup.py::test_an_authenticated_archive_that_is_not_json_is_this_modules_failure",
+        ),
+    ),
+    Mutation(
+        name="an-undecodable-member-escapes-untyped",
+        path="touchstone/backup.py",
+        old='            raw = bytes.fromhex(str(item["bytes"]))\n        except ValueError as error:',
+        new='            raw = bytes.fromhex(str(item["bytes"]))\n        except UnicodeDecodeError as error:',
+        tests=(
+            "tests/test_backup.py::test_an_undecodable_member_payload_is_this_modules_failure",
+        ),
+    ),
+    Mutation(
         name="identity-not-established-at-each-observation",
         path="touchstone/incidents.py",
         old="        self._refuse_hardlink()\n        entries = self._read()",

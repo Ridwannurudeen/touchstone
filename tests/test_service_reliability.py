@@ -8,7 +8,7 @@ exist — so these tests exercise `serve()` and assert the artifacts appear on d
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import secrets
 import sys
@@ -254,3 +254,73 @@ def test_the_heartbeat_sequence_advances_every_slot(tmp_path: Path) -> None:
     second = read_heartbeat(workspace.heartbeat)["sequence"]
 
     assert second > first
+
+
+def test_the_daemon_stays_alive_through_a_daily_idle_period(tmp_path: Path) -> None:
+    """The gap that mattered: slots are a day apart, a heartbeat expires in three minutes.
+
+    Beating only around slots meant the daemon reported itself dead for twenty-three of
+    every twenty-four hours. This drives a full day of simulated waiting and asserts the
+    heartbeat is never stale for longer than its own expiry.
+    """
+    from touchstone.heartbeat import DEFAULT_EXPIRY_SECONDS, verify as verify_heartbeat
+
+    service, workspace, _ = served(tmp_path, backup_dir=None, backup_key=None)
+    clock = {"t": datetime(2026, 8, 15, 9, 0, tzinfo=timezone.utc)}
+    gaps: list[float] = []
+    last_beat = {"at": None}
+
+    def sleep(seconds: float) -> None:
+        clock["t"] = clock["t"] + timedelta(seconds=seconds)
+
+    def now() -> datetime:
+        return clock["t"]
+
+    service.now = now
+    original_beat = service.beat
+
+    def beat() -> None:
+        if last_beat["at"] is not None:
+            gaps.append((clock["t"] - last_beat["at"]).total_seconds())
+        last_beat["at"] = clock["t"]
+        original_beat()
+
+    service.beat = beat
+
+    published: list[datetime] = []
+    serve(
+        service,
+        lambda scheduled_at: (published.append(scheduled_at), _signed_report(len(published) + 1))[1],
+        report_uri=uri,
+        interval_seconds=86_400.0,
+        max_runs=2,
+        monotonic=lambda: (clock["t"] - datetime(2026, 8, 15, tzinfo=timezone.utc)).total_seconds(),
+        sleep=sleep,
+        now=now,
+    )
+
+    assert gaps, "the daemon never beat while waiting"
+    assert max(gaps) <= DEFAULT_EXPIRY_SECONDS, (
+        f"the daemon went {max(gaps)}s without a heartbeat, past its {DEFAULT_EXPIRY_SECONDS}s expiry"
+    )
+    # And the record it left is one a watchdog would accept at that moment.
+    assert verify_heartbeat(
+        workspace.heartbeat,
+        now=clock["t"],
+        asset_key=ASSET_KEY_OF,
+        registry_address=REGISTRY,
+    ).daemon_alive
+
+
+def test_a_cooperative_backup_requires_the_daemons_own_lock_proof(
+    tmp_path: Path,
+) -> None:
+    """The backup is only meaningful while the serving lock is actually held."""
+    service, workspace, _ = served(tmp_path)
+    service._held = None
+
+    service.backup_if_due(AT)
+
+    assert not sorted((tmp_path / "archives").glob("*.archive")), (
+        "a backup was taken without the lock proof"
+    )

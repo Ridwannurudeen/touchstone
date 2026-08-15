@@ -558,3 +558,65 @@ def test_a_genuinely_separate_process_cannot_back_up_a_live_workspace(
         ]
         == ARCHIVE_VERSION
     )
+
+
+def test_a_backup_requires_a_live_hold_on_this_workspaces_lock(tmp_path: Path) -> None:
+    """A Lease was a path anyone could construct; a Held is granted by the kernel.
+
+    The three ways to get this wrong are all refused: no proof at all, a hold that has
+    been released, and a live hold on somebody else's lock.
+    """
+    workspace = populated(tmp_path)
+    other = Workspace(tmp_path / "elsewhere")
+    other.root.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(BackupError, match="requires the Held"):
+        create(
+            object(), workspace.root, now=AT, key=KEY, asset_key=ASSET,
+            registry_address=REGISTRY,
+        )
+
+    with exclusive_lock(workspace.lock) as held:
+        pass
+    with pytest.raises(BackupError, match="released"):
+        create(
+            held, workspace.root, now=AT, key=KEY, asset_key=ASSET,
+            registry_address=REGISTRY,
+        )
+
+    with exclusive_lock(other.lock) as elsewhere:
+        with pytest.raises(BackupError, match="not"):
+            create(
+                elsewhere, workspace.root, now=AT, key=KEY, asset_key=ASSET,
+                registry_address=REGISTRY,
+            )
+
+
+def test_an_authenticated_archive_that_is_not_json_is_this_modules_failure(
+    tmp_path: Path,
+) -> None:
+    """The key was right and the contents are not what this module writes."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from touchstone.signing import canonical_json_bytes
+
+    associated = canonical_json_bytes(
+        {"asset_key": ASSET, "registry_address": REGISTRY, "version": ARCHIVE_VERSION}
+    )
+    nonce = bytes(range(NONCE_BYTES))
+    archive = nonce + AESGCM(KEY).encrypt(nonce, b"not json at all", associated)
+
+    with pytest.raises(BackupError, match="not readable JSON"):
+        restore(archive, tmp_path / "out", key=KEY, asset_key=ASSET,
+                registry_address=REGISTRY)
+    assert not (tmp_path / "out").exists()
+
+
+def test_an_undecodable_member_payload_is_this_modules_failure(tmp_path: Path) -> None:
+    lying = payload(
+        files=[{"bytes": "zzzz", "path": "transparency.jsonl",
+                "sha256": "ab" * 32, "size": 2}]
+    )
+
+    with pytest.raises(BackupError, match="decodable content"):
+        restore(forged(lying), tmp_path / "out", key=KEY, asset_key=ASSET,
+                registry_address=REGISTRY)
