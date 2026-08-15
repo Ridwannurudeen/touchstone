@@ -125,6 +125,16 @@ MUTATIONS = (
         ),
     ),
     Mutation(
+        name="identity-not-established-at-each-observation",
+        path="touchstone/incidents.py",
+        old="        self._refuse_hardlink()\n        entries = self._read()",
+        new="        entries = self._read()",
+        tests=(
+            "tests/test_incidents.py::test_a_log_that_stops_being_identifiable_is_refused_when_it_is_read",
+            "tests/test_incidents.py::test_identity_is_only_ever_checked_inside_the_one_observation",
+        ),
+    ),
+    Mutation(
         name="pending-journal-follows-the-process",
         path="touchstone/publish.py",
         old="        self.pending_path = Path(pending_path).resolve()",

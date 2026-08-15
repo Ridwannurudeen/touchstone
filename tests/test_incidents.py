@@ -497,3 +497,67 @@ def test_contention_is_recovered_within_a_single_verification(tmp_path: Path) ->
 
     assert len(entries) == 1, "the same call recovered once the lock was free"
     assert waits, "and it waited rather than failing immediately"
+
+
+def test_a_log_that_stops_being_identifiable_is_refused_when_it_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Identity is established at every observation, not once at construction.
+
+    A store that opened successfully can stop being identifiable afterwards, and a read
+    that cannot count the log's names has not established it is reading one log. Covering
+    only construction left the refusal that matters — the one taken while the log is in
+    use — untested.
+    """
+    incidents = log(tmp_path)
+    opened(incidents)
+
+    def unreadable(self, *args, **kwargs):
+        raise PermissionError(13, "stat refused")
+
+    monkeypatch.setattr(Path, "stat", unreadable)
+
+    with pytest.raises(ValueError, match="cannot be identified"):
+        incidents.verify()
+
+
+def test_identity_is_only_ever_checked_inside_the_one_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_snapshot` is the single boundary every observation passes through.
+
+    Checking identity at each public entrance instead would satisfy any test that merely
+    creates a second name and expects a refusal, while reintroducing the gap the check
+    exists to close: an entrance check is taken before the lock, so a name created after
+    it walks straight past. Asserting *where* the check happens is the only way to tell
+    those two arrangements apart.
+    """
+    incidents = log(tmp_path)
+    opened(incidents)
+
+    depth = 0
+    checks: list[bool] = []
+    real_snapshot = IncidentLog._snapshot
+    real_refuse = IncidentLog._refuse_hardlink
+
+    def snapshot(self):
+        nonlocal depth
+        depth += 1
+        try:
+            return real_snapshot(self)
+        finally:
+            depth -= 1
+
+    def refuse(self):
+        checks.append(depth > 0)
+        return real_refuse(self)
+
+    monkeypatch.setattr(IncidentLog, "_snapshot", snapshot)
+    monkeypatch.setattr(IncidentLog, "_refuse_hardlink", refuse)
+
+    incidents.verify()
+    incidents.open_incidents()
+    opened(incidents, detail="a second failure")
+
+    assert checks, "identity was never established at all"
+    assert all(checks), "an identity check was taken outside the one observation"
