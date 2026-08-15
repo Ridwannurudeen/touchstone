@@ -507,3 +507,83 @@ def test_the_production_event_path_accepts_our_lineage_and_refuses_another() -> 
     ) as node:
         with pytest.raises(SubmissionFailed, match="different publisher lineage"):
             backend_for(node).find_receipt(asset_key, 1, None)
+
+
+def test_the_providers_own_retries_are_switched_off() -> None:
+    """web3 retries five times by default, and its allowlist includes broadcasts.
+
+    Identical signed bytes make a resend harmless in itself, but it happens beneath the
+    journal and beneath reconciliation — a boundary with a bypass under it is not a
+    boundary, and the decision to try again belongs to the code that knows what is at
+    stake.
+    """
+    with StubNode() as node:
+        provider = backend_for(node).web3.provider
+
+        assert provider.exception_retry_configuration is None
+
+    # The default this overrides, so the test fails if web3 ever stops doing it and the
+    # override becomes a no-op nobody noticed.
+    from web3 import Web3
+
+    default = Web3.HTTPProvider("http://127.0.0.1:8545").exception_retry_configuration
+    assert default.retries == 5
+    assert "eth_sendRawTransaction" in default.method_allowlist
+
+
+def test_a_transport_failure_is_typed_apart_from_a_permanent_refusal() -> None:
+    """Only one pre-broadcast failure is worth trying again.
+
+    A wrong chain, unexpected bytecode or a revoked authorization will say the same thing
+    however many times it is asked. An unreachable endpoint might not.
+    """
+    from touchstone.publish import TransportUnavailable
+
+    # Nothing is listening on this port, so the endpoint cannot answer at all.
+    manifest = DeploymentManifest.from_mapping(
+        {
+            **{
+                key: value
+                for key, value in _manifest_shape().items()
+                if key != "rpc_url"
+            },
+            "rpc_url": "http://127.0.0.1:1",
+        }
+    )
+    backend = SignedRegistryBackend(
+        manifest, PublisherKey.from_hex(PUBLISHER_SECRET, manifest)
+    )
+    with pytest.raises(TransportUnavailable):
+        backend.preflight()
+
+    # A chain that answers, and answers wrongly, is permanent.
+    with StubNode(eth_chainId=hex(196)) as node:
+        with pytest.raises(PreflightFailed) as raised:
+            backend_for(node).preflight()
+        assert not isinstance(raised.value, TransportUnavailable)
+
+
+def _manifest_shape() -> dict:
+    signer = Ed25519Signer.from_seed(REPORTER_SEED)
+    publisher = Account.from_key(bytes.fromhex(PUBLISHER_SECRET)).address
+    return {
+        "manifest_version": 1,
+        "network": "hardhat-local",
+        "chain_id": CHAIN_ID,
+        "rpc_url": "http://127.0.0.1:8545",
+        "registry_address": REGISTRY,
+        "registry_runtime_bytecode_sha256": RUNTIME_SHA256,
+        "publisher_address": publisher,
+        "publisher_identity_address": publisher,
+        "deployer_address": Account.from_key(bytes.fromhex(DEPLOYER_SECRET)).address,
+        "operations_address": Account.from_key(bytes.fromhex(OPERATIONS_SECRET)).address,
+        "confirmations": 1,
+        "deployment_block": 3,
+        "reporting_keys": [
+            {
+                "kid": signer.kid,
+                "public_key": signer.public_key_record()["public_key"],
+                "state": "active",
+            }
+        ],
+    }

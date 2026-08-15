@@ -221,7 +221,22 @@ class SubmissionFailed(PublicationError):
 
 
 class PreflightFailed(PublicationError):
-    """The chain does not match the manifest, so nothing was signed."""
+    """The chain does not match the manifest, so nothing was signed.
+
+    This is a *permanent* refusal: a wrong chain, unexpected bytecode, a revoked
+    authorization, a foreign lineage, a rejected gas estimate. Retrying it changes
+    nothing, and a caller that retried on it would hammer an endpoint that is telling it
+    something true.
+    """
+
+
+class TransportUnavailable(PreflightFailed):
+    """The endpoint could not be reached or did not answer. Nothing was signed.
+
+    Separated from the permanent refusals because it is the only pre-broadcast failure
+    where trying again is meaningful. It stays a subclass so existing handling still
+    catches it — a transport failure is still a reason not to publish.
+    """
 
 
 class FeeCeilingExceeded(PublicationError):
@@ -362,7 +377,15 @@ class SignedRegistryBackend:
         self.publisher_address = publisher_key.address
         self.web3 = Web3(
             Web3.HTTPProvider(
-                manifest.rpc_url, request_kwargs={"timeout": float(request_timeout)}
+                manifest.rpc_url,
+                request_kwargs={"timeout": float(request_timeout)},
+                # web3 retries five times by default and its allowlist includes
+                # eth_sendRawTransaction, so a broadcast could be resent from inside the
+                # provider — beneath the journal, beneath reconciliation, and invisible
+                # to both. Identical signed bytes make that harmless in itself, but a
+                # boundary with a bypass under it is not a boundary, and the retry
+                # decision belongs to the caller that knows what is at stake.
+                exception_retry_configuration=None,
             )
         )
         self.contract = self.web3.eth.contract(
@@ -385,7 +408,9 @@ class SignedRegistryBackend:
             block_number = int(self.web3.eth.block_number)
             code = bytes(self.web3.eth.get_code(manifest.registry_address))
         except (Web3RPCError, OSError) as error:
-            raise PreflightFailed(f"cannot read {manifest.rpc_url}: {error}") from error
+            raise TransportUnavailable(
+                f"cannot read {manifest.rpc_url}: {error}"
+            ) from error
         if chain_id != manifest.chain_id:
             raise PreflightFailed(
                 f"endpoint reports chain {chain_id}, manifest declares "
@@ -414,7 +439,7 @@ class SignedRegistryBackend:
             )
             balance = int(self.web3.eth.get_balance(self.publisher_address))
         except (Web3RPCError, OSError) as error:
-            raise PreflightFailed(f"registry did not answer: {error}") from error
+            raise TransportUnavailable(f"registry did not answer: {error}") from error
         if registry_chain_id != manifest.chain_id:
             raise PreflightFailed(
                 f"registry was constructed for chain {registry_chain_id}, manifest "
@@ -1154,6 +1179,16 @@ class PublisherClient:
             reconciled=reconciled,
             log_entry_hash=existing["entry_hash"],
         )
+
+    def pending_transaction(self) -> str | None:
+        """The transaction hash this client is waiting on, if any.
+
+        A service needs to know whether a publication is unresolved *before* it starts
+        another one, and asking that question should not require it to reach into the
+        journal and reimplement its validation.
+        """
+        pending = self._load_pending()
+        return None if pending is None else pending["transaction_hash"]
 
     def _load_pending(self) -> dict[str, object] | None:
         if not self.pending_path.exists():
