@@ -1471,9 +1471,14 @@ def _receipt_status(receipt: Mapping[str, object]) -> int:
 
 
 def _receipt_record(receipt: Mapping[str, object]) -> dict[str, object]:
+    # `effective_gas_price` is recorded because gas alone is not a cost. What a publication
+    # actually spent is gas_used x effective_gas_price, and the gas runway is measured from
+    # spends this publisher really made rather than from a fee estimate — an estimate would
+    # let the runway be optimistic in exactly the conditions that make it matter.
     return {
         "block_hash": _optional_hex(receipt.get("blockHash")),
         "block_number": receipt.get("blockNumber"),
+        "effective_gas_price": receipt.get("effectiveGasPrice"),
         "gas_used": receipt.get("gasUsed"),
         "status": _receipt_status(receipt),
     }
