@@ -133,10 +133,20 @@ class Service:
         if operation is None:
             journalled = self.client.pending_transaction()
             if journalled is not None:
-                raise UnresolvedPublication(
+                # Recorded before it is raised. An aborted startup that leaves no trace is
+                # exactly the kind of thing the incident log exists to make impossible.
+                detail = (
                     f"transaction {journalled} is journalled with no operation to settle "
                     "it; this workspace must be reconciled before the service runs"
                 )
+                self.incidents.open_incident(
+                    asset_key=self.asset_key,
+                    kind=PUBLICATION_UNRESOLVED,
+                    detail=detail,
+                    occurred_at=self.now(),
+                    state=self._projected_state(),
+                )
+                raise UnresolvedPublication(detail)
             # The operation may have been cleared by a run that died before it could close
             # the incident it had opened. With no operation and no journal there is
             # genuinely nothing outstanding, and leaving it open would report a service as
@@ -297,7 +307,7 @@ class Service:
             state=self._projected_state(),
         )
 
-    def record_outage(self, first_missed: datetime, count: int) -> None:
+    def record_outage(self, first_missed: datetime, count: int) -> None:  # noqa: D401
         """One incident per outage, carrying the exact number of slots it covered.
 
         Recording each missed slot separately would write thousands of entries for a long
@@ -412,16 +422,27 @@ def _serve_locked(
         ),
         interval_seconds=interval_seconds,
         max_runs=max_runs,
-        on_outage=schedule_arguments.pop("on_outage", service.record_outage),
-        # A last resort. run_slot records everything it can, but anything that escapes it
-        # would otherwise leave the schedule running and the log silent — the worst
-        # combination, because it looks exactly like working. A caller may supply its own;
-        # forcing this one made the parameter unforwardable.
-        on_failure=schedule_arguments.pop(
-            "on_failure", service.record_escaped_failure
+        # Composed, not chosen. Letting a caller's handler *replace* the service's meant
+        # supplying one silently switched off the incident recording — an escaped failure
+        # would call the caller back and write nothing down.
+        on_outage=_also(service.record_outage, schedule_arguments.pop("on_outage", None)),
+        on_failure=_also(
+            service.record_escaped_failure, schedule_arguments.pop("on_failure", None)
         ),
         **schedule_arguments,
     )
+
+
+def _also(mandatory, extra):
+    """Run the service's own recorder first, then anything the caller asked for."""
+    if extra is None:
+        return mandatory
+
+    def both(*arguments):
+        mandatory(*arguments)
+        extra(*arguments)
+
+    return both
 
 
 def build_service(manifest_path: str, workspace: str, *, asset_key: str) -> Service:

@@ -33,8 +33,11 @@ DEFAULT_INTERVAL_SECONDS = 86_400.0
 # denial of service against whoever reads it. The count is always exact.
 MAX_NAMED_MISSES = 64
 
-# Tolerance, as a fraction of one interval, for deciding whether a slot is due now.
-_SLOT_EPSILON = 1e-9
+# Tolerance for deciding whether a slot is due now rather than missed. The floor keeps a
+# tiny interval from producing a uselessly small one; the ulp term is what actually matters
+# once the clock reports real uptime rather than a test's zero.
+_SLOT_EPSILON = 1e-12
+_SLOT_ULPS = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,7 +113,7 @@ def run_schedule(
         next_run += interval
         scheduled_at = _advanced(scheduled_at, interval)
         current = monotonic()
-        if next_run < current:
+        if _slots_elapsed(current, next_run, interval) > 0:
             # Slots whose moment has already passed. How many is arithmetic, not a loop:
             # a long outage or a clock that jumped would otherwise iterate once per missed
             # slot, and a scheduler that hangs while recording downtime is worse than one
@@ -124,7 +127,8 @@ def run_schedule(
             # gap that is exactly two intervals — and a bare ceiling reads that as three,
             # dropping the live slot all over again. Anything within a hair of a whole
             # number is that whole number; a slot a nanosecond late is due, not missed.
-            skipped = math.ceil((current - next_run) / interval - _SLOT_EPSILON)
+            skipped = _slots_elapsed(current, next_run, interval)
+            assert skipped > 0
             # Only the slots actually named cost anything. Iterating over every skipped
             # slot to discard most of them made the work proportional to the outage, which
             # is the opposite of what a recovering service needs.
@@ -134,9 +138,10 @@ def run_schedule(
                 missed.append(slot)
                 if on_missed is not None:
                     on_missed(slot)
-            if on_outage is not None:
-                # A service that never stops never sees the returned outcome, so the exact
-                # total is handed over as it happens rather than only at the end.
+            if on_outage is not None and skipped > 0:
+                # Only when something was actually missed. Lateness inside the tolerance
+                # produces a skip count of zero, and reporting that as an outage told the
+                # operator a slot had not run at the very moment it was running.
                 on_outage(scheduled_at, skipped)
             missed_count += skipped
             next_run += interval * skipped
@@ -148,6 +153,22 @@ def run_schedule(
         missed=tuple(missed),
         missed_count=missed_count,
     )
+
+
+def _slots_elapsed(current: float, next_run: float, interval: float) -> int:
+    """How many slots are strictly in the past. A slot due now is due, not missed.
+
+    The tolerance has to be derived from the magnitudes involved, not fixed. A monotonic
+    clock reports uptime, so the operands are large and their difference loses precision
+    in proportion: at ten million seconds one ulp is about 1.9ns, which divided by a
+    fifth-of-a-second interval is 9.3e-9 of a slot — larger than a fixed 1e-9 quotient
+    tolerance could absorb, so a gap of exactly N intervals read as N+1 and the slot due
+    at that instant was skipped. Tests that start their clock at zero never see it.
+    """
+    ratio = (current - next_run) / interval
+    scale = max(abs(current), abs(next_run), interval)
+    slack = max(_SLOT_ULPS * math.ulp(scale) / interval, _SLOT_EPSILON)
+    return math.ceil(ratio - slack)
 
 
 def _advanced(moment: datetime, interval: float) -> datetime:

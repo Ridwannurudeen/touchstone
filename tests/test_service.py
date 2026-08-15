@@ -318,6 +318,56 @@ def test_a_settled_sequence_under_another_uri_is_not_accepted_as_ours(
     assert service.operations.load_operation() is not None, "kept for review"
 
 
+def test_a_chain_report_that_differs_in_its_roots_is_not_accepted_as_ours(
+    tmp_path: Path,
+) -> None:
+    """The URI is not the only field that can differ, and the log alone cannot tell.
+
+    Here the transparency log *does* hold this exact report, so the log check passes; the
+    chain is what disagrees. Comparing only the URI and the lineage would have cleared the
+    operation and saved local state for roots the registry does not contain.
+    """
+    import dataclasses
+
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    service.run_slot(AT, lambda at: _signed_report(1), report_uri=uri)
+    asset_key = next(iter(backend.reports))
+
+    # The chain now says something different from what we published and logged.
+    backend.reports[asset_key][0] = dataclasses.replace(
+        backend.reports[asset_key][0],
+        control_set_root="ee" * 32,
+        evidence_root="ff" * 32,
+    )
+    service.operations.begin_operation(
+        _signed_report(1),
+        report_uri=uri(_signed_report(1)),
+        correction_of=None,
+        scheduled_for=AT,
+    )
+
+    with pytest.raises(UnresolvedPublication, match="does not match this operation"):
+        service.operations.resolve(service.client)
+    assert service.operations.load_operation() is not None, "kept for review"
+
+
+def test_a_report_absent_from_our_log_is_not_accepted_as_ours(tmp_path: Path) -> None:
+    """A different report at the same sequence is not this operation settling."""
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    service.run_slot(AT, lambda at: _signed_report(1), report_uri=uri)
+
+    other = _signed_report(1, control_set_root="ee" * 32, evidence_root="ff" * 32)
+    service.operations.begin_operation(
+        other, report_uri=uri(other), correction_of=None, scheduled_for=AT
+    )
+
+    with pytest.raises(UnresolvedPublication, match="no record of publishing it"):
+        service.operations.resolve(service.client)
+    assert service.operations.load_operation() is not None
+
+
 def test_settling_a_publication_does_not_claim_the_source_recovered(
     tmp_path: Path,
 ) -> None:
@@ -488,17 +538,35 @@ def test_startup_refuses_a_journal_with_no_operation(tmp_path: Path) -> None:
     with pytest.raises(UnresolvedPublication, match="journalled with no operation"):
         service.resolve_startup()
 
+    # And it is written down. An aborted startup that leaves no trace is exactly what the
+    # incident log exists to prevent; asserting only the exception proved nothing about it.
+    assert [i.kind for i in service.incidents.open_incidents()] == [
+        PUBLICATION_UNRESOLVED
+    ]
 
-def test_a_serve_caller_may_still_supply_its_own_failure_handler(
+
+def test_a_caller_handler_runs_as_well_as_the_incident_record_not_instead(
     tmp_path: Path,
 ) -> None:
-    """Forcing the service's handler made the parameter unforwardable."""
+    """Supplying a handler must not switch off the recording.
+
+    Choosing between the caller's handler and the service's meant that passing one
+    silently disabled the incident write — an escaped failure called the caller back and
+    left nothing in the log. The earlier version of this test ran a *successful* slot and
+    asserted an empty list, which proved only that the keyword no longer collided.
+    """
     backend = FakeBackend()
     service = build(tmp_path, backend)
     clock = Clock()
     seen = []
 
-    serve(
+    def explode(scheduled_at, produce, *, report_uri, correction_of=None):
+        raise RuntimeError("the whole slot fell over")
+
+    # Make run_slot itself fail, so the failure escapes to the scheduler.
+    service.run_slot = explode
+
+    outcome = serve(
         service,
         lambda at: _signed_report(1),
         report_uri=uri,
@@ -510,4 +578,10 @@ def test_a_serve_caller_may_still_supply_its_own_failure_handler(
         on_failure=lambda at, error: seen.append(error),
     )
 
-    assert seen == [], "nothing failed, but supplying the handler was accepted"
+    assert outcome.failed, "the slot did fail"
+    assert [str(error) for error in seen] == ["the whole slot fell over"], (
+        "the caller's handler ran"
+    )
+    assert [i.kind for i in service.incidents.open_incidents()] == [EPOCH_FAILED], (
+        "and the incident was still recorded"
+    )

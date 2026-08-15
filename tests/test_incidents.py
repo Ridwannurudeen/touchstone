@@ -204,19 +204,50 @@ def test_a_non_json_line_is_refused(tmp_path: Path) -> None:
         incidents.verify()
 
 
-def test_the_head_survives_a_crash_between_entries(tmp_path: Path) -> None:
-    """The line is written before the head that attests to it, never the other way.
+def test_an_append_interrupted_before_its_head_is_recovered(tmp_path: Path) -> None:
+    """The entry is written first, so a crash between the two loses the head, not the log.
 
-    A head that ran ahead of the log would claim an entry that does not exist, and the
-    record of the failure would be lost to the failure it was recording.
+    The earlier version of this test performed an ordinary append and checked the result,
+    which proves the happy path and nothing about the crash it was named for. This one
+    reproduces the interruption: the line is on disk, the head still describes the state
+    before it.
     """
     incidents = log(tmp_path)
-    entry = opened(incidents)
-    head = strict_json_loads(incidents.head_path.read_bytes())
+    first = opened(incidents)
+    second = opened(incidents, detail="a second failure")
+    # Roll the head back to where it stood between the two writes.
+    incidents.head_path.write_bytes(
+        canonical_json_bytes(
+            {
+                "count": 1,
+                "head_entry_hash": first["entry_hash"],
+                "version": "touchstone.incident-head.v1",
+            }
+        )
+        + b"\n"
+    )
 
-    assert head["count"] == 1
-    assert head["head_entry_hash"] == entry["entry_hash"]
-    assert incidents.path.stat().st_size > 0
+    entries = incidents.verify()
+
+    assert len(entries) == 2, "the entry that was fsynced survives"
+    repaired = strict_json_loads(incidents.head_path.read_bytes())
+    assert repaired["count"] == 2
+    assert repaired["head_entry_hash"] == second["entry_hash"]
+
+
+def test_a_head_that_ran_ahead_of_the_log_is_a_loss_not_a_repair(
+    tmp_path: Path,
+) -> None:
+    """The opposite direction is never repaired: something is missing."""
+    incidents = log(tmp_path)
+    opened(incidents)
+    head = strict_json_loads(incidents.head_path.read_bytes())
+    head["count"] = 5
+
+    incidents.head_path.write_bytes(canonical_json_bytes(head) + b"\n")
+
+    with pytest.raises(IncidentLogError, match="expects 5 entries"):
+        incidents.verify()
 
 
 def test_a_killed_writer_does_not_lock_the_log_out_forever(tmp_path: Path) -> None:

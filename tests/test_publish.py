@@ -255,14 +255,20 @@ class FakeBackend:
         return None
 
 
-def _signed_report(sequence: int, *, correction_of: int | None = None):
+def _signed_report(
+    sequence: int,
+    *,
+    correction_of: int | None = None,
+    control_set_root: str = "22" * 32,
+    evidence_root: str = "33" * 32,
+):
     signer = Ed25519Signer.from_seed(bytes(range(32)))
     return signer.sign_report(
         {
             "asset_key": ASSET_KEY_OF,
-            "control_set_root": "22" * 32,
+            "control_set_root": control_set_root,
             "correction_of": correction_of,
-            "evidence_root": "33" * 32,
+            "evidence_root": evidence_root,
             "observed_at": "2026-08-13T14:16:17Z",
             "publisher_kid": signer.kid,
             "sequence": sequence,

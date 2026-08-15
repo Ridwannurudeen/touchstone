@@ -23,7 +23,7 @@ import os
 from pathlib import Path
 import re
 
-from touchstone.locking import exclusive_lock
+from touchstone.locking import LockUnavailable, exclusive_lock
 from touchstone.signing import canonical_json_bytes, strict_json_loads
 
 
@@ -49,6 +49,12 @@ _ENTRY_FIELDS = frozenset(
     }
 )
 _HEAD_FIELDS = frozenset({"count", "head_entry_hash", "version"})
+
+# Verdicts from inspecting one snapshot. A sentinel rather than a bool because "repairable"
+# is a third answer, not a shade of the other two.
+_HEALTHY = object()
+_REPAIRABLE = object()
+_VERIFY_ATTEMPTS = 5
 
 # What an incident is about. Deliberately few: a category nobody can map to an action is a
 # category that only makes the log harder to read.
@@ -85,7 +91,6 @@ class IncidentLog:
             raise ValueError(f"incident log path must be a file: {self.path}")
         self.head_path = self.path.with_name(self.path.name + ".head")
         self.lock_path = self.path.with_name(self.path.name + ".lock")
-        self._writing = False
 
     def _exclusive(self):
         """An OS-level lock, so a killed writer does not lock the log out forever.
@@ -93,6 +98,10 @@ class IncidentLog:
         The first version created a sentinel file and removed it in a ``finally``, which a
         hard kill skips entirely — leaving a file that blocked every later append until
         someone deleted it by hand, at exactly the moment a service is trying to recover.
+
+        It is fail-fast and **not reentrant**. Everything that runs while it is held calls
+        the ``_locked`` helpers directly rather than re-entering through the public method,
+        because taking it twice is a deadlock dressed as an error.
         """
         return exclusive_lock(self.lock_path)
 
@@ -134,7 +143,7 @@ class IncidentLog:
         two callers both doing the right thing.
         """
         with self._exclusive():
-            entries = self.verify()
+            entries = self._verified_locked()
             opened = {
                 entry["entry_hash"]: entry
                 for entry in entries
@@ -156,8 +165,83 @@ class IncidentLog:
 
     # ------------------------------------------------------------------ reading
     def verify(self) -> list[dict[str, object]]:
-        """Read the log, prove its chain, and prove nothing was cut off the end."""
+        """Read the log, prove its chain, and prove nothing was cut off the end.
+
+        Log and head are read as one snapshot. Reading them separately let a writer land
+        between the two and made a perfectly healthy log fail, which is worse than a stale
+        answer: it reports corruption that is not there.
+
+        If the snapshot needs repair, that is done under the lock. Another process holding
+        it is not an error here — it is very likely doing the same repair — so the snapshot
+        is taken again rather than raising.
+        """
+        for _ in range(_VERIFY_ATTEMPTS):
+            entries, head = self._snapshot()
+            verdict = self._inspect(entries, head)
+            if verdict is _HEALTHY:
+                return entries
+            if verdict is not _REPAIRABLE:
+                # A real defect. Retrying would only rediscover it while replacing a
+                # precise diagnosis with a vague one.
+                raise verdict
+            try:
+                with self._exclusive():
+                    # Re-read: another process may have repaired it already.
+                    entries, head = self._snapshot()
+                    if self._inspect(entries, head) is _REPAIRABLE:
+                        self._write_head(len(entries), entries[-1]["entry_hash"])
+                    return self._verified_locked()
+            except LockUnavailable:
+                # Another process holds it, very likely making the same repair. Look
+                # again rather than fail: contention is not corruption.
+                continue
+        raise IncidentLogError(
+            "the incident log could not be read consistently; another writer keeps "
+            "changing it"
+        )
+
+    def _verified_locked(self) -> list[dict[str, object]]:
+        """Verify while already holding the lock."""
+        entries, head = self._snapshot()
+        verdict = self._inspect(entries, head)
+        if verdict is _REPAIRABLE:
+            self._write_head(len(entries), entries[-1]["entry_hash"])
+            entries, head = self._snapshot()
+            verdict = self._inspect(entries, head)
+        if verdict is not _HEALTHY:
+            raise verdict
+        return entries
+
+    def _snapshot(self) -> tuple[list[dict[str, object]], dict[str, object] | None]:
+        """Read the log and the head as one observation, in that order.
+
+        The log first, so a head read afterwards can only be at least as new. The reverse
+        order can report a head that names an entry the log read did not include.
+        """
         entries = self._read()
+        head: dict[str, object] | None = None
+        if self.head_path.exists():
+            try:
+                value = strict_json_loads(self.head_path.read_bytes())
+            except (OSError, TypeError, ValueError) as error:
+                raise IncidentLogError(f"cannot read incident head: {error}") from error
+            if not isinstance(value, dict):
+                raise IncidentLogError("incident head must be an object")
+            head = value
+        return entries, head
+
+    def _inspect(
+        self, entries: list[dict[str, object]], head: dict[str, object] | None
+    ) -> object:
+        """Judge one snapshot: healthy, repairable, or an error explaining why not."""
+        try:
+            self._check_chain(entries)
+            _verify_closures(entries)
+        except IncidentLogError as error:
+            return error
+        return self._check_head(entries, head)
+
+    def _check_chain(self, entries: list[dict[str, object]]) -> None:
         previous: str | None = None
         for index, entry in enumerate(entries):
             if set(entry) != _ENTRY_FIELDS:
@@ -181,10 +265,6 @@ class IncidentLog:
             if entry["kind"] not in KINDS:
                 raise IncidentLogError(f"incident entry {index} has an unknown kind")
             previous = expected
-
-        self._verify_head(entries)
-        _verify_closures(entries)
-        return entries
 
     def open_incidents(self, asset_key: str | None = None) -> list[Incident]:
         """Every incident that has been opened and not since closed."""
@@ -216,18 +296,14 @@ class IncidentLog:
         state: str | None,
     ) -> dict[str, object]:
         with self._exclusive():
-            self._writing = True
-            try:
-                return self._append_locked(
-                    asset_key=asset_key,
-                    kind=kind,
-                    detail=detail,
-                    occurred_at=occurred_at,
-                    closes=closes,
-                    state=state,
-                )
-            finally:
-                self._writing = False
+            return self._append_locked(
+                asset_key=asset_key,
+                kind=kind,
+                detail=detail,
+                occurred_at=occurred_at,
+                closes=closes,
+                state=state,
+            )
 
     def _append_locked(
         self,
@@ -240,7 +316,7 @@ class IncidentLog:
         state: str | None,
     ) -> dict[str, object]:
         # Re-read under the lock. Anything gathered before it was taken may be stale.
-        entries = self.verify()
+        entries = self._verified_locked()
         if not isinstance(asset_key, str) or not asset_key:
             raise IncidentLogError("asset_key must be nonempty text")
         if not isinstance(detail, str) or not detail.strip():
@@ -297,32 +373,6 @@ class IncidentLog:
             entries.append(value)
         return entries
 
-    def _repair_head(self, count: int, head_entry_hash: str) -> None:
-        """Complete an interrupted head under the lock, and only if still needed.
-
-        Repair is a write, and ``verify()`` is called by readers who hold nothing. Two of
-        them repairing at once share one ``.head.tmp``: each writes it, and the second
-        ``os.replace`` can find its source already moved. Under the lock the state is
-        re-read first, so a repair another process has already done is simply not redone.
-        """
-        if self._writing:
-            # Already inside an append, which holds the lock; recursing would deadlock.
-            self._write_head(count, head_entry_hash)
-            return
-        with self._exclusive():
-            if self.head_path.exists():
-                try:
-                    current = strict_json_loads(self.head_path.read_bytes())
-                except (OSError, TypeError, ValueError):
-                    current = None
-                if (
-                    isinstance(current, dict)
-                    and current.get("count") == count
-                    and current.get("head_entry_hash") == head_entry_hash
-                ):
-                    return
-            self._write_head(count, head_entry_hash)
-
     def _write_head(self, count: int, head_entry_hash: str) -> None:
         head = {
             "count": count,
@@ -336,53 +386,47 @@ class IncidentLog:
             os.fsync(output.fileno())
         os.replace(temporary, self.head_path)
 
-    def _verify_head(self, entries: list[dict[str, object]]) -> None:
+    def _check_head(
+        self, entries: list[dict[str, object]], head: dict[str, object] | None
+    ) -> object:
         """Compare the log against the head written beside it.
 
         This is what catches a truncation: cutting entries off the end leaves a valid
         chain, so the chain cannot object. It is not tamper-proofing — an actor able to
         write both files can forge both consistently — it detects loss and partial edits.
         """
-        if not self.head_path.exists():
+        expected = entries[-1]["entry_hash"] if entries else None
+        if head is None:
             if len(entries) == 1:
-                # The very first entry was fsynced and the head never written. Same
-                # interrupted append as below, and equally repairable — refusing it would
-                # make a service's first recorded incident unrecoverable.
-                self._repair_head(1, entries[0]["entry_hash"])
-                return
+                # The very first entry was fsynced and the head never written: the same
+                # interrupted append as below, and equally repairable.
+                return _REPAIRABLE
             if entries:
-                raise IncidentLogError(
+                return IncidentLogError(
                     "the incident log has entries but no head to attest to them; its "
                     "completeness cannot be established"
                 )
-            return
-        try:
-            head = strict_json_loads(self.head_path.read_bytes())
-        except (OSError, TypeError, ValueError) as error:
-            raise IncidentLogError(f"cannot read incident head: {error}") from error
-        if not isinstance(head, dict) or set(head) != _HEAD_FIELDS:
-            raise IncidentLogError("incident head fields are not as expected")
+            return _HEALTHY
+        if set(head) != _HEAD_FIELDS:
+            return IncidentLogError("incident head fields are not as expected")
         if head["version"] != INCIDENT_HEAD_VERSION:
-            raise IncidentLogError("incident head version is unsupported")
-        expected = entries[-1]["entry_hash"] if entries else None
+            return IncidentLogError("incident head version is unsupported")
         if head["count"] == len(entries) and head["head_entry_hash"] == expected:
-            return
+            return _HEALTHY
         if len(entries) == head["count"] + 1:
             predecessor = entries[-2]["entry_hash"] if len(entries) >= 2 else None
             if head["head_entry_hash"] == predecessor:
-                # The log is exactly one entry ahead of the head, and that entry follows
-                # the one the head names. That is a crash between the two writes, not a
-                # loss: the line was fsynced and the head never caught up. Completing the
-                # head is the recovery, and it is the only direction safe to repair — a
-                # log shorter than its head has lost something no repair brings back.
-                self._repair_head(len(entries), expected)
-                return
+                # One entry ahead of the head, following the entry the head names: the
+                # crash between the two writes. Completing the head is the recovery, and
+                # it is the only direction safe to repair — a log shorter than its head has
+                # lost something no repair brings back.
+                return _REPAIRABLE
         if head["count"] > len(entries):
-            raise IncidentLogError(
+            return IncidentLogError(
                 f"incident head expects {head['count']} entries, the log holds "
                 f"{len(entries)}"
             )
-        raise IncidentLogError("incident head does not name the log's final entry")
+        return IncidentLogError("incident head does not name the log's final entry")
 
 
 def _verify_closures(entries: list[dict[str, object]]) -> None:

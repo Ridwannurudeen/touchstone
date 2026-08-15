@@ -12,8 +12,11 @@ START = datetime(2026, 8, 15, 9, 0, tzinfo=timezone.utc)
 
 
 class FakeTime:
-    def __init__(self) -> None:
-        self.current = 0.0
+    def __init__(self, origin: float = 0.0) -> None:
+        # A real monotonic clock reports uptime, not zero. Every test here started at
+        # zero, which is precisely where floating-point cancellation does not bite — so a
+        # tolerance too small for real magnitudes looked correct.
+        self.current = origin
         self.sleeps: list[float] = []
 
     def monotonic(self) -> float:
@@ -260,10 +263,11 @@ def test_a_slot_due_at_this_exact_moment_is_run_not_skipped() -> None:
     ]
 
 
-@pytest.mark.parametrize("interval", [0.1, 0.2, 0.3, 1 / 3, 0.05, 2.5])
-@pytest.mark.parametrize("elapsed", [1, 2, 3, 4, 7])
+@pytest.mark.parametrize("origin", [0.0, 1e5, 1e7, 8.64e7])
+@pytest.mark.parametrize("interval", [0.05, 0.1, 0.2, 0.3, 1 / 3, 2.5])
+@pytest.mark.parametrize("elapsed", [1, 2, 3, 4, 5, 6, 7])
 def test_a_fractional_interval_still_runs_the_slot_that_is_due(
-    interval: float, elapsed: int
+    origin: float, interval: float, elapsed: int
 ) -> None:
     """The same boundary, over the input domain where floats do not divide cleanly.
 
@@ -271,7 +275,7 @@ def test_a_fractional_interval_still_runs_the_slot_that_is_due(
     bare ceiling reads that as N+1, dropping the live slot again. Integer intervals hid
     this entirely, which is why the first fix looked complete.
     """
-    clock = FakeTime()
+    clock = FakeTime(origin)
     starts = []
 
     def job(scheduled_at: datetime) -> None:
@@ -303,3 +307,38 @@ def test_a_partial_gap_still_counts_the_slot_it_passed() -> None:
     outcome = schedule(job, clock, interval_seconds=0.1, max_runs=2)
 
     assert outcome.missed_count == 2
+
+
+def test_an_outage_is_never_reported_with_a_count_of_zero() -> None:
+    """The catch-up branch must not announce an outage of no slots.
+
+    Lateness that the float tolerance absorbs produced a skip count of zero, and the
+    service dutifully recorded that a slot "did not run" at the very moment it ran. The
+    requirement is about the report, not about how much lateness is acceptable — that is a
+    separate policy question, and this asserts only the invariant.
+    """
+    for origin in (0.0, 1e5, 1e7):
+        for interval in (0.1, 0.2, 60, 86_400):
+            for overrun in (0.0, interval, interval * 3, interval * 2.5):
+                clock = FakeTime(origin)
+                outages = []
+                runs = []
+
+                def job(scheduled_at: datetime, clock=clock, runs=runs, overrun=overrun):
+                    runs.append(scheduled_at)
+                    if len(runs) == 1:
+                        clock.current += overrun
+
+                outcome = schedule(
+                    job,
+                    clock,
+                    interval_seconds=interval,
+                    max_runs=2,
+                    on_outage=lambda first, count: outages.append(count),
+                )
+
+                assert all(count > 0 for count in outages), (
+                    f"origin={origin} interval={interval} overrun={overrun} reported "
+                    f"{outages}"
+                )
+                assert sum(outages) == outcome.missed_count
