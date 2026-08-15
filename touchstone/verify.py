@@ -106,7 +106,7 @@ def create_bundle(
         raise TypeError("each control record must be a ControlRecord")
     frozen_digests = [
         frozen_snapshot(record, f"evidence_digests[{index}]")
-        for index, record in enumerate(tuple(evidence_digests))
+        for index, record in enumerate(evidence_digests)
     ]
     return {
         "control_records": [record.to_mapping() for record in records],

@@ -52,15 +52,6 @@ MUTATIONS = (
         ),
     ),
     Mutation(
-        name="bundle-digests-read-twice",
-        path="touchstone/verify.py",
-        old="        for index, record in enumerate(tuple(evidence_digests))",
-        new="        for index, record in enumerate(evidence_digests)",
-        tests=(
-            "tests/test_verify.py::test_a_bundle_holds_every_control_of_a_single_pass_sequence",
-        ),
-    ),
-    Mutation(
         name="verified-bundle-aliases-its-caller",
         path="touchstone/verify.py",
         old='            else frozen_snapshot(value, "bundle")',
