@@ -108,7 +108,15 @@ def chain_of(root: Path) -> dict:
     return json.loads((root / "chain.json").read_text(encoding="utf-8"))
 
 
-@pytest.mark.parametrize("mode", ["die-before-broadcast", "die-after-broadcast"])
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "die-before-broadcast",
+        "die-after-broadcast",
+        "die-after-finalize",
+        "die-in-slot-after-finalize",
+    ],
+)
 def test_a_killed_publication_is_finished_exactly_once_on_restart(
     tmp_path: Path, mode: str
 ) -> None:
@@ -128,6 +136,10 @@ def test_a_killed_publication_is_finished_exactly_once_on_restart(
     assert result["sequences"] == [1], "exactly one report reached the registry"
     assert result["operation_cleared"] is True
     assert result["log_entries"] == 1, "and exactly one entry records it"
+    assert result["state_sequence"] == 1, (
+        "the projection caught up with the publication it was separated from"
+    )
+    assert result["open_incidents"] == 0, "and nothing is left recorded as stuck"
 
 
 def test_the_restart_reuses_the_signed_bytes_rather_than_signing_again(
@@ -170,3 +182,45 @@ def test_a_second_restart_after_a_resolved_publication_is_a_no_op(
 
     assert json.loads(again.stdout)["resolved"] is False
     assert len(chain_of(root)["receipts"]) == 1
+
+
+def test_a_crash_after_the_publisher_finalized_still_leaves_one_report(
+    tmp_path: Path,
+) -> None:
+    """The gap between the two layers, which the earlier crash modes never reached.
+
+    The chain accepted it, the transparency log recorded it and the publisher cleared its
+    own journal — and only then did the process die, with this service's operation still
+    on disk. The restart must recognise that as finished rather than publish it again.
+    """
+    root = workspace(tmp_path)
+
+    killed = run_child("die-after-finalize", root)
+    assert killed.returncode == 9, killed.stderr
+    assert not (root / "pending.json").exists(), (
+        "the publisher had already cleared its own journal before the crash"
+    )
+    assert (root / "operations" / "operation.json").exists(), (
+        "and only this service's operation was left behind"
+    )
+    assert len(json.loads((root / "transparency.jsonl").read_bytes().splitlines()[0])) > 0
+
+    restarted = run_child("resolve", root)
+    result = json.loads(restarted.stdout)
+
+    assert result["sequences"] == [1], "no second publication"
+    assert result["operation_cleared"] is True
+    assert result["state_sequence"] == 1
+    assert len(chain_of(root)["receipts"]) == 1
+
+
+def test_a_clean_slot_publishes_once_and_records_its_state(tmp_path: Path) -> None:
+    """The ordinary path through the slot, end to end, in its own process."""
+    root = workspace(tmp_path)
+
+    result = run_child("slot", root)
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["published"] is True
+    assert len(chain_of(root)["receipts"]) == 1
+    assert not (root / "operations" / "operation.json").exists()

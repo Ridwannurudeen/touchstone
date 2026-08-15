@@ -33,6 +33,8 @@ PUBLISHER_SECRET = "a1" * 32
 DEPLOYER_SECRET = "b2" * 32
 OPERATIONS_SECRET = "c3" * 32
 REGISTRY = Web3.to_checksum_address("0x" + "ab" * 20)
+# The asset every fixture report is about; shared so other suites need not restate it.
+ASSET_KEY_OF = "eip155:1:0x" + "11" * 20
 REPORTER = Ed25519Signer.from_seed(bytes(range(32)))
 CHAIN_ID = 31337
 STRANGER_SECRET = "d4" * 32
@@ -257,7 +259,7 @@ def _signed_report(sequence: int, *, correction_of: int | None = None):
     signer = Ed25519Signer.from_seed(bytes(range(32)))
     return signer.sign_report(
         {
-            "asset_key": "eip155:1:0x" + "11" * 20,
+            "asset_key": ASSET_KEY_OF,
             "control_set_root": "22" * 32,
             "correction_of": correction_of,
             "evidence_root": "33" * 32,

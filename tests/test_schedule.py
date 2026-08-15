@@ -175,3 +175,56 @@ def test_cli_reports_a_failed_slot_in_its_exit_status(
 
     assert main(["--runs", "1", "--", "false"]) == 1
     assert "failed" in capsys.readouterr().err
+
+
+def test_recording_an_outage_costs_no_more_than_naming_its_slots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bounded work, not merely a bounded list.
+
+    Computing the count arithmetically and then looping over every skipped slot to throw
+    most of them away left the work proportional to the outage — the thing the bound was
+    added to prevent.
+    """
+    import touchstone.schedule as schedule_module
+
+    advanced = schedule_module._advanced
+    calls = {"n": 0}
+
+    def counted(moment, interval):
+        calls["n"] += 1
+        return advanced(moment, interval)
+
+    monkeypatch.setattr(schedule_module, "_advanced", counted)
+
+    clock = FakeTime()
+    runs = []
+
+    def job(scheduled_at: datetime) -> None:
+        runs.append(scheduled_at)
+        if len(runs) == 1:
+            clock.current += 60_000  # a thousand slots pass
+
+    outcome = schedule(job, clock, max_runs=2)
+
+    assert outcome.missed_count == 1000, "the count is exact"
+    assert len(outcome.missed) == MAX_NAMED_MISSES
+    assert calls["n"] <= MAX_NAMED_MISSES + 8, (
+        f"work must stay near the bound, not the outage; took {calls['n']} steps"
+    )
+
+
+def test_an_outage_is_reported_once_with_its_exact_size() -> None:
+    """A service that never stops never sees the returned outcome."""
+    clock = FakeTime()
+    outages = []
+    runs = []
+
+    def job(scheduled_at: datetime) -> None:
+        runs.append(scheduled_at)
+        if len(runs) == 1:
+            clock.current += 300  # five slots
+
+    schedule(job, clock, max_runs=2, on_outage=lambda first, count: outages.append((first, count)))
+
+    assert outages == [(START + timedelta(seconds=60), 5)]

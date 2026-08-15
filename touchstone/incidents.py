@@ -15,7 +15,8 @@ way rather than described as tamper-proof.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -83,6 +84,33 @@ class IncidentLog:
         if self.path.exists() and not self.path.is_file():
             raise ValueError(f"incident log path must be a file: {self.path}")
         self.head_path = self.path.with_name(self.path.name + ".head")
+        self.lock_path = self.path.with_name(self.path.name + ".lock")
+
+    @contextmanager
+    def _exclusive(self) -> Iterator[None]:
+        """Hold an exclusive lock across the read-modify-write of an append.
+
+        Appending is a check-then-write: verify the chain, then extend it. Two processes
+        interleaving there produce two entries claiming the same index and the same
+        predecessor, which is a corrupt chain rather than a race that resolves itself. A
+        second daemon on one workspace is a configuration mistake, and it should fail
+        loudly instead of quietly damaging the record of everything else.
+        """
+        try:
+            handle = os.open(
+                self.lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY
+            )
+        except FileExistsError as error:
+            raise IncidentLogError(
+                f"another writer holds {self.lock_path.name}; two services must not "
+                "share one incident log"
+            ) from error
+        try:
+            os.write(handle, str(os.getpid()).encode("ascii"))
+            os.close(handle)
+            yield
+        finally:
+            self.lock_path.unlink(missing_ok=True)
 
     # ------------------------------------------------------------------ writing
     def open_incident(
@@ -117,9 +145,7 @@ class IncidentLog:
         """Record that it started working again, by appending rather than editing."""
         entries = self.verify()
         opened = {
-            entry["entry_hash"]: entry
-            for entry in entries
-            if entry["closes"] is None
+            entry["entry_hash"]: entry for entry in entries if entry["closes"] is None
         }
         target = opened.get(incident_id)
         if target is None:
@@ -133,7 +159,6 @@ class IncidentLog:
             occurred_at=occurred_at,
             closes=incident_id,
             state=state,
-            entries=entries,
         )
 
     # ------------------------------------------------------------------ reading
@@ -171,9 +196,7 @@ class IncidentLog:
     def open_incidents(self, asset_key: str | None = None) -> list[Incident]:
         """Every incident that has been opened and not since closed."""
         entries = self.verify()
-        closed = {
-            entry["closes"] for entry in entries if entry["closes"] is not None
-        }
+        closed = {entry["closes"] for entry in entries if entry["closes"] is not None}
         return [
             Incident(
                 incident_id=entry["entry_hash"],
@@ -198,10 +221,29 @@ class IncidentLog:
         occurred_at: datetime,
         closes: str | None,
         state: str | None,
-        entries: list[dict[str, object]] | None = None,
     ) -> dict[str, object]:
-        if entries is None:
-            entries = self.verify()
+        with self._exclusive():
+            return self._append_locked(
+                asset_key=asset_key,
+                kind=kind,
+                detail=detail,
+                occurred_at=occurred_at,
+                closes=closes,
+                state=state,
+            )
+
+    def _append_locked(
+        self,
+        *,
+        asset_key: str,
+        kind: str,
+        detail: str,
+        occurred_at: datetime,
+        closes: str | None,
+        state: str | None,
+    ) -> dict[str, object]:
+        # Re-read under the lock. Anything gathered before it was taken may be stale.
+        entries = self.verify()
         if not isinstance(asset_key, str) or not asset_key:
             raise IncidentLogError("asset_key must be nonempty text")
         if not isinstance(detail, str) or not detail.strip():
@@ -234,6 +276,15 @@ class IncidentLog:
             raw = self.path.read_bytes()
         except OSError as error:
             raise IncidentLogError(f"cannot read incident log: {error}") from error
+        if raw and not raw.endswith(b"\n"):
+            # splitlines() reads a half-written final line as a whole one, so a truncated
+            # write verified cleanly — and the next append landed on the same line,
+            # concatenating two records into one. A log that does not end where a line
+            # ends is damaged, and saying so is the only safe reading of it.
+            raise IncidentLogError(
+                "the incident log does not end at a line boundary; its final entry was "
+                "written only partly"
+            )
         entries: list[dict[str, object]] = []
         for number, line in enumerate(raw.splitlines()):
             if not line.strip():
@@ -284,14 +335,25 @@ class IncidentLog:
             raise IncidentLogError("incident head fields are not as expected")
         if head["version"] != INCIDENT_HEAD_VERSION:
             raise IncidentLogError("incident head version is unsupported")
-        if head["count"] != len(entries):
+        expected = entries[-1]["entry_hash"] if entries else None
+        if head["count"] == len(entries) and head["head_entry_hash"] == expected:
+            return
+        if len(entries) == head["count"] + 1:
+            predecessor = entries[-2]["entry_hash"] if len(entries) >= 2 else None
+            if head["head_entry_hash"] == predecessor:
+                # The log is exactly one entry ahead of the head, and that entry follows
+                # the one the head names. That is a crash between the two writes, not a
+                # loss: the line was fsynced and the head never caught up. Completing the
+                # head is the recovery, and it is the only direction safe to repair — a
+                # log shorter than its head has lost something no repair brings back.
+                self._write_head(len(entries), expected)
+                return
+        if head["count"] > len(entries):
             raise IncidentLogError(
                 f"incident head expects {head['count']} entries, the log holds "
                 f"{len(entries)}"
             )
-        expected = entries[-1]["entry_hash"] if entries else None
-        if head["head_entry_hash"] != expected:
-            raise IncidentLogError("incident head does not name the log's final entry")
+        raise IncidentLogError("incident head does not name the log's final entry")
 
 
 def _verify_closures(entries: list[dict[str, object]]) -> None:

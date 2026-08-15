@@ -21,7 +21,7 @@ of doing.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import os
@@ -105,10 +105,16 @@ class OperationalState:
 class OperationsStore:
     """Atomic per-asset state and the single in-flight operation."""
 
-    def __init__(self, directory: str | os.PathLike[str]) -> None:
+    def __init__(
+        self,
+        directory: str | os.PathLike[str],
+        *,
+        now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    ) -> None:
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.operation_path = self.directory / "operation.json"
+        self.now = now
 
     # ------------------------------------------------------------------ operation
     def begin_operation(
@@ -127,6 +133,11 @@ class OperationsStore:
                 "still unresolved; it must be settled before another begins"
             )
         report = _report_of(signed_report)
+        if correction_of != report.get("correction_of"):
+            raise OperationsError(
+                f"correction_of={correction_of!r} contradicts the report, which says "
+                f"{report.get('correction_of')!r}"
+            )
         operation = PendingOperation(
             asset_key=report["asset_key"],
             sequence=report["sequence"],
@@ -155,6 +166,14 @@ class OperationsStore:
         ):
             raise OperationsError(
                 "the recorded operation does not describe the report it carries"
+            )
+        # The report says whether it is a correction and of what. An operation that
+        # disagrees would send a plain report through the correction entry point, or the
+        # reverse, on the strength of an unsigned local field.
+        if value["correction_of"] != report.get("correction_of"):
+            raise OperationsError(
+                f"the operation says correction_of={value['correction_of']!r} while its "
+                f"report says {report.get('correction_of')!r}"
             )
         return PendingOperation(
             asset_key=value["asset_key"],
@@ -195,21 +214,36 @@ class OperationsStore:
                     f"sequence {operation.sequence} for {operation.asset_key} is already "
                     f"onchain but this service has no record of publishing it: {error}"
                 ) from error
-            self.clear_operation()
+            self._settle(operation)
             return None
-        self.clear_operation()
+        self._settle(operation)
         return result
+
+    def _settle(self, operation: PendingOperation) -> None:
+        """Record what the publication observed, and only then forget it was pending.
+
+        The order is the point. Clearing first left a window where the chain and the
+        transparency log were final, the operation was gone, and the projection still
+        showed the previous epoch — with nothing left to reconcile from. Writing the state
+        first means a crash in between simply leaves the operation to be settled again,
+        which is idempotent.
+        """
+        self.save_state(operation.signed_report, updated_at=self.now())
+        self.clear_operation()
 
     def _logged_entry(
         self, client: PublisherClient, operation: PendingOperation
     ) -> Mapping[str, object] | None:
-        report = _report_of(operation.signed_report)
+        """The log entry for *this* publication, not merely one at the same sequence.
+
+        Matching on asset and sequence alone accepted somebody else's entry — or our own
+        for a different report — as proof that this operation had settled, and cleared it.
+        The signed report is compared whole, because that is the thing the sequence was
+        supposed to identify.
+        """
+        expected = canonical_json_bytes(dict(operation.signed_report))
         for entry in client.transparency_log.verify():
-            logged = entry["signed_report"]["report"]
-            if (
-                logged.get("asset_key") == report["asset_key"]
-                and logged.get("sequence") == report["sequence"]
-            ):
+            if canonical_json_bytes(dict(entry["signed_report"])) == expected:
                 return entry
         return None
 

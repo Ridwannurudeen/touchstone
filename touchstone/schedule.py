@@ -62,6 +62,7 @@ def run_schedule(
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     on_failure: Callable[[datetime, BaseException], None] | None = None,
     on_missed: Callable[[datetime], None] | None = None,
+    on_outage: Callable[[datetime, int], None] | None = None,
 ) -> ScheduleOutcome:
     """Run immediately, then at fixed cadence, without overlapping or catching up.
 
@@ -111,13 +112,20 @@ def run_schedule(
             # slot, and a scheduler that hangs while recording downtime is worse than one
             # that records it roughly.
             skipped = int((current - next_run) // interval) + 1
-            for index in range(skipped):
+            # Only the slots actually named cost anything. Iterating over every skipped
+            # slot to discard most of them made the work proportional to the outage, which
+            # is the opposite of what a recovering service needs.
+            names = min(skipped, MAX_NAMED_MISSES - len(missed))
+            for index in range(max(names, 0)):
                 slot = _advanced(scheduled_at, interval * index)
-                missed_count += 1
-                if len(missed) < MAX_NAMED_MISSES:
-                    missed.append(slot)
-                    if on_missed is not None:
-                        on_missed(slot)
+                missed.append(slot)
+                if on_missed is not None:
+                    on_missed(slot)
+            if on_outage is not None:
+                # A service that never stops never sees the returned outcome, so the exact
+                # total is handed over as it happens rather than only at the end.
+                on_outage(scheduled_at, skipped)
+            missed_count += skipped
             next_run += interval * skipped
             scheduled_at = _advanced(scheduled_at, interval * skipped)
 

@@ -238,6 +238,41 @@ def main() -> int:
         service.operations.resolve(service.client)
         return 0
 
+    if mode == "die-after-finalize":
+        # The publisher finished: the chain accepted it, the transparency log recorded it,
+        # and the publisher cleared its own journal. Only *this service's* operation is
+        # still on disk. That is the gap between the two layers, and it is the one the
+        # earlier crash modes never reached.
+        service.operations.begin_operation(
+            signed_report,
+            report_uri=REPORT_URI,
+            correction_of=None,
+            scheduled_for=scheduled_for,
+        )
+        service.operations.save_state = lambda *a, **k: os._exit(9)
+        service.operations.resolve(service.client)
+        return 0
+
+    if mode == "die-in-slot-after-finalize":
+        # The same crash, reached through Service.run_slot rather than around it, so the
+        # slot path itself is exercised.
+        service.operations.save_state = lambda *a, **k: os._exit(9)
+        service.run_slot(
+            scheduled_for,
+            lambda at: signed_report,
+            report_uri=lambda report: REPORT_URI,
+        )
+        return 0
+
+    if mode == "slot":
+        outcome = service.run_slot(
+            scheduled_for,
+            lambda at: signed_report,
+            report_uri=lambda report: REPORT_URI,
+        )
+        print(json.dumps({"published": outcome.published, "detail": outcome.detail}))
+        return 0
+
     if mode == "resolve":
         outcome = service.resolve_startup()
         print(
@@ -247,12 +282,19 @@ def main() -> int:
                     "sequences": _published_sequences(backend, signed_report),
                     "operation_cleared": service.operations.load_operation() is None,
                     "log_entries": len(service.client.transparency_log.verify()),
+                    "state_sequence": _state_sequence(service, signed_report),
+                    "open_incidents": len(service.incidents.open_incidents()),
                 }
             )
         )
         return 0
 
     raise SystemExit(f"unknown mode: {mode}")
+
+
+def _state_sequence(service, signed_report: dict) -> int | None:
+    state = service.operations.load_state(signed_report["report"]["asset_key"])
+    return None if state is None else state.sequence
 
 
 def _published_sequences(backend: FileChainBackend, signed_report: dict) -> list[int]:

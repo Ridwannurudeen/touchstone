@@ -138,6 +138,12 @@ class Service:
             raise UnresolvedPublication(
                 f"startup could not settle sequence {operation.sequence}: {error}"
             ) from error
+        # A failed startup opened PUBLICATION_UNRESOLVED. Succeeding now is exactly the
+        # recovery that incident was waiting for, and leaving it open would make the log
+        # read as though the service were still stuck.
+        self._close_open_incidents(
+            f"sequence {operation.sequence} was settled on a later start"
+        )
         return SlotOutcome(
             scheduled_at=moment,
             published=True,
@@ -155,8 +161,21 @@ class Service:
         correction_of: int | None = None,
     ) -> SlotOutcome:
         """Produce a report for this slot and publish it, or record why neither happened."""
+        # Every slot, not only the first. A publication that failed leaves an operation
+        # behind, and the scheduler deliberately keeps going — so without this the next
+        # slot would fetch and sign before anything noticed the earlier one was still in
+        # flight. Resolving first is the whole invariant; it cannot live only in startup.
         try:
-            signed_report = self._with_retry(lambda: produce(scheduled_at))
+            self._resolve_outstanding()
+        except Exception as error:  # noqa: BLE001 - recorded, and the slot does not run
+            return self._record_incident(
+                PUBLICATION_UNRESOLVED,
+                f"an earlier publication is still unresolved: {error}",
+                scheduled_at,
+            )
+
+        try:
+            signed_report = produce(scheduled_at)
         except SourceUnavailable as error:
             return self._record_incident(SOURCE_UNAVAILABLE, str(error), scheduled_at)
         except Exception as error:  # noqa: BLE001 - any epoch failure is an incident
@@ -177,8 +196,21 @@ class Service:
             correction_of=correction_of,
             scheduled_for=scheduled_at,
         )
-        self.operations.resolve(self.client)
-        self.operations.save_state(signed_report, updated_at=self.now())
+        try:
+            # The retry belongs here, around the publication, because this is where a
+            # transport failure actually arises — preflight and submission. Wrapping the
+            # producer instead meant submission was never retried at all.
+            self._with_retry(lambda: self.operations.resolve(self.client))
+        except (PublicationError, OperationsError) as error:
+            # OperationsError as well as PublicationError: refusing to retry a journalled
+            # transaction raises the former, and letting it escape would end the slot
+            # rather than record it — the schedule would survive, but the reason would be
+            # lost.
+            return self._record_incident(
+                PUBLICATION_UNRESOLVED,
+                f"the report was signed but not published: {error}",
+                scheduled_at,
+            )
         self._close_open_incidents("evidence was retrieved and published again")
         return SlotOutcome(
             scheduled_at=scheduled_at,
@@ -187,12 +219,29 @@ class Service:
             detail="published",
         )
 
-    def record_missed_slot(self, scheduled_at: datetime) -> None:
+    def _resolve_outstanding(self) -> None:
+        """Settle a publication left over from an earlier slot, if there is one."""
+        if self.operations.load_operation() is None:
+            return
+        self._with_retry(lambda: self.operations.resolve(self.client))
+
+    def record_outage(self, first_missed: datetime, count: int) -> None:
+        """One incident per outage, carrying the exact number of slots it covered.
+
+        Recording each missed slot separately would write thousands of entries for a long
+        outage and bury everything else in the log. The count is exact even though only
+        one entry is written for it.
+        """
         self.incidents.open_incident(
             asset_key=self.asset_key,
             kind=SLOT_MISSED,
-            detail=f"the slot scheduled for {scheduled_at.isoformat()} did not run",
+            detail=(
+                f"{count} slot(s) did not run, from {first_missed.isoformat()}"
+                if count > 1
+                else f"the slot scheduled for {first_missed.isoformat()} did not run"
+            ),
             occurred_at=self.now(),
+            state=self._projected_state(),
         )
 
     # ----------------------------------------------------------------- internals
@@ -267,7 +316,7 @@ def serve(
         ),
         interval_seconds=interval_seconds,
         max_runs=max_runs,
-        on_missed=service.record_missed_slot,
+        on_outage=service.record_outage,
         **schedule_arguments,
     )
 
@@ -289,6 +338,7 @@ def build_service(manifest_path: str, workspace: str, *, asset_key: str) -> Serv
         IncidentLog(root / "incidents.jsonl"),
         asset_key=asset_key,
     )
+
 
 
 def main(argv: list[str] | None = None) -> int:
