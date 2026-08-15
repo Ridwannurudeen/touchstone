@@ -19,7 +19,7 @@ previous one passes audit.**
 | PLAN-T5 | Hero evidence security and the authoritative USTB oracle check | L | **Done** (`5c73edf`) |
 | PLAN-T6 | Production-capable publisher and staged deployment path | L | **Done** (`016de1b`) |
 | PLAN-T7 | Autonomous epoch operations and append-only incidents | L | **Done** (`2c2ae27`) |
-| PLAN-T8 | Heartbeat, watchdog, alerts, gas runway, encrypted backup and restore | L | |
+| PLAN-T8 | Heartbeat, watchdog, alerts, gas runway, encrypted backup and restore | L | In progress |
 | PLAN-T9 | Wallet-free living dossier and developer surface | L | |
 | PLAN-T10 | USDY autonomous daily adapter | L | |
 | PLAN-T11 | FOBXX issuer/SEC contrast adapter | L | |
@@ -137,6 +137,59 @@ watchdog detection within five minutes and recovery within fifteen; alerting wit
 logging its secret; gas runway from real balance and measured costs; authenticated
 encrypted backups; restore that verifies hashes, chains and signatures before activation;
 `docs/OPERATIONS.md` with the Aug 21 – Sept 1 schedule and incident policy.
+
+*Scope frozen 2026-08-15 by audit direction, deliberately narrow.* Five pieces and one
+document: `heartbeat.py`, `watchdog.py`, `alerts.py`, `gas.py`, `backup.py`, and
+`docs/OPERATIONS.md`. Health is **calculated at read time and never stored** — a heartbeat
+records facts and an expiry, so a dead daemon cannot leave a green flag behind. Detection is
+proved in a local subprocess harness that kills a daemon and starts its replacement; T13
+owns the systemd units and T8 installs nothing. Alerting is one HTTPS webhook whose
+credential never appears in a URL, body, exception, incident, argv or repr. Gas runway
+divides a balance read at one confirmed block by the **maximum measured** cost from
+successful receipts — never a fee estimate, never a ceiling — and yields `UNKNOWN` rather
+than a fallback whenever any component is indeterminate.
+
+Backup is where the T7 defect class returns, so the rule is explicit: the daemon holds the
+workspace lock for its whole serving lifetime, so **a second process must never copy a live
+workspace**. Scheduled backup runs cooperatively inside the daemon between mutations while
+it already holds that lock; the standalone command acquires the same lock or refuses. That
+is what prevents an archive holding a transparency log from one instant, an incident head
+from another and an operation file from a third. `Workspace` also gains the evidence root,
+so a live adapter cannot put irreplaceable evidence outside what is backed up. Restore
+verifies chains, digests and signatures into a fresh staging directory and is activated by a
+separate operator action; it never overwrites a live workspace and never signs or broadcasts.
+
+**Explicitly out of scope**, and not to be reopened under audit: dashboards, status pages
+and any browser surface (T9); CI and the release matrix (T12); systemd, nginx, TLS, domains
+and any installation (T13); multi-region failover, leader election or distributed locks;
+Prometheus, Grafana, OpenTelemetry or log aggregation; PagerDuty, Slack or Telegram; alert
+routing frameworks; automatic gas top-up, treasury logic or price conversion; automatic
+restore or rollback; HSM, KMS, multisig or secret managers; backup pruning, incremental or
+deduplicated archives; cloud-storage SDKs; and any contract or ABI change.
+
+**One unknown to close during implementation:** whether X Layer receipts expose a fee
+component beyond `gas_used × effective_gas_price`. If they do the calculator must include
+it; if it cannot be established, runway is `UNKNOWN`.
+
+**Build order amended 2026-08-15 by audit direction, pending owner confirmation of the
+asset decision.** T8 (Aug 15–16) → **amended T10** (Aug 17): wire USTB into the unattended
+daemon, then run a half-day promotion gate on OUSG as the second live adapter → T9 (Aug 18)
+→ T12 (Aug 19–20) → T13 (Aug 20) → Aug 21 buffer and owner gates only.
+
+The wiring comes first because it is the real gap: `scripts/run_service.py` refuses every
+mode except `--resolve-only`, saying so honestly — "no live epoch adapter is wired yet". The
+USTB pipeline is complete and the daemon can reconcile, but nothing drives an epoch on a
+schedule, so the number of *autonomous* adapters today is zero rather than one.
+
+**USDY is cut.** Its retrieval is unbounded and no official bounded route has been found, so
+further work on it buys nothing. **FOBXX is deferred** as a documented third asset: the SEC
+EDGAR fixture is committed and honest, the live adapter is not shipped, and the manifest says
+so. **OUSG is the recommended second adapter** — it has a bounded on-chain oracle and passed
+the Phase-0 gate, and two conservative controls would take the portfolio to seven accepted
+controls against the roadmap's six. Its promotion gate is not a formality: the oracle address
+and ABI, a golden fixture and stable extraction anchors are all still unverified, and if the
+gate fails by Aug 17 the honest fallback is USTB alone with the missed metric stated plainly
+rather than a substitute asset chosen to inflate a count.
 
 **PLAN-T9 — living dossier.** Wallet-free public pages showing state, freshness, accepted
 controls, evidence excerpts and hashes, transition timeline, incident history, source
