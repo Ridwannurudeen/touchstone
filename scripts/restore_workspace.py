@@ -20,10 +20,10 @@ from cryptography.exceptions import InvalidSignature  # noqa: E402
 
 from touchstone.backup import BackupError, backup_key, restore  # noqa: E402
 from touchstone.deployment import DeploymentError, DeploymentManifest  # noqa: E402
-from touchstone.evidence import EvidenceStore  # noqa: E402
+from touchstone.evidence import EvidenceIntegrityError, EvidenceStore  # noqa: E402
 from touchstone.incidents import IncidentLog, IncidentLogError  # noqa: E402
 from touchstone.keyring import verification_keys  # noqa: E402
-from touchstone.signing import verify_signed_report  # noqa: E402
+from touchstone.signing import strict_json_loads, verify_signed_report  # noqa: E402
 from touchstone.translog import TransparencyLog, TransparencyLogError  # noqa: E402
 from touchstone.workspace import Workspace  # noqa: E402
 
@@ -63,7 +63,13 @@ def main(argv: list[str] | None = None) -> int:
         entries = TransparencyLog(workspace.transparency_log).verify()
         incidents = IncidentLog(workspace.incidents).verify()
         evidence = EvidenceStore(workspace.evidence).verified_entries()
-    except (IncidentLogError, TransparencyLogError, ValueError) as error:
+    except (
+        EvidenceIntegrityError,
+        IncidentLogError,
+        TransparencyLogError,
+        OSError,
+        ValueError,
+    ) as error:
         print(
             f"RESTORE FAIL: the archive restored but does not verify: {error}",
             file=sys.stderr,
@@ -74,13 +80,26 @@ def main(argv: list[str] | None = None) -> int:
     # report digests — it never checks an Ed25519 signature, so a consistently rehashed
     # archive of unsigned or wrongly signed reports passed every check above. The manifest
     # carries the reporting-key history precisely so this can be asked.
+    # The logged reports *and* the pending one. An operation is written before its
+    # transparency entry is appended, by design, so a restore that verified only the log
+    # verified nothing at all for the report the service still owes — which is exactly the
+    # report the next startup reconciliation will act on.
+    pending_reports = 0
     try:
         keys = verification_keys(manifest)
         for entry in entries:
             verify_signed_report(entry["signed_report"], keys)
+        pending_path = workspace.operations / "operation.json"
+        if pending_path.exists():
+            record = strict_json_loads(pending_path.read_bytes())
+            if not isinstance(record, dict) or "signed_report" not in record:
+                raise ValueError("a restored operation carries no signed report")
+            verify_signed_report(record["signed_report"], keys)
+            pending_reports = 1
     except (
         InvalidSignature,
         DeploymentError,
+        OSError,
         KeyError,
         TypeError,
         ValueError,
@@ -96,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"transparency log: {len(entries)} entries verify")
     print(f"incident log: {len(incidents)} entries verify")
     print(f"evidence: {len(evidence)} captures verify")
+    print(f"pending operation reports verified: {pending_reports}")
     print("NOT ACTIVATED — moving this into place is a separate operator decision")
     return 0
 

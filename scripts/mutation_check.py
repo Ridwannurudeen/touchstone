@@ -427,8 +427,8 @@ MUTATIONS = (
         # which error was caught, so it proved the refusal was worded correctly while the
         # lock still did all the work — it could not distinguish a backup module that
         # enforces the invariant from one that merely reports it.
-        old="        with exclusive_lock(root.lock):",
-        new="        if True:",
+        old="        with exclusive_lock(root.lock) as held:",
+        new="        held = Held(path=root.lock.resolve())\n        if True:",
         tests=(
             "tests/test_backup.py::test_a_genuinely_separate_process_cannot_back_up_a_live_workspace",
         ),

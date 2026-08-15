@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 import os
 from pathlib import Path
 
@@ -50,12 +51,48 @@ class LockUnavailable(RuntimeError):
     """Another live process holds this lock."""
 
 
+@dataclass(slots=True)
+class Held:
+    """Evidence that this process holds one specific lock, right now.
+
+    Handed out only by :func:`exclusive_lock`, after the kernel has granted the lock, and
+    invalidated when the block exits. That is what separates it from a value a caller can
+    simply construct: a function requiring one cannot be satisfied by intent alone, and a
+    caller holding a stale one is refused rather than believed.
+
+    It cannot defend against code that deliberately forges internals — nothing in a Python
+    process can — but it makes the ordinary mistake, calling a lock-requiring operation
+    without the lock, impossible rather than merely discouraged.
+    """
+
+    path: Path
+    _active: bool = True
+
+    @property
+    def active(self) -> bool:
+        return self._active
+
+    def verify(self, expected: str | os.PathLike[str]) -> None:
+        """Refuse unless this is a live hold on exactly the lock named."""
+        if not self._active:
+            raise LockUnavailable(
+                f"the hold on {self.path.name} has been released; it proves nothing now"
+            )
+        if self.path != Path(expected).resolve():
+            raise LockUnavailable(
+                f"this holds {self.path}, not {Path(expected).resolve()}"
+            )
+
+
 @contextmanager
-def exclusive_lock(path: str | os.PathLike[str]) -> Iterator[None]:
+def exclusive_lock(path: str | os.PathLike[str]) -> Iterator[Held]:
     """Hold an exclusive lock on ``path`` for the duration of the block.
 
     Raises :class:`LockUnavailable` immediately rather than waiting: a second daemon on
     one workspace is a configuration mistake, and blocking would hide it as a hang.
+
+    Yields a :class:`Held` so an operation that requires the lock can be given proof of it
+    rather than a comment asking for it.
     """
     location = Path(path)
     location.parent.mkdir(parents=True, exist_ok=True)
@@ -65,9 +102,13 @@ def exclusive_lock(path: str | os.PathLike[str]) -> Iterator[None]:
     except LockUnavailable:
         os.close(descriptor)
         raise
+    held = Held(path=location.resolve())
     try:
-        yield
+        yield held
     finally:
+        # Invalidated before the descriptor closes, so a reference kept past the block
+        # cannot be used in the window where the lock is gone but the object looks fine.
+        held._active = False
         try:
             _release(descriptor)
         finally:

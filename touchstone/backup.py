@@ -31,7 +31,7 @@ import secrets
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from touchstone.locking import LockUnavailable, exclusive_lock
+from touchstone.locking import Held, LockUnavailable, exclusive_lock
 from touchstone.quantities import utc_instant
 from touchstone.signing import canonical_json_bytes, strict_json_loads
 from touchstone.workspace import Workspace
@@ -57,27 +57,12 @@ class Member:
     sha256: str
 
 
-@dataclass(frozen=True, slots=True)
-class Lease:
-    """Evidence that the caller holds this workspace's lock.
-
-    A comment saying "the caller must hold the lock" is enforced by whoever reads it. A
-    parameter is enforced by the signature: `create` cannot be called without one, so the
-    two ways to obtain one are the two places the rule is actually checked.
-    """
-
-    root: Path
-
-    @classmethod
-    def from_held_lock(cls, workspace: str | Path) -> Lease:
-        """For a caller that already holds the lock and cannot take it twice.
-
-        The daemon holds the workspace lock for its entire serving lifetime, and the lock
-        is deliberately not reentrant, so it cannot acquire a second one to prove it. This
-        is the seam where that is asserted rather than checked, and it is named to be
-        greppable: any use outside a section that provably holds the lock is a defect.
-        """
-        return cls(root=Workspace(workspace).root)
+# A `Lease` used to stand here: a dataclass holding a path, which anyone could construct.
+# It stated the requirement in the signature and established nothing, so a caller who had
+# never taken the lock satisfied it exactly as well as one who had. `create` now requires
+# the `Held` that `exclusive_lock` yields, which exists only after the kernel granted the
+# lock and stops being valid when the block exits — and it checks that the hold is on this
+# workspace's lock rather than on some other one the caller happened to be holding.
 
 
 def backup_key(environ: Mapping[str, str] | None = None) -> bytes:
@@ -168,7 +153,8 @@ def _candidates(workspace: Workspace) -> list[Path]:
 
 
 def create(
-    lease: Lease,
+    held: Held,
+    workspace: str | Path,
     *,
     now: datetime,
     key: bytes,
@@ -178,15 +164,21 @@ def create(
 ) -> bytes:
     """Build one encrypted archive from one reading of the workspace.
 
-    Takes a `Lease` rather than a path, so holding the workspace lock is a precondition
-    the signature states rather than a comment the caller may not read.
+    Requires the live `Held` that `exclusive_lock` yields, and checks it is a hold on
+    *this* workspace's lock. A caller who never took the lock cannot produce one, and a
+    caller whose block has exited holds one that refuses.
     """
-    if not isinstance(lease, Lease):
+    if not isinstance(held, Held):
         raise BackupError(
-            "a backup requires a Lease proving the workspace lock is held"
+            "a backup requires the Held that exclusive_lock yields, as proof the "
+            "workspace lock is actually held"
         )
+    root = Workspace(workspace)
+    try:
+        held.verify(root.lock)
+    except LockUnavailable as error:
+        raise BackupError(str(error)) from error
     captured_at = utc_instant(now, "now")
-    root = Workspace(lease.root)
     taken = capture(root)
     payload = {
         "asset_key": asset_key,
@@ -247,7 +239,12 @@ def open_archive(
             "the archive did not authenticate: wrong key, altered bytes, or an archive "
             "belonging to another asset or deployment"
         ) from None
-    value = strict_json_loads(plaintext)
+    try:
+        value = strict_json_loads(plaintext)
+    except (TypeError, ValueError) as error:
+        # Authenticated and still not a Touchstone archive: the key was right and the
+        # contents are not what this module writes. That is this module's refusal.
+        raise BackupError(f"the archive is not readable JSON: {error}") from error
     if not isinstance(value, Mapping) or value.get("version") != ARCHIVE_VERSION:
         raise BackupError("the archive is not a supported Touchstone backup")
     return value
@@ -286,18 +283,29 @@ def restore(
         if member.path in seen:
             raise BackupError(f"the archive names {member.path} twice")
         seen.add(member.path)
-        raw = bytes.fromhex(str(item["bytes"]))
+        try:
+            raw = bytes.fromhex(str(item["bytes"]))
+        except ValueError as error:
+            raise BackupError(
+                f"{member.path} does not carry decodable content"
+            ) from error
         if len(raw) != member.size:
             raise BackupError(f"{member.path} is not the size the archive claims")
         if hashlib.sha256(raw).hexdigest() != member.sha256:
             raise BackupError(f"{member.path} does not match its recorded digest")
         verified.append(member)
 
-    target.mkdir(parents=True)
-    for member, item in zip(verified, tuple(files), strict=True):
-        written = target / member.path
-        written.parent.mkdir(parents=True, exist_ok=True)
-        written.write_bytes(bytes.fromhex(str(item["bytes"])))
+    try:
+        target.mkdir(parents=True)
+        for member, item in zip(verified, tuple(files), strict=True):
+            written = target / member.path
+            written.parent.mkdir(parents=True, exist_ok=True)
+            written.write_bytes(bytes.fromhex(str(item["bytes"])))
+    except OSError as error:
+        # Everything above this point was verification; this is the first write. A
+        # half-created target is reported in this module's terms rather than as whatever
+        # the filesystem raised, because the caller's recovery is the same either way.
+        raise BackupError(f"the restore target cannot be written: {error}") from error
     return verified
 
 
@@ -352,14 +360,20 @@ def take_offline(
     """
     root = Workspace(workspace)
     try:
-        with exclusive_lock(root.lock):
+        with exclusive_lock(root.lock) as held:
             return create(
-                Lease(root=root.root),
+                held,
+                root.root,
                 now=now,
                 key=key,
                 asset_key=asset_key,
                 registry_address=registry_address,
             )
+    except OSError as error:
+        # Acquiring an OS lock is I/O and can fail for reasons that are not contention: a
+        # permission refusal, a full descriptor table. Those escaped as raw OSError while
+        # every other failure here was this module's own.
+        raise BackupError(f"the workspace lock cannot be taken: {error}") from error
     except LockUnavailable as error:
         raise BackupError(
             "this workspace is in use by a running service; an online backup must be "

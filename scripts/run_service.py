@@ -174,6 +174,9 @@ class Service:
         self._last_successful_epoch: str | None = None
         self._last_backup_at: str | None = None
         self._last_backup_day: str | None = None
+        # The live proof of the workspace lock, set by `serve` for the duration of
+        # the serving section. A cooperative backup is only meaningful while it is held.
+        self._held = None
 
     # ---------------------------------------------------------------- reliability
     def beat(self) -> None:
@@ -226,8 +229,14 @@ class Service:
         if self._last_backup_day == day:
             return
         try:
+            if self._held is None:
+                raise BackupError(
+                    "the service is not holding its workspace lock; a cooperative "
+                    "backup is only valid from inside the serving section"
+                )
             archive = backup.create(
-                backup.Lease.from_held_lock(Path(self.operations.directory).parent),
+                self._held,
+                Path(self.operations.directory).parent,
                 now=moment,
                 key=self.backup_key,
                 asset_key=self.asset_key,
@@ -685,7 +694,11 @@ def serve(
     **schedule_arguments: object,
 ) -> ScheduleOutcome:
     """Resolve what was left in flight, then run slots until asked to stop."""
-    with exclusive_lock(service.lock_path):
+    with exclusive_lock(service.lock_path) as held:
+        # The daemon's own proof of the lock, handed to the cooperative backup. The lock is
+        # not reentrant, so this is the only way an in-daemon backup can demonstrate what a
+        # standalone one demonstrates by acquiring.
+        service._held = held
         return _serve_locked(
             service,
             produce,
@@ -694,6 +707,27 @@ def serve(
             max_runs=max_runs,
             **schedule_arguments,
         )
+
+
+def _beating_sleep(
+    service: Service, sleep: Callable[[float], None]
+) -> Callable[[float], None]:
+    """Wait in heartbeat-sized steps, beating after each one.
+
+    The scheduler's own sleep is preserved and called repeatedly rather than replaced, so
+    an injected clock still controls the passage of time and the tests that drive one keep
+    working. A wait shorter than one interval sleeps once and beats once.
+    """
+
+    def wait(seconds: float) -> None:
+        remaining = seconds
+        while remaining > 0:
+            step = min(remaining, heartbeat.DEFAULT_INTERVAL_SECONDS)
+            sleep(step)
+            remaining -= step
+            service.beat()
+
+    return wait
 
 
 def _serve_locked(
@@ -725,6 +759,16 @@ def _serve_locked(
             service.backup_if_due(scheduled_at)
             service.beat()
 
+    # The heartbeat cannot ride on the publication cadence. Slots are a day apart and a
+    # heartbeat expires in three minutes, so a daemon that beat only around slots reported
+    # itself dead for twenty-three of every twenty-four hours — and the serve test used a
+    # sixty-second interval and inspected immediately, so it never saw the idle period the
+    # service actually spends its life in. Liveness is emitted on its own clock, by
+    # subdividing the wait rather than by adding a thread that would beat on beside a
+    # crashed scheduler.
+    schedule_arguments["sleep"] = _beating_sleep(
+        service, schedule_arguments.pop("sleep", time.sleep)
+    )
     return run_schedule(
         slot,
         interval_seconds=interval_seconds,

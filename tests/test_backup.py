@@ -16,7 +16,6 @@ import pytest
 
 from touchstone.backup import (
     ARCHIVE_VERSION,
-    Lease,
     BACKUP_KEY_ENV,
     NONCE_BYTES,
     BackupError,
@@ -80,7 +79,8 @@ def archive_of(workspace: Workspace, **changes: object) -> bytes:
         "registry_address": REGISTRY,
     }
     arguments.update(changes)
-    return create(Lease(root=workspace.root), **arguments)
+    with exclusive_lock(workspace.lock) as held:
+        return create(held, workspace.root, **arguments)
 
 
 def test_an_archive_round_trips_every_file(tmp_path: Path) -> None:
@@ -167,9 +167,10 @@ def test_a_backup_taken_between_mutations_holds_one_consistent_instant(
     workspace = populated(tmp_path)
     log = TransparencyLog(workspace.transparency_log)
 
-    with exclusive_lock(workspace.lock):
+    with exclusive_lock(workspace.lock) as held:
         before = create(
-            Lease(root=workspace.root),
+            held,
+            workspace.root,
             now=AT,
             key=KEY,
             asset_key=ASSET,
@@ -181,9 +182,10 @@ def test_a_backup_taken_between_mutations_holds_one_consistent_instant(
         transaction_hash="0x" + "bb" * 32,
         receipt={"block_number": 2, "status": 1},
     )
-    with exclusive_lock(workspace.lock):
+    with exclusive_lock(workspace.lock) as held:
         after = create(
-            Lease(root=workspace.root),
+            held,
+            workspace.root,
             now=AT,
             key=KEY,
             asset_key=ASSET,
@@ -357,14 +359,16 @@ def test_a_valid_backup_key_is_returned_as_bytes() -> None:
 def test_an_empty_workspace_has_nothing_to_back_up(tmp_path: Path) -> None:
     (tmp_path / "asset").mkdir()
 
-    with pytest.raises(BackupError, match="nothing in this workspace"):
-        create(
-            Lease(root=tmp_path / "asset"),
-            now=AT,
-            key=KEY,
-            asset_key=ASSET,
-            registry_address=REGISTRY,
-        )
+    with exclusive_lock(Workspace(tmp_path / "asset").lock) as held:
+        with pytest.raises(BackupError, match="nothing in this workspace"):
+            create(
+                held,
+                tmp_path / "asset",
+                now=AT,
+                key=KEY,
+                asset_key=ASSET,
+                registry_address=REGISTRY,
+            )
 
 
 def forged(payload: dict) -> bytes:
@@ -381,9 +385,7 @@ def forged(payload: dict) -> bytes:
         }
     )
     nonce = bytes(range(NONCE_BYTES))
-    return nonce + AESGCM(KEY).encrypt(
-        nonce, canonical_json_bytes(payload), associated
-    )
+    return nonce + AESGCM(KEY).encrypt(nonce, canonical_json_bytes(payload), associated)
 
 
 def payload(**changes: object) -> dict:
@@ -518,15 +520,20 @@ def test_a_genuinely_separate_process_cannot_back_up_a_live_workspace(
 
     workspace = populated(tmp_path)
     child = subprocess.Popen(
-        [sys.executable, str(Path(__file__).parent / "lock_holder_child.py"),
-         str(workspace.root)],
+        [
+            sys.executable,
+            str(Path(__file__).parent / "lock_holder_child.py"),
+            str(workspace.root),
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
     try:
         assert child.stdout is not None
-        assert child.stdout.readline().strip() == "HELD", "the child never took the lock"
+        assert child.stdout.readline().strip() == "HELD", (
+            "the child never took the lock"
+        )
 
         with pytest.raises(BackupError, match="in use by a running service"):
             take_offline(
@@ -545,6 +552,9 @@ def test_a_genuinely_separate_process_cannot_back_up_a_live_workspace(
     archive = take_offline(
         workspace.root, now=AT, key=KEY, asset_key=ASSET, registry_address=REGISTRY
     )
-    assert open_archive(
-        archive, key=KEY, asset_key=ASSET, registry_address=REGISTRY
-    )["version"] == ARCHIVE_VERSION
+    assert (
+        open_archive(archive, key=KEY, asset_key=ASSET, registry_address=REGISTRY)[
+            "version"
+        ]
+        == ARCHIVE_VERSION
+    )

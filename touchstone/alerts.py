@@ -93,7 +93,11 @@ def webhook_from_env(environ: Mapping[str, str] | None = None) -> Webhook:
         raise AlertError(f"{WEBHOOK_URL_ENV} is not set")
     if not token:
         raise AlertError(f"{WEBHOOK_TOKEN_ENV} is not set")
-    parsed = urlsplit(url)
+    try:
+        parsed = urlsplit(url)
+        parsed.port  # noqa: B018 - parsing is lazy; touching a field is what validates it
+    except ValueError as error:
+        raise AlertError(f"the webhook URL cannot be parsed: {error}") from error
     if parsed.scheme != "https" or not parsed.netloc:
         raise AlertError("the webhook URL must be absolute HTTPS")
     if parsed.username or parsed.password:
@@ -178,8 +182,12 @@ def send(
         # place bytes actually leave the process.
         raise AlertError("an alert body must be exactly the fields build() produces")
     payload = canonical_json_bytes(dict(body))
-    if webhook.token in payload.decode("utf-8"):
-        raise AlertError("the alert body contains the credential; refusing to send it")
+    # Both halves of containment, checked here rather than only at construction. `Webhook`
+    # is public and `send` is the one place bytes actually leave the process, so a hand-made
+    # webhook with the credential in its URL previously sailed straight past the validator
+    # that exists to refuse exactly that.
+    _refuse_credential(webhook.url, webhook.token, "URL")
+    _refuse_credential(payload.decode("utf-8"), webhook.token, "body")
     request = urllib.request.Request(
         webhook.url,
         data=payload,
@@ -207,6 +215,13 @@ def send(
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, request, file_pointer, code, message, headers, new_url):
         return None
+
+
+def _refuse_credential(text: str, token: str, where: str) -> None:
+    if token in text:
+        raise AlertError(
+            f"the alert {where} contains the credential; it must travel only in the header"
+        )
 
 
 def _is_code(value: object) -> bool:
