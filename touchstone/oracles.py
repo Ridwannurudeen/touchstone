@@ -219,9 +219,10 @@ def read_ustb_oracle(
         "eth_call", [{"to": address, "data": _SELECTOR_LATEST_ROUND_DATA}, block]
     )
     # Length alone let a malformed payload through to `int(..., 16)`, which raises a bare
-    # ValueError, and a round-data word large enough to overflow a struct_time reached
-    # `datetime.fromtimestamp` and raised OverflowError. Neither is this module's typed
-    # failure, so a caller catching OracleUnavailable saw the process die instead.
+    # ValueError, and a round-data word too large to be an instant reached
+    # `datetime.fromtimestamp`, which refuses it differently per platform — OSError here,
+    # OverflowError or ValueError elsewhere. None of those is this module's typed failure,
+    # so a caller catching OracleUnavailable saw the process die instead.
     if (
         not isinstance(answer_raw, str)
         or not answer_raw.startswith("0x")

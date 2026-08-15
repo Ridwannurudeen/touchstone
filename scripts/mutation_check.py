@@ -154,7 +154,7 @@ MUTATIONS = (
     Mutation(
         name="oracle-round-data-checked-by-length-only",
         path="touchstone/oracles.py",
-        old='        or len(answer_raw) != 2 + 64 * 5\n        or any(\n            character not in "0123456789abcdefABCDEF"\n            for character in answer_raw[2:]\n        )',
+        old='        or len(answer_raw) != 2 + 64 * 5\n        or any(\n            character not in "0123456789abcdefABCDEF" for character in answer_raw[2:]\n        )',
         new="        or len(answer_raw) < 2 + 64 * 5",
         tests=(
             "tests/test_oracles.py::test_malformed_round_data_is_this_modules_failure",
@@ -163,8 +163,11 @@ MUTATIONS = (
     Mutation(
         name="oracle-timestamp-overflow-escapes-untyped",
         path="touchstone/oracles.py",
-        old="    except (OSError, OverflowError, ValueError) as error:",
-        new="    except OSError as error:",
+        # The normalisation, not the caught tuple: which member fires is platform
+        # dependent — this host raises OSError where others raise OverflowError — so
+        # narrowing the tuple is a mutation that only bites on some machines.
+        old='        raise OracleUnavailable(\n            f"oracle round timestamp {updated_at_word} is not a representable instant"\n        ) from error',
+        new="        raise",
         tests=(
             "tests/test_oracles.py::test_an_unrepresentable_round_timestamp_is_this_modules_failure",
         ),
@@ -186,7 +189,7 @@ MUTATIONS = (
     Mutation(
         name="key-lifecycle-instant-may-lack-an-offset",
         path="touchstone/keyring.py",
-        old="        or at.utcoffset() is None\n",
+        old=" or at.utcoffset() is None",
         new="",
         tests=(
             "tests/test_keyring.py::test_a_lifecycle_instant_must_be_timezone_aware",
