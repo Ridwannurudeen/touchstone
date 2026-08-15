@@ -502,3 +502,49 @@ def test_a_valid_archive_naming_one_path_twice_is_refused(tmp_path: Path) -> Non
             asset_key=ASSET,
             registry_address=REGISTRY,
         )
+
+
+def test_a_genuinely_separate_process_cannot_back_up_a_live_workspace(
+    tmp_path: Path,
+) -> None:
+    """The invariant is about processes, so the test needs two of them.
+
+    Holding the lock and then trying to take it again in the same process proves only that
+    the lock is non-reentrant. Here a real child holds it, and the refusal the parent gets
+    is the one a second daemon or a cron-driven backup would actually hit.
+    """
+    import subprocess
+    import sys
+
+    workspace = populated(tmp_path)
+    child = subprocess.Popen(
+        [sys.executable, str(Path(__file__).parent / "lock_holder_child.py"),
+         str(workspace.root)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert child.stdout is not None
+        assert child.stdout.readline().strip() == "HELD", "the child never took the lock"
+
+        with pytest.raises(BackupError, match="in use by a running service"):
+            take_offline(
+                workspace.root,
+                now=AT,
+                key=KEY,
+                asset_key=ASSET,
+                registry_address=REGISTRY,
+            )
+    finally:
+        child.kill()
+        child.wait(timeout=10)
+
+    # And once that process is gone, the same call succeeds — so the refusal was the lock
+    # and not some unrelated failure that happened to raise the right type.
+    archive = take_offline(
+        workspace.root, now=AT, key=KEY, asset_key=ASSET, registry_address=REGISTRY
+    )
+    assert open_archive(
+        archive, key=KEY, asset_key=ASSET, registry_address=REGISTRY
+    )["version"] == ARCHIVE_VERSION
