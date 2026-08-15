@@ -30,6 +30,7 @@ class SourceManifest:
     authority_class: str
     cadence: str
     max_bytes: int
+    redirect_aliases: tuple[str, ...] = ()
 
 
 USTB_SOURCES = (
@@ -201,7 +202,7 @@ def fetch_source(
                 raise SourceResponseError("redirect response has no Location header")
             redirected_url = urljoin(current_url, location)
             _validate_redirect(current_url, redirected_url)
-            _validate_allowlisted(redirected_url)
+            _validate_same_source(redirected_url, manifest)
             current_url = redirected_url
             redirect_count += 1
             continue
@@ -239,9 +240,18 @@ def _read_http_response(http_response, *, max_bytes: int) -> TransportResponse:
     body = http_response.read(max_bytes + 1)
     if len(body) > max_bytes:
         raise SourceTooLargeError(f"response exceeds {max_bytes} byte limit")
+    items = list(http_response.headers.items())
+    for name in ("Content-Type", "Content-Encoding"):
+        values = {
+            value.strip().lower() for key, value in items if key.lower() == name.lower()
+        }
+        if len(values) > 1:
+            raise SourceResponseError(
+                f"source returned conflicting {name} headers: {sorted(values)}"
+            )
     return TransportResponse(
         status_code=http_response.getcode(),
-        headers=dict(http_response.headers.items()),
+        headers=dict(items),
         body=body,
     )
 
@@ -270,6 +280,10 @@ def _header(headers: Mapping[str, str], name: str) -> str | None:
     matching = [value for key, value in headers.items() if key.lower() == name.lower()]
     if not matching:
         return None
+    if len(matching) > 1 and len({value.strip().lower() for value in matching}) > 1:
+        raise SourceResponseError(
+            f"transport returned conflicting {name} headers; last-wins could hide either"
+        )
     value = matching[-1]
     if not isinstance(value, str):
         raise SourceResponseError(f"transport returned invalid {name} header")
@@ -295,14 +309,19 @@ def _validate_https_url(url: object, *, context: str) -> None:
         raise SourcePolicyError(f"{context} must be an HTTPS URL")
 
 
-def _validate_allowlisted(url: str) -> None:
-    """A redirect may only land on a URL the allowlist already names.
+def _validate_same_source(url: str, manifest: SourceManifest) -> None:
+    """A redirect may only land on a URL declared by the source being fetched.
 
-    Same-host is not enough: an open redirect on an approved host would otherwise move
-    retrieval to bytes the manifest never approved.
+    Allowlisting the whole portfolio is not enough. The byte cap, expected MIME and
+    stored ``source_id`` all belong to the source that was requested, so a redirect from
+    one approved source to a different one would file the second source's bytes under the
+    first source's identity and limits.
     """
-    if url not in {manifest.url for manifest in USTB_SOURCES}:
-        raise SourcePolicyError("redirect target is not in the exact source allowlist")
+    permitted = {manifest.url, *manifest.redirect_aliases}
+    if url not in permitted:
+        raise SourcePolicyError(
+            f"redirect target is not declared by {manifest.source_id}"
+        )
 
 
 def _media_type(content_type: str) -> str:
@@ -334,7 +353,7 @@ def _validate_content_encoding(headers: Mapping[str, str]) -> None:
     encoding = _header(headers, "Content-Encoding")
     if encoding is None or not encoding.strip():
         return
-    if _media_type(encoding) not in {"identity"}:
+    if encoding.strip().lower() != "identity":
         raise SourceResponseError(
             f"source used Content-Encoding {encoding.strip()!r}; only identity is accepted"
         )

@@ -1,4 +1,6 @@
 import hashlib
+from dataclasses import replace
+from types import MappingProxyType
 import json
 import math
 from datetime import datetime, timezone
@@ -6,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import touchstone.sources as sources_module
 from touchstone.evidence import EvidenceStore
 from touchstone.sources import (
     USTB_SOURCES,
@@ -147,10 +150,28 @@ def test_missing_content_type_is_refused(tmp_path: Path) -> None:
         )
 
 
-def test_redirect_to_an_allowlisted_url_is_followed_once(tmp_path: Path) -> None:
-    """A redirect is only followed when its target is itself an approved source."""
-    source = USTB_SOURCES[0]
-    redirected_url = USTB_SOURCES[1].url
+def with_aliases(monkeypatch, source, *aliases: str):
+    """Declare redirect aliases on one source for the duration of a test.
+
+    The real mapping is an immutable proxy, so the whole mapping is swapped rather than
+    mutated — which also keeps the production object genuinely read-only.
+    """
+    aliased = replace(source, redirect_aliases=tuple(aliases))
+    patched = dict(sources_module.USTB_SOURCE_BY_ID)
+    patched[source.source_id] = aliased
+    monkeypatch.setattr(
+        sources_module, "USTB_SOURCE_BY_ID", MappingProxyType(patched)
+    )
+    return aliased
+
+
+def test_redirect_to_a_declared_alias_is_followed_once(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A redirect is followed only to a URL the SAME source declares as its own alias."""
+    source = USTB_SOURCES[1]
+    redirected_url = "https://api.superstate.com/v1/funds/1/yield?format=canonical"
+    with_aliases(monkeypatch, source, redirected_url)
     raw = (FIXTURES / "ustb-yield.json").read_bytes()
     transport = FakeTransport(
         {
@@ -176,6 +197,31 @@ def test_redirect_to_an_allowlisted_url_is_followed_once(tmp_path: Path) -> None
     assert read_index(tmp_path)[0]["source_url"] == redirected_url
 
 
+def test_a_redirect_to_another_approved_source_is_refused(tmp_path: Path) -> None:
+    """Allowlisting the whole portfolio would file one source's bytes under another's
+    identity, cap and expected MIME. A redirect must stay within its own source."""
+    nav = USTB_SOURCES[0]
+    transport = FakeTransport(
+        {
+            nav.url: response(
+                b"", status_code=302, headers={"Location": USTB_SOURCES[1].url}
+            ),
+            USTB_SOURCES[1].url: response(
+                (FIXTURES / "ustb-yield.json").read_bytes()
+            ),
+        }
+    )
+
+    with pytest.raises(SourcePolicyError, match="not declared by"):
+        fetch_source(
+            nav.source_id,
+            store=EvidenceStore(tmp_path),
+            transport=transport,
+            retrieved_at=RETRIEVED_AT,
+        )
+    assert [call[0] for call in transport.calls] == [nav.url]
+
+
 def test_same_host_redirect_off_the_allowlist_is_refused(tmp_path: Path) -> None:
     """An open redirect on an approved host must not move retrieval off-manifest."""
     source = USTB_SOURCES[1]
@@ -189,7 +235,7 @@ def test_same_host_redirect_off_the_allowlist_is_refused(tmp_path: Path) -> None
         }
     )
 
-    with pytest.raises(SourcePolicyError, match="not in the exact source allowlist"):
+    with pytest.raises(SourcePolicyError, match="not declared by"):
         fetch_source(
             source.source_id,
             store=EvidenceStore(tmp_path),
@@ -271,18 +317,18 @@ def test_cross_host_or_non_https_redirect_is_refused(
     assert list(tmp_path.iterdir()) == []
 
 
-def test_second_redirect_is_refused(tmp_path: Path) -> None:
+def test_second_redirect_is_refused(tmp_path: Path, monkeypatch) -> None:
     source = USTB_SOURCES[1]
-    first_redirect = USTB_SOURCES[2].url
+    first_redirect = "https://api.superstate.com/v1/funds/1/yield?hop=1"
+    second_redirect = "https://api.superstate.com/v1/funds/1/yield?hop=2"
+    with_aliases(monkeypatch, source, first_redirect, second_redirect)
     transport = FakeTransport(
         {
             source.url: response(
                 b"", status_code=301, headers={"Location": first_redirect}
             ),
             first_redirect: response(
-                b"",
-                status_code=307,
-                headers={"Location": USTB_SOURCES[0].url},
+                b"", status_code=307, headers={"Location": second_redirect}
             ),
         }
     )

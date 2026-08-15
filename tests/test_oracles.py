@@ -98,7 +98,7 @@ def test_a_wrong_chain_is_refused_before_any_value_is_read() -> None:
 def test_an_address_with_no_code_is_refused() -> None:
     rpc = FakeRPC(eth_getCode="0x")
 
-    with pytest.raises(OracleIdentityError, match="no contract code"):
+    with pytest.raises(OracleIdentityError, match="no contract bytecode"):
         read_ustb_oracle(rpc, block_number=1)
 
 
@@ -124,7 +124,10 @@ def test_agreement_within_tolerance() -> None:
     reading = read_ustb_oracle(FakeRPC(), block_number=1)
 
     comparison = compare_confirmed_row(
-        row(date(2026, 8, 11), "11.17558800"), reading, tolerance=Decimal("0.000001")
+        row(date(2026, 8, 11), "11.17558800"),
+        reading,
+        tolerance=Decimal("0.000001"),
+        effective_date=date(2026, 8, 11),
     )
 
     assert comparison.agrees
@@ -136,7 +139,10 @@ def test_a_real_disagreement_is_reported() -> None:
     reading = read_ustb_oracle(FakeRPC(), block_number=1)
 
     comparison = compare_confirmed_row(
-        row(date(2026, 8, 11), "11.99999999"), reading, tolerance=Decimal("0.000001")
+        row(date(2026, 8, 11), "11.99999999"),
+        reading,
+        tolerance=Decimal("0.000001"),
+        effective_date=date(2026, 8, 11),
     )
 
     assert not comparison.agrees
@@ -149,7 +155,10 @@ def test_a_date_mismatch_refuses_to_compare() -> None:
 
     with pytest.raises(OracleUnavailable, match="nothing comparable"):
         compare_confirmed_row(
-            row(date(2026, 8, 13), "11.17774800"), reading, tolerance=Decimal("0.01")
+            row(date(2026, 8, 13), "11.17774800"),
+            reading,
+            tolerance=Decimal("0.01"),
+            effective_date=date(2026, 8, 11),
         )
 
 
@@ -157,7 +166,9 @@ def test_no_confirmed_row_is_an_abstention_not_a_disagreement() -> None:
     reading = read_ustb_oracle(FakeRPC(), block_number=1)
 
     with pytest.raises(OracleUnavailable, match="no confirmed row"):
-        compare_confirmed_row(None, reading, tolerance=Decimal("0.01"))
+        compare_confirmed_row(
+            None, reading, tolerance=Decimal("0.01"), effective_date=date(2026, 8, 11)
+        )
 
 
 def test_tolerance_must_be_a_non_negative_decimal() -> None:
@@ -166,7 +177,10 @@ def test_tolerance_must_be_a_non_negative_decimal() -> None:
     for bad in (Decimal("-0.01"), 0.01, "0.01"):
         with pytest.raises(ValueError, match="tolerance"):
             compare_confirmed_row(
-                row(date(2026, 8, 11), "11.17"), reading, tolerance=bad
+                row(date(2026, 8, 11), "11.17"),
+                reading,
+                tolerance=bad,
+                effective_date=date(2026, 8, 11),
             )
 
 
@@ -187,3 +201,41 @@ def test_a_reading_is_a_frozen_record() -> None:
 
     with pytest.raises(Exception):
         reading.answer = Decimal("0")  # type: ignore[misc]
+
+
+def test_the_effective_date_is_not_inferred_from_the_publication_time() -> None:
+    """The audit records an 08-12 publication carrying the 08/11 NAV, so the reading's own
+    date is not the NAV date. The caller must state it, and a wrong statement is refused."""
+    reading = read_ustb_oracle(FakeRPC(), block_number=1)
+    assert reading.updated_on == date(2026, 8, 11)
+
+    # A row dated as the oracle published, but stated to represent a different NAV date,
+    # is refused rather than quietly compared.
+    with pytest.raises(OracleUnavailable, match="nothing comparable"):
+        compare_confirmed_row(
+            row(date(2026, 8, 11), "11.17558800"),
+            reading,
+            tolerance=Decimal("0.01"),
+            effective_date=date(2026, 8, 10),
+        )
+
+
+def test_an_effective_date_must_be_supplied() -> None:
+    reading = read_ustb_oracle(FakeRPC(), block_number=1)
+
+    with pytest.raises(TypeError):
+        compare_confirmed_row(
+            row(date(2026, 8, 11), "11.17"), reading, tolerance=Decimal("0.01")
+        )
+
+
+def test_a_different_address_is_refused_even_if_it_has_code() -> None:
+    with pytest.raises(OracleIdentityError, match="is not the pinned USTB oracle"):
+        read_ustb_oracle(
+            FakeRPC(), block_number=1, address="0x0000000000000000000000000000000000000001"
+        )
+
+
+def test_non_hex_code_is_refused() -> None:
+    with pytest.raises(OracleIdentityError, match="no contract bytecode"):
+        read_ustb_oracle(FakeRPC(eth_getCode="0xnothexatall"), block_number=1)

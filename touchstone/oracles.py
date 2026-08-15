@@ -13,10 +13,12 @@ Chain, address and decimals are verified rather than assumed. The same address i
 across chains by this issuer, so an unverified read could be answered by a different
 contract entirely.
 
-The comparison is only ever made against a **confirmed** row whose date matches the
-oracle's own update, within a stated tolerance. Comparing against the feed's provisional
-tail would manufacture a disagreement out of a value the issuer has not settled, and a
-disagreement is the one thing this check is for.
+The comparison is only ever made against a **confirmed** row, for a NAV date the caller
+states explicitly, within a stated tolerance. Comparing against the feed's provisional tail
+would manufacture a disagreement out of a value the issuer has not settled, and the mapping
+from an oracle publication time to the NAV date it represents is not documented — the audit
+records a publication on 08-12 carrying the 08/11 NAV — so this module refuses to infer it.
+A disagreement is the one thing this check exists to detect, so it must not invent one.
 """
 
 from __future__ import annotations
@@ -88,6 +90,7 @@ class OracleComparison:
     """The result of comparing a confirmed row against a pinned oracle reading."""
 
     agrees: bool
+    effective_date: date
     row_observed_on: date
     row_value: Decimal
     oracle_value: Decimal
@@ -153,11 +156,22 @@ def read_ustb_oracle(
     rpc: RPC,
     *,
     block_number: int | None = None,
-    address: str = USTB_ORACLE_ADDRESS,
+    address: str | None = None,
     expected_chain_id: int = USTB_ORACLE_CHAIN_ID,
     expected_decimals: int = USTB_ORACLE_EXPECTED_DECIMALS,
 ) -> OracleReading:
-    """Read the oracle at a pinned block, verifying identity before trusting the answer."""
+    """Read the oracle at a pinned block, verifying identity before trusting the answer.
+
+    ``address`` defaults to the pinned constant. Passing a different one is checked
+    case-insensitively against that constant and refused unless it matches, so a caller
+    cannot silently point this at another contract.
+    """
+    if address is None:
+        address = USTB_ORACLE_ADDRESS
+    elif address.lower() != USTB_ORACLE_ADDRESS.lower():
+        raise OracleIdentityError(
+            f"{address} is not the pinned USTB oracle {USTB_ORACLE_ADDRESS}"
+        )
     chain_id = _hex_to_int(rpc.call(_SELECTOR_CHAIN_ID, []), "chain id")
     if chain_id != expected_chain_id:
         raise OracleIdentityError(
@@ -169,9 +183,14 @@ def read_ustb_oracle(
     block = hex(block_number)
 
     code = rpc.call("eth_getCode", [address, block])
-    if not isinstance(code, str) or len(code) <= 2:
+    if (
+        not isinstance(code, str)
+        or not code.startswith("0x")
+        or len(code) <= 2
+        or any(character not in "0123456789abcdefABCDEF" for character in code[2:])
+    ):
         raise OracleIdentityError(
-            f"no contract code at {address} in block {block_number}"
+            f"no contract bytecode at {address} in block {block_number}"
         )
 
     decimals_raw = rpc.call(
@@ -212,26 +231,38 @@ def compare_confirmed_row(
     reading: OracleReading,
     *,
     tolerance: Decimal,
+    effective_date: date,
 ) -> OracleComparison:
-    """Compare a confirmed row against a reading whose update date matches it.
+    """Compare a confirmed row against the NAV date a reading is stated to represent.
 
     ``row`` is the row the evaluator confirmed across two captures — never the feed's
-    provisional tail. Passing ``None`` means nothing was confirmed, which is an abstention
-    and not a disagreement.
+    provisional tail. ``None`` means nothing was confirmed, which is an abstention rather
+    than a disagreement.
+
+    ``effective_date`` must be supplied and is deliberately **not** derived from the
+    reading's publication time. The two differ: ``SOURCE_AUDIT.md`` records an oracle
+    publication on 08-12 carrying the NAV effective 08/11. That mapping is not documented
+    by the issuer, so this module refuses to infer it. The caller states which NAV date a
+    reading represents and this function checks the row matches. Until the mapping is
+    established from issuer documentation no caller can state it honestly, which is why
+    this comparison has no production caller yet.
     """
     if row is None:
         raise OracleUnavailable("no confirmed row is available to compare")
     if not isinstance(tolerance, Decimal) or tolerance < 0:
         raise ValueError("tolerance must be a non-negative Decimal")
-    if row.observed_on != reading.updated_on:
+    if type(effective_date) is not date:
+        raise ValueError("effective_date must be a date")
+    if row.observed_on != effective_date:
         raise OracleUnavailable(
-            f"confirmed row is dated {row.observed_on} but the oracle updated on "
-            f"{reading.updated_on}; there is nothing comparable"
+            f"confirmed row is dated {row.observed_on} but the reading is stated to "
+            f"represent {effective_date}; there is nothing comparable"
         )
 
     difference = abs(row.net_asset_value - reading.answer)
     return OracleComparison(
         agrees=difference <= tolerance,
+        effective_date=effective_date,
         row_observed_on=row.observed_on,
         row_value=row.net_asset_value,
         oracle_value=reading.answer,

@@ -461,3 +461,36 @@ def test_the_model_is_offered_no_tool_surface(tmp_path: Path) -> None:
     assert '"tools"' not in source and "'tools'" not in source
     assert '"functions"' not in source and "'functions'" not in source
     assert '"tool_choice"' not in source
+
+
+def test_a_compliant_injected_candidate_is_still_only_a_proposal(
+    tmp_path: Path,
+) -> None:
+    """The honest limit of the injection defence, pinned so it cannot be overstated.
+
+    Injected text that steers the model into a *well-formed* candidate — correct adapter,
+    an exact citation, `proposed` as required, maximum confidence — is ACCEPTED by the
+    compiler. Nothing here detects that a human never intended this control. What stops it
+    reaching state is the approval gate afterwards, and approval is an unattributed field
+    (threat model B14, R-9). This test exists so that limit stays visible.
+    """
+    store, digest = stored_injected_evidence(tmp_path)
+    compliant = candidate(
+        compiler_confidence=1.0,
+        evidence_span='"net_asset_value":"11.17558800"',
+    )
+
+    result = compile_evidence(
+        DeterministicFixtureProvider(raw_output(compliant)),
+        evidence_sha256=digest,
+        source_manifest=SOURCE,
+        store=store,
+        retrieved_at=RETRIEVED_AT,
+    )
+
+    outcome = result.outcomes[0]
+    assert outcome.status is CompilationStatus.ACCEPTED
+    assert outcome.control is not None
+    assert outcome.control.approval_state == "proposed", (
+        "an accepted candidate is a proposal; it must never arrive already approved"
+    )

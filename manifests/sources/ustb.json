@@ -70,10 +70,11 @@
   ],
   "limits": {
     "max_redirects": 1,
-    "redirect_policy": "same host and HTTPS only; the final URL is not re-checked against the allowlist, which is a known gap scheduled in PLAN-T5",
-    "decompression": "Accept-Encoding: identity is requested; the response encoding is not yet validated (PLAN-T5)",
+    "redirect_policy": "same host and HTTPS only, at most one hop, and the target must be the source's own URL or one of its declared redirect_aliases \u2014 a redirect to a different approved source is refused (PLAN-T5)",
+    "decompression": "Accept-Encoding: identity is requested and a non-identity Content-Encoding is refused; conflicting duplicate Content-Type or Content-Encoding headers are refused (PLAN-T5)",
     "parse_timeout_seconds": 2.0,
-    "max_json_depth": 32
+    "max_json_depth": 32,
+    "mime": "enforced against expected_mime before storage (PLAN-T5)"
   },
   "fixtures": [
     {
@@ -119,7 +120,6 @@
   },
   "residual_checks": [
     "Repeated retrieval from the production host has not been performed; all probes ran from a development machine (PLAN gate G2).",
-    "The relationship between the API's outstanding_shares and onchain token supply is not established, so no supply control is enabled.",
-    "MIME is declared here but not yet enforced by the fetcher (PLAN-T5)."
+    "The relationship between the API's outstanding_shares and onchain token supply is not established, so no supply control is enabled."
   ]
 }

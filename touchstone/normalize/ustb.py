@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import json
+import math
 import multiprocessing
 from multiprocessing.connection import Connection
 import re
@@ -16,6 +17,8 @@ from typing import TypeAlias
 DEFAULT_MAX_BYTES = 1_048_576
 DEFAULT_MAX_DEPTH = 32
 DEFAULT_ISOLATED_TIMEOUT = 2.0
+# A terminated worker that ignores SIGTERM must not block the epoch either.
+_JOIN_GRACE_SECONDS = 5.0
 
 USTB_NAV_SOURCE_ID = "superstate-ustb-nav-daily"
 USTB_YIELD_SOURCE_ID = "superstate-ustb-yield"
@@ -275,8 +278,8 @@ def normalize_ustb_payload_isolated(
     content = _prepare_raw(raw, max_bytes=max_bytes, max_depth=max_depth)
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
         raise TypeError("timeout must be a positive number")
-    if timeout <= 0:
-        raise ValueError("timeout must be a positive number")
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("timeout must be a positive, finite number")
 
     context = multiprocessing.get_context("spawn")
     receive, send = context.Pipe(duplex=False)
@@ -289,7 +292,10 @@ def normalize_ustb_payload_isolated(
     try:
         if not receive.poll(float(timeout)):
             process.terminate()
-            process.join()
+            process.join(_JOIN_GRACE_SECONDS)
+            if process.is_alive():
+                process.kill()
+                process.join(_JOIN_GRACE_SECONDS)
             raise NormalizationError("USTB normalization worker timed out")
         try:
             status, payload = receive.recv()
@@ -303,7 +309,10 @@ def normalize_ustb_payload_isolated(
             process.join(0.1)
             if process.is_alive():
                 process.terminate()
-                process.join()
+                process.join(_JOIN_GRACE_SECONDS)
+                if process.is_alive():
+                    process.kill()
+                    process.join(_JOIN_GRACE_SECONDS)
 
     if status == "error":
         raise NormalizationError(payload)
