@@ -1,2 +1,4 @@
-# Evidence fixtures must retain their captured bytes across platforms.
-fixtures/*.json -text
+# Evidence fixtures must retain their captured bytes across platforms. Any line-ending
+# conversion would change the artifact and break the digests recorded in
+# manifests/sources/*.json, which the fixture tests assert byte for byte.
+fixtures/** -text

@@ -1,0 +1,163 @@
+{
+  "manifest_version": 1,
+  "asset": {
+    "asset_key": "sec:cik:0001786958:series:S000067043",
+    "display_name": "Franklin OnChain U.S. Government Money Fund",
+    "ticker": "FOBXX",
+    "also_known_as": "BENJI",
+    "role": "monthly regulator-backed contrast asset. DEMOTED 2026-08-15: the daily issuer feed is unreachable, so no daily-liveness or issuer-versus-regulator control may be claimed until repeatable production-host access is verified.",
+    "identity_basis": "SEC series identifier, not a token contract",
+    "identity_caveat": "Supply is fragmented across nine networks with a separate iBENJI share class and there is no NAV oracle on any chain. No onchain supply or oracle claim is made for this asset in Phase 1."
+  },
+  "publisher": {
+    "legal_entity": "Franklin Templeton (Franklin Templeton Trust, CIK 0001786958)",
+    "regulator": "U.S. Securities and Exchange Commission",
+    "authority_class_issuer": "issuer-api",
+    "authority_class_regulator": "regulator-filing",
+    "authority_note": "The SEC filing is a regulator-hosted document filed by the issuer. It is a stronger evidence class than the issuer's own web API, and the two together are this asset's reason for selection."
+  },
+  "sources": [
+    {
+      "source_id": "franklin-fobxx-price-performance",
+      "url": "https://www.franklintempleton.com/api/pds/price-and-performance",
+      "method": "POST",
+      "auth": "none",
+      "request_semantics": "An exact allowlisted request body only. Arbitrary query construction must be impossible: the adapter sends one of two fixed operations, ProductLookup keyed by ticker and PricesHistory keyed by the resolved fund id.",
+      "expected_mime": "application/json",
+      "cadence": "business-daily, T-1",
+      "timezone": "not stated; row dates are calendar dates",
+      "grace_period_business_days": 3,
+      "blank_value_rule": "Daily and weekly liquidity ratios are intermittently blank. A blank is UNEVALUABLE \u2014 no data \u2014 and must NEVER be read as a breach of a liquidity floor.",
+      "omitted_control": "The seven-day yield is deliberately omitted. The schema exists but returned empty for this fund and was never verified.",
+      "status": {
+        "search_execution": "not_completed",
+        "verified_utc": "2026-08-15T00:02Z",
+        "finding": "BLOCKED FROM THIS ENVIRONMENT. The endpoint returns HTTP 403 with a Cloudflare 'Attention Required!' interstitial, to a plain POST and to a POST carrying full browser headers including Origin and Referer. The public fund page at the same host also returns HTTP 403.",
+        "change_from_prior_audit": "The 2026-08-13 audit recorded this endpoint returning HTTP 200 to POST. It no longer does from this environment. Either the vantage differs or Franklin has tightened access.",
+        "significance": "The prior audit already recorded this as the asset's main risk \u2014 an undocumented private endpoint the issuer could lock down without notice. That risk has now materialised at least from here."
+      },
+      "failure_semantics": "A 403 or any retrieval failure is SOURCE_ERROR. It is never an assertion about the fund. When the daily feed is unavailable the asset degrades honestly to the monthly regulator source below, and the loss of daily coverage must be recorded rather than hidden.",
+      "fixture_disposition": "blocked: the endpoint returns Cloudflare HTTP 403 from this environment"
+    },
+    {
+      "source_id": "sec-edgar-fobxx-submissions",
+      "url": "https://data.sec.gov/submissions/CIK0001786958.json",
+      "method": "GET",
+      "auth": "none",
+      "required_header": "A compliant identifying User-Agent naming the requester and a contact address, as EDGAR's access policy requires. It carries no secret.",
+      "expected_mime": "application/json",
+      "magic_bytes": "0x7B (JSON object root)",
+      "max_bytes": 8388608,
+      "observed_bytes": 29354,
+      "cadence": "updated as filings are accepted",
+      "timezone": "filing dates are calendar dates",
+      "grace_period_business_days": 10,
+      "purpose": "Filing discovery. This is the endpoint that tells the adapter a NEW N-MFP3 exists; the archive URL below only serves one already-known filing. Probing only the historical filing would say nothing about whether future filings can be found.",
+      "status": {
+        "search_execution": "complete",
+        "verified_utc": "2026-08-15T00:01Z",
+        "finding": "HTTP 200, 29,354 bytes. The 2026-07-31 filing was discovered here, accession 0002071691-26-017542."
+      },
+      "failure_semantics": "SOURCE_ERROR on retrieval failure. Discovery being unavailable is never an assertion about the fund.",
+      "retention": "content-addressed, never deleted",
+      "fixture_disposition": "captured"
+    },
+    {
+      "source_id": "sec-edgar-fobxx-nmfp3",
+      "url_submissions": "https://data.sec.gov/submissions/CIK0001786958.json",
+      "url_filing_pattern": "https://www.sec.gov/Archives/edgar/data/1786958/<accession-no-dashes>/primary_doc.xml",
+      "url_observed": "https://www.sec.gov/Archives/edgar/data/1786958/000207169126017542/primary_doc.xml",
+      "method": "GET",
+      "auth": "none",
+      "required_header": "A compliant identifying User-Agent naming the requester and a contact address, as EDGAR's access policy requires. It carries no secret.",
+      "expected_mime": "text/xml",
+      "magic_bytes": "0x3C3F786D6C (<?xml)",
+      "max_bytes": 4194304,
+      "observed_bytes": 167751,
+      "cadence": "monthly",
+      "filing_lag_days": "4 to 6",
+      "timezone": "reportDate is a calendar date",
+      "grace_period_business_days": 10,
+      "status": {
+        "search_execution": "complete",
+        "verified_utc": "2026-08-15T00:01Z",
+        "finding": "HTTP 200. The 2026-07-31 filing was retrieved. Net assets 720,928,224.29 and series S000067043 match the prior audit. Liquidity is a dated series of 22 business-day rows, not a single figure: 2026-07-01 is 67.42% daily / 74.62% weekly and 2026-07-31 is 65.28% daily / 74.55% weekly."
+      },
+      "failure_semantics": "SOURCE_ERROR on retrieval failure. A filing that has not yet appeared within its window is a freshness matter, not a breach.",
+      "retention": "content-addressed, never deleted",
+      "expected_mime_note": "EDGAR serves this document as text/xml, not application/xml. Verified by probe on 2026-08-15. PLAN-T5 enforces MIME against this manifest, so the declared value must be what the source actually sends.",
+      "dated_series_warning": "CORRECTION 2026-08-15. The prior audit and the first draft of this manifest quoted 67.42%/74.62% as the filing's liquidity. Those are the 2026-07-01 values, the FIRST row of the series. Attributing them to the 2026-07-31 period end was a date-attribution error of exactly the kind this project exists to catch. Any adapter must read totalLiquidAssetsNearPercentDate and never the first or last element by position.",
+      "fixture_disposition": "captured"
+    }
+  ],
+  "controls_intended": [
+    {
+      "control": "nav-peg",
+      "predicate": "stable price per share == 1.0000",
+      "source": "either"
+    },
+    {
+      "control": "liquidity-floors",
+      "predicate": "daily >= 10% and weekly >= 30% when values are present",
+      "source": "either",
+      "note": "blank is UNEVALUABLE"
+    },
+    {
+      "control": "daily-feed-liveness",
+      "predicate": "a row exists within the grace window",
+      "source": "franklin-fobxx-price-performance",
+      "status": "BLOCKED \u2014 requires the daily issuer feed, which is unreachable (see source status)"
+    },
+    {
+      "control": "monthly-filing-freshness",
+      "predicate": "an N-MFP3 filing appears within ten business days of month end",
+      "source": "sec-edgar-fobxx-nmfp3"
+    },
+    {
+      "control": "issuer-vs-regulator-reconciliation",
+      "predicate": "the two sources agree within tolerance on the figures both report",
+      "source": "both",
+      "note": "INCONSISTENT only when two attributable observations genuinely conflict \u2014 never when one source is merely unavailable",
+      "status": "BLOCKED \u2014 requires the daily issuer feed, which is unreachable (see source status)"
+    }
+  ],
+  "limits": {
+    "max_redirects": 1,
+    "redirect_policy": "same host and HTTPS only",
+    "parse_timeout_seconds": 2.0,
+    "xml_entity_expansion": "must be disabled; external entity resolution must be refused (no XML path exists in the codebase yet)"
+  },
+  "fixtures": [
+    {
+      "file": "fixtures/fobxx-nmfp3-20260731.xml",
+      "captured_utc": "2026-08-15T00:01Z",
+      "bytes": 167751,
+      "sha256": "763d0116755049f97f804ca41b05a2f297f000d10229088658ef45a023995c5a",
+      "period": "2026-07-31",
+      "filed": "2026-08-06",
+      "accession": "0002071691-26-017542"
+    },
+    {
+      "file": "fixtures/fobxx-submissions-20260815.json",
+      "captured_utc": "2026-08-15T00:40Z",
+      "bytes": 29354,
+      "sha256": "39458874d03425ae487f79372651f0f7483c85d95430754816fab8ac619d903f",
+      "source_id": "sec-edgar-fobxx-submissions",
+      "note": "Filing-discovery snapshot. Its content moves as filings are accepted, so it pins the schema and the discovery path, not a stable value."
+    }
+  ],
+  "fixtures_missing": [
+    {
+      "file": "fixtures/fobxx-price-performance-20260813.json",
+      "search_execution": "not_completed",
+      "reason": "The issuer endpoint returns Cloudflare HTTP 403 from this environment, so no daily-feed fixture could be captured.",
+      "human_follow_up": "Capture the ProductLookup and PricesHistory responses from a browser session and commit them with their SHA-256, or re-attempt from the production host once it exists."
+    }
+  ],
+  "residual_checks": [
+    "The daily feed is unavailable from this environment; whether it is reachable from the production host is unknown and must be tested there.",
+    "No XML parsing path exists in the codebase; entity-expansion defences are specified but unimplemented.",
+    "EDGAR terms of use permit automated access with an identifying User-Agent and a fair-access rate limit; the adapter must respect that limit.",
+    "No claim is made about aggregate onchain supply for this asset in Phase 1."
+  ]
+}

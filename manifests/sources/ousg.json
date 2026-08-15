@@ -1,0 +1,68 @@
+{
+  "manifest_version": 1,
+  "asset": {
+    "asset_key": "eip155:1:0x1b19c19393e2d034d8ff31ff34c81252fcbbee92",
+    "display_name": "Ondo Short-Term U.S. Government Treasuries",
+    "ticker": "OUSG",
+    "role": "CANDIDATE second daily asset, opened 2026-08-15 because USDY has no bounded retrieval",
+    "promotion_state": "not promoted \u2014 qualification is incomplete, see qualification below",
+    "identity_basis": "ERC-20 token contract on Ethereum mainnet",
+    "identity_caveat": "OUSG is issued on more than one chain; this manifest covers the Ethereum deployment only."
+  },
+  "publisher": {
+    "legal_entity": "Ondo Finance",
+    "relationship_to_asset": "issuer of the token and publisher of the price page",
+    "authority_class": "issuer-page",
+    "authority_note": "A server-rendered issuer page is issuer disclosure, a weaker evidence class than USDY's third-party attestation. Choosing OUSG over USDY trades attestation strength for a retrieval that can actually be bounded, and that trade must be stated on any dossier.",
+    "cross_issuer_note": "OUSG is issued by Ondo and USTB by Superstate, so this pairing still satisfies the roadmap's cross-issuer repeatability requirement."
+  },
+  "sources": [
+    {
+      "source_id": "ondo-ousg-page",
+      "url": "https://ondo.finance/ousg",
+      "method": "GET",
+      "auth": "none",
+      "expected_mime": "text/html",
+      "magic_bytes": "0x3C (HTML)",
+      "max_bytes": 4194304,
+      "observed_bytes": 732306,
+      "cadence": "business-daily, roughly one business day behind",
+      "timezone": "the page states an As-of date with no timezone",
+      "grace_period_business_days": 3,
+      "status": {
+        "search_execution": "complete",
+        "verified_utc": "2026-08-15T00:20Z",
+        "finding": "HTTP 200, 732,306 bytes, server-rendered. Comfortably inside a 4 MiB cap, so unlike USDY this is a bounded retrieval."
+      },
+      "extraction_warning": "The prior audit records that the hero widget server-renders zeros. Any extraction must anchor on the marketing block or the Portfolio Overview text and must never key on CSS class hashes, which change on redeploy.",
+      "failure_semantics": "Retrieval or parse failure is SOURCE_ERROR and never an assertion about the fund.",
+      "retention": "content-addressed, never deleted",
+      "fixture_disposition": "deferred: this asset is a candidate, not promoted. Its golden artifact is captured by the item that promotes it, once the oracle address is confirmed."
+    }
+  ],
+  "qualification": {
+    "bounded_retrieval": "VERIFIED \u2014 a single 732 KB page, versus USDY's 260 MB archive",
+    "staleness_is_meaningful": "The prior audit observed the OUSG oracle stepping about +0.0107 per business day and flat across weekends over 15 samples, so unlike USDY's self-accruing oracle a stalled value is a real signal.",
+    "oracle_cross_check": {
+      "status": "UNVERIFIED",
+      "reason": "The audit records the OndoOracle address only in abbreviated form (0x9Cad\u2026094). A reconstructed address was queried and the call returned empty, which is expected for a wrong address. The full address was not guessed further.",
+      "required_before_promotion": "Obtain the full OndoOracle address from Ondo's own documentation, confirm getAssetPrice(OUSG) against a pinned block, and record the ABI source."
+    },
+    "outstanding": [
+      "No fixture has been captured; the page must be retained as a golden artifact before any adapter is written.",
+      "Extraction anchors have not been chosen or tested against the live HTML.",
+      "Terms of use have not been researched.",
+      "Repeated retrieval from the production host has not been performed."
+    ]
+  },
+  "fixtures": [],
+  "fixtures_status": {
+    "search_execution": "not_completed",
+    "reason": "OUSG was opened as a candidate during PLAN-T4 remediation. Capturing and pinning its golden artifact belongs to the work that promotes it, not to this qualification note.",
+    "human_follow_up": "None \u2014 this is builder work in the item that promotes OUSG, once the oracle address is confirmed."
+  },
+  "residual_checks": [
+    "This asset is NOT promoted. The portfolio's second daily slot is currently unfilled.",
+    "No control has been designed or implemented for OUSG."
+  ]
+}

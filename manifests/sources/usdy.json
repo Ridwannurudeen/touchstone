@@ -1,0 +1,110 @@
+{
+  "manifest_version": 1,
+  "asset": {
+    "asset_key": "eip155:1:0x96f6ef951840721adbf46ac996b59e0235cb985c",
+    "display_name": "Ondo U.S. Dollar Yield",
+    "ticker": "USDY",
+    "role": "second daily asset \u2014 SUSPENDED 2026-08-15. Bounded retrieval is unresolved, so this asset cannot be scheduled and PLAN-T10 is not viable as written.",
+    "identity_basis": "ERC-20 token contract on Ethereum mainnet",
+    "identity_caveat": "USDY is issued across multiple chains; this manifest covers the Ethereum deployment only."
+  },
+  "publisher": {
+    "legal_entity": "Ondo USDY LLC",
+    "attesting_party": "Ankura Trust Company, LLC",
+    "relationship_to_asset": "Ondo USDY LLC issues the token; Ankura Trust acts as a named third-party verification agent producing the daily attestation",
+    "authority_class": "third-party-attestation",
+    "authority_note": "This is the strongest evidence class in the portfolio \u2014 a named third party testing a covenant. It is still not an audit, and it covers Ondo USDY LLC only.",
+    "entity_scope_warning": "The attestations cover Ondo USDY LLC. They do NOT cover Ondo Global Markets (BVI). Any dossier must state this."
+  },
+  "sources": [
+    {
+      "source_id": "ondo-usdy-page",
+      "url": "https://ondo.finance/usdy",
+      "method": "GET",
+      "auth": "none",
+      "expected_mime": "text/html",
+      "purpose": "link rediscovery \u2014 the attestation archive URL carries a rotating rlkey credential and must be re-scraped from this server-rendered page on every run rather than persisted",
+      "max_bytes": 4194304,
+      "observed_bytes": 1535874,
+      "verified_utc": "2026-08-15T00:00:00Z",
+      "verification_note": "Re-verified during PLAN-T4: HTTP 200, both Dropbox links with rlkey present in the served HTML. Link rediscovery works as designed.",
+      "failure_semantics": "If the page is unreachable or contains no link, the epoch records SOURCE_ERROR. A stale persisted rlkey must never be used as a fallback.",
+      "fixture_disposition": "exempt: credential-bearing. The page's value is the rotating rlkey link it carries, so retaining it would persist a credential this manifest forbids persisting, and a sanitised copy would no longer be the artifact. Retrieval is verified live instead."
+    },
+    {
+      "source_id": "ondo-usdy-attestation-archive",
+      "url_pattern": "https://www.dropbox.com/scl/fo/<folder-id>/<hash>?rlkey=<rotating>&dl=1",
+      "method": "GET",
+      "auth": "the rlkey query parameter is the credential; the st parameter is droppable",
+      "expected_mime": "application/zip",
+      "magic_bytes": "0x504B0304 (PKZip)",
+      "archive_filename": "PUBLIC - ONDO USDY LLC Daily Reports.zip",
+      "cadence": "business-day reports",
+      "publication_lag_business_days": 3,
+      "timezone": "report dates are calendar dates encoded in the filename; no timezone is stated",
+      "filename_pattern": "YYYY/MM Monthname/Ondo USDY LLC_ATCAttest_YYMMDD.pdf",
+      "filename_stability": "stable since 2023-09",
+      "selection_rule": "Select by the report date in the filename. NEVER select by archive member modification time \u2014 126 of 150 2026 files carry a bulk-reupload mtime of 2026-07-09.",
+      "known_gap": "One weekday, 2026-03-31, has no report and no stated reason. A missing report is SOURCE_ERROR, never a fabricated value.",
+      "failure_semantics": "Retrieval failure, a rotated rlkey, or a missing report are all SOURCE_ERROR. None is an assertion about collateral.",
+      "url_observed_note": "Deliberately not recorded. The observed URL carries the rotating rlkey, and this manifest states the credential must never be persisted; recording it here would have contradicted that. Rediscover it from ondo-usdy-page on every run.",
+      "fixture_disposition": "blocked: reachable only inside a 260 MB archive; pulling it was ruled against"
+    }
+  ],
+  "retrieval_problem": {
+    "status": "UNRESOLVED \u2014 blocks a bounded implementation",
+    "finding_utc": "2026-08-15T00:05Z",
+    "detail": "The whole archive is a single 260,431,605-byte zip. The prior audit recorded that a 2026 year-subfolder of about 35.9 MB could be fetched instead. That is not reproducible with this URL form: a HEAD against the folder URL with and without subpath=%2F2026 returns the identical Content-Disposition filename and the identical Original-Content-Length of 260431605, so the subpath parameter is ignored.",
+    "consequence": "As things stand a single daily observation would cost a 260 MB download, which is not a bounded retrieval and must not be scheduled as one.",
+    "before_PLAN_T10": "A bounded mechanism must be found and verified \u2014 a per-file share link, a Dropbox API listing, an HTTP Range strategy, or an alternative publication route from the issuer. If none exists, the cost and cadence of USDY must be re-decided rather than absorbed silently.",
+    "further_attempts_2026_08_15": [
+      "The folder page carries no embedded file listing; the served HTML contains no filenames.",
+      "https://api.dropboxapi.com/2/sharing/list_shared_link_files returns HTTP 404 without authentication.",
+      "No per-file share link and no HTTP Range support were found, consistent with the prior audit."
+    ],
+    "ruling": "Do not pull the 260 MB archive. A one-time download would supply a fixture but would not make autonomous daily retrieval bounded, so it would not rescue PLAN-T10."
+  },
+  "controls_intended": [
+    {
+      "control": "collateralisation",
+      "predicate": "Permitted Assets / Token Principal >= 1.000",
+      "evidence": "both figures are extractable as text from the attestation PDF; the 2026-08-07 report showed Token Principal 2,134,875,462.46 and Permitted Assets 2,142,264,400.29, a ratio of 1.003461",
+      "note": "This is a real covenant test by a named third party, which is why USDY was selected."
+    },
+    {
+      "control": "publication-freshness",
+      "predicate": "a report exists for a business day within the documented three-business-day lag",
+      "note": "separate from collateralisation; a stale archive is a freshness failure, not a covenant breach"
+    }
+  ],
+  "traps": [
+    "The USDY oracle self-accrues daily including weekends at roughly +0.00010916/day. An oracle value changing is NEVER evidence of freshness.",
+    "There are no per-file URLs and no HTTP Range support on the archive.",
+    "The rlkey rotates; it must be rediscovered every run and never persisted.",
+    "Archive member mtimes are unusable for lag except for 24 genuine timestamps."
+  ],
+  "limits": {
+    "archive_entry_count_max": "to be set in PLAN-T10",
+    "compressed_size_max": "to be set in PLAN-T10",
+    "expanded_size_max": "to be set in PLAN-T10",
+    "per_entry_size_max": "to be set in PLAN-T10",
+    "path_traversal": "archive members with absolute paths or parent references must be rejected",
+    "pdf_magic_bytes": "0x25504446 (%PDF)",
+    "pdf_page_max": "to be set in PLAN-T10",
+    "extracted_text_max": "to be set in PLAN-T10",
+    "parse_timeout_seconds": "to be set in PLAN-T10",
+    "note": "These limits are deliberately unset rather than guessed. PLAN-T10 sets them against a real archive; no PDF path exists in the codebase yet."
+  },
+  "fixtures": [],
+  "fixtures_status": {
+    "search_execution": "not_completed",
+    "reason": "Acquiring a single attestation PDF requires either the 260 MB archive download or a bounded mechanism that has not been found. Downloading 260 MB to obtain one fixture was not done.",
+    "consequence": "USDY has no golden fixture. PLAN-T10 cannot be implemented reproducibly until one exists.",
+    "human_follow_up": "Open the Dropbox folder in a browser, download the single file 2026/08 August/Ondo USDY LLC_ATCAttest_260807.pdf, and commit it with its SHA-256."
+  },
+  "residual_checks": [
+    "No PDF parsing path exists in the codebase; every archive and document limit above is unimplemented.",
+    "Repeated retrieval from the production host has not been performed.",
+    "Terms of use for the Ondo site and the Dropbox archive have not been researched."
+  ]
+}

@@ -51,8 +51,15 @@ counsel question set. **Registers and purchases nothing.**
 **PLAN-T4 — manifests and fixtures.** Machine-readable `manifests/sources/*.json` recording
 identity, authority class, legal entity, method, URL, expected MIME and magic bytes,
 cadence, timezone, grace period, size/page/decompression limits, retention, failure
-semantics, asset identity and fixture hashes; retained USDY attestation and FOBXX
-price/N-MFP3 fixtures; a read-only bounded `scripts/probe_sources.py`.
+semantics, asset identity and fixture hashes; retained fixtures for every source that can
+be retrieved within bounds; a read-only bounded `scripts/probe_sources.py`.
+
+**Amended 2026-08-15 by verified negative findings.** Two fixtures this item originally
+required cannot be obtained. The USDY attestation is reachable only inside a 260 MB archive,
+and pulling it was ruled against because a one-time download would not make daily retrieval
+bounded. The FOBXX daily feed returns Cloudflare 403. Both are recorded in their manifests
+with the exact blocker and the follow-up, and both move to the item that owns the adapter,
+contingent on the blocker clearing. The N-MFP3 fixture was retrieved and is committed.
 
 **PLAN-T5 — evidence security and oracle check.** Enforce MIME against the manifest; reject
 non-identity `Content-Encoding`; make redirects fail closed unless the final URL is itself
@@ -91,14 +98,26 @@ separate; a deterministic "why this state?" drawn only from accepted graph data,
 open-ended Q&A; explorer links absent rather than fabricated when nothing is deployed;
 desktop and mobile browser tests.
 
-**PLAN-T10 — USDY adapter.** Re-scrape the official page each run for the current link;
+**PLAN-T10 — USDY adapter. BLOCKED as written (2026-08-15).** Retrieval is not bounded: the
+archive is served only as a single 260,431,605-byte zip, the `subpath` parameter is ignored,
+the folder page carries no embedded listing, and the unauthenticated listing API returns 404.
+This item cannot begin until a bounded mechanism is found and verified, or until the second
+daily slot is filled by another asset — OUSG is qualified as a candidate but not promoted.
+The scope below stands only once that is resolved. Re-scrape the official page each run for
+the current link;
 retrieve only the bounded current-year archive; enforce archive entry count, compressed and
 expanded size, path traversal, PDF magic, page count, extracted-text size and parsing
 timeout in an isolated worker; select attestations by report date, never by upload
 metadata; evaluate collateralisation; implement the documented publication lag; state that
 the attestation covers Ondo USDY LLC only.
 
-**PLAN-T11 — FOBXX adapter.** Exact allowlisted request bodies for the issuer endpoints, no
+**PLAN-T11 — FOBXX adapter. NARROWED (2026-08-15).** The daily issuer feed returns Cloudflare
+403 from the development environment, so this item covers the **monthly SEC path only**:
+filing discovery, N-MFP3 freshness, the NAV peg and liquidity floors as read from the filing,
+with liquidity taken from its dated rows rather than by position. Daily-liveness and
+issuer-versus-regulator reconciliation are restored only if repeatable access from the
+production host is verified. The original daily scope, retained for when that happens: exact
+allowlisted request bodies for the issuer endpoints, no
 arbitrary query construction; official EDGAR endpoints with a compliant identifying user
 agent; daily feed liveness, NAV peg, liquidity floors when present, monthly filing
 freshness and issuer-versus-regulator reconciliation; blank liquidity is `UNEVALUABLE`,

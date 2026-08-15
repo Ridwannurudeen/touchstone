@@ -1,0 +1,120 @@
+{
+  "manifest_version": 1,
+  "asset": {
+    "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+    "display_name": "Invesco/Superstate Short Duration U.S. Government Securities Fund",
+    "ticker": "USTB",
+    "role": "hero",
+    "identity_basis": "ERC-20 token contract on Ethereum mainnet, address taken from Superstate's own documentation",
+    "identity_caveat": "Superstate reuses the same address across chains, so an asset key is only meaningful as the pair (chain, address)."
+  },
+  "publisher": {
+    "legal_entity": "Superstate, Inc.",
+    "relationship_to_asset": "fund manager and issuer of the published data",
+    "authority_class": "issuer-api",
+    "authority_note": "First-party issuer disclosure. This is not an independent attestation, an audit, or proof of reserves."
+  },
+  "sources": [
+    {
+      "source_id": "superstate-ustb-nav-daily",
+      "url": "https://api.superstate.com/v1/funds/1/nav-daily",
+      "method": "GET",
+      "auth": "none",
+      "expected_mime": "application/json",
+      "magic_bytes": "0x5B (JSON array root)",
+      "max_bytes": 262144,
+      "observed_bytes": 225074,
+      "cadence": "business-daily",
+      "timezone": "not stated by the source; row dates carry no timezone and are treated as calendar dates",
+      "grace_period_business_days": 0,
+      "revision_semantics": "The newest rows are provisional. The feed publishes a row for the current date carrying the previous values forward and rewrites it later. Verified by differing the two retained captures: the 08/12 and 08/13 rows changed while 952 older shared rows did not.",
+      "failure_semantics": "A retrieval or parse failure is SOURCE_ERROR and never an assertion about the issuer. Absence of a row for today means the feed has not published, not that the fund has no NAV.",
+      "retention": "Every retrieved artifact is stored content-addressed and never deleted; two captures at least 24h apart are required before any value is observed.",
+      "fixture_disposition": "captured"
+    },
+    {
+      "source_id": "superstate-ustb-yield",
+      "url": "https://api.superstate.com/v1/funds/1/yield",
+      "method": "GET",
+      "auth": "none",
+      "expected_mime": "application/json",
+      "magic_bytes": "0x7B (JSON object root)",
+      "max_bytes": 4096,
+      "observed_bytes": 122,
+      "cadence": "business-daily",
+      "timezone": "as_of_date is an ISO calendar date with no timezone",
+      "grace_period_business_days": 2,
+      "revision_semantics": "not observed to revise; only two captures exist, so this is unproven",
+      "failure_semantics": "SOURCE_ERROR on retrieval or parse failure",
+      "retention": "content-addressed, never deleted",
+      "fixture_disposition": "captured"
+    },
+    {
+      "source_id": "superstate-ustb-holdings",
+      "url": "https://api.superstate.com/v2/funds/1/holdings",
+      "method": "GET",
+      "auth": "none",
+      "expected_mime": "application/json",
+      "magic_bytes": "0x7B (JSON object root)",
+      "max_bytes": 16384,
+      "observed_bytes": 5396,
+      "cadence": "periodic, lagging NAV",
+      "timezone": "as_of_date is MM/DD/YYYY with no timezone",
+      "grace_period_calendar_days": 40,
+      "grace_period_basis": "provisional; the true cadence has not been observed long enough to derive it",
+      "revision_semantics": "byte-identical across both retained captures",
+      "failure_semantics": "SOURCE_ERROR on retrieval or parse failure",
+      "retention": "content-addressed, never deleted",
+      "fixture_disposition": "captured"
+    }
+  ],
+  "limits": {
+    "max_redirects": 1,
+    "redirect_policy": "same host and HTTPS only; the final URL is not re-checked against the allowlist, which is a known gap scheduled in PLAN-T5",
+    "decompression": "Accept-Encoding: identity is requested; the response encoding is not yet validated (PLAN-T5)",
+    "parse_timeout_seconds": 2.0,
+    "max_json_depth": 32
+  },
+  "fixtures": [
+    {
+      "file": "fixtures/ustb-nav.json",
+      "captured_utc": "2026-08-13T14:16:17Z",
+      "bytes": 224837,
+      "sha256": "4830bc348b621f70682cd41c0d48484987b6b5f3c1a99193e0ca33e7ccba3a25"
+    },
+    {
+      "file": "fixtures/ustb-nav-20260814.json",
+      "captured_utc": "2026-08-14T17:08:12Z",
+      "bytes": 225074,
+      "sha256": "5b6a53e00de2d0762a122780d08961f37d7d5dc8d71f909c208574e64dfe9fda"
+    },
+    {
+      "file": "fixtures/ustb-yield.json",
+      "captured_utc": "2026-08-13T14:16:17Z",
+      "bytes": 122,
+      "sha256": "02ef1e14a867a5d034916021fecde3c6e555e78ac830ce78a8a3d6d49e55ce1f"
+    },
+    {
+      "file": "fixtures/ustb-yield-20260814.json",
+      "captured_utc": "2026-08-14T17:08:12Z",
+      "bytes": 122,
+      "sha256": "7f2a26430697e35096cf2e5d5bb225d6886b78dc25be4b543383fd4524db5a2c"
+    },
+    {
+      "file": "fixtures/ustb-holdings.json",
+      "captured_utc": "2026-08-13T14:16:17Z",
+      "bytes": 5396,
+      "sha256": "0c42d7949ccfbcd10256718199361daa4ff1c81ad90ba62c415fa173f8d22bdf"
+    }
+  ],
+  "terms_of_use": {
+    "status": "unresolved",
+    "researched": "docs.superstate.com publishes these endpoints in a full documentation export and exposes a Swagger UI, both of which present the API as public. No usage terms, rate limit or robots restriction specific to api.superstate.com was located.",
+    "residual": "Absence of a located restriction is not permission. A human must confirm the terms before any production or commercial dependence."
+  },
+  "residual_checks": [
+    "Repeated retrieval from the production host has not been performed; all probes ran from a development machine (PLAN gate G2).",
+    "The relationship between the API's outstanding_shares and onchain token supply is not established, so no supply control is enabled.",
+    "MIME is declared here but not yet enforced by the fetcher (PLAN-T5)."
+  ]
+}

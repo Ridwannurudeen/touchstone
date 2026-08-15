@@ -160,7 +160,10 @@ Findings from the Ondo research agent will be recorded here.
   `company_tickers_mf.json` (CIK 1786958, S000067043); filings index
   `data.sec.gov/submissions/CIK0001786958.json`; latest N-MFP3 filed 2026-08-06 for
   period 2026-07-31: net assets **$720,928,224.29**, shares 720,931,891.09,
-  stablePricePerShare 1.0000, daily/weekly liquid 67.42%/74.62%, PwC as accountant.
+  stablePricePerShare 1.0000, PwC as accountant. **Liquidity corrected 2026-08-15:** the
+  filing carries 22 dated rows, one per business day. 67.42%/74.62% are the **2026-07-01**
+  values; the **2026-07-31** period-end values are **65.28%/74.55%**. Quoting the first row
+  as the filing's figure was a date-attribution error.
   Monthly cadence, ~4-6 day filing lag. **This gives FOBXX a genuine two-source
   cross-check (issuer API vs regulator filing) — the strongest evidence-class pairing
   in the audit.**
@@ -173,6 +176,39 @@ Findings from the Ondo research agent will be recorded here.
   floors (≥10%/≥30% when present), feed-liveness, monthly N-MFP filing appears ≤10bd
   after month-end with stablePricePerShare 1.0000, FT-vs-SEC liquidity reconciliation,
   ProductLookup schema-drift canary.
+
+## Source re-verification 2026-08-15 (PLAN-T4) — two findings that change the plan
+
+Machine-readable manifests now live in `manifests/sources/`. Re-probing the portfolio while
+writing them produced two findings that supersede parts of the 2026-08-13 record.
+
+**🔴 FOBXX daily feed is now blocked.** `POST https://www.franklintempleton.com/api/pds/price-and-performance`
+returns **HTTP 403** behind a Cloudflare interstitial — to a plain POST and to one carrying
+full browser headers including `Origin` and `Referer`. The public fund page on the same host
+also returns 403. The 08-13 audit recorded this endpoint returning HTTP 200 to POST, so
+either the vantage differs or Franklin has tightened access. **The risk this audit already
+identified — an undocumented private endpoint the issuer could lock down without notice —
+has materialised.** FOBXX's monthly regulator path is unaffected: the 2026-07-31 N-MFP3 was
+retrieved cleanly and is now a committed fixture. Its net assets 720,928,224.29 and series
+S000067043 match this audit; its liquidity figures **corrected** this audit, which had quoted
+the 2026-07-01 row as the period-end value.
+
+**🔴 USDY has no bounded retrieval.** This audit recorded fetching a 2026 year-subfolder of
+about 35.9 MB instead of the 260 MB root archive. **That is not reproducible.** A HEAD
+against the folder URL with and without `subpath=%2F2026` returns the identical
+`Content-Disposition` filename and the identical `Original-Content-Length` of
+**260,431,605** — the `subpath` parameter is ignored. As things stand one daily observation
+costs a 260 MB download, which is not a bounded retrieval and must not be scheduled as one.
+A bounded mechanism has to be found and verified before PLAN-T10, or USDY's cost and cadence
+re-decided.
+
+**Unaffected:** USDY link rediscovery works — `ondo.finance/usdy` returns HTTP 200 with both
+`rlkey` links present in the served HTML, confirming the rotating credential can be
+re-scraped each run rather than persisted. All three USTB endpoints remain reachable.
+
+**One correction found by probing:** EDGAR serves the N-MFP3 as `text/xml`, not
+`application/xml`. Since PLAN-T5 will enforce MIME against the manifest, the declared value
+has been set to what the source actually sends.
 
 ## PAXG (Paxos) — **FAIL** (verified 2026-08-13; excluded from the sprint)
 
@@ -234,20 +270,44 @@ key contracts by (chain, address) — Superstate reuses addresses across chains.
 
 ---
 
-## Portfolio selection — **FINAL (2026-08-13)**
+## Portfolio selection — **REOPENED 2026-08-15** (was FINAL 2026-08-13)
 
-- **Hero: USTB (Superstate/Invesco)** — public documented JSON API (verified live),
-  dual issuer-official onchain oracles, digit-level API↔oracle agreement, $958M AUM.
-- **Second daily asset: USDY (Ondo)** — cross-issuer proof + the portfolio's strongest
-  covenant: a named third-party verification agent's daily attestation PDF with a
-  machine-parseable over-collateralization test (1.003461 ≥ 1.000 verified).
-- **Third asset / contrast: FOBXX (Franklin BENJI)** — daily issuer feed + monthly SEC
-  EDGAR N-MFP3: the regulator-hosted cross-source check and the monthly-staleness
-  semantics. Onchain supply out of scope (fragmented, no oracle) — stated openly.
-- **Spares (verified PASS, in order): OUSG (Ondo), USCC (Superstate).**
+**Current standing as of 2026-08-15** — this supersedes the 2026-08-13 selection below it:
+
+- **Hero: USTB (Superstate/Invesco)** — unchanged. Public documented JSON API, verified live
+  and bounded; dual issuer-official onchain oracles; digit-level API↔oracle agreement.
+- **Second daily asset: VACANT.** USDY held this slot and is **suspended** — its retrieval is
+  not bounded.
+- **Contrast: FOBXX (Franklin BENJI) — monthly only.** The SEC EDGAR N-MFP3 path is verified
+  and keeps FOBXX qualified as a monthly regulator-backed contrast. The daily issuer feed is
+  unreachable, so the daily-liveness and issuer-versus-regulator controls are **blocked**.
+- **Candidate for the vacant slot: OUSG (Ondo)** — bounded retrieval verified, cross-issuer
+  coverage preserved, **not promoted** pending an oracle cross-check that needs the full
+  oracle address.
+- **Spare: USCC (Superstate)** — same issuer as the hero, so it cannot supply cross-issuer
+  proof.
+
+The 2026-08-13 selection, retained for the record and **no longer current**:
+
+- ~~Hero USTB · Second daily USDY · Contrast FOBXX with a daily feed · Spares OUSG, USCC.~~
 - **Rejected: PAXG** (FAIL — fragile bundle-scrape discovery, unattributable labels).
 
-**Gate state: PASSED — three cross-issuer assets (Superstate, Ondo, Franklin) all
-verified with ≥2 honest controls each, two verified spares, one honest rejection.
-Residuals: VPS re-verification at deploy; FT GraphQL lockout watch (degradation path:
-monthly EDGAR); USDY rlkey rotation watch (mitigation: re-scrape links each run).**
+**Gate state: REOPENED 2026-08-15.** The 2026-08-13 gate passed on three assets. Two of
+those three no longer satisfy the roadmap's requirement of repeatable, bounded, non-manual
+retrieval:
+
+- **USDY — SUSPENDED.** Retrieval is not bounded. The archive is served only as a single
+  260,431,605-byte zip and the `subpath` parameter is ignored, so one daily observation would
+  cost a 260 MB download. PLAN-T10 is not viable as written.
+- **FOBXX — DEMOTED to monthly regulator-backed contrast.** The daily issuer feed returns
+  Cloudflare 403 from this environment, so daily-liveness and issuer-versus-regulator
+  reconciliation cannot be claimed. Its SEC path is verified and unaffected.
+- **USTB — unaffected**, all three endpoints reachable and bounded.
+- **OUSG — opened as a candidate** for the vacant second-daily slot, and it preserves
+  cross-issuer coverage since USTB is Superstate and OUSG is Ondo. Its page retrieval is
+  verified bounded at 732 KB. It is **not promoted**: the oracle cross-check is unverified
+  because this audit records the oracle address only in abbreviated form.
+
+**The second daily slot is currently unfilled.** Portfolio selection is reopened rather than
+quietly preserved, because lowering the evidence standard to keep three assets is precisely
+what this audit's own abort rule forbids.
