@@ -18,7 +18,7 @@ previous one passes audit.**
 | PLAN-T4 | Source manifests and golden fixtures for USTB, USDY, FOBXX | M | **Done** (`d96f944`) |
 | PLAN-T5 | Hero evidence security and the authoritative USTB oracle check | L | **Done** (`5c73edf`) |
 | PLAN-T6 | Production-capable publisher and staged deployment path | L | **Done** (`016de1b`) |
-| PLAN-T7 | Autonomous epoch operations and append-only incidents | L | In progress |
+| PLAN-T7 | Autonomous epoch operations and append-only incidents | L | **Done** (`2c2ae27`) |
 | PLAN-T8 | Heartbeat, watchdog, alerts, gas runway, encrypted backup and restore | L | |
 | PLAN-T9 | Wallet-free living dossier and developer surface | L | |
 | PLAN-T10 | USDY autonomous daily adapter | L | |
@@ -85,6 +85,25 @@ manifest; the journal was bound to a destination but not to an intent; and pinni
 reconciliation to the current publisher address fixed false provenance while breaking every
 publisher rotation. The final round failed on coverage alone: fixes verified by hand in a
 shell and never committed as tests. The ABI is now frozen.
+
+**PLAN-T7 closed 2026-08-15 after eighteen audit rounds**, against T6's seven. Two things
+account for the difference, and both are worth carrying forward.
+
+The first is that one defect class kept reappearing in new places: caller-owned data read
+more than once, so validation and use reach different objects. It was found in the bundle,
+the evaluator, the verifier, the report, the deployment manifest and the control record —
+six modules, one mistake — and each fix taught the sweep where to look next rather than
+ending it.
+
+The second is that the verification instrument was wrong three times. `scripts/mutation_check.py`
+was added when an audit round failed on the grounds that a claim of thirteen mutation runs
+could not be reconstructed from a clean tree. Its first version counted any nonzero pytest
+exit as a killed mutant; its second counted exit 1, which pytest also returns having
+collected nothing; its third counted a setup error, where the test body never ran at all.
+Each version reported full coverage it did not have. It now requires a JUnit report naming
+a call-phase failure in that mutation's own target set, and it is tested like anything else.
+It has since caught a redundant `tuple()`, two anchors stale after formatting, a mutation
+that was a no-op on this platform, and a source file it had failed to restore byte for byte.
 
 **PLAN-T7 — operations and incidents.** *Scope amended 2026-08-15 by audit direction.*
 Do not rebuild T6's transaction state machine. Criterion 7 is complete at the publisher
