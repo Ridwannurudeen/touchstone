@@ -198,7 +198,10 @@ Full hero ingestion path: allowlist → raw retrieval → content hash → norma
 exact evidence-span extraction → AI candidate control → schema validation → confidence
 gate → explicit abstention → deterministic observation evaluation.
 **Security:** all documents are adversarial input; the model gets no shell, network,
-wallet, or contract tools; instructions embedded in evidence are never followed;
+wallet, or contract tools; instructions embedded in evidence cannot self-approve a
+control or move it into evaluation — **narrowed 2026-08-15**: steering is a stated
+residual, because a well-formed injected candidate is accepted as a proposal and only the
+approval gate stops it (see `docs/THREAT-MODEL.md` T9 and R-9);
 allowlisted URLs, blocked redirects; MIME/magic-byte/size/decompression/page/time
 limits; isolated parsing worker; model ID, prompt hash, compiler version, input hash,
 raw output all recorded. **Exit gate:** one real source compiles into an exact cited

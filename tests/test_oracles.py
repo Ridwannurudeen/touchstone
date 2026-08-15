@@ -295,3 +295,17 @@ def test_the_committed_transcript_matches_the_pinned_identity() -> None:
     assert int(transcript["calls"]["decimals"]["result"], 16) == 6
     assert transcript["code_bytes"] > 0
     assert "NAV date" in transcript["_note"]
+
+    # An earlier version carried a hand-written capture time that preceded its own block by
+    # nearly four hours, and labelled a raw bytecode prefix as a SHA-256. Both are pinned.
+    captured = datetime.fromisoformat(transcript["captured_utc"].replace("Z", "+00:00"))
+    block_time = datetime.fromtimestamp(
+        int(transcript["block_timestamp"], 16), timezone.utc
+    )
+    assert captured >= block_time, "a capture cannot predate the block it read"
+    assert transcript["block_time_utc"] == block_time.isoformat().replace("+00:00", "Z")
+    assert len(transcript["code_sha256"]) == 64
+    assert all(c in "0123456789abcdef" for c in transcript["code_sha256"])
+    assert not transcript["code_sha256"].startswith("0x"), (
+        "this field is a digest, not a bytecode prefix"
+    )

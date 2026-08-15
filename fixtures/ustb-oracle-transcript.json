@@ -1,9 +1,10 @@
 {
   "_note": "Sanitized, pinned transcript of the USTB oracle read. It proves the reading only. It makes NO claim about which NAV date the value represents: that mapping is undocumented by the issuer and is recorded as unresolved.",
   "address": "0x289B5036cd942e619E1Ee48670F98d214E745AAC",
-  "block_hash": "0x53f12a595c8fcd2d67af0c22fb72a538c3bce7dedd82c32c33ed4a4ba30a0862",
-  "block_number": "0x18909f5",
-  "block_timestamp": "0x6a7ff177",
+  "block_hash": "0xb2dc50dc1eda82a91b89455bffd6e52f63a6d191cf3ce45d15386a8580e582f3",
+  "block_number": "0x1890a2e",
+  "block_time_utc": "2026-08-15T05:07:47Z",
+  "block_timestamp": "0x6a7ff423",
   "calls": {
     "decimals": {
       "data": "0x313ce567",
@@ -14,9 +15,9 @@
       "result": "0x00000000000000000000000000000000000000000000000200000000000003010000000000000000000000000000000000000000000000000000000000aa8f14000000000000000000000000000000000000000000000000000000006a7f1465000000000000000000000000000000000000000000000000000000006a7f14730000000000000000000000000000000000000000000000020000000000000301"
     }
   },
-  "captured_utc": "2026-08-15T01:05Z",
+  "captured_utc": "2026-08-15T05:07:52.953648Z",
   "chain_id": "0x1",
   "code_bytes": 9571,
-  "code_sha256_prefix": "0x6080604052348015...",
+  "code_sha256": "53ca1c4d67c7b092f36c66e575874226de7e8eaada554f445f43fe2779743ec1",
   "endpoint_host": "ethereum-rpc.publicnode.com"
 }

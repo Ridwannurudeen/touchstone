@@ -136,7 +136,7 @@ These distinctions are load-bearing and must not be collapsed:
 | All documents treated as adversarial input | Implemented — exact-object parsing, typed conversion, no evaluation of document content |
 | Model gets no shell, network, wallet or contract tools | **Implemented** — no tool surface in the request (`touchstone/compiler.py:114`) |
 | Instructions embedded in evidence are never followed | Partially — impact is bounded by tool denial and deterministic gates and the limit is pinned by five tests, but **steering is not prevented**: a well-formed injected candidate is accepted as a proposal (T9, R-9) |
-| Allowlisted URLs | Partially — the initial URL is allowlisted (`touchstone/sources.py:178`); a same-host redirect may end retrieval at an unlisted URL (T1, T2) |
+| Allowlisted URLs | **Implemented (PLAN-T5)** — the initial URL must match the manifest, and a redirect may only land on that source's own URL or a `redirect_alias` it declares (T1, T2) |
 | Blocked redirects | **Implemented (PLAN-T5)** — at most one hop, same host, HTTPS, and the target must be the source's own URL or a `redirect_alias` it declares; a redirect to a *different* approved source is refused |
 | MIME limits | **Implemented (PLAN-T5)** — enforced against the manifest before storage |
 | Magic-byte limits | Implemented for JSON; PDF/ZIP with **PLAN-T10** |
