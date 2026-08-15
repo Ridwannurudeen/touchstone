@@ -104,7 +104,7 @@ def test_fetch_stores_exact_fixture_bytes_and_records_response_content_type(
     del cadence
     raw = (FIXTURES / fixture_name).read_bytes()
     transport = FakeTransport(
-        {url: response(raw, headers={"content-type": "application/problem+json"})}
+        {url: response(raw, headers={"content-type": "application/json; charset=utf-8"})}
     )
 
     result = fetch_source(
@@ -119,16 +119,16 @@ def test_fetch_stores_exact_fixture_bytes_and_records_response_content_type(
     assert result.source_url == url
     assert result.evidence_sha256 == digest
     assert result.byte_size == len(raw)
-    assert result.content_type == "application/problem+json"
+    assert result.content_type == "application/json; charset=utf-8"
     assert result.redirect_count == 0
     assert transport.calls == [(url, 10.0, max_bytes)]
     assert (tmp_path / "objects" / digest).read_bytes() == raw
     entry = read_index(tmp_path)[0]
-    assert entry["declared_mime"] == "application/problem+json"
+    assert entry["declared_mime"] == "application/json; charset=utf-8"
     assert entry["source_url"] == url
 
 
-def test_missing_content_type_is_recorded_explicitly(tmp_path: Path) -> None:
+def test_missing_content_type_is_refused(tmp_path: Path) -> None:
     source = USTB_SOURCES[1]
     transport = FakeTransport(
         {
@@ -138,20 +138,19 @@ def test_missing_content_type_is_recorded_explicitly(tmp_path: Path) -> None:
         }
     )
 
-    result = fetch_source(
-        source.source_id,
-        store=EvidenceStore(tmp_path),
-        transport=transport,
-        retrieved_at=RETRIEVED_AT,
-    )
-
-    assert result.content_type == "<missing>"
-    assert read_index(tmp_path)[0]["declared_mime"] == "<missing>"
+    with pytest.raises(SourceResponseError, match="no Content-Type"):
+        fetch_source(
+            source.source_id,
+            store=EvidenceStore(tmp_path),
+            transport=transport,
+            retrieved_at=RETRIEVED_AT,
+        )
 
 
-def test_same_host_https_redirect_is_followed_once(tmp_path: Path) -> None:
-    source = USTB_SOURCES[1]
-    redirected_url = "https://api.superstate.com/v1/funds/1/yield?version=current"
+def test_redirect_to_an_allowlisted_url_is_followed_once(tmp_path: Path) -> None:
+    """A redirect is only followed when its target is itself an approved source."""
+    source = USTB_SOURCES[0]
+    redirected_url = USTB_SOURCES[1].url
     raw = (FIXTURES / "ustb-yield.json").read_bytes()
     transport = FakeTransport(
         {
@@ -175,6 +174,29 @@ def test_same_host_https_redirect_is_followed_once(tmp_path: Path) -> None:
     assert result.redirect_count == 1
     assert [call[0] for call in transport.calls] == [source.url, redirected_url]
     assert read_index(tmp_path)[0]["source_url"] == redirected_url
+
+
+def test_same_host_redirect_off_the_allowlist_is_refused(tmp_path: Path) -> None:
+    """An open redirect on an approved host must not move retrieval off-manifest."""
+    source = USTB_SOURCES[1]
+    elsewhere = "https://api.superstate.com/v1/funds/1/yield?version=attacker"
+    transport = FakeTransport(
+        {
+            source.url: response(
+                b"", status_code=302, headers={"Location": elsewhere}
+            ),
+            elsewhere: response(b'{"as_of_date":"1970-01-01"}'),
+        }
+    )
+
+    with pytest.raises(SourcePolicyError, match="not in the exact source allowlist"):
+        fetch_source(
+            source.source_id,
+            store=EvidenceStore(tmp_path),
+            transport=transport,
+            retrieved_at=RETRIEVED_AT,
+        )
+    assert [call[0] for call in transport.calls] == [source.url]
 
 
 @pytest.mark.parametrize(
@@ -251,7 +273,7 @@ def test_cross_host_or_non_https_redirect_is_refused(
 
 def test_second_redirect_is_refused(tmp_path: Path) -> None:
     source = USTB_SOURCES[1]
-    first_redirect = "https://api.superstate.com/first"
+    first_redirect = USTB_SOURCES[2].url
     transport = FakeTransport(
         {
             source.url: response(
@@ -260,7 +282,7 @@ def test_second_redirect_is_refused(tmp_path: Path) -> None:
             first_redirect: response(
                 b"",
                 status_code=307,
-                headers={"Location": "https://api.superstate.com/second"},
+                headers={"Location": USTB_SOURCES[0].url},
             ),
         }
     )
@@ -372,3 +394,100 @@ def test_invalid_retrieval_time_is_refused_before_transport(tmp_path: Path) -> N
         )
 
     assert transport.calls == []
+
+
+def test_a_wrong_media_type_is_refused(tmp_path: Path) -> None:
+    """The manifest's expected_mime is enforced, not merely recorded alongside it."""
+    source = USTB_SOURCES[1]
+    transport = FakeTransport(
+        {
+            source.url: response(
+                (FIXTURES / "ustb-yield.json").read_bytes(),
+                headers={"Content-Type": "text/html"},
+            )
+        }
+    )
+
+    with pytest.raises(SourceResponseError, match="text/html"):
+        fetch_source(
+            source.source_id,
+            store=EvidenceStore(tmp_path),
+            transport=transport,
+            retrieved_at=RETRIEVED_AT,
+        )
+    assert not (tmp_path / "index.jsonl").exists(), "rejected bytes must not be stored"
+
+
+def test_a_charset_parameter_does_not_defeat_the_media_type_check(
+    tmp_path: Path,
+) -> None:
+    """Enforcement compares the media type, so a charset parameter is still accepted."""
+    source = USTB_SOURCES[1]
+    raw = (FIXTURES / "ustb-yield.json").read_bytes()
+    transport = FakeTransport(
+        {
+            source.url: response(
+                raw, headers={"Content-Type": "APPLICATION/JSON; charset=UTF-8"}
+            )
+        }
+    )
+
+    result = fetch_source(
+        source.source_id,
+        store=EvidenceStore(tmp_path),
+        transport=transport,
+        retrieved_at=RETRIEVED_AT,
+    )
+
+    assert result.byte_size == len(raw)
+
+
+@pytest.mark.parametrize("encoding", ["gzip", "br", "deflate", "gzip, identity"])
+def test_a_compressed_body_is_refused(tmp_path: Path, encoding: str) -> None:
+    """A compressed body could expand far past the byte cap applied on the wire."""
+    source = USTB_SOURCES[1]
+    transport = FakeTransport(
+        {
+            source.url: response(
+                (FIXTURES / "ustb-yield.json").read_bytes(),
+                headers={
+                    "Content-Type": "application/json",
+                    "Content-Encoding": encoding,
+                },
+            )
+        }
+    )
+
+    with pytest.raises(SourceResponseError, match="only identity is accepted"):
+        fetch_source(
+            source.source_id,
+            store=EvidenceStore(tmp_path),
+            transport=transport,
+            retrieved_at=RETRIEVED_AT,
+        )
+
+
+def test_an_explicit_identity_encoding_is_accepted(tmp_path: Path) -> None:
+    source = USTB_SOURCES[1]
+    raw = (FIXTURES / "ustb-yield.json").read_bytes()
+    transport = FakeTransport(
+        {
+            source.url: response(
+                raw,
+                headers={
+                    "Content-Type": "application/json",
+                    "Content-Encoding": "identity",
+                },
+            )
+        }
+    )
+
+    assert (
+        fetch_source(
+            source.source_id,
+            store=EvidenceStore(tmp_path),
+            transport=transport,
+            retrieved_at=RETRIEVED_AT,
+        ).byte_size
+        == len(raw)
+    )

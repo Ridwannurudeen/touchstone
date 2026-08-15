@@ -1,4 +1,5 @@
 import json
+import time
 from dataclasses import FrozenInstanceError
 from datetime import date
 from decimal import Decimal
@@ -275,3 +276,36 @@ def test_extreme_json_exponent_is_a_typed_rejection() -> None:
 
     with pytest.raises(NormalizationError, match="invalid JSON"):
         parse_yield(raw)
+
+
+def _hang_forever(send, source_id, content, max_bytes, max_depth):  # pragma: no cover
+    """Stand-in worker that never replies, so the wall-clock limit is what ends it."""
+    del send, source_id, content, max_bytes, max_depth
+    while True:
+        time.sleep(0.05)
+
+
+def test_a_hung_worker_is_terminated_by_the_wall_clock_limit(monkeypatch) -> None:
+    """A parser that never returns must not hold the epoch open indefinitely."""
+    monkeypatch.setattr(
+        "touchstone.normalize.ustb._isolated_worker", _hang_forever, raising=True
+    )
+    started = time.monotonic()
+
+    with pytest.raises(NormalizationError, match="timed out"):
+        normalize_ustb_payload_isolated(
+            USTB_YIELD_SOURCE_ID,
+            fixture_bytes("ustb-yield.json"),
+            timeout=0.75,
+        )
+
+    elapsed = time.monotonic() - started
+    assert elapsed < 20, f"the timeout did not bound the call: {elapsed:.1f}s"
+
+
+def test_the_isolated_timeout_must_be_a_positive_number() -> None:
+    for bad in (0, -1, True, "1"):
+        with pytest.raises((TypeError, ValueError)):
+            normalize_ustb_payload_isolated(
+                USTB_YIELD_SOURCE_ID, fixture_bytes("ustb-yield.json"), timeout=bad
+            )

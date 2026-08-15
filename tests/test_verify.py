@@ -273,3 +273,19 @@ def test_verifier_rejects_an_unconfirmed_absence_claim(tmp_path: Path) -> None:
 
     with pytest.raises(VerificationError, match="no confirmation capture"):
         verify_bundle(_resign(bundle, report))
+
+
+def test_verifier_rejects_a_bundle_carrying_unapproved_controls(tmp_path: Path) -> None:
+    """Approval was enforced only inside the evaluator, on the publisher's own machine.
+
+    An independent verifier could therefore accept a bundle whose controls were still
+    proposals. R-11 in the threat model records the remaining gap: this closes the
+    verifier half, not the binding between a control and the compilation that produced it.
+    """
+    bundle = _bundle(tmp_path)
+    for record in bundle["control_records"]:
+        if record["control_id"] == "aum-published":
+            record["approval_state"] = "proposed"
+
+    with pytest.raises(VerificationError, match="not approved: aum-published"):
+        verify_bundle(bundle)

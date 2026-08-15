@@ -223,6 +223,13 @@ def _load_controls(value: object) -> tuple[ControlRecord, ...]:
     ids = [record.control_id for record in records]
     if len(set(ids)) != len(ids):
         raise VerificationError("control record ids must be unique")
+    unapproved = sorted(
+        record.control_id for record in records if record.approval_state != "approved"
+    )
+    if unapproved:
+        raise VerificationError(
+            "bundled control is not approved: " + ", ".join(unapproved)
+        )
     return records
 
 

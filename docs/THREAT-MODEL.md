@@ -64,10 +64,10 @@ threat identifiers `T1`–`T27` used in this section.
 
 | ID | Threat | Disposition |
 |---|---|---|
-| T1 | **Source impersonation / wrong endpoint** — evidence fetched from an address that is not the approved source | **Partially implemented.** The *initial* URL must match the manifest exactly (`touchstone/sources.py:178`), and every URL must be HTTPS with no embedded credentials and no non-443 port (`touchstone/sources.py:276`). Retrieval can still end at an address the allowlist never named, because a same-host redirect is followed and the redirected URL becomes the stored `source_url` (`touchstone/sources.py:220`) — see T2 |
-| T2 | **Redirect abuse** — an open or cross-host redirect moves retrieval to attacker-controlled bytes | **Partially implemented.** At most one redirect is followed, cross-host and non-HTTPS redirects are refused (`touchstone/sources.py:196`, `touchstone/sources.py:295`). The final URL is *not* required to be independently present in the allowlist, so a same-host open redirect is still followed. **Backlog: PLAN-T5** |
-| T3 | **MIME confusion** — a source returns a different content type than the manifest approved | **Backlog: PLAN-T5.** `SourceManifest.expected_mime` exists and the received `Content-Type` is recorded as `declared_mime` (`touchstone/sources.py:213`), but the two are never compared. Recorded, not enforced |
-| T4 | **Content-encoding confusion / decompression bomb** | **Partially implemented.** `Accept-Encoding: identity` is requested (`touchstone/sources.py:134`) and every response is capped at the manifest's byte limit before storage (`touchstone/sources.py:192`). The response's actual `Content-Encoding` is never validated, so a source that compresses anyway is not detected. **Backlog: PLAN-T5**; ZIP/PDF expansion limits arrive with **PLAN-T10** |
+| T1 | **Source impersonation / wrong endpoint** — evidence fetched from an address that is not the approved source | **Implemented (PLAN-T5).** The initial URL must match the manifest exactly, every URL must be HTTPS with no embedded credentials and no non-443 port, and a redirect may now only land on a URL the allowlist itself names, so retrieval cannot end anywhere the manifest did not approve |
+| T2 | **Redirect abuse** — an open or cross-host redirect moves retrieval to attacker-controlled bytes | **Implemented (PLAN-T5).** At most one redirect is followed; cross-host and non-HTTPS redirects are refused; and the target must itself be allowlisted, so a same-host open redirect on an approved host no longer moves retrieval off-manifest. A test drives that exact case |
+| T3 | **MIME confusion** — a source returns a different content type than the manifest approved | **Implemented (PLAN-T5).** The received media type is compared against the manifest's `expected_mime` and a mismatch is refused before anything is stored; a missing `Content-Type` is refused outright. Parameters such as `charset` are ignored for the comparison |
+| T4 | **Content-encoding confusion / decompression bomb** | **Implemented for the JSON path (PLAN-T5).** `Accept-Encoding: identity` is requested, every response is capped on the wire, and a non-identity `Content-Encoding` is now refused, so a compressed body cannot smuggle more expanded data than the cap allows. Archive and document expansion limits remain **PLAN-T10** |
 | T5 | **Oversized input** — memory exhaustion via a large response | **Implemented.** Per-source `max_bytes` enforced at read time and again after transport (`touchstone/sources.py:192`, `touchstone/sources.py:235`) |
 | T6 | **Hostile JSON** — deep nesting, duplicate keys, float coercion, unexpected shape | **Implemented.** Depth cap (`touchstone/normalize/ustb.py:17`), magic-byte root check, exact-object field sets, decimal-as-text parsing, and duplicate row-date rejection. Numbers never round-trip through binary floats |
 | T7 | **Hostile PDF** | **Backlog: PLAN-T10.** No PDF path exists yet; page, expanded-text and timeout limits are required before USDY lands |
@@ -77,7 +77,7 @@ threat identifiers `T1`–`T27` used in this section.
 
 | ID | Threat | Disposition |
 |---|---|---|
-| T9 | **Prompt injection** — instructions embedded in issuer evidence steer the compiler | **Partially mitigated, untested.** The model is given no tool surface at all: the request body carries only `model`, `messages` and `temperature` (`touchstone/compiler.py:114`), so there is no shell, network, wallet or contract capability for injected text to invoke. Impact is further bounded because output is only a *proposal* that must survive schema validation, an adapter/source binding check (`touchstone/compiler.py:379`) and explicit approval before evaluation. **This constrains impact; it does not prevent steering.** Embedded instructions can still shape a schema-valid, byte-citable proposal, and **no prompt-injection test exists**. Backlog: **PLAN-T5** |
+| T9 | **Prompt injection** — instructions embedded in issuer evidence steer the compiler | **Partially mitigated, untested.** The model is given no tool surface at all: the request body carries only `model`, `messages` and `temperature` (`touchstone/compiler.py:114`), so there is no shell, network, wallet or contract capability for injected text to invoke. Impact is further bounded because output is only a *proposal* that must survive schema validation, an adapter/source binding check (`touchstone/compiler.py:379`) and explicit approval before evaluation. **This constrains impact; it does not prevent steering** — embedded instructions can still shape a schema-valid, byte-citable proposal. **Tested as of PLAN-T5:** evidence carrying explicit self-approval instructions is refused outright, because a candidate arriving with `approval_state` set is rejected; a fabricated citation is rejected; a control redirected to another adapter is rejected; and the request carries no tool schema for injected text to invoke |
 | T10 | **False citation** — a proposed control cites evidence it did not come from | **Partially implemented — byte-presence only.** The cited span must occur byte-exactly in both the stored artifact and the excerpt shown to the model (`touchstone/compiler.py:325`). That proves the bytes are present; it does not prove uniqueness or that they denote the value the adapter consumed. The broader threat remains open under **R-1** |
 | T11 | **Silent model substitution** — output attributed to a model that did not produce it | **Not implemented — residual R-11.** Prompt hash, compiler version, input hash and the exact raw output are recorded, but the recorded model id is the *requested* one read from configuration (`touchstone/compiler.py:90`), and the response parser reads only the message content and never the provider's returned model identity (`touchstone/compiler.py:157`). A substituted model is therefore attributed to the configured name. The actual model remains provider-attested and untested by Touchstone |
 | T12 | **Overconfident acceptance** — an ambiguous document yields a confident control | **Partially implemented.** Below-threshold confidence abstains rather than accepting (`touchstone/compiler.py:340`), but `compiler_confidence` is **supplied by the model in its own proposal**, so a confidently wrong or hostile output can clear the threshold by asserting a high number. The remaining protection is that a control must be marked approved before it becomes evaluable — which is a string comparison on a field, not an attested human decision (B14, R-9, R-11) |
@@ -137,13 +137,13 @@ These distinctions are load-bearing and must not be collapsed:
 | Model gets no shell, network, wallet or contract tools | **Implemented** — no tool surface in the request (`touchstone/compiler.py:114`) |
 | Instructions embedded in evidence are never followed | Partially — impact bounded by tool denial and deterministic gates, but steering is not prevented and **no test** exists (T9). Backlog: **PLAN-T5** |
 | Allowlisted URLs | Partially — the initial URL is allowlisted (`touchstone/sources.py:178`); a same-host redirect may end retrieval at an unlisted URL (T1, T2) |
-| Blocked redirects | Partially — same-host single redirect still followed. Backlog: **PLAN-T5** |
-| MIME limits | **Not enforced.** Backlog: **PLAN-T5** |
+| Blocked redirects | **Implemented (PLAN-T5)** — a redirect target must itself be allowlisted |
+| MIME limits | **Implemented (PLAN-T5)** — enforced against the manifest before storage |
 | Magic-byte limits | Implemented for JSON; PDF/ZIP with **PLAN-T10** |
 | Size limits | Implemented (`touchstone/sources.py:192`) |
-| Decompression limits | Not implemented. Backlog: **PLAN-T5/PLAN-T10** |
+| Decompression limits | **Implemented for the JSON path (PLAN-T5)** — a non-identity Content-Encoding is refused. Archive/document expansion limits remain **PLAN-T10** |
 | Page limits | Not applicable until PDFs land. Backlog: **PLAN-T10** |
-| Time limits | Implemented for parsing (`touchstone/normalize/ustb.py:18`); network timeout on fetch |
+| Time limits | Implemented and **proved (PLAN-T5)** — a worker that never returns is terminated by the wall-clock limit and raises a typed failure |
 | Isolated parsing worker | Implemented, with **R-3** stated |
 | Model id, prompt hash, compiler version, input hash, raw output recorded | Partially — prompt hash, compiler version, input hash and raw output are recorded; the **requested** model id is recorded rather than the provider's returned identity (T11, R-11) |
 
@@ -157,7 +157,7 @@ These distinctions are load-bearing and must not be collapsed:
 | Monotonic sequences + replay protection | Implemented (registry + `touchstone/publish.py:381`) |
 | Allowlisted adapters | Implemented — control adapter must match the source manifest (`touchstone/compiler.py:379`) |
 | Sandboxed parsing | Process isolation only — **R-3** |
-| Prompt-injection tests | **Missing.** Backlog: **PLAN-T5** |
+| Prompt-injection tests | **Implemented (PLAN-T5)** — four cases: self-approval, fabricated citation, adapter redirection, and the absence of any tool surface |
 | Full model/prompt version recording | Partially — see the row above and T11/R-11 |
 | Signed release manifests | Backlog: **PLAN-T13** |
 | Daily backups + tested restore | Backlog: **PLAN-T8** |
@@ -237,15 +237,14 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   provider's returned one (T11), so provenance cannot attest which model proposed a
   control.
 
-  The gap is wider than evaluation. Report construction matches controls to evaluations by
-  `control_id` alone (`touchstone/report.py:161`), and the offline verifier never inspects
-  `approval_state` at all (`touchstone/verify.py:216` and its surrounding checks). A
-  validly signed, internally consistent bundle can therefore carry controls still marked
-  `proposed`, and an independent verifier would accept it. Approval is enforced only inside
-  `evaluate_ustb`, on the publisher's own machine, at evaluation time.
+  **Closed in part by PLAN-T5:** the offline verifier now refuses a bundle whose controls
+  are not `approved`, so an independent verifier no longer accepts one carrying proposals.
+  What remains is the binding itself — report construction still matches controls to
+  evaluations by `control_id` alone (`touchstone/report.py:161`), and nothing ties an
+  approved control to the compilation that produced it.
 
-  Three distinct changes are needed. The offline verifier's rejection of controls whose
-  `approval_state` is not `approved` is scheduled in **PLAN-T5**. The other two remain
+  Of the three changes needed, the offline verifier's rejection of controls whose
+  `approval_state` is not `approved` is **done (PLAN-T5)**. The other two remain
   unscheduled: (a) bind an approved control to the specific compilation record that
   produced it and have the verifier check that binding; and (b) separately, record the
   model identity the provider returned rather than the one requested

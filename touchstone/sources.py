@@ -201,6 +201,7 @@ def fetch_source(
                 raise SourceResponseError("redirect response has no Location header")
             redirected_url = urljoin(current_url, location)
             _validate_redirect(current_url, redirected_url)
+            _validate_allowlisted(redirected_url)
             current_url = redirected_url
             redirect_count += 1
             continue
@@ -210,9 +211,11 @@ def fetch_source(
             )
         break
 
+    _validate_content_encoding(response.headers)
     content_type = _header(response.headers, "Content-Type")
     if content_type is None or not content_type.strip():
         content_type = _MISSING_CONTENT_TYPE
+    _validate_media_type(content_type, manifest)
     observed_at = retrieved_at or datetime.now(timezone.utc)
     digest = store.store(
         response.body,
@@ -290,6 +293,51 @@ def _validate_https_url(url: object, *, context: str) -> None:
         or port not in {None, 443}
     ):
         raise SourcePolicyError(f"{context} must be an HTTPS URL")
+
+
+def _validate_allowlisted(url: str) -> None:
+    """A redirect may only land on a URL the allowlist already names.
+
+    Same-host is not enough: an open redirect on an approved host would otherwise move
+    retrieval to bytes the manifest never approved.
+    """
+    if url not in {manifest.url for manifest in USTB_SOURCES}:
+        raise SourcePolicyError("redirect target is not in the exact source allowlist")
+
+
+def _media_type(content_type: str) -> str:
+    """Return the bare media type, dropping parameters such as charset."""
+    return content_type.split(";", 1)[0].strip().lower()
+
+
+def _validate_media_type(content_type: str, manifest: SourceManifest) -> None:
+    """Enforce the manifest's declared MIME instead of merely recording what arrived."""
+    if content_type == _MISSING_CONTENT_TYPE:
+        raise SourceResponseError(
+            f"source sent no Content-Type; {manifest.source_id} declares "
+            f"{manifest.expected_mime}"
+        )
+    received = _media_type(content_type)
+    if received != _media_type(manifest.expected_mime):
+        raise SourceResponseError(
+            f"source sent {received}; {manifest.source_id} declares "
+            f"{manifest.expected_mime}"
+        )
+
+
+def _validate_content_encoding(headers: Mapping[str, str]) -> None:
+    """Refuse a compressed body.
+
+    ``identity`` is requested, and the byte cap is applied to what arrives on the wire, so
+    a compressed response could smuggle far more expanded data than the cap allows.
+    """
+    encoding = _header(headers, "Content-Encoding")
+    if encoding is None or not encoding.strip():
+        return
+    if _media_type(encoding) not in {"identity"}:
+        raise SourceResponseError(
+            f"source used Content-Encoding {encoding.strip()!r}; only identity is accepted"
+        )
 
 
 def _validate_redirect(current_url: str, redirected_url: str) -> None:
