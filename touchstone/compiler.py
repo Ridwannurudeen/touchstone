@@ -16,7 +16,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from touchstone.controls import ControlRecord
 from touchstone.evidence import EvidenceStore
-from touchstone.quantities import finite_positive
+from touchstone.quantities import finite_positive, utc_instant
 from touchstone.sources import SourceManifest
 
 
@@ -218,12 +218,11 @@ def compile_evidence(
     """Compile one stored artifact, validate every proposal, and persist the record."""
     if not isinstance(source_manifest, SourceManifest):
         raise TypeError("source_manifest must be a SourceManifest")
-    if (
-        not isinstance(retrieved_at, datetime)
-        or retrieved_at.tzinfo is None
-        or retrieved_at.utcoffset() is None
-    ):
-        raise ValueError("retrieved_at must be a timezone-aware datetime")
+    # Normalised once and used everywhere below. The offset was previously read to
+    # validate awareness and read again by each `astimezone`, so a `tzinfo` that answered
+    # only the first read let the provenance record and the evidence match be resolved
+    # against two different zones.
+    retrieved_at = utc_instant(retrieved_at, "retrieved_at")
     if (
         type(excerpt_limit) is not int
         or excerpt_limit <= 0

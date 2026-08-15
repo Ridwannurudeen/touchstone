@@ -13,7 +13,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, time, timezone
 import hashlib
 import re
-from typing import TYPE_CHECKING
 
 from touchstone.controls import (
     AssetState,
@@ -21,10 +20,8 @@ from touchstone.controls import (
     OperationalEvent,
     transition_state,
 )
+from touchstone.epoch import USTBEpochReport
 from touchstone.signing import canonical_json_bytes
-
-if TYPE_CHECKING:
-    from touchstone.epoch import USTBEpochReport
 
 
 REPORT_VERSION = "touchstone.observation-report.v3"
@@ -146,6 +143,23 @@ def build_observation_report(
     correction_of: int | None = None,
 ) -> dict[str, object]:
     """Build a strict report from a completed epoch without performing I/O."""
+    # One reading of the epoch for the whole report. `sources` and `evaluations` were each
+    # read three times — once to check they were non-empty, once for the derived values,
+    # once for the state check — and `evidence_references` read `sources` again. An epoch
+    # that answered those reads differently produced a report whose state, evidence root
+    # and serialised controls each described a different set of observations, and none of
+    # the checks could see it because each one was individually satisfied.
+    if not isinstance(epoch, USTBEpochReport):
+        raise TypeError("epoch must be a USTBEpochReport")
+    epoch = USTBEpochReport(
+        asset_key=epoch.asset_key,
+        now=epoch.now,
+        state=epoch.state,
+        evidence_deadline=epoch.evidence_deadline,
+        sources=tuple(epoch.sources),
+        evaluations=tuple(epoch.evaluations),
+        confirmation=epoch.confirmation,
+    )
     records = tuple(controls)
     if type(sequence) is not int or sequence < 1:
         raise ValueError("sequence must be a positive integer")

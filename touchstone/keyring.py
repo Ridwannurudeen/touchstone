@@ -26,7 +26,7 @@ alternative is publishing correctly-formed reports from an identity nobody autho
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 import os
 import re
 
@@ -39,6 +39,7 @@ from hexbytes import HexBytes
 from web3 import Web3
 
 from touchstone.deployment import DeploymentError, DeploymentManifest
+from touchstone.quantities import utc_instant
 from touchstone.signing import (
     Ed25519Signer,
     SIGNING_SEED_ENV,
@@ -325,6 +326,8 @@ def revoked(
 
 
 def _stamp(at: datetime) -> str:
-    if not isinstance(at, datetime) or at.tzinfo is None or at.utcoffset() is None:
-        raise DeploymentError("a key lifecycle instant must be timezone-aware")
-    return at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    try:
+        moment = utc_instant(at, "a key lifecycle instant")
+    except ValueError as error:
+        raise DeploymentError(str(error)) from error
+    return moment.isoformat().replace("+00:00", "Z")

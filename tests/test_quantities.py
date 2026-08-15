@@ -8,6 +8,7 @@ finding that out at the socket rather than at the configuration is finding out t
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 import sys
 
@@ -19,6 +20,7 @@ from touchstone.quantities import (
     finite_non_negative,
     finite_number,
     finite_positive,
+    utc_instant,
 )
 from touchstone.schedule import run_schedule
 
@@ -212,3 +214,63 @@ def _operations_at(tmp_path):
         directory = tmp_path / "operations"
 
     return _At()
+
+
+class _StatefulZone(tzinfo):
+    """Answers the first offset request and declines every one after it."""
+
+    def __init__(self) -> None:
+        self.reads = 0
+
+    def utcoffset(self, dt: datetime | None) -> timedelta | None:
+        self.reads += 1
+        return timedelta(0) if self.reads == 1 else None
+
+    def dst(self, dt: datetime | None) -> None:
+        return None
+
+
+class _HostileZone(tzinfo):
+    """A tzinfo is caller code, and caller code can raise anything."""
+
+    def utcoffset(self, dt: datetime | None) -> timedelta:
+        raise RuntimeError("this zone refuses to say")
+
+    def dst(self, dt: datetime | None) -> None:
+        return None
+
+
+def test_an_instant_is_resolved_from_the_offset_that_was_validated() -> None:
+    """Validating an offset and then converting asks the caller's zone twice.
+
+    A zone that answers the check and then declines left `astimezone` to fall back on the
+    host's local zone, so noon UTC was stored as 11:00Z on a UTC+1 machine and as
+    something else again elsewhere — in a record written to outlive the process.
+    """
+    zone = _StatefulZone()
+
+    resolved = utc_instant(datetime(2026, 8, 15, 12, 0, tzinfo=zone), "moment")
+
+    assert resolved == datetime(2026, 8, 15, 12, 0, tzinfo=timezone.utc)
+    assert zone.reads == 1, "the offset was observed exactly once"
+
+
+def test_a_zone_that_refuses_to_answer_is_this_modules_refusal() -> None:
+    with pytest.raises(ValueError, match="could not report a UTC offset"):
+        utc_instant(datetime(2026, 8, 15, 12, 0, tzinfo=_HostileZone()), "moment")
+
+
+def test_an_instant_that_cannot_be_converted_is_this_modules_refusal() -> None:
+    """Aware, and still not convertible: the conversion underflows the date range."""
+    earliest = datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=14)))
+
+    with pytest.raises(ValueError, match="cannot be converted to UTC"):
+        utc_instant(earliest, "moment")
+
+
+@pytest.mark.parametrize(
+    "value", [None, "2026-08-15T12:00:00Z", datetime(2026, 8, 15, 12, 0)]
+)
+def test_only_an_aware_datetime_is_an_instant(value: object) -> None:
+    with pytest.raises(ValueError, match="moment must be"):
+        utc_instant(value, "moment")

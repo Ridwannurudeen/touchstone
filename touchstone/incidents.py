@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 import hashlib
 import os
 from pathlib import Path
@@ -25,6 +25,7 @@ import re
 import time
 
 from touchstone.locking import LockUnavailable, exclusive_lock
+from touchstone.quantities import utc_instant
 from touchstone.signing import canonical_json_bytes, strict_json_loads
 
 
@@ -551,10 +552,8 @@ def _entry_hash(entry: Mapping[str, object]) -> str:
 
 
 def _stamp(occurred_at: datetime) -> str:
-    if (
-        not isinstance(occurred_at, datetime)
-        or occurred_at.tzinfo is None
-        or occurred_at.utcoffset() is None
-    ):
-        raise IncidentLogError("an incident instant must be timezone-aware")
-    return occurred_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    try:
+        moment = utc_instant(occurred_at, "an incident instant")
+    except ValueError as error:
+        raise IncidentLogError(str(error)) from error
+    return moment.isoformat().replace("+00:00", "Z")

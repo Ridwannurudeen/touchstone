@@ -31,6 +31,7 @@ from web3 import Web3
 
 from touchstone.controls import AssetState
 from touchstone.publish import DuplicateSequence, PublicationResult, PublisherClient
+from touchstone.quantities import utc_instant
 from touchstone.signing import (
     canonical_json_bytes,
     frozen_snapshot,
@@ -439,10 +440,8 @@ def _slug(asset_key: str) -> str:
 
 
 def _stamp(moment: datetime) -> str:
-    if (
-        not isinstance(moment, datetime)
-        or moment.tzinfo is None
-        or moment.utcoffset() is None
-    ):
-        raise OperationsError("an operational instant must be timezone-aware")
-    return moment.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    try:
+        instant = utc_instant(moment, "an operational instant")
+    except ValueError as error:
+        raise OperationsError(str(error)) from error
+    return instant.isoformat().replace("+00:00", "Z")

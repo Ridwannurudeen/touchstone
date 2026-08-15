@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
+from xml.etree import ElementTree
 
 
 ROOT = Path(__file__).parents[1]
@@ -173,35 +175,43 @@ MUTATIONS = (
         ),
     ),
     Mutation(
-        name="incident-instant-may-lack-an-offset",
-        path="touchstone/incidents.py",
-        old="        or occurred_at.utcoffset() is None\n",
-        new="",
-        tests=("tests/test_incidents.py::test_an_instant_must_be_timezone_aware",),
-    ),
-    Mutation(
-        name="operation-instant-may-lack-an-offset",
-        path="touchstone/operations.py",
-        old="        or moment.utcoffset() is None\n",
-        new="",
-        tests=("tests/test_operations.py::test_an_instant_must_be_timezone_aware",),
-    ),
-    Mutation(
-        name="key-lifecycle-instant-may-lack-an-offset",
-        path="touchstone/keyring.py",
-        old=" or at.utcoffset() is None",
-        new="",
+        name="an-offsetless-instant-is-accepted",
+        path="touchstone/quantities.py",
+        old='        raise ValueError(f"{field} must be timezone-aware")',
+        new="        offset = timedelta(0)",
         tests=(
+            "tests/test_quantities.py::test_only_an_aware_datetime_is_an_instant",
+            "tests/test_incidents.py::test_an_instant_must_be_timezone_aware",
+            "tests/test_operations.py::test_an_instant_must_be_timezone_aware",
             "tests/test_keyring.py::test_a_lifecycle_instant_must_be_timezone_aware",
+            "tests/test_compiler.py::test_a_retrieval_instant_must_be_timezone_aware",
         ),
     ),
     Mutation(
-        name="retrieval-instant-may-lack-an-offset",
-        path="touchstone/compiler.py",
-        old="        or retrieved_at.utcoffset() is None\n",
-        new="",
+        name="instant-resolved-from-a-second-offset-read",
+        path="touchstone/quantities.py",
+        old="        return value.replace(tzinfo=timezone(offset)).astimezone(timezone.utc)",
+        new="        return value.astimezone(timezone.utc)",
         tests=(
-            "tests/test_compiler.py::test_a_retrieval_instant_must_be_timezone_aware",
+            "tests/test_quantities.py::test_an_instant_is_resolved_from_the_offset_that_was_validated",
+        ),
+    ),
+    Mutation(
+        name="a-zone-that-raises-escapes-untyped",
+        path="touchstone/quantities.py",
+        old='    except Exception as error:\n        raise ValueError(f"{field} could not report a UTC offset',
+        new='    except ValueError as error:\n        raise ValueError(f"{field} could not report a UTC offset',
+        tests=(
+            "tests/test_quantities.py::test_a_zone_that_refuses_to_answer_is_this_modules_refusal",
+        ),
+    ),
+    Mutation(
+        name="an-unconvertible-instant-escapes-untyped",
+        path="touchstone/quantities.py",
+        old='    except (OSError, OverflowError, ValueError) as error:\n        raise ValueError(f"{field} cannot be converted to UTC',
+        new='    except OSError as error:\n        raise ValueError(f"{field} cannot be converted to UTC',
+        tests=(
+            "tests/test_quantities.py::test_an_instant_that_cannot_be_converted_is_this_modules_refusal",
         ),
     ),
     Mutation(
@@ -251,23 +261,55 @@ def tree_is_clean() -> tuple[bool, str]:
     return not finished.stdout.strip(), finished.stdout.strip()
 
 
-def run_tests(tests: tuple[str, ...]) -> subprocess.CompletedProcess[str]:
+def run_tests(
+    tests: tuple[str, ...], report_path: Path | None = None
+) -> subprocess.CompletedProcess[str]:
     """Run exactly these test nodes, capturing everything."""
-    return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            *tests,
-            "-q",
-            "--no-header",
-            "-p",
-            "no:cacheprovider",
-        ],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
+    command = [
+        sys.executable,
+        "-m",
+        "pytest",
+        *tests,
+        "-q",
+        "--no-header",
+        "-p",
+        "no:cacheprovider",
+    ]
+    if report_path is not None:
+        command.append(f"--junit-xml={report_path}")
+    return subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+
+
+def wanted_nodes(tests: tuple[str, ...]) -> set[tuple[str, str]]:
+    """Map requested node ids to the (module, function) pairs pytest reports them as."""
+    wanted = set()
+    for test in tests:
+        path, _, function = test.partition("::")
+        wanted.add((path.removesuffix(".py").replace("/", "."), function))
+    return wanted
+
+
+def reported_failures(report_path: Path, tests: tuple[str, ...]) -> list[str] | None:
+    """Return the requested tests pytest recorded as failed, or None if it recorded none.
+
+    An exit code says a run ended badly; it does not say a test noticed anything. Pytest
+    can exit 1 without collecting a single node — an unwritable temporary directory, a
+    plugin that fails during initialisation — and reading that as a kill credits the
+    mutation with a failure no assertion ever made. Only a structured report naming a node
+    from *this* mutation's target set is evidence.
+    """
+    if not report_path.exists():
+        return None
+    wanted = wanted_nodes(tests)
+    failures = []
+    for case in ElementTree.parse(report_path).iter("testcase"):
+        if case.find("failure") is None and case.find("error") is None:
+            continue
+        module = case.get("classname", "")
+        function = case.get("name", "").partition("[")[0]
+        if (module, function) in wanted:
+            failures.append(case.get("name", function))
+    return failures or None
 
 
 def run_mutation(mutation: Mutation) -> tuple[str, str]:
@@ -284,29 +326,39 @@ def run_mutation(mutation: Mutation) -> tuple[str, str]:
             f"found {occurrences} matches in {mutation.path}, expected exactly one — "
             "the harness anchor is stale",
         )
-    try:
-        target.write_text(
-            original.replace(mutation.old, mutation.new), encoding="utf-8"
-        )
-        finished = run_tests(mutation.tests)
-    finally:
-        target.write_text(original, encoding="utf-8")
+    with tempfile.TemporaryDirectory() as workspace:
+        # Outside the repository, so the report cannot become an untracked file that the
+        # clean-tree check then reports as unrestored work.
+        report_path = Path(workspace) / "report.xml"
+        try:
+            target.write_text(
+                original.replace(mutation.old, mutation.new), encoding="utf-8"
+            )
+            finished = run_tests(mutation.tests, report_path)
+        finally:
+            target.write_text(original, encoding="utf-8")
+        failures = reported_failures(report_path, mutation.tests)
 
-    if finished.returncode == _TESTS_FAILED:
-        failed = [
-            line
-            for line in finished.stdout.splitlines()
-            if line.startswith("FAILED") or line.startswith("ERROR")
-        ]
-        return "killed", "; ".join(failed[:2])
     if finished.returncode == 0:
         return "survived", "every named test still passed"
-    reason = (
-        "no tests were collected"
-        if finished.returncode == _NO_TESTS_COLLECTED
-        else f"pytest exited {finished.returncode}"
+    if finished.returncode == _TESTS_FAILED and failures is not None:
+        return "killed", "; ".join(failures[:2])
+    if finished.returncode == _TESTS_FAILED:
+        reason = "pytest exited 1 without recording a failure in any targeted test"
+    elif finished.returncode == _NO_TESTS_COLLECTED:
+        reason = "no tests were collected"
+    else:
+        reason = f"pytest exited {finished.returncode}"
+    return "broken", f"{reason}\n{_diagnostic(finished)}"
+
+
+def _diagnostic(finished: subprocess.CompletedProcess[str]) -> str:
+    """Both streams. An initialisation failure explains itself only on stderr."""
+    return "\n".join(
+        part
+        for part in (finished.stdout.strip()[-800:], finished.stderr.strip()[-800:])
+        if part
     )
-    return "broken", f"{reason}\n{finished.stdout.strip()[-800:]}"
 
 
 def main() -> int:
@@ -326,7 +378,7 @@ def main() -> int:
     if baseline.returncode != 0:
         print(
             "refusing to run: the unmutated tests do not all pass, so no result would "
-            f"mean anything\n{baseline.stdout.strip()[-2000:]}",
+            f"mean anything\n{_diagnostic(baseline)}",
             file=sys.stderr,
         )
         return 2

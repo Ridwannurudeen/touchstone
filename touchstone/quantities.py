@@ -12,6 +12,7 @@ rather than at the configuration boundary is finding out too late.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import math
 
 
@@ -44,3 +45,30 @@ def finite_non_negative(value: object, field: str) -> float:
     if number < 0:
         raise ValueError(f"{field} must not be negative")
     return number
+
+
+def utc_instant(value: object, field: str) -> datetime:
+    """Return ``value`` as one UTC instant, resolved from a single offset observation.
+
+    Awareness used to be established by asking the caller's ``tzinfo`` for an offset, and
+    the value was then converted with ``astimezone``, which asks it again. A ``tzinfo`` is
+    an object rather than a constant: one that answered the check and then declined left
+    the conversion to fall back on the host's local zone, so the same input became a
+    different instant on a different machine — in records written to outlive the process.
+    The offset that was validated is therefore the offset that is used.
+
+    ``utcoffset`` runs caller-supplied code and may raise anything at all, so everything
+    it can do is turned into this module's refusal rather than the caller's surprise.
+    """
+    if not isinstance(value, datetime):
+        raise ValueError(f"{field} must be a datetime")
+    try:
+        offset = value.utcoffset()
+    except Exception as error:
+        raise ValueError(f"{field} could not report a UTC offset: {error}") from error
+    if offset is None:
+        raise ValueError(f"{field} must be timezone-aware")
+    try:
+        return value.replace(tzinfo=timezone(offset)).astimezone(timezone.utc)
+    except (OSError, OverflowError, ValueError) as error:
+        raise ValueError(f"{field} cannot be converted to UTC: {error}") from error

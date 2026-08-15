@@ -204,3 +204,55 @@ def test_report_fixture_helper_is_canonical_json_compatible(tmp_path: Path) -> N
     report = _report(tmp_path)
     assert report["version"] == "touchstone.observation-report.v3"
     assert report["compiler_provenance_digests"] == ["22" * 32]
+
+
+class _ShiftingEpoch:
+    """An epoch whose sources and evaluations differ on every read.
+
+    A real `USTBEpochReport` is frozen, so it cannot do this. Nothing checked that the
+    epoch was one, and the report was assembled from six separate reads: sources for a
+    non-emptiness check, for the evidence references and for `observed_at`; evaluations
+    for the identity map, for the length check and for the state check.
+    """
+
+    def __init__(self, epoch) -> None:
+        self._epoch = epoch
+        self.source_reads = 0
+        self.evaluation_reads = 0
+        self.asset_key = epoch.asset_key
+        self.now = epoch.now
+        self.state = epoch.state
+        self.evidence_deadline = epoch.evidence_deadline
+        self.confirmation = epoch.confirmation
+
+    @property
+    def sources(self):
+        self.source_reads += 1
+        return self._epoch.sources if self.source_reads != 2 else ()
+
+    @property
+    def evaluations(self):
+        self.evaluation_reads += 1
+        return self._epoch.evaluations if self.evaluation_reads != 2 else ()
+
+
+def test_a_report_describes_one_epoch(tmp_path: Path) -> None:
+    """One report, one set of observations, or the report is about nothing in particular.
+
+    The second read returning an empty set previously produced a CONFIRMED report bound to
+    an evidence root over no evidence — each individual check having been satisfied by a
+    different read, and none of them able to see the others.
+    """
+    shifting = _ShiftingEpoch(_epoch(tmp_path))
+
+    with pytest.raises(TypeError, match="USTBEpochReport"):
+        build_observation_report(
+            shifting,
+            default_ustb_controls(),
+            epoch_id="ustb-2026-08-14",
+            sequence=1,
+            publisher_kid="ed25519:" + "11" * 32,
+            compiler_provenance_digests=["22" * 32],
+        )
+
+    assert shifting.source_reads <= 1, "it was refused before deriving anything"
