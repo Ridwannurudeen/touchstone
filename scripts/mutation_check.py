@@ -353,6 +353,115 @@ MUTATIONS = (
         ),
     ),
     Mutation(
+        name="a-heartbeat-can-outlive-its-expiry",
+        path="touchstone/heartbeat.py",
+        old='    if expires_at <= moment:\n        reasons.append("the heartbeat has expired")',
+        new='    if False:\n        reasons.append("the heartbeat has expired")',
+        tests=(
+            "tests/test_heartbeat.py::test_a_heartbeat_expires_rather_than_staying_green",
+        ),
+    ),
+    Mutation(
+        name="a-future-heartbeat-is-accepted",
+        path="touchstone/heartbeat.py",
+        old="    if written_at > moment:",
+        new="    if False:",
+        tests=(
+            "tests/test_heartbeat.py::test_a_heartbeat_written_in_the_future_is_refused",
+        ),
+    ),
+    Mutation(
+        name="a-shell-string-is-accepted-as-a-restart-command",
+        path="touchstone/watchdog.py",
+        old="    if isinstance(argv, (str, bytes)):",
+        new="    if False:",
+        tests=(
+            "tests/test_watchdog.py::test_a_restart_command_must_be_an_argument_vector",
+        ),
+    ),
+    Mutation(
+        name="a-webhook-url-may-carry-a-secret-in-its-query",
+        path="touchstone/alerts.py",
+        old="    if parsed.query or parsed.fragment:",
+        new="    if False:",
+        tests=("tests/test_alerts.py::test_an_ambiguous_endpoint_is_refused",),
+    ),
+    Mutation(
+        name="an-alert-failure-repeats-the-endpoint-response",
+        path="touchstone/alerts.py",
+        old='        raise AlertError(f"the webhook answered HTTP {error.code}") from None',
+        new='        raise AlertError(f"the webhook answered {error.read()}") from None',
+        tests=(
+            "tests/test_alerts.py::test_a_failing_endpoint_does_not_leak_the_credential_or_its_body",
+        ),
+    ),
+    Mutation(
+        name="free-text-reaches-an-alert-body",
+        path="touchstone/alerts.py",
+        old="    if detail_code is not None and not _is_code(detail_code):",
+        new="    if False:",
+        tests=("tests/test_alerts.py::test_free_text_cannot_reach_the_detail_field",),
+    ),
+    Mutation(
+        name="an-unknown-runway-is-treated-as-covered",
+        path="touchstone/gas.py",
+        old="        return self.funded_through is not None and self.funded_through >= until",
+        new="        return self.funded_through is None or self.funded_through >= until",
+        tests=(
+            "tests/test_gas.py::test_no_measured_cost_is_unknown_rather_than_a_guess",
+        ),
+    ),
+    Mutation(
+        name="a-reverted-publication-raises-the-measured-cost",
+        path="touchstone/gas.py",
+        old='        if receipt.get("status") != 1:\n            continue',
+        new="        if False:\n            continue",
+        tests=(
+            "tests/test_gas.py::test_a_reverted_publication_does_not_raise_the_measured_cost",
+        ),
+    ),
+    Mutation(
+        name="a-second-process-may-copy-a-live-workspace",
+        path="touchstone/backup.py",
+        old="    except LockUnavailable as error:",
+        new="    except UnicodeDecodeError as error:",
+        tests=(
+            "tests/test_backup.py::test_a_standalone_backup_refuses_while_a_daemon_holds_the_workspace",
+        ),
+    ),
+    Mutation(
+        name="a-restore-trusts-the-inventory-that-travelled-with-it",
+        path="touchstone/backup.py",
+        old="        if hashlib.sha256(raw).hexdigest() != member.sha256:",
+        new="        if False:",
+        tests=("tests/test_backup.py::test_a_tampered_archive_creates_no_target",),
+    ),
+    Mutation(
+        name="a-restore-may-overwrite-an-existing-tree",
+        path="touchstone/backup.py",
+        old="    if target.exists():",
+        new="    if False:",
+        tests=(
+            "tests/test_backup.py::test_restore_never_overwrites_an_existing_directory",
+        ),
+    ),
+    Mutation(
+        name="an-archive-nonce-is-reused",
+        path="touchstone/backup.py",
+        old="    chosen = secrets.token_bytes(NONCE_BYTES) if nonce is None else nonce",
+        new="    chosen = bytes(NONCE_BYTES) if nonce is None else nonce",
+        tests=("tests/test_backup.py::test_every_archive_uses_a_fresh_nonce",),
+    ),
+    Mutation(
+        name="the-backup-key-may-be-another-secret",
+        path="touchstone/backup.py",
+        old='    for other in ("TOUCHSTONE_SIGNING_SEED", "TOUCHSTONE_PUBLISHER_PRIVATE_KEY"):',
+        new="    for other in ():",
+        tests=(
+            "tests/test_backup.py::test_a_backup_key_that_is_another_secret_is_refused",
+        ),
+    ),
+    Mutation(
         name="identity-not-established-at-each-observation",
         path="touchstone/incidents.py",
         old="        self._refuse_hardlink()\n        entries = self._read()",
