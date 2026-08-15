@@ -312,14 +312,33 @@ def reported_failures(report_path: Path, tests: tuple[str, ...]) -> list[str] | 
     return failures or None
 
 
+def read_exactly(path: Path) -> str:
+    """Read without translating line endings, so what is written back is what was read."""
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
+def write_exactly(path: Path, text: str) -> None:
+    """Write without translating line endings."""
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+
+
 def run_mutation(mutation: Mutation) -> tuple[str, str]:
     """Apply one mutation, judge the run, and always restore.
 
     Returns a verdict of "killed", "survived" or "broken", with the detail worth printing.
     """
     target = ROOT / mutation.path
-    original = target.read_text(encoding="utf-8")
-    occurrences = original.count(mutation.old)
+    original = read_exactly(target)
+    # Anchors are written with newlines, because that is how source is quoted. The file on
+    # disk may not use them: `write_text` translating a restored `\n` back to `\r\n` left
+    # the file byte-different from the one that was read, which the restore check then
+    # correctly reported as work this harness had failed to put back.
+    ending = "\r\n" if "\r\n" in original else "\n"
+    old = mutation.old.replace("\n", ending)
+    new = mutation.new.replace("\n", ending)
+    occurrences = original.count(old)
     if occurrences != 1:
         return (
             "broken",
@@ -331,12 +350,10 @@ def run_mutation(mutation: Mutation) -> tuple[str, str]:
         # clean-tree check then reports as unrestored work.
         report_path = Path(workspace) / "report.xml"
         try:
-            target.write_text(
-                original.replace(mutation.old, mutation.new), encoding="utf-8"
-            )
+            write_exactly(target, original.replace(old, new))
             finished = run_tests(mutation.tests, report_path)
         finally:
-            target.write_text(original, encoding="utf-8")
+            write_exactly(target, original)
         failures = reported_failures(report_path, mutation.tests)
 
     if finished.returncode == 0:
