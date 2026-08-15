@@ -207,7 +207,8 @@ def test_malformed_round_data_is_this_modules_failure(
 def test_an_unrepresentable_round_timestamp_is_this_modules_failure() -> None:
     """A word large enough to overflow a struct_time reached `datetime.fromtimestamp`.
 
-    It raised `OverflowError` from inside the constructor — not a typed refusal, so the
+    It raised from inside the constructor — `OSError` on this host, `OverflowError` or
+    `ValueError` on others, and on none of them a typed refusal — so the
     reading neither succeeded nor failed in a way any caller could handle.
     """
     payload = round_data(11_175_588, updated_at=(1 << 63) - 1)
