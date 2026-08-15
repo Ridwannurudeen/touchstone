@@ -10,7 +10,8 @@
 // by accident.
 
 const { createHash } = require("node:crypto");
-const { writeFileSync } = require("node:fs");
+const { mkdirSync, writeFileSync } = require("node:fs");
+const { dirname, isAbsolute, join } = require("node:path");
 const hre = require("hardhat");
 
 const LOCAL_CHAIN_ID = 31337n;
@@ -76,7 +77,8 @@ async function deploy({
   if (!/^[0-9a-f]{64}$/.test(reporterPublicKey)) {
     throw new Error("reporterPublicKey must be 32 lowercase hexadecimal bytes");
   }
-  const resolvedNetwork = network ?? NETWORK_BY_CHAIN_ID[String(chainId)] ?? null;
+  const resolvedNetwork =
+    network ?? NETWORK_BY_CHAIN_ID[String(chainId)] ?? null;
   if (!NETWORKS.includes(resolvedNetwork)) {
     throw new Error(
       `network must be one of ${NETWORKS.join(", ")}; chain ${chainId} resolved to ${resolvedNetwork}`,
@@ -120,10 +122,14 @@ async function deploy({
       throw new Error("rpc_url is not a URL");
     }
     if (parsed.protocol !== "https:" || !parsed.hostname) {
-      throw new Error("a public network must record an HTTPS rpc_url with a host");
+      throw new Error(
+        "a public network must record an HTTPS rpc_url with a host",
+      );
     }
     if (parsed.username || parsed.password || parsed.search || parsed.hash) {
-      throw new Error("rpc_url must not carry credentials, a query or a fragment");
+      throw new Error(
+        "rpc_url must not carry credentials, a query or a fragment",
+      );
     }
     if (isLoopbackHost(parsed.hostname)) {
       throw new Error("a public network cannot be served from loopback");
@@ -211,11 +217,23 @@ async function main() {
     rpcUrl: process.env.TOUCHSTONE_RPC_URL ?? null,
   });
   const serialized = `${serializeManifest(manifest)}\n`;
+  // Printed *before* it is written. The manifest is the only record of a deployment that
+  // cannot be repeated, and the first real run proved why: hardhat executes from
+  // `contracts/`, so a relative destination resolved against that directory instead of
+  // the repository root, the write threw ENOENT, and the registry was already live on
+  // chain with its manifest lost. Emitting first means the operator always holds the
+  // record even when the write fails, and a relative path is now resolved against the
+  // repository root rather than the working directory that happens to be in effect.
+  process.stdout.write(serialized);
   const destination = process.env.TOUCHSTONE_MANIFEST_OUT;
   if (destination) {
-    writeFileSync(destination, serialized, { encoding: "utf-8" });
+    const target = isAbsolute(destination)
+      ? destination
+      : join(__dirname, "..", "..", destination);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, serialized, { encoding: "utf-8" });
+    process.stderr.write(`manifest written to ${target}\n`);
   }
-  process.stdout.write(serialized);
 }
 
 function exactBigInt(value, field) {

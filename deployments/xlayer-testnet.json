@@ -1,0 +1,23 @@
+{
+  "manifest_version": 1,
+  "network": "xlayer-testnet",
+  "chain_id": 1952,
+  "rpc_url": "https://testrpc.xlayer.tech/terigon",
+  "registry_address": "0xc9d58e4496bF061C3177301Ff02518eBB70AD30d",
+  "registry_runtime_bytecode_sha256": "7b0b36531a3d9234fb7d72a231b5582a8516f4d99c757fe4298be57d57dd6e2a",
+  "publisher_address": "0x86A100BDdF8754c95fec97BeC96dBFd64Be44710",
+  "publisher_identity_address": "0x86A100BDdF8754c95fec97BeC96dBFd64Be44710",
+  "deployer_address": "0xAa1C01C6FcDcc268DbF93C861D26C44a27C35436",
+  "operations_address": "0xF901f538d17ED060018F043bCAA1d7f0977Fa65D",
+  "confirmations": 3,
+  "max_fee_wei": 2000000000000000,
+  "deployment_block": 38369203,
+  "reporting_keys": [
+    {
+      "kid": "ed25519:394ee022b83de4783cd49f60cc4842b48d108f6a339b73272739490cb9a581fd",
+      "public_key": "0959d043538a483024722ced848e52ae5dcaf56661e598dc850a9541028b9dba",
+      "state": "active"
+    }
+  ],
+  "notes": "Reconstructed from the chain on 2026-08-15 after the deploy script's manifest write failed on a relative path. Every field is read from the deployment itself: creation tx bdd1d330764eb6f38d137efd627083230e81447ef7b4b5436b71bddafa4196dd in block 38369203, runtime digest taken from eth_getCode, publisher lineage from publisherIdentity(). No second deployment was made."
+}
