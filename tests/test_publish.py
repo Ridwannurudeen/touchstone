@@ -832,15 +832,23 @@ def test_revalidation_actually_verifies_rather_than_only_dropping_a_cache() -> N
 
     Where the next step is a client-side decision rather than a chain read — reading a
     failed receipt, for instance — nothing would ever have re-verified the endpoint.
-    """
-    import inspect
 
+    Spied on behaviourally rather than by reading the source: asserting that the method
+    body contains the text "self.preflight()" pins a spelling, and would pass just as
+    happily if that call were unreachable.
+    """
     from touchstone.publish import SignedRegistryBackend
 
-    source = inspect.getsource(SignedRegistryBackend.revalidate)
-    assert "self.preflight()" in source, (
-        "revalidate must re-run preflight, not just clear the cached result"
-    )
+    backend = SignedRegistryBackend.__new__(SignedRegistryBackend)
+    backend._preflight = object()  # a cached result that must not be trusted
+    verified = []
+    backend.preflight = lambda: verified.append(True) or "fresh"
+
+    result = backend.revalidate()
+
+    assert verified == [True], "revalidate must actually re-run preflight"
+    assert result == "fresh"
+    assert backend._preflight is None or result == "fresh"
 
 
 def test_a_reread_that_disagrees_with_the_wait_keeps_the_journal(

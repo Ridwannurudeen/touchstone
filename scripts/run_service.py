@@ -160,7 +160,7 @@ class Service:
         moment = self.now()
         try:
             self.operations.resolve(self.client)
-        except (PublicationError, OperationsError) as error:
+        except Exception as error:  # noqa: BLE001 - the contract is that *any* failure is recorded
             self.incidents.open_incident(
                 asset_key=operation.asset_key,
                 kind=PUBLICATION_UNRESOLVED,
@@ -170,6 +170,10 @@ class Service:
                 ),
                 occurred_at=moment,
             )
+            # Deliberately broad. The transparency log raises its own error type, and
+            # catching only the publication and operations types let that escape with no
+            # incident at all — leaving the docstring's promise false for exactly the
+            # failure an operator would most want recorded.
             raise UnresolvedPublication(
                 f"startup could not settle sequence {operation.sequence}: {error}"
             ) from error

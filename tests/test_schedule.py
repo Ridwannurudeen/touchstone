@@ -1,6 +1,7 @@
 """The scheduler's job is to keep running and to be honest about what it skipped."""
 
 from datetime import datetime, timedelta, timezone
+import math
 import subprocess
 
 import pytest
@@ -342,3 +343,50 @@ def test_an_outage_is_never_reported_with_a_count_of_zero() -> None:
                     f"{outages}"
                 )
                 assert sum(outages) == outcome.missed_count
+
+
+def test_lateness_of_a_single_ulp_reports_no_outage() -> None:
+    """The case the sweep above cannot reach, and the one the defect actually needed.
+
+    Exact and half-interval overruns never land inside the float tolerance, so a sweep of
+    them passes against the broken code too. Being one ulp past the due instant is what
+    produces a skip count of zero — and what used to be announced as an outage of no
+    slots, telling an operator a slot had not run at the moment it ran.
+    """
+    origin = 100_000.0
+    clock = FakeTime(origin)
+    outages = []
+    runs = []
+
+    def job(scheduled_at: datetime) -> None:
+        runs.append(scheduled_at)
+        if len(runs) == 1:
+            # One representable step past exactly one interval.
+            clock.current = math.nextafter(origin + 60.0, math.inf)
+
+    outcome = schedule(
+        job,
+        clock,
+        interval_seconds=60,
+        max_runs=2,
+        on_outage=lambda first, count: outages.append(count),
+    )
+
+    assert outcome.missed_count == 0
+    assert outages == [], "an outage of zero slots must never be reported"
+
+
+def test_a_cadence_the_clock_cannot_resolve_is_refused() -> None:
+    """An unbounded tolerance is a grace period wearing a correction's clothes.
+
+    At a billion seconds of uptime a microsecond interval leaves rounding noise worth most
+    of a slot, so a slot genuinely in the past would be treated as due now. Refusing the
+    configuration is the honest answer; silently tolerating almost a whole interval is not.
+    """
+    clock = FakeTime(1_000_000_000.0)
+
+    with pytest.raises(ValueError, match="too fine for a clock"):
+        schedule(lambda at: None, clock, interval_seconds=1.02e-6, max_runs=1)
+
+    # A realistic cadence at the same uptime is unaffected.
+    assert schedule(lambda at: None, FakeTime(1e9), interval_seconds=60, max_runs=1).completed == 1

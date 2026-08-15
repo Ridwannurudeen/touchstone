@@ -38,6 +38,10 @@ MAX_NAMED_MISSES = 64
 # once the clock reports real uptime rather than a test's zero.
 _SLOT_EPSILON = 1e-12
 _SLOT_ULPS = 8
+# The most rounding noise that may be treated as "the same instant". Beyond this the
+# tolerance would be a grace period rather than a correction, so the configuration is
+# refused instead.
+_MAX_SLACK_SLOTS = 1 / 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +95,9 @@ def run_schedule(
 
     interval = float(interval_seconds)
     next_run = monotonic()
+    # Checked once here so an unusable cadence is refused before any work happens, rather
+    # than part-way through the first catch-up.
+    _slot_slack(max(abs(next_run), interval), interval)
     scheduled_at = now()
     completed = 0
     failed: list[datetime] = []
@@ -166,9 +173,29 @@ def _slots_elapsed(current: float, next_run: float, interval: float) -> int:
     at that instant was skipped. Tests that start their clock at zero never see it.
     """
     ratio = (current - next_run) / interval
-    scale = max(abs(current), abs(next_run), interval)
-    slack = max(_SLOT_ULPS * math.ulp(scale) / interval, _SLOT_EPSILON)
+    slack = _slot_slack(max(abs(current), abs(next_run), interval), interval)
     return math.ceil(ratio - slack)
+
+
+def _slot_slack(scale: float, interval: float) -> float:
+    """Float noise expressed as a fraction of one slot, and refused if it is not small.
+
+    The tolerance exists to stop an exact multiple being miscounted, and nothing else. Left
+    unbounded it grows with the clock and shrinks with the interval, so a microsecond
+    cadence at a billion seconds of uptime produced a slack of 0.93 *slots* — silently a
+    grace period of almost a whole interval, which is precisely what this is not.
+
+    Rather than quietly tolerate that, the configuration is refused: below roughly
+    ``8192 * ulp(clock)`` the clock cannot resolve the interval, and a scheduler that
+    cannot tell one slot from the next should say so instead of guessing.
+    """
+    slack = max(_SLOT_ULPS * math.ulp(scale) / interval, _SLOT_EPSILON)
+    if slack > _MAX_SLACK_SLOTS:
+        raise ValueError(
+            f"interval_seconds={interval!r} is too fine for a clock reading {scale!r}: "
+            f"one slot is worth {slack:.3f} slots of rounding noise"
+        )
+    return slack
 
 
 def _advanced(moment: datetime, interval: float) -> datetime:

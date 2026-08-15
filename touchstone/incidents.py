@@ -22,6 +22,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import time
 
 from touchstone.locking import LockUnavailable, exclusive_lock
 from touchstone.signing import canonical_json_bytes, strict_json_loads
@@ -55,6 +56,7 @@ _HEAD_FIELDS = frozenset({"count", "head_entry_hash", "version"})
 _HEALTHY = object()
 _REPAIRABLE = object()
 _VERIFY_ATTEMPTS = 5
+_VERIFY_BACKOFF_SECONDS = 0.01
 
 # What an incident is about. Deliberately few: a category nobody can map to an action is a
 # category that only makes the log harder to read.
@@ -91,6 +93,7 @@ class IncidentLog:
             raise ValueError(f"incident log path must be a file: {self.path}")
         self.head_path = self.path.with_name(self.path.name + ".head")
         self.lock_path = self.path.with_name(self.path.name + ".lock")
+        self._sleep = time.sleep
 
     def _exclusive(self):
         """An OS-level lock, so a killed writer does not lock the log out forever.
@@ -175,29 +178,27 @@ class IncidentLog:
         it is not an error here — it is very likely doing the same repair — so the snapshot
         is taken again rather than raising.
         """
+        delay = _VERIFY_BACKOFF_SECONDS
         for _ in range(_VERIFY_ATTEMPTS):
             entries, head = self._snapshot()
-            verdict = self._inspect(entries, head)
-            if verdict is _HEALTHY:
+            if self._inspect(entries, head) is _HEALTHY:
                 return entries
-            if verdict is not _REPAIRABLE:
-                # A real defect. Retrying would only rediscover it while replacing a
-                # precise diagnosis with a vague one.
-                raise verdict
+            # Anything other than healthy was judged from an unlocked read, and a writer
+            # mid-append makes such a read transiently wrong in *both* directions: the
+            # head can lag the log, and the log can lag the head. Neither is corruption,
+            # and calling either one corruption is worse than being slow. Nothing becomes
+            # a verdict until it has been seen while holding the lock.
             try:
                 with self._exclusive():
-                    # Re-read: another process may have repaired it already.
-                    entries, head = self._snapshot()
-                    if self._inspect(entries, head) is _REPAIRABLE:
-                        self._write_head(len(entries), entries[-1]["entry_hash"])
                     return self._verified_locked()
             except LockUnavailable:
-                # Another process holds it, very likely making the same repair. Look
-                # again rather than fail: contention is not corruption.
-                continue
+                # Someone is writing. Wait a little and look again rather than spinning:
+                # five immediate retries only re-read the same instant five times.
+                self._sleep(delay)
+                delay *= 2
         raise IncidentLogError(
-            "the incident log could not be read consistently; another writer keeps "
-            "changing it"
+            "the incident log could not be read while a writer held it; it may be "
+            "healthy, but that cannot be established right now"
         )
 
     def _verified_locked(self) -> list[dict[str, object]]:
@@ -411,6 +412,26 @@ class IncidentLog:
             return IncidentLogError("incident head fields are not as expected")
         if head["version"] != INCIDENT_HEAD_VERSION:
             return IncidentLogError("incident head version is unsupported")
+        # Types before arithmetic. A count of "1" raised a bare TypeError from deep inside
+        # a comparison, a negative count indexed off the end of an empty log, and True is
+        # an int in Python — so a head claiming True entries was read as claiming one and
+        # passed as healthy.
+        count = head["count"]
+        if type(count) is not int or count < 0:
+            return IncidentLogError(
+                f"incident head count must be a non-negative integer, not {count!r}"
+            )
+        named = head["head_entry_hash"]
+        if named is not None and (
+            not isinstance(named, str) or _DIGEST.fullmatch(named) is None
+        ):
+            return IncidentLogError(
+                "incident head must name an entry hash or nothing at all"
+            )
+        if (count == 0) != (named is None):
+            return IncidentLogError(
+                "an incident head naming no entry must count none, and the reverse"
+            )
         if head["count"] == len(entries) and head["head_entry_hash"] == expected:
             return _HEALTHY
         if len(entries) == head["count"] + 1:

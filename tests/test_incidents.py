@@ -290,3 +290,75 @@ def test_a_crash_before_the_very_first_head_is_repairable(tmp_path: Path) -> Non
     assert strict_json_loads(incidents.head_path.read_bytes())["head_entry_hash"] == (
         entry["entry_hash"]
     )
+
+
+def test_a_writer_landing_between_the_two_reads_is_not_reported_as_corruption(
+    tmp_path: Path,
+) -> None:
+    """The interleaving that made a healthy log look broken.
+
+    A reader takes the log, a writer appends and advances the head, the reader then takes
+    the new head — and the pair it holds never existed together. Reporting that as
+    corruption is worse than being slow: it invents a fault in a log that is fine.
+    """
+    incidents = log(tmp_path)
+    opened(incidents)
+    real_snapshot = incidents._snapshot
+    interleaved = {"done": False}
+
+    def snapshot_with_a_writer_in_the_middle():
+        entries, _ = real_snapshot()
+        if not interleaved["done"]:
+            interleaved["done"] = True
+            # A second writer completes an append between the two reads.
+            IncidentLog(incidents.path).open_incident(
+                asset_key=ASSET,
+                kind=SOURCE_UNAVAILABLE,
+                detail="written by someone else",
+                occurred_at=AT,
+            )
+            _, head = real_snapshot()
+            return entries, head  # the stale log with the fresh head
+        return real_snapshot()
+
+    incidents._snapshot = snapshot_with_a_writer_in_the_middle
+
+    entries = incidents.verify()
+
+    assert len(entries) == 2, "it re-read under the lock and saw a consistent pair"
+
+
+def test_contention_is_waited_out_rather_than_called_corruption(
+    tmp_path: Path,
+) -> None:
+    """A held lock means someone is writing, which is not a defect in the log."""
+    from touchstone.locking import exclusive_lock
+
+    incidents = log(tmp_path)
+    first = opened(incidents)
+    # Roll the head back so verify() wants to repair, then hold the lock against it.
+    incidents.head_path.write_bytes(
+        canonical_json_bytes(
+            {
+                "count": 0,
+                "head_entry_hash": None,
+                "version": "touchstone.incident-head.v1",
+            }
+        )
+        + b"\n"
+    )
+    waits = []
+    incidents._sleep = waits.append
+
+    with exclusive_lock(incidents.lock_path):
+        with pytest.raises(IncidentLogError, match="while a writer held it"):
+            incidents.verify()
+
+    assert waits, "it waited between attempts rather than spinning"
+    assert waits == sorted(waits), "and backed off rather than retrying at one rate"
+
+    # With the lock free, the same log verifies and repairs.
+    assert len(incidents.verify()) == 1
+    assert strict_json_loads(incidents.head_path.read_bytes())["head_entry_hash"] == (
+        first["entry_hash"]
+    )
