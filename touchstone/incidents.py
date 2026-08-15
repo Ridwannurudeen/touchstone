@@ -103,8 +103,10 @@ class IncidentLog:
         # (relative and absolute, or through a symlink) would serialise correctly on the
         # log and then advance two different heads. Resolving makes those one store.
         self.path = Path(path).resolve()
-        if self.path.exists() and not self.path.is_file():
-            raise ValueError(f"incident log path must be a file: {self.path}")
+        # Identity first. `exists()` stats too, and it re-raises anything that is not a
+        # plain absence — so asking whether the path is a file before asking whether it
+        # can be identified at all surfaced a permissions failure as a bare
+        # PermissionError instead of this store's own refusal.
         # A hardlink is the one alias resolving cannot collapse: two real directory
         # entries, one inode, and therefore two heads over a single shared log. The
         # writers serialise on the lock and still diverge — the first name sees three
@@ -112,7 +114,14 @@ class IncidentLog:
         # window and is reported as corruption after perfectly valid appends. A two-file
         # store cannot have one identity under hardlinks, so this refuses to open one
         # rather than detect the damage afterwards.
+        #
+        # Here it is only a courteous early failure. Checking at construction and never
+        # again is a time-of-check that a link created one moment later walks straight
+        # through, so the check that actually protects anything is the one taken under
+        # the lock in `_verified_locked`, immediately before the log is judged.
         self._refuse_hardlink()
+        if self.path.exists() and not self.path.is_file():
+            raise ValueError(f"incident log path must be a file: {self.path}")
         self.head_path = self.path.with_name(self.path.name + ".head")
         # The log itself, not a sidecar named after it: see touchstone.locking.
         self.lock_path = self.path
@@ -121,8 +130,16 @@ class IncidentLog:
     def _refuse_hardlink(self) -> None:
         try:
             links = self.path.stat().st_nlink
-        except OSError:
+        except FileNotFoundError:
+            # The only absence that is genuinely an absence. Treating every OSError as
+            # "no file yet" made a permissions or I/O failure — a state in which identity
+            # was not established at all — indistinguishable from a log that has not been
+            # created, and the store opened anyway.
             return
+        except OSError as error:
+            raise ValueError(
+                f"the incident log {self.path} cannot be identified: {error}"
+            ) from error
         if links > 1:
             raise ValueError(
                 f"incident log {self.path} has {links} names; its completeness head "
@@ -261,9 +278,18 @@ class IncidentLog:
     def _snapshot(self) -> tuple[list[dict[str, object]], dict[str, object] | None]:
         """Read the log and the head as one observation, in that order.
 
+        Every observation begins by re-establishing that this log still has one name. A
+        second name for the inode can appear at any moment after the store was opened, and
+        from then on two heads describe one log — so a check taken once at construction is
+        a time-of-check that a link created a moment later walks straight past. Under the
+        lock the answer cannot change beneath the decision it informs; on the unlocked
+        fast path it is best-effort, like everything else read there, and that is still
+        better than returning "healthy" for a log with two completeness witnesses.
+
         The log first, so a head read afterwards can only be at least as new. The reverse
         order can report a head that names an entry the log read did not include.
         """
+        self._refuse_hardlink()
         entries = self._read()
         head: dict[str, object] | None = None
         if self.head_path.exists():

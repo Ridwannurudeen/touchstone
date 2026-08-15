@@ -100,34 +100,30 @@ def test_log_rejects_correction_without_matching_supersession(tmp_path: Path) ->
         )
 
 
-class _ShiftingEnvelope(Mapping):
-    """A caller's mapping whose report changes on every read.
+class _ShiftingReport(Mapping):
+    """A report whose sequence changes on every read of it.
 
-    Not a contrived input: any envelope a caller still holds a reference to can be
-    rewritten by that caller — or by a retry, a callback, or another thread — between the
-    log's separate reads of it.
+    Live, not a fresh copy per read. A shallow `dict(envelope)` captures *this* object, so
+    the mutation still reaches anything that only copied the outer mapping — which is the
+    whole difference between a shallow copy and a snapshot. A hostile input that hands out
+    a fresh dict each time cannot tell the two apart, and passed against both.
     """
 
-    def __init__(self, envelope: Mapping[str, object]) -> None:
-        self._envelope = dict(envelope)
-        self._envelope["report"] = dict(self._envelope["report"])
+    def __init__(self, report: Mapping[str, object]) -> None:
+        self._report = dict(report)
         self.reads = 0
 
     def __getitem__(self, key: str) -> object:
-        if key != "report":
-            return self._envelope[key]
+        if key != "sequence":
+            return self._report[key]
         self.reads += 1
-        # The *same* nested object every time, mutated in place. Returning a fresh dict
-        # meant a shallow `dict(envelope)` already captured an independent report, so the
-        # test passed against a copy shallow enough to leave the real hazard open.
-        self._envelope["report"]["sequence"] = self.reads
-        return self._envelope["report"]
+        return self.reads
 
     def __iter__(self):
-        return iter(self._envelope)
+        return iter(self._report)
 
     def __len__(self) -> int:
-        return len(self._envelope)
+        return len(self._report)
 
 
 def test_append_records_the_report_it_hashed_even_if_the_caller_changes_it(
@@ -141,7 +137,9 @@ def test_append_records_the_report_it_hashed_even_if_the_caller_changes_it(
     the boundary means there is only one report to read.
     """
     log = TransparencyLog(tmp_path / "transparency.jsonl")
-    envelope = _ShiftingEnvelope(_signed_report())
+    envelope = dict(_signed_report())
+    shifting = _ShiftingReport(envelope["report"])
+    envelope["report"] = shifting
 
     entry = log.append(
         envelope,
@@ -149,7 +147,7 @@ def test_append_records_the_report_it_hashed_even_if_the_caller_changes_it(
         receipt={"block_number": 1, "status": 1},
     )
 
-    assert envelope.reads == 1, "the caller's mapping was read exactly once"
+    assert shifting.reads == 1, "the caller's report was read exactly once"
     assert log.verify() == [entry], (
         "and the persisted entry verifies against its digest"
     )

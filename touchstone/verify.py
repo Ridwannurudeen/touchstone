@@ -29,6 +29,7 @@ from touchstone.report import (
 )
 from touchstone.signing import (
     canonical_json_bytes,
+    frozen_snapshot,
     strict_json_loads,
     verify_signed_report,
 )
@@ -80,23 +81,36 @@ def create_bundle(
     control_records: Sequence[ControlRecord],
     evidence_digests: Sequence[Mapping[str, object]],
 ) -> dict[str, object]:
-    """Create the exact self-contained bundle mapping at ``BUNDLE_VERSION``."""
-    if not isinstance(signed_report, Mapping) or not isinstance(
-        signed_report.get("report"), Mapping
-    ):
+    """Create the exact self-contained bundle mapping at ``BUNDLE_VERSION``.
+
+    Every caller mapping is copied before a single field is derived from it. The report was
+    read three times — to validate it, to canonicalise it, and to store it — so a caller
+    still holding it could produce a bundle whose `report_canonical` describes one report
+    and whose `signed_report` contains another. `verify_bundle` then rejects it, which
+    means this function returned, successfully, a bundle its own paired verifier refuses.
+    """
+    if not isinstance(signed_report, Mapping):
+        raise ValueError("signed_report.report must be a mapping")
+    frozen_report = frozen_snapshot(signed_report, "signed_report")
+    if not isinstance(frozen_report.get("report"), Mapping):
         raise ValueError("signed_report.report must be a mapping")
     if not isinstance(published_key, Mapping):
         raise TypeError("published_key must be a mapping")
+    frozen_key = frozen_snapshot(published_key, "published_key")
     if any(not isinstance(record, ControlRecord) for record in control_records):
         raise TypeError("each control record must be a ControlRecord")
+    frozen_digests = [
+        frozen_snapshot(record, f"evidence_digests[{index}]")
+        for index, record in enumerate(evidence_digests)
+    ]
     return {
         "control_records": [record.to_mapping() for record in control_records],
-        "evidence_digests": [dict(record) for record in evidence_digests],
-        "published_key": dict(published_key),
-        "report_canonical": canonical_json_bytes(dict(signed_report["report"])).decode(
+        "evidence_digests": frozen_digests,
+        "published_key": frozen_key,
+        "report_canonical": canonical_json_bytes(dict(frozen_report["report"])).decode(
             "utf-8"
         ),
-        "signed_report": dict(signed_report),
+        "signed_report": frozen_report,
         "version": BUNDLE_VERSION,
     }
 

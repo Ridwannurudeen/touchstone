@@ -117,7 +117,7 @@ class OperationsStore:
         *,
         now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
-        self.directory = Path(directory)
+        self.directory = Path(directory).resolve()
         self.directory.mkdir(parents=True, exist_ok=True)
         self.operation_path = self.directory / "operation.json"
         self.now = now

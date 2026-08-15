@@ -50,7 +50,11 @@ class EvidenceStore:
     """Filesystem evidence store, rooted at ``data/evidence`` by default."""
 
     def __init__(self, root: str | os.PathLike[str] = Path("data/evidence")) -> None:
-        self.root = Path(root)
+        # Anchored, like the workspace root. A relative path is a location plus the
+        # process working directory, so the same store could select and verify one
+        # evidence tree and then write to a different one after a chdir in a callback or
+        # another thread.
+        self.root = Path(root).resolve()
         if self.root.exists() and not self.root.is_dir():
             raise ValueError(f"evidence root must be a directory: {self.root}")
         self.objects_dir = self.root / "objects"

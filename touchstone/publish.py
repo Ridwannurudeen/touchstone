@@ -821,7 +821,7 @@ class PublisherClient:
     ) -> None:
         self.backend = backend
         self.transparency_log = transparency_log
-        self.pending_path = Path(pending_path)
+        self.pending_path = Path(pending_path).resolve()
         # web3 waits while `time.time() > begun_at + timeout` is false, which NaN and
         # infinity never make true — so a timeout that cannot expire is not a long
         # timeout, it is no timeout at all. An integer too large to be a float used to

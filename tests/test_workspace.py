@@ -207,7 +207,11 @@ def test_an_incident_log_reachable_by_two_names_is_refused(tmp_path: Path) -> No
 
 
 def test_one_incident_log_is_one_store_however_it_is_spelled(tmp_path: Path) -> None:
-    """Relative, absolute and symlinked spellings are the same store, not three."""
+    """A path containing `..` is the same store as the path it normalises to.
+
+    The relative-spelling and symlink cases are separate tests below, because this one
+    constructs two absolute paths and proves only normalisation.
+    """
     from touchstone.incidents import IncidentLog
 
     nested = tmp_path / "workspace"
@@ -242,3 +246,114 @@ def test_a_workspace_anchors_a_relative_root_to_one_absolute_location(
 
     assert workspace.lock == lock_from_here
     assert workspace.lock == (tmp_path / "here" / "asset" / "service.lock").resolve()
+
+
+def test_a_link_created_after_the_store_was_opened_is_still_refused(
+    tmp_path: Path,
+) -> None:
+    """Checking identity once, at construction, is a time-of-check and nothing more.
+
+    A second name for this inode can appear at any moment after the store is opened, and
+    from then on two heads describe one log. The check that protects anything is the one
+    taken under the lock immediately before the log is judged — so the link is created
+    here *after* both stores exist, which the construction-time check walks straight past.
+    """
+    from touchstone.incidents import IncidentLog
+
+    real = tmp_path / "incidents.jsonl"
+    real.write_bytes(b"")
+    alias = tmp_path / "alias.jsonl"
+    opened = IncidentLog(real)
+
+    os.link(real, alias)
+
+    with pytest.raises(ValueError, match="has 2 names"):
+        opened.open_incident(
+            asset_key="eip155:1:0x" + "11" * 20,
+            kind="EPOCH_FAILED",
+            detail="an append after the second name appeared",
+            occurred_at=datetime(2026, 8, 15, 9, 0, tzinfo=timezone.utc),
+        )
+    with pytest.raises(ValueError, match="has 2 names"):
+        opened.verify()
+
+
+def test_an_unidentifiable_incident_log_is_refused_rather_than_assumed_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a missing file means "no file yet".
+
+    Treating every OSError as absence made a permissions or I/O failure — a state in which
+    identity was never established at all — indistinguishable from a log that has not been
+    created, and the store opened anyway on the strength of a question it could not ask.
+    """
+    from touchstone.incidents import IncidentLog
+
+    real = tmp_path / "incidents.jsonl"
+    real.write_bytes(b"")
+    real_stat = Path.stat
+
+    def unreadable(self, *arguments, **keywords):
+        if self.name == "incidents.jsonl":
+            raise PermissionError(13, "permission denied")
+        return real_stat(self, *arguments, **keywords)
+
+    monkeypatch.setattr(Path, "stat", unreadable)
+
+    with pytest.raises(ValueError, match="cannot be identified"):
+        IncidentLog(real)
+
+
+def test_a_relative_store_does_not_move_when_the_process_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every durable path holder, not only the workspace root.
+
+    A relative path is a location plus the process working directory. The directory is not
+    part of the store and can change under it — in a callback, or in another thread — so
+    the same object could select and verify one tree and then write to a different one.
+    """
+    from touchstone.evidence import EvidenceStore
+    from touchstone.incidents import IncidentLog
+    from touchstone.operations import OperationsStore
+    from touchstone.translog import TransparencyLog
+
+    (tmp_path / "here").mkdir()
+    (tmp_path / "there").mkdir()
+    monkeypatch.chdir(tmp_path / "here")
+
+    held = {
+        "evidence": (EvidenceStore("evidence"), "root"),
+        "incidents": (IncidentLog("incidents.jsonl"), "path"),
+        "operations": (OperationsStore("operations"), "directory"),
+        "transparency": (TransparencyLog("transparency.jsonl"), "path"),
+    }
+    before = {name: getattr(store, field) for name, (store, field) in held.items()}
+
+    monkeypatch.chdir(tmp_path / "there")
+
+    for name, (store, field) in held.items():
+        assert getattr(store, field) == before[name], f"{name} moved with the process"
+        assert getattr(store, field).is_absolute(), f"{name} is not anchored"
+        assert (tmp_path / "here").resolve() in getattr(store, field).parents
+
+
+def test_a_symlinked_incident_log_is_the_same_store(tmp_path: Path) -> None:
+    """A symlink is one more spelling of one inode, and resolving collapses it.
+
+    Skipped rather than faked where the platform will not create one: on Windows this
+    needs a privilege this account does not hold, and a test that silently does nothing is
+    worse than one that says so.
+    """
+    from touchstone.incidents import IncidentLog
+
+    real = tmp_path / "incidents.jsonl"
+    real.write_bytes(b"")
+    link = tmp_path / "linked.jsonl"
+    try:
+        os.symlink(real, link)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"this platform cannot create a symlink here: {error}")
+
+    assert IncidentLog(link).path == IncidentLog(real).path
+    assert IncidentLog(link).head_path == IncidentLog(real).head_path

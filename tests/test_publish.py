@@ -994,6 +994,46 @@ class _ShiftingReceipt(Mapping):
         return len(self._receipt)
 
 
+def _shifting_receipts(backend: FakeBackend) -> dict[str, object]:
+    """Make every receipt this backend hands out change on its second status read."""
+    shifting: dict[str, object] = {"receipt": None}
+    real_receipt_state = backend.receipt_state
+
+    def shifting_receipt(transaction_hash):
+        state, receipt = real_receipt_state(transaction_hash)
+        if receipt is not None and shifting["receipt"] is None:
+            shifting["receipt"] = _ShiftingReceipt(receipt)
+        return state, shifting["receipt"] if receipt is not None else None
+
+    backend.receipt_state = shifting_receipt
+    return shifting
+
+
+def test_the_receipt_that_settles_a_dropped_republication_is_the_one_recorded(
+    tmp_path: Path,
+) -> None:
+    """The rebroadcast branch settles through its own path and must derive one record too.
+
+    Covering only a clean first publication left this branch and the already-onchain one
+    free to regress independently, which is exactly how the defect survived being fixed
+    in one place.
+    """
+    backend = FakeBackend()
+    backend.drop_first_broadcast = True
+    with pytest.raises(PendingSubmission, match="remains pending"):
+        _client(tmp_path, backend).publish(
+            _signed_report(1), report_uri="urn:touchstone:report:1"
+        )
+
+    client = _client(tmp_path, backend)
+    shifting = _shifting_receipts(backend)
+    result = client.publish(_signed_report(1), report_uri="urn:touchstone:report:1")
+
+    assert result.reconciled is True
+    assert shifting["receipt"].status_reads == 1, "the status was read exactly once"
+    assert client.transparency_log.verify()[-1]["publication"]["receipt"]["status"] == 1
+
+
 def test_the_receipt_that_settles_a_publication_is_the_receipt_recorded(
     tmp_path: Path,
 ) -> None:

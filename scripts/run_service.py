@@ -660,9 +660,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     arguments = parser.parse_args(argv)
     try:
+        # Construction is where the workspace is judged usable at all: a log that is not a
+        # file, a directory that is not a directory, an incident log reachable by two
+        # names. Those are deliberate refusals, and they were reaching the operator as an
+        # uncaught traceback rather than as this service's own failure line — a new way to
+        # fail that the startup contract did not cover.
         service = build_service(
             arguments.manifest, arguments.workspace, asset_key=arguments.asset_key
         )
+    except (DeploymentError, IdentityError, ValueError) as error:
+        print(f"SERVICE FAIL: {error}", file=sys.stderr)
+        return 1
+    try:
         if not arguments.resolve_only:  # noqa: SIM102
             # A slot needs an epoch runner, and this project has no live-source runner
             # yet: PLAN-T10 and PLAN-T11 own the adapters. Refusing is honest; a service

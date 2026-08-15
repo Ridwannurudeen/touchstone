@@ -42,7 +42,7 @@ class TransparencyLog:
     """A canonical JSON-lines log whose entries are never updated or removed."""
 
     def __init__(self, path: str | os.PathLike[str]) -> None:
-        self.path = Path(path)
+        self.path = Path(path).resolve()
         if self.path.exists() and not self.path.is_file():
             raise ValueError(f"transparency log path must be a file: {self.path}")
 

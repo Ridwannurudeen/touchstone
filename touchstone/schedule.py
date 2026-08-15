@@ -306,7 +306,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"slot {scheduled_at.isoformat()} was missed", file=sys.stderr)
 
     def report_clock_error(scheduled_at: datetime, error: BaseException) -> None:
-        print(f"the schedule stopped after {scheduled_at.isoformat()}: {error}", file=sys.stderr)
+        print(
+            f"the schedule stopped after {scheduled_at.isoformat()}: {error}",
+            file=sys.stderr,
+        )
 
     outcome = run_schedule(
         execute,

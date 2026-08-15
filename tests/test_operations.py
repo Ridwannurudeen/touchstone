@@ -208,26 +208,29 @@ def test_an_instant_must_be_timezone_aware(tmp_path: Path) -> None:
 
 
 class _ShiftingReport(Mapping):
-    """A caller's envelope whose report changes on every read."""
+    """A report whose sequence changes on every read of it.
 
-    def __init__(self, envelope: Mapping[str, object]) -> None:
-        self._envelope = dict(envelope)
-        self._envelope["report"] = dict(self._envelope["report"])
+    Live, not a fresh copy per read. A shallow `dict(envelope)` captures *this* object, so
+    the mutation still reaches anything that only copied the outer mapping — which is the
+    whole difference between a shallow copy and a snapshot. A hostile input that hands out
+    a fresh dict each time cannot tell the two apart, and passed against both.
+    """
+
+    def __init__(self, report: Mapping[str, object]) -> None:
+        self._report = dict(report)
         self.reads = 0
 
     def __getitem__(self, key: str) -> object:
-        if key != "report":
-            return self._envelope[key]
+        if key != "sequence":
+            return self._report[key]
         self.reads += 1
-        # The same nested object, mutated in place, so a shallow copy shares it.
-        self._envelope["report"]["sequence"] = self.reads
-        return self._envelope["report"]
+        return self.reads
 
     def __iter__(self):
-        return iter(self._envelope)
+        return iter(self._report)
 
     def __len__(self) -> int:
-        return len(self._envelope)
+        return len(self._report)
 
 
 def test_an_operation_records_the_report_it_validated(tmp_path: Path) -> None:
@@ -240,7 +243,9 @@ def test_an_operation_records_the_report_it_validated(tmp_path: Path) -> None:
     contradictory. A real mutation invalidates the signature too.
     """
     operations = OperationsStore(tmp_path / "operations")
-    envelope = _ShiftingReport(_signed_report(1))
+    envelope = dict(_signed_report(1))
+    shifting = _ShiftingReport(envelope["report"])
+    envelope["report"] = shifting
 
     operation = operations.begin_operation(
         envelope,
@@ -249,7 +254,7 @@ def test_an_operation_records_the_report_it_validated(tmp_path: Path) -> None:
         scheduled_for=AT,
     )
 
-    assert envelope.reads == 1, "the caller's envelope was read exactly once"
+    assert shifting.reads == 1, "the caller's report was read exactly once"
     reloaded = operations.load_operation()
     assert reloaded is not None
     assert reloaded.sequence == operation.sequence
@@ -259,10 +264,12 @@ def test_an_operation_records_the_report_it_validated(tmp_path: Path) -> None:
 def test_saved_state_records_the_report_it_read(tmp_path: Path) -> None:
     """`save_state` has the same multi-read shape: state, deadline, asset key, sequence."""
     operations = OperationsStore(tmp_path / "operations")
-    envelope = _ShiftingReport(_signed_report(1))
+    envelope = dict(_signed_report(1))
+    shifting = _ShiftingReport(envelope["report"])
+    envelope["report"] = shifting
 
     state = operations.save_state(envelope, updated_at=AT)
 
-    assert envelope.reads == 1
+    assert shifting.reads == 1
     reloaded = operations.load_state(state.asset_key)
     assert reloaded == state

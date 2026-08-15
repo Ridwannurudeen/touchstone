@@ -84,9 +84,25 @@ def frozen_snapshot(value: object, field: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{field} must be a mapping")
     try:
-        return strict_json_loads(canonical_json_bytes(dict(value)))
+        return strict_json_loads(canonical_json_bytes(_plain(value)))
     except (TypeError, ValueError) as error:
         raise ValueError(f"{field} is not canonical JSON: {error}") from error
+
+
+def _plain(value: object) -> object:
+    """Reduce nested mappings and sequences to the types the encoder accepts.
+
+    ``dict(value)`` converts one level. A nested value that is a ``Mapping`` but not a
+    ``dict`` — ``MappingProxyType`` is used in this project, and a caller can pass anything
+    implementing the protocol — then reached the encoder unchanged and was refused as
+    unserialisable. Freezing has to work on the mappings callers actually hold, or it
+    quietly declines to freeze exactly the ones with the most surprising aliasing.
+    """
+    if isinstance(value, Mapping):
+        return {key: _plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(item) for item in value]
+    return value
 
 
 class Ed25519Signer:

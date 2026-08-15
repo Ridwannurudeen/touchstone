@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from copy import deepcopy
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -289,3 +290,98 @@ def test_verifier_rejects_a_bundle_carrying_unapproved_controls(tmp_path: Path) 
 
     with pytest.raises(VerificationError, match="not approved: aum-published"):
         verify_bundle(bundle)
+
+
+class _ShiftingReport(Mapping):
+    """A report whose sequence changes on every read of it.
+
+    Live, not a fresh copy per read: a shallow `dict(envelope)` captures *this* object, so
+    the mutation reaches anything that only copied the outer mapping. That is the whole
+    difference between a shallow copy and a snapshot, and a hostile input that hands out
+    fresh dicts cannot tell them apart.
+    """
+
+    def __init__(self, report: Mapping[str, object]) -> None:
+        self._report = dict(report)
+        self.reads = 0
+
+    def __getitem__(self, key: str) -> object:
+        if key != "sequence":
+            return self._report[key]
+        self.reads += 1
+        return self.reads
+
+    def __iter__(self):
+        return iter(self._report)
+
+    def __len__(self) -> int:
+        return len(self._report)
+
+
+def test_a_bundle_describes_one_report_even_if_the_caller_changes_it(
+    tmp_path: Path,
+) -> None:
+    """`create_bundle` read the caller's report three times — to validate it, to
+    canonicalize it, and to store it.
+
+    A caller still holding it could therefore produce a bundle whose `report_canonical`
+    describes one report and whose `signed_report` contains another: a bundle this
+    function returns successfully and its own paired verifier immediately rejects.
+    """
+    epoch = _epoch(tmp_path)
+    signer = Ed25519Signer.from_seed(bytes(range(32)))
+    report = build_observation_report(
+        epoch,
+        default_ustb_controls(),
+        epoch_id="ustb-2026-08-14",
+        sequence=1,
+        publisher_kid=signer.kid,
+        compiler_provenance_digests=["33" * 32],
+    )
+    envelope = dict(signer.sign_report(report))
+    shifting = _ShiftingReport(envelope["report"])
+    envelope["report"] = shifting
+
+    bundle = create_bundle(
+        envelope,
+        signer.public_key_record(),
+        default_ustb_controls(),
+        evidence_references(epoch),
+    )
+
+    assert shifting.reads == 1, "the caller's report was read exactly once"
+    canonical = canonical_json_bytes(dict(bundle["signed_report"]["report"])).decode()
+    assert bundle["report_canonical"] == canonical, (
+        "the canonicalized report and the stored report are the same report"
+    )
+
+
+def test_a_bundle_keeps_the_key_and_digests_it_was_given(tmp_path: Path) -> None:
+    """The published key and the evidence digests are caller-owned too.
+
+    Both were copied one level deep, so a nested value stayed shared with the caller and
+    could change after the bundle claimed to describe it.
+    """
+    epoch = _epoch(tmp_path)
+    signer = Ed25519Signer.from_seed(bytes(range(32)))
+    report = build_observation_report(
+        epoch,
+        default_ustb_controls(),
+        epoch_id="ustb-2026-08-14",
+        sequence=1,
+        publisher_kid=signer.kid,
+        compiler_provenance_digests=["33" * 32],
+    )
+    key = dict(signer.public_key_record())
+    key["provenance"] = {"issued_by": "the operator"}
+    digests = [dict(record) for record in evidence_references(epoch)]
+    digests[0]["provenance"] = {"fetched_by": "the daemon"}
+
+    bundle = create_bundle(
+        signer.sign_report(report), key, default_ustb_controls(), digests
+    )
+    key["provenance"]["issued_by"] = "someone else"
+    digests[0]["provenance"]["fetched_by"] = "someone else"
+
+    assert bundle["published_key"]["provenance"] == {"issued_by": "the operator"}
+    assert bundle["evidence_digests"][0]["provenance"] == {"fetched_by": "the daemon"}
