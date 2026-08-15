@@ -327,9 +327,9 @@ refusing uniformly — it is **not** returning "no result" for this name. `searc
 stays **not_completed** and `search_result` stays **indeterminate**; a human must use the
 site in a browser (§9 item 9).
 
-The earlier pass additionally reported `/data-api/v4/search` and a `/dexer/v3/…/search`
-route returning 404 and 503 `no healthy upstream`; **those exact URLs were not captured at
-the time and are not reconstructed here.**
+The earlier pass ran two further CoinMarketCap requests whose exact URLs were not recorded
+at the time. **They are not reproducible, so they are excluded from the findings**, and no
+response is attributed to them here.
 
 ### X Layer — the intended deployment chain, and the weakest coverage here
 
