@@ -274,3 +274,19 @@ def test_an_instant_that_cannot_be_converted_is_this_modules_refusal() -> None:
 def test_only_an_aware_datetime_is_an_instant(value: object) -> None:
     with pytest.raises(ValueError, match="moment must be"):
         utc_instant(value, "moment")
+
+
+def test_a_datetime_subclass_is_refused_rather_than_defended_against() -> None:
+    """A subclass may override every method this function relies on.
+
+    One whose `replace` raised put a bare RuntimeError through every stamper's declared
+    error contract. Nothing here needs to accept a subclass, and refusing one is cheaper
+    and more honest than trying to defend against arbitrary overrides.
+    """
+
+    class Hostile(datetime):
+        def replace(self, *args, **kwargs):
+            raise RuntimeError("this subclass refuses")
+
+    with pytest.raises(ValueError, match="moment must be a datetime"):
+        utc_instant(Hostile(2026, 8, 15, 12, 0, tzinfo=timezone.utc), "moment")

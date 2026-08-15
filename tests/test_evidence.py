@@ -451,3 +451,29 @@ def test_confirmation_capture_rejects_naive_timestamps(tmp_path: Path) -> None:
         store.confirmation_capture(
             "superstate-ustb-nav", before=datetime(2026, 8, 14, 17, 8, 12)
         )
+
+
+def test_an_object_that_cannot_be_read_is_this_modules_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unreadable artifact has not been proved to be the artifact its digest names.
+
+    That is the same conclusion as a mismatch, so it belongs in the same type rather than
+    reaching the caller as whatever the filesystem happened to raise.
+    """
+    store = EvidenceStore(tmp_path)
+    digest = store.store(
+        b'{"value":1}',
+        source_id="superstate-ustb-nav-daily",
+        source_url="https://api.superstate.com/v1/funds/1/nav-daily",
+        retrieved_at=RETRIEVED_AT,
+        declared_mime="application/json",
+    )
+
+    def refuse(self, *args, **kwargs):
+        raise PermissionError(13, "denied")
+
+    monkeypatch.setattr(Path, "read_bytes", refuse)
+
+    with pytest.raises(EvidenceIntegrityError, match="cannot be read"):
+        read_object(store, digest)

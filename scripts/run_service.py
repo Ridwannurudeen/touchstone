@@ -64,7 +64,7 @@ from touchstone.schedule import ScheduleOutcome, run_schedule  # noqa: E402
 from touchstone.signing import (  # noqa: E402
     frozen_snapshot,
 )
-from touchstone.quantities import finite_non_negative  # noqa: E402
+from touchstone.quantities import finite_non_negative, utc_instant  # noqa: E402
 from touchstone.translog import TransparencyLog  # noqa: E402
 from touchstone.workspace import Workspace  # noqa: E402
 
@@ -539,12 +539,10 @@ class Service:
         state projected for the next — a record that is internally inconsistent, and only
         ever at the moment when the date boundary is what matters.
         """
-        moment = self.now()
-        if not isinstance(moment, datetime):
-            raise TypeError("now() must return a datetime")
-        if moment.tzinfo is None or moment.utcoffset() is None:
-            raise ValueError("now() must return a timezone-aware datetime")
-        return moment
+        try:
+            return utc_instant(self.now(), "now()")
+        except ValueError as error:
+            raise ValueError(f"now() must return an instant: {error}") from error
 
     def _projected_state(self, moment: datetime) -> str | None:
         state = self.operations.load_state(self.asset_key)

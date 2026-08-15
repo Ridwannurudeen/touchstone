@@ -34,7 +34,11 @@ from urllib.parse import urlsplit
 
 from web3 import Web3
 
-from touchstone.signing import kid_for_public_key, strict_json_loads
+from touchstone.signing import (
+    frozen_snapshot,
+    kid_for_public_key,
+    strict_json_loads,
+)
 
 
 MANIFEST_VERSION = 1
@@ -184,6 +188,14 @@ class DeploymentManifest:
         """Validate a decoded manifest, rejecting anything unrecognised."""
         if not isinstance(value, Mapping):
             raise DeploymentError("deployment manifest must be an object")
+        # One snapshot before the first check. The caller's mapping was iterated twice for
+        # the schema and then read field by field through the whole of validation, so a
+        # mapping that presented a complete manifest to both iterations and then withdrew
+        # `reporting_keys` was validated as complete and built as a KeyError.
+        try:
+            value = frozen_snapshot(value, "deployment manifest")
+        except ValueError as error:
+            raise DeploymentError(str(error)) from error
         unknown = set(value) - _MANIFEST_FIELDS
         if unknown:
             raise DeploymentError(

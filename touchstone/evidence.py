@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from touchstone.locking import exclusive_lock
+from touchstone.quantities import utc_instant
 
 
 _HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
@@ -130,10 +131,7 @@ class EvidenceStore:
         including either side of midnight — never confirm each other.
         """
         _validate_nonempty_string(source_id, "source_id")
-        if not isinstance(before, datetime):
-            raise TypeError("before must be a datetime")
-        if before.tzinfo is None or before.utcoffset() is None:
-            raise ValueError("before must be timezone-aware")
+        before = utc_instant(before, "before")
 
         # One snapshot for the whole decision. Verifying and then re-reading meant a
         # capture could be selected from an index that had never been verified.
@@ -340,7 +338,14 @@ def read_object(store: EvidenceStore, digest: str) -> bytes:
     are separate files, so reading one on the strength of the other's verification binds a
     signed report to bytes nobody checked. Rehashing costs one hash and removes the gap.
     """
-    raw = (store.objects_dir / digest).read_bytes()
+    try:
+        raw = (store.objects_dir / digest).read_bytes()
+    except OSError as error:
+        # An artifact that cannot be read has not been proved to be the artifact its digest
+        # names, which is the same conclusion as a mismatch and belongs in the same type.
+        raise EvidenceIntegrityError(
+            f"stored object {digest} cannot be read: {error}"
+        ) from error
     actual = hashlib.sha256(raw).hexdigest()
     if actual != digest:
         raise EvidenceIntegrityError(
@@ -378,11 +383,7 @@ def _validate_source_url(value: object) -> None:
 
 
 def _normalize_retrieval_time(value: object) -> str:
-    if not isinstance(value, datetime):
-        raise TypeError("retrieved_at must be a datetime")
-    if value.tzinfo is None or value.utcoffset() is None:
-        raise ValueError("retrieved_at must be timezone-aware")
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return utc_instant(value, "retrieved_at").isoformat().replace("+00:00", "Z")
 
 
 def _validate_retrieval_time_text(value: object) -> None:

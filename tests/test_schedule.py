@@ -645,3 +645,29 @@ def test_the_scheduler_refuses_a_clock_with_no_timezone(reading: object) -> None
         )
 
     assert ran == [], "and it refused before the first job, not after it"
+
+
+def test_a_clock_reading_that_is_not_a_number_ends_the_schedule() -> None:
+    """The clock's readings, not only its interval.
+
+    NaN compares false against every bound, so it passed the slack check untouched and
+    first became an error inside `math.ceil` — after a slot had already run. A reading
+    that is not a number is a clock failure, and this schedule already ends on one.
+    """
+    ran: list[datetime] = []
+    readings = iter([0.0, float("nan")])
+    clock_errors: list[BaseException] = []
+
+    outcome = run_schedule(
+        ran.append,
+        interval_seconds=1.0,
+        max_runs=3,
+        monotonic=lambda: next(readings, 99.0),
+        sleep=lambda seconds: None,
+        on_clock_error=lambda moment, error: clock_errors.append(error),
+    )
+
+    assert outcome.clock_error is not None, "it ended through the declared clock path"
+    assert "monotonic()" in outcome.clock_error
+    assert clock_errors, "and the caller was told"
+    assert len(ran) <= 1, "a bad reading did not run further slots"

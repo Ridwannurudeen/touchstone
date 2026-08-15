@@ -24,7 +24,7 @@ import subprocess
 import sys
 import time
 
-from touchstone.quantities import finite_positive
+from touchstone.quantities import finite_number, finite_positive, utc_instant
 
 
 DEFAULT_INTERVAL_SECONDS = 86_400.0
@@ -99,7 +99,11 @@ def run_schedule(
         raise ValueError("max_runs must be a positive integer or None")
 
     interval = float(interval_seconds)
-    next_run = monotonic()
+    # The clock's readings, not only its interval. NaN compares false against every bound,
+    # so it passed `_slot_slack` untouched and first became an error inside `math.ceil` —
+    # after a slot had already run. A reading that is not a number is a clock failure, and
+    # this schedule already has a way to end on one.
+    next_run = _clock_reading(monotonic)
     # Checked once here so an unusable cadence is refused before any work happens, rather
     # than part-way through the first catch-up.
     _slot_slack(max(abs(next_run), interval), interval)
@@ -108,11 +112,7 @@ def run_schedule(
     # every later `_advanced` call reinterprets it through whatever the host timezone
     # happens to be — and returns an aware value, so one schedule ends up mixing naive and
     # aware slot identities that no longer compare or serialise consistently.
-    if not isinstance(scheduled_at, datetime):
-        raise TypeError("now() must return a datetime")
-    if scheduled_at.tzinfo is None or scheduled_at.utcoffset() is None:
-        raise ValueError("now() must return a timezone-aware datetime")
-    scheduled_at = scheduled_at.astimezone(timezone.utc)
+    scheduled_at = utc_instant(scheduled_at, "now()")
     try:
         # Every timestamp the run will need, proved before the first slot runs. A finite
         # but enormous interval passes every numeric bound and then overflows the wall
@@ -139,7 +139,13 @@ def run_schedule(
     clock_error: str | None = None
 
     while max_runs is None or completed + len(failed) < max_runs:
-        delay = next_run - monotonic()
+        try:
+            delay = next_run - _clock_reading(monotonic)
+        except ScheduleClockError as error:
+            clock_error = str(error)
+            if on_clock_error is not None:
+                on_clock_error(scheduled_at, error)
+            break
         if delay > 0:
             sleep(delay)
         try:
@@ -168,7 +174,13 @@ def run_schedule(
             if on_clock_error is not None:
                 on_clock_error(scheduled_at, error)
             break
-        current = monotonic()
+        try:
+            current = _clock_reading(monotonic)
+        except ScheduleClockError as error:
+            clock_error = str(error)
+            if on_clock_error is not None:
+                on_clock_error(scheduled_at, error)
+            break
         if _slots_elapsed(current, next_run, interval) > 0:
             # Slots whose moment has already passed. How many is arithmetic, not a loop:
             # a long outage or a clock that jumped would otherwise iterate once per missed
@@ -268,6 +280,14 @@ def _slot_slack(scale: float, interval: float) -> float:
 
 class ScheduleClockError(ValueError):
     """A slot time cannot be represented on this clock."""
+
+
+def _clock_reading(monotonic: Callable[[], float]) -> float:
+    """One monotonic reading, proved to be a number before anything is derived from it."""
+    try:
+        return finite_number(monotonic(), "monotonic()")
+    except ValueError as error:
+        raise ScheduleClockError(str(error)) from error
 
 
 def _advanced(moment: datetime, interval: float) -> datetime:

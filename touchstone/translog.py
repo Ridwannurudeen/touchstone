@@ -141,7 +141,15 @@ class TransparencyLog:
         """Verify every canonical line, link, digest, and supersession reference."""
         if not self.path.exists():
             return []
-        raw = self.path.read_bytes()
+        try:
+            raw = self.path.read_bytes()
+        except OSError as error:
+            # A log that cannot be read has not been shown to be intact, and saying so in
+            # this module's own terms is the difference between a caller handling it and a
+            # caller crashing. The index read beside this one already worked this way.
+            raise TransparencyLogError(
+                f"the transparency log cannot be read: {error}"
+            ) from error
         if not raw:
             return []
         if not raw.endswith(b"\n"):

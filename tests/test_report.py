@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from touchstone.controls import AssetState, ControlRecord
-from touchstone.epoch import FixtureTransport, run_ustb_epoch
+from touchstone.epoch import FixtureTransport, USTBEpochReport, run_ustb_epoch
 from touchstone.evidence import EvidenceStore
 from touchstone.evaluate import default_ustb_controls
 from touchstone.report import (
@@ -206,53 +206,62 @@ def test_report_fixture_helper_is_canonical_json_compatible(tmp_path: Path) -> N
     assert report["compiler_provenance_digests"] == ["22" * 32]
 
 
-class _ShiftingEpoch:
-    """An epoch whose sources and evaluations differ on every read.
+class _CountingEpoch(USTBEpochReport):
+    """A genuine epoch subclass that counts how often each sequence is read.
 
-    A real `USTBEpochReport` is frozen, so it cannot do this. Nothing checked that the
-    epoch was one, and the report was assembled from six separate reads: sources for a
-    non-emptiness check, for the evidence references and for `observed_at`; evaluations
-    for the identity map, for the length check and for the state check.
+    It is a subclass, so it satisfies `isinstance` and the type check alone cannot save the
+    report — only taking one snapshot can. The parent is a frozen slots dataclass, so these
+    properties shadow its slot descriptors and the values live in slots of their own,
+    populated without going through the dataclass constructor.
     """
 
-    def __init__(self, epoch) -> None:
-        self._epoch = epoch
-        self.source_reads = 0
-        self.evaluation_reads = 0
-        self.asset_key = epoch.asset_key
-        self.now = epoch.now
-        self.state = epoch.state
-        self.evidence_deadline = epoch.evidence_deadline
-        self.confirmation = epoch.confirmation
+    __slots__ = ("_stored", "_reads")
 
     @property
     def sources(self):
-        self.source_reads += 1
-        return self._epoch.sources if self.source_reads != 2 else ()
+        self._reads["sources"] += 1
+        return self._stored["sources"]
 
     @property
     def evaluations(self):
-        self.evaluation_reads += 1
-        return self._epoch.evaluations if self.evaluation_reads != 2 else ()
+        self._reads["evaluations"] += 1
+        return self._stored["evaluations"]
+
+
+def _counting(epoch: USTBEpochReport) -> _CountingEpoch:
+    instance = object.__new__(_CountingEpoch)
+    for name in ("asset_key", "now", "state", "evidence_deadline", "confirmation"):
+        object.__setattr__(instance, name, getattr(epoch, name))
+    object.__setattr__(
+        instance,
+        "_stored",
+        {"sources": epoch.sources, "evaluations": epoch.evaluations},
+    )
+    object.__setattr__(instance, "_reads", {"sources": 0, "evaluations": 0})
+    return instance
 
 
 def test_a_report_describes_one_epoch(tmp_path: Path) -> None:
     """One report, one set of observations, or the report is about nothing in particular.
 
-    The second read returning an empty set previously produced a CONFIRMED report bound to
-    an evidence root over no evidence — each individual check having been satisfied by a
-    different read, and none of them able to see the others.
+    Each sequence was read three times, and `evidence_references` read the sources a fourth,
+    so an epoch answering those reads differently produced a report whose state, evidence
+    root and serialised controls each described a different set — every individual check
+    satisfied, none of them able to see the others. Counting the reads is what makes this
+    behavioural: a type check alone would let a subclass straight back through, and a
+    report built from one read cannot disagree with itself whatever the epoch does.
     """
-    shifting = _ShiftingEpoch(_epoch(tmp_path))
+    epoch = _epoch(tmp_path)
+    counting = _counting(epoch)
 
-    with pytest.raises(TypeError, match="USTBEpochReport"):
-        build_observation_report(
-            shifting,
-            default_ustb_controls(),
-            epoch_id="ustb-2026-08-14",
-            sequence=1,
-            publisher_kid="ed25519:" + "11" * 32,
-            compiler_provenance_digests=["22" * 32],
-        )
+    report = build_observation_report(
+        counting,
+        default_ustb_controls(),
+        epoch_id="ustb-2026-08-14",
+        sequence=1,
+        publisher_kid="ed25519:" + "11" * 32,
+        compiler_provenance_digests=["22" * 32],
+    )
 
-    assert shifting.source_reads <= 1, "it was refused before deriving anything"
+    assert counting._reads == {"sources": 1, "evaluations": 1}
+    assert report == _report(tmp_path / "stable")

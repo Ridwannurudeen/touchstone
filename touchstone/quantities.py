@@ -60,7 +60,11 @@ def utc_instant(value: object, field: str) -> datetime:
     ``utcoffset`` runs caller-supplied code and may raise anything at all, so everything
     it can do is turned into this module's refusal rather than the caller's surprise.
     """
-    if not isinstance(value, datetime):
+    # `type(...) is` rather than `isinstance`, as elsewhere in this module. A subclass may
+    # override `utcoffset`, `replace` and `astimezone`, and a subclass whose `replace`
+    # raised put a bare RuntimeError through every declared error contract downstream.
+    # Nothing here needs to accept one, and refusing is cheaper than defending.
+    if type(value) is not datetime:
         raise ValueError(f"{field} must be a datetime")
     try:
         offset = value.utcoffset()

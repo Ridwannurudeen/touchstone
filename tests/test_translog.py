@@ -174,3 +174,27 @@ def test_append_records_the_receipt_it_was_given(tmp_path: Path) -> None:
         "status": 1,
     }
     assert log.verify() == [entry]
+
+
+def test_a_log_that_cannot_be_read_is_this_modules_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A log that cannot be read has not been shown to be intact.
+
+    Saying so in this module's own terms is the difference between a caller handling it
+    and a caller crashing; the index read beside this one already worked that way.
+    """
+    log = TransparencyLog(tmp_path / "transparency.jsonl")
+    log.append(
+        _signed_report(),
+        transaction_hash="0x" + "aa" * 32,
+        receipt={"block_number": 1, "confirmations": {"depth": 12}, "status": 1},
+    )
+
+    def refuse(self, *args, **kwargs):
+        raise PermissionError(13, "denied")
+
+    monkeypatch.setattr(Path, "read_bytes", refuse)
+
+    with pytest.raises(TransparencyLogError, match="cannot be read"):
+        log.verify()

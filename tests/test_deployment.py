@@ -4,6 +4,7 @@ These tests are about refusals. Anything a manifest fails to pin is something th
 gets to decide unchallenged, so the interesting cases are the ones that must not load.
 """
 
+from collections.abc import Iterator, Mapping
 import json
 from pathlib import Path
 
@@ -421,3 +422,38 @@ def test_runtime_bytecode_must_exist_to_be_digested() -> None:
         runtime_bytecode_sha256(b"")
     with pytest.raises(TypeError):
         runtime_bytecode_sha256("0x6080")
+
+
+class _WithdrawingManifest(Mapping):
+    """A mapping that presents a complete manifest and then withdraws a field.
+
+    The schema was checked by iterating the caller's mapping twice, and the values were
+    then read from it field by field all the way through validation. A mapping that
+    answered the schema and then dropped `reporting_keys` was therefore validated as
+    complete and built as a KeyError.
+    """
+
+    def __init__(self, value: dict[str, object]) -> None:
+        self._value = value
+        self.iterations = 0
+
+    def __iter__(self) -> Iterator[str]:
+        self.iterations += 1
+        return iter(self._value)
+
+    def __getitem__(self, key: str) -> object:
+        if key == "reporting_keys" and self.iterations >= 2:
+            raise KeyError(key)
+        return self._value[key]
+
+    def __len__(self) -> int:
+        return len(self._value)
+
+
+def test_a_manifest_is_validated_and_built_from_one_reading() -> None:
+    withdrawing = _WithdrawingManifest(manifest())
+
+    loaded = DeploymentManifest.from_mapping(withdrawing)
+
+    assert loaded.active_key.kid == KID
+    assert loaded == DeploymentManifest.from_mapping(manifest())

@@ -215,6 +215,58 @@ MUTATIONS = (
         ),
     ),
     Mutation(
+        name="report-reads-the-epoch-more-than-once",
+        path="touchstone/report.py",
+        old="        sources=tuple(epoch.sources),\n        evaluations=tuple(epoch.evaluations),",
+        new="        sources=epoch.sources,\n        evaluations=epoch.evaluations,",
+        tests=("tests/test_report.py::test_a_report_describes_one_epoch",),
+    ),
+    Mutation(
+        name="a-datetime-subclass-escapes-the-error-contract",
+        path="touchstone/quantities.py",
+        old="    if type(value) is not datetime:",
+        new="    if not isinstance(value, datetime):",
+        tests=(
+            "tests/test_quantities.py::test_a_datetime_subclass_is_refused_rather_than_defended_against",
+        ),
+    ),
+    Mutation(
+        name="a-clock-reading-is-not-checked",
+        path="touchstone/schedule.py",
+        old='        return finite_number(monotonic(), "monotonic()")',
+        new="        return monotonic()",
+        tests=(
+            "tests/test_schedule.py::test_a_clock_reading_that_is_not_a_number_ends_the_schedule",
+        ),
+    ),
+    Mutation(
+        name="deployment-manifest-read-more-than-once",
+        path="touchstone/deployment.py",
+        old='        try:\n            value = frozen_snapshot(value, "deployment manifest")\n        except ValueError as error:\n            raise DeploymentError(str(error)) from error',
+        new="        pass",
+        tests=(
+            "tests/test_deployment.py::test_a_manifest_is_validated_and_built_from_one_reading",
+        ),
+    ),
+    Mutation(
+        name="transparency-read-failure-escapes-untyped",
+        path="touchstone/translog.py",
+        old="        except OSError as error:\n            # A log that cannot be read",
+        new="        except UnicodeDecodeError as error:\n            # A log that cannot be read",
+        tests=(
+            "tests/test_translog.py::test_a_log_that_cannot_be_read_is_this_modules_failure",
+        ),
+    ),
+    Mutation(
+        name="evidence-read-failure-escapes-untyped",
+        path="touchstone/evidence.py",
+        old="    except OSError as error:\n        # An artifact that cannot be read",
+        new="    except UnicodeDecodeError as error:\n        # An artifact that cannot be read",
+        tests=(
+            "tests/test_evidence.py::test_an_object_that_cannot_be_read_is_this_modules_failure",
+        ),
+    ),
+    Mutation(
         name="identity-not-established-at-each-observation",
         path="touchstone/incidents.py",
         old="        self._refuse_hardlink()\n        entries = self._read()",
@@ -289,27 +341,38 @@ def wanted_nodes(tests: tuple[str, ...]) -> set[tuple[str, str]]:
     return wanted
 
 
-def reported_failures(report_path: Path, tests: tuple[str, ...]) -> list[str] | None:
-    """Return the requested tests pytest recorded as failed, or None if it recorded none.
+def reported_outcomes(
+    report_path: Path, tests: tuple[str, ...]
+) -> tuple[list[str], list[str]] | None:
+    """Return this mutation's (failed, errored) nodes, or None if no report was written.
 
     An exit code says a run ended badly; it does not say a test noticed anything. Pytest
     can exit 1 without collecting a single node — an unwritable temporary directory, a
     plugin that fails during initialisation — and reading that as a kill credits the
     mutation with a failure no assertion ever made. Only a structured report naming a node
     from *this* mutation's target set is evidence.
+
+    The two kinds are separated because pytest means different things by them. `<failure>`
+    is the call phase: the test body ran and an assertion rejected the mutant, which is the
+    only thing that proves anything here. `<error>` is setup or teardown, so the body never
+    ran — the fixture could not build a workspace, a temporary directory was gone. That is
+    infrastructure wearing the target's name, and counting it is the same mistake as
+    counting the exit code, one level further in.
     """
     if not report_path.exists():
         return None
     wanted = wanted_nodes(tests)
-    failures = []
+    failures, errors = [], []
     for case in ElementTree.parse(report_path).iter("testcase"):
-        if case.find("failure") is None and case.find("error") is None:
-            continue
         module = case.get("classname", "")
-        function = case.get("name", "").partition("[")[0]
-        if (module, function) in wanted:
-            failures.append(case.get("name", function))
-    return failures or None
+        name = case.get("name", "")
+        if (module, name.partition("[")[0]) not in wanted:
+            continue
+        if case.find("failure") is not None:
+            failures.append(name)
+        elif case.find("error") is not None:
+            errors.append(name)
+    return failures, errors
 
 
 def read_exactly(path: Path) -> str:
@@ -354,19 +417,34 @@ def run_mutation(mutation: Mutation) -> tuple[str, str]:
             finished = run_tests(mutation.tests, report_path)
         finally:
             write_exactly(target, original)
-        failures = reported_failures(report_path, mutation.tests)
+        outcomes = reported_outcomes(report_path, mutation.tests)
 
-    if finished.returncode == 0:
+    return classify(finished.returncode, outcomes, _diagnostic(finished))
+
+
+def classify(
+    returncode: int, outcomes: tuple[list[str], list[str]] | None, diagnostic: str
+) -> tuple[str, str]:
+    """Turn one run into a verdict. Separated so the decision itself can be tested."""
+    if returncode == 0:
         return "survived", "every named test still passed"
-    if finished.returncode == _TESTS_FAILED and failures is not None:
+    failures, errors = outcomes if outcomes is not None else ([], [])
+    if returncode == _TESTS_FAILED and failures:
         return "killed", "; ".join(failures[:2])
-    if finished.returncode == _TESTS_FAILED:
+    if errors:
+        reason = (
+            f"setup or teardown errored in {'; '.join(errors[:2])}, so the test body "
+            "never ran and nothing judged the mutant"
+        )
+    elif outcomes is None:
+        reason = f"pytest exited {returncode} without writing a report"
+    elif returncode == _TESTS_FAILED:
         reason = "pytest exited 1 without recording a failure in any targeted test"
-    elif finished.returncode == _NO_TESTS_COLLECTED:
+    elif returncode == _NO_TESTS_COLLECTED:
         reason = "no tests were collected"
     else:
-        reason = f"pytest exited {finished.returncode}"
-    return "broken", f"{reason}\n{_diagnostic(finished)}"
+        reason = f"pytest exited {returncode}"
+    return "broken", f"{reason}\n{diagnostic}"
 
 
 def _diagnostic(finished: subprocess.CompletedProcess[str]) -> str:

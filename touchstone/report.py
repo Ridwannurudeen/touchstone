@@ -21,6 +21,7 @@ from touchstone.controls import (
     transition_state,
 )
 from touchstone.epoch import USTBEpochReport
+from touchstone.quantities import utc_instant
 from touchstone.signing import canonical_json_bytes
 
 
@@ -299,10 +300,4 @@ def _utc_timestamp_text(value: object, field: str) -> str:
 
 
 def _utc_timestamp(value: object, field: str) -> str:
-    if (
-        not isinstance(value, datetime)
-        or value.tzinfo is None
-        or value.utcoffset() is None
-    ):
-        raise ValueError(f"{field} must be a timezone-aware datetime")
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return utc_instant(value, field).isoformat().replace("+00:00", "Z")

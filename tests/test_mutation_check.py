@@ -19,7 +19,8 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 from mutation_check import (  # noqa: E402
     MUTATIONS,
     ROOT,
-    reported_failures,
+    classify,
+    reported_outcomes,
     wanted_nodes,
 )
 
@@ -40,6 +41,23 @@ UNRELATED = """<?xml version="1.0" encoding="utf-8"?>
 """
 
 
+TARGETED_ERROR = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites><testsuite name="pytest" errors="1" failures="0" tests="1">
+<testcase classname="tests.test_signing" name="test_wanted" time="0.01">
+<error message="setup">temporary directory unavailable</error></testcase>
+</testsuite></testsuites>
+"""
+
+PARAMETRISED = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites><testsuite name="pytest" errors="0" failures="1" tests="1">
+<testcase classname="tests.test_signing" name="test_wanted[Infinity]" time="0.01">
+<failure message="assert">assert</failure></testcase>
+</testsuite></testsuites>
+"""
+
+WANTED = ("tests/test_signing.py::test_wanted",)
+
+
 def write(tmp_path: Path, body: str) -> Path:
     path = tmp_path / "report.xml"
     path.write_text(body, encoding="utf-8")
@@ -47,39 +65,56 @@ def write(tmp_path: Path, body: str) -> Path:
 
 
 def test_a_failure_in_a_targeted_test_is_evidence(tmp_path: Path) -> None:
-    failures = reported_failures(
-        write(tmp_path, REPORT), ("tests/test_signing.py::test_wanted",)
-    )
-
-    assert failures == ["test_wanted"]
+    assert reported_outcomes(write(tmp_path, REPORT), WANTED) == (["test_wanted"], [])
+    assert classify(1, (["test_wanted"], []), "") == ("killed", "test_wanted")
 
 
 def test_a_run_that_recorded_no_report_is_not_evidence(tmp_path: Path) -> None:
-    """Pytest can exit nonzero without collecting anything, and writes no report then.
+    """Pytest can exit nonzero without collecting anything, and writes no report then."""
+    assert reported_outcomes(tmp_path / "absent.xml", WANTED) is None
 
-    That is the case the classifier used to read as a kill: the mutation was credited with
-    a failure that no assertion ever made.
-    """
-    assert (
-        reported_failures(tmp_path / "absent.xml", ("tests/test_signing.py::test_x",))
-        is None
-    )
+    verdict, detail = classify(1, None, "")
+    assert verdict == "broken"
+    assert "without writing a report" in detail
 
 
 def test_a_failure_outside_the_target_set_is_not_evidence(tmp_path: Path) -> None:
     """A conftest error fails the run without any targeted test having judged anything."""
-    assert (
-        reported_failures(
-            write(tmp_path, UNRELATED), ("tests/test_signing.py::test_wanted",)
-        )
-        is None
-    )
+    assert reported_outcomes(write(tmp_path, UNRELATED), WANTED) == ([], [])
+
+    verdict, detail = classify(1, ([], []), "")
+    assert verdict == "broken"
+    assert "without recording a failure" in detail
 
 
-def test_a_parametrised_failure_is_matched_to_its_function() -> None:
-    assert ("tests.test_signing", "test_wanted") in wanted_nodes(
-        ("tests/test_signing.py::test_wanted",)
+def test_a_targeted_setup_error_is_not_evidence(tmp_path: Path) -> None:
+    """Pytest means different things by `<failure>` and `<error>`.
+
+    `<error>` is setup or teardown, so the test body never ran: the fixture could not build
+    a workspace, a temporary directory had gone. That is infrastructure wearing the
+    target's name, and counting it is the exit-code mistake one level further in.
+    """
+    assert reported_outcomes(write(tmp_path, TARGETED_ERROR), WANTED) == (
+        [],
+        ["test_wanted"],
     )
+
+    verdict, detail = classify(1, ([], ["test_wanted"]), "")
+    assert verdict == "broken"
+    assert "never ran" in detail
+
+
+def test_a_parametrised_failure_is_matched_to_its_function(tmp_path: Path) -> None:
+    """The report names `test_wanted[Infinity]`; the target names the function."""
+    assert reported_outcomes(write(tmp_path, PARAMETRISED), WANTED) == (
+        ["test_wanted[Infinity]"],
+        [],
+    )
+    assert ("tests.test_signing", "test_wanted") in wanted_nodes(WANTED)
+
+
+def test_a_passing_run_is_a_survivor() -> None:
+    assert classify(0, ([], []), "")[0] == "survived"
 
 
 @pytest.mark.parametrize("mutation", MUTATIONS, ids=lambda m: m.name)

@@ -12,7 +12,7 @@ from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from touchstone.evidence import EvidenceStore
-from touchstone.quantities import finite_positive
+from touchstone.quantities import finite_positive, utc_instant
 
 
 DEFAULT_TIMEOUT_SECONDS = 10.0
@@ -161,12 +161,11 @@ def fetch_source(
     if manifest is None:
         raise SourcePolicyError(f"unknown source_id: {source_id}")
     timeout = finite_positive(timeout, "timeout")
-    if retrieved_at is not None and (
-        not isinstance(retrieved_at, datetime)
-        or retrieved_at.tzinfo is None
-        or retrieved_at.utcoffset() is None
-    ):
-        raise ValueError("retrieved_at must be a timezone-aware datetime")
+    # Rebound, not merely checked. The validated instant was discarded and the caller's
+    # original object handed on to storage and the epoch, so a zone that answered the
+    # check and then changed its mind was resolved a second time downstream.
+    if retrieved_at is not None:
+        retrieved_at = utc_instant(retrieved_at, "retrieved_at")
 
     requested_url = manifest.url if url is None else url
     if requested_url != manifest.url:
