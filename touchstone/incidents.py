@@ -281,10 +281,14 @@ class IncidentLog:
         Every observation begins by re-establishing that this log still has one name. A
         second name for the inode can appear at any moment after the store was opened, and
         from then on two heads describe one log — so a check taken once at construction is
-        a time-of-check that a link created a moment later walks straight past. Under the
-        lock the answer cannot change beneath the decision it informs; on the unlocked
-        fast path it is best-effort, like everything else read there, and that is still
-        better than returning "healthy" for a log with two completeness witnesses.
+        a time-of-check that a link created a moment later walks straight past.
+
+        What this detects is a *persistent* alias. It is not protection against an actor
+        creating and removing a link inside one observation: the lock is advisory and does
+        not stop an external `os.link`, so calling the locked check authoritative would
+        claim more than it delivers. A second name that stays is the case that actually
+        occurs — an operator copying a workspace, a backup tool linking rather than
+        copying — and that one is now refused instead of surfacing later as corruption.
 
         The log first, so a head read afterwards can only be at least as new. The reverse
         order can report a head that names an entry the log read did not include.

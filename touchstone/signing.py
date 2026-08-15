@@ -85,6 +85,12 @@ def frozen_snapshot(value: object, field: str) -> Mapping[str, object]:
         raise ValueError(f"{field} must be a mapping")
     try:
         return strict_json_loads(canonical_json_bytes(_plain(value)))
+    except RecursionError as error:
+        # The encoder used to meet the cycle itself and report it as a ValueError, which
+        # this turned into a field-specific refusal. Walking the structure first moved the
+        # meeting earlier, and a raw RecursionError is not a refusal — it is the same
+        # unhandled crash the whole helper exists to prevent.
+        raise ValueError(f"{field} contains a reference cycle") from error
     except (TypeError, ValueError) as error:
         raise ValueError(f"{field} is not canonical JSON: {error}") from error
 
@@ -183,10 +189,21 @@ def verify_signed_report(
     envelope: bytes | str | Mapping[str, object],
     key_records: Mapping[str, object],
 ) -> object:
-    """Resolve an envelope key ID, verify its key record, and return its report."""
+    """Resolve an envelope key ID, verify its key record, and return its report.
+
+    A mapping input is copied first. Bytes and text already produce owned data by being
+    parsed, but a caller who passes a mapping keeps a reference to the very object this
+    returns as "the verified report" — so mutating it after a successful verification
+    changes what verification vouched for, retroactively and silently.
+    """
     parsed = (
-        strict_json_loads(envelope) if isinstance(envelope, (bytes, str)) else envelope
+        strict_json_loads(envelope)
+        if isinstance(envelope, (bytes, str))
+        else frozen_snapshot(envelope, "signature envelope")
     )
+    if not isinstance(key_records, Mapping):
+        raise TypeError("key_records must be a mapping")
+    key_records = frozen_snapshot(key_records, "key_records")
     signed = _exact_mapping(parsed, _SIGNATURE_ENVELOPE_FIELDS, "signature envelope")
     _validate_version(
         signed["version"], SIGNATURE_ENVELOPE_VERSION, "signature envelope"
@@ -196,8 +213,6 @@ def verify_signed_report(
     kid = signed["kid"]
     if not isinstance(kid, str) or _KID.fullmatch(kid) is None:
         raise ValueError("signature envelope kid is invalid")
-    if not isinstance(key_records, Mapping):
-        raise TypeError("key_records must be a mapping")
     key_record = key_records.get(kid)
     if key_record is None:
         raise ValueError(f"unknown signing key: {kid}")

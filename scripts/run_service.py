@@ -116,11 +116,15 @@ class Service:
         # One daemon per workspace. Checking for an outstanding operation and then acting
         # on it is a read-modify-write across several files, and two services interleaving
         # there can both pass the check and both go on to produce.
+        # Anchored like every other durable path. `build_service` already supplies an
+        # absolute one, but the constructor is public, and a relative lock silently
+        # becomes a *different* lock the moment the process changes directory — which is
+        # precisely the second daemon this lock exists to refuse.
         self.lock_path = Path(
             lock_path
             if lock_path is not None
             else Path(operations.directory).parent / "service.lock"
-        )
+        ).resolve()
         if type(retries) is not int or retries < 0:
             raise ValueError("retries must be a non-negative integer")
         backoff_seconds = finite_non_negative(backoff_seconds, "backoff_seconds")
@@ -668,7 +672,7 @@ def main(argv: list[str] | None = None) -> int:
         service = build_service(
             arguments.manifest, arguments.workspace, asset_key=arguments.asset_key
         )
-    except (DeploymentError, IdentityError, ValueError) as error:
+    except (DeploymentError, IdentityError, OSError, ValueError) as error:
         print(f"SERVICE FAIL: {error}", file=sys.stderr)
         return 1
     try:

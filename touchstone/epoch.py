@@ -134,7 +134,7 @@ class FixtureTransport:
     ) -> None:
         if capture not in FIXTURE_CAPTURES:
             raise ValueError(f"no committed fixture capture for {capture}")
-        self.fixtures_dir = Path(fixtures_dir)
+        self.fixtures_dir = Path(fixtures_dir).resolve()
         self.capture = capture
         self.calls: list[str] = []
         self._paths = {

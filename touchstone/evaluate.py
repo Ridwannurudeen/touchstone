@@ -203,11 +203,18 @@ def evaluate_ustb(
     for control in records:
         _validate_control_binding(control)
 
+    # One reading of each mapping for the whole report. Asking per control meant the NAV
+    # source was read three times, so a mapping that changed underneath produced a single
+    # evaluation describing neither observation — a freshness date from one and a value
+    # from another. The values are frozen observation dataclasses, so an owned top-level
+    # copy is enough to make the whole report describe one set of observations.
+    observed = dict(observations)
+    prior = dict(prior_observations)
     evaluations = tuple(
         _evaluate_control(
             control,
-            observations.get(control.source_id),
-            prior_observations.get(control.source_id),
+            observed.get(control.source_id),
+            prior.get(control.source_id),
             now,
         )
         for control in records

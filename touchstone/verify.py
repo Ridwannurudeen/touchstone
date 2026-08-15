@@ -97,14 +97,19 @@ def create_bundle(
     if not isinstance(published_key, Mapping):
         raise TypeError("published_key must be a mapping")
     frozen_key = frozen_snapshot(published_key, "published_key")
-    if any(not isinstance(record, ControlRecord) for record in control_records):
+    # Materialised before it is validated, and only this tuple is used afterwards. A
+    # sequence is not necessarily re-readable: validating a generator consumes it, so the
+    # bundle was built from what remained — nothing — and `create_bundle` returned, with
+    # no error, a bundle containing zero of the five controls it had just approved.
+    records = tuple(control_records)
+    if any(not isinstance(record, ControlRecord) for record in records):
         raise TypeError("each control record must be a ControlRecord")
     frozen_digests = [
         frozen_snapshot(record, f"evidence_digests[{index}]")
-        for index, record in enumerate(evidence_digests)
+        for index, record in enumerate(tuple(evidence_digests))
     ]
     return {
-        "control_records": [record.to_mapping() for record in control_records],
+        "control_records": [record.to_mapping() for record in records],
         "evidence_digests": frozen_digests,
         "published_key": frozen_key,
         "report_canonical": canonical_json_bytes(dict(frozen_report["report"])).decode(
@@ -121,9 +126,18 @@ def write_bundle(path: str | Path, bundle: Mapping[str, object]) -> None:
 
 
 def verify_bundle(value: bytes | str | Mapping[str, object]) -> Mapping[str, object]:
-    """Verify a bundle without network access and return its report mapping."""
+    """Verify a bundle without network access and return its report mapping.
+
+    A mapping input is copied first, for the same reason as `verify_signed_report`: the
+    caller otherwise still holds the object this returns as verified, and can change it
+    afterwards.
+    """
     try:
-        parsed = strict_json_loads(value) if isinstance(value, (bytes, str)) else value
+        parsed = (
+            strict_json_loads(value)
+            if isinstance(value, (bytes, str))
+            else frozen_snapshot(value, "bundle")
+        )
     except (TypeError, ValueError, json.JSONDecodeError, RecursionError) as error:
         raise VerificationError(f"invalid bundle JSON: {error}") from error
     bundle = _exact_mapping(parsed, _BUNDLE_FIELDS, "bundle")
