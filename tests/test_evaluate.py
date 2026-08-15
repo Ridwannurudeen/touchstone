@@ -1,3 +1,4 @@
+from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
@@ -417,3 +418,58 @@ def test_prior_observations_must_be_a_mapping() -> None:
             prior_observations=[],
             now=date(2026, 8, 14),
         )
+
+
+class _ShiftingObservations(Mapping):
+    """Answers each read of the NAV source with a different observation.
+
+    Live, not a fresh copy per read. Three of the default controls name that source, so a
+    caller mapping that changes underneath is read three times unless the whole report is
+    evaluated from one snapshot.
+    """
+
+    def __init__(
+        self,
+        first: dict[str, object],
+        later: dict[str, object],
+    ) -> None:
+        self._first = first
+        self._later = later
+        self.nav_reads = 0
+
+    def __getitem__(self, key: str) -> object:
+        if key != USTB_NAV_SOURCE_ID:
+            return self._first[key]
+        self.nav_reads += 1
+        return self._first[key] if self.nav_reads == 1 else self._later[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._first)
+
+    def __len__(self) -> int:
+        return len(self._first)
+
+
+def test_one_report_describes_one_set_of_observations() -> None:
+    """Each mapping was read once per control, not once per report.
+
+    The NAV source backs three controls, so a mapping that changed underneath produced a
+    single evaluation describing neither observation: a freshness date drawn from one
+    capture and a value drawn from another.
+    """
+    shifting = _ShiftingObservations(observations(), observations(nav="ustb-nav.json"))
+
+    report = evaluate_ustb(
+        default_ustb_controls(),
+        shifting,
+        prior_observations=prior(),
+        now=date(2026, 8, 14),
+    )
+
+    assert shifting.nav_reads == 1, "the NAV source was read exactly once"
+    assert report == evaluate_ustb(
+        default_ustb_controls(),
+        observations(),
+        prior_observations=prior(),
+        now=date(2026, 8, 14),
+    )

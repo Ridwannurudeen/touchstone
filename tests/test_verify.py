@@ -385,3 +385,59 @@ def test_a_bundle_keeps_the_key_and_digests_it_was_given(tmp_path: Path) -> None
 
     assert bundle["published_key"]["provenance"] == {"issued_by": "the operator"}
     assert bundle["evidence_digests"][0]["provenance"] == {"fetched_by": "the daemon"}
+
+
+def test_a_bundle_holds_every_control_of_a_single_pass_sequence(
+    tmp_path: Path,
+) -> None:
+    """The controls were validated by one pass over the sequence and used by another.
+
+    A sequence is not obliged to be re-readable. Validating a generator consumed it, so
+    the bundle was built from what remained — nothing — and `create_bundle` returned,
+    reporting no error, a bundle holding none of the controls it had just approved.
+    """
+    epoch = _epoch(tmp_path)
+    signer = Ed25519Signer.from_seed(bytes(range(32)))
+    report = build_observation_report(
+        epoch,
+        default_ustb_controls(),
+        epoch_id="ustb-2026-08-14",
+        sequence=1,
+        publisher_kid=signer.kid,
+        compiler_provenance_digests=["33" * 32],
+    )
+    controls = default_ustb_controls()
+    digests = evidence_references(epoch)
+
+    bundle = create_bundle(
+        signer.sign_report(report),
+        signer.public_key_record(),
+        (record for record in controls),
+        (record for record in digests),
+    )
+
+    assert len(bundle["control_records"]) == len(controls)
+    assert len(bundle["evidence_digests"]) == len(digests)
+    verified = verify_bundle(canonical_json_bytes(bundle))
+    assert verified["state"] == "CONFIRMED"
+
+
+def test_a_verified_report_does_not_change_when_the_caller_mutates_the_bundle(
+    tmp_path: Path,
+) -> None:
+    """A mapping passed to `verify_bundle` stays owned by its caller.
+
+    Bytes and text are safe already, because parsing produces owned data. A mapping was
+    not: the caller held the very object returned as the verified report, and could change
+    it after verification had vouched for it.
+    """
+    bundle = _bundle(tmp_path)
+
+    verified = verify_bundle(bundle)
+    expected = deepcopy(dict(verified))
+    assert verified["state"] == "CONFIRMED"
+
+    bundle["signed_report"]["report"]["state"] = "STALE"
+    bundle["signed_report"]["report"]["sequence"] = 99
+
+    assert verified == expected

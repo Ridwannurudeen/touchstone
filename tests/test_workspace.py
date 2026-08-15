@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import os
 from pathlib import Path
 import sys
@@ -336,6 +336,54 @@ def test_a_relative_store_does_not_move_when_the_process_does(
         assert getattr(store, field) == before[name], f"{name} moved with the process"
         assert getattr(store, field).is_absolute(), f"{name} is not anchored"
         assert (tmp_path / "here").resolve() in getattr(store, field).parents
+
+
+def test_a_relative_path_holder_operates_where_it_was_created(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Anchoring is proved by operating after the process has moved, not by reading it.
+
+    Asserting that the held attribute is absolute passes just as well when a path
+    *derived* from it stayed relative and followed the process instead: the transport's
+    per-source paths, the journal's sibling temporary file, and the lock the service hands
+    to `exclusive_lock` are each computed somewhere other than where they are displayed.
+    So each one is exercised here, and the assertion is where the bytes landed.
+    """
+    from run_service import Service
+    from touchstone.epoch import FIXTURE_CAPTURES, FixtureTransport
+    from touchstone.publish import PublisherClient
+    from touchstone.sources import USTB_SOURCES
+
+    committed = Path(__file__).parents[1] / "fixtures"
+    here = tmp_path / "here"
+    there = tmp_path / "there"
+    (here / "fixtures").mkdir(parents=True)
+    there.mkdir()
+    for name in FIXTURE_CAPTURES[date(2026, 8, 13)].values():
+        (here / "fixtures" / name).write_bytes((committed / name).read_bytes())
+
+    monkeypatch.chdir(here)
+    transport = FixtureTransport("fixtures", date(2026, 8, 13))
+    client = PublisherClient(None, None, "asset/pending.json")
+    service = Service(
+        client=None,
+        operations=_OperationsAt(Path("asset/operations")),
+        incidents=None,
+        asset_key="eip155:1:0x" + "11" * 20,
+    )
+
+    monkeypatch.chdir(there)
+
+    response = transport.get(USTB_SOURCES[0].url, timeout=1.0, max_bytes=1 << 20)
+    assert response.status_code == 200, "the transport lost its committed fixtures"
+
+    client._write_pending({"transaction_hash": "0x" + "11" * 32})
+    assert (here / "asset" / "pending.json").is_file()
+
+    with exclusive_lock(service.lock_path):
+        assert (here / "asset" / "service.lock").is_file()
+
+    assert list(there.iterdir()) == [], "a durable path followed the process"
 
 
 def test_a_symlinked_incident_log_is_the_same_store(tmp_path: Path) -> None:

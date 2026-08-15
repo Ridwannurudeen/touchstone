@@ -1,5 +1,7 @@
+from collections.abc import Iterator, Mapping
 import hashlib
 import json
+from types import MappingProxyType
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -8,6 +10,7 @@ import pytest
 from touchstone.signing import (
     Ed25519Signer,
     canonical_json_bytes,
+    frozen_snapshot,
     strict_json_loads,
     verify_signed_report,
 )
@@ -248,3 +251,101 @@ def test_verification_rejects_unsupported_or_malformed_envelope(
             envelope,
             {instance.kid: instance.public_key_record()},
         )
+
+
+class DivergentKeyRecords(Mapping):
+    """Answers a whole-mapping read and an indexed read with different records.
+
+    A caller's mapping is under no obligation to answer two reads the same way. Freezing
+    means only the first read can matter; without it, the record that is validated and the
+    record that verifies the signature need not be the same object.
+    """
+
+    def __init__(
+        self,
+        snapshot: dict[str, object],
+        indexed: dict[str, object],
+    ) -> None:
+        self._snapshot = snapshot
+        self._indexed = indexed
+
+    def items(self) -> object:
+        return self._snapshot.items()
+
+    def __getitem__(self, key: str) -> object:
+        return self._indexed[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._snapshot)
+
+    def __len__(self) -> int:
+        return len(self._snapshot)
+
+
+def test_frozen_snapshot_converts_nested_mapping_proxies_and_tuples() -> None:
+    value = MappingProxyType(
+        {
+            "nested": MappingProxyType({"items": (1, 2)}),
+            "rows": ({"date": "2026-08-12"},),
+        }
+    )
+
+    assert frozen_snapshot(value, "value") == {
+        "nested": {"items": [1, 2]},
+        "rows": [{"date": "2026-08-12"}],
+    }
+
+
+def test_frozen_snapshot_refuses_a_self_referential_mapping() -> None:
+    cyclic: dict[str, object] = {"state": "CONFIRMED"}
+    cyclic["self"] = cyclic
+
+    with pytest.raises(ValueError, match="value contains a reference cycle"):
+        frozen_snapshot(cyclic, "value")
+
+
+def test_frozen_snapshot_refuses_a_cycle_reached_through_a_sequence() -> None:
+    cyclic: dict[str, object] = {"state": "CONFIRMED"}
+    cyclic["rows"] = [cyclic]
+
+    with pytest.raises(ValueError, match="value contains a reference cycle"):
+        frozen_snapshot(cyclic, "value")
+
+
+def test_verified_report_does_not_change_when_the_caller_mutates_the_envelope() -> None:
+    instance = signer()
+    envelope = instance.sign_report(
+        {"state": "CONFIRMED", "controls": {"nav": True}, "rows": [{"aum": 1}]}
+    )
+    expected = {"state": "CONFIRMED", "controls": {"nav": True}, "rows": [{"aum": 1}]}
+
+    verified = verify_signed_report(
+        envelope,
+        {instance.kid: instance.public_key_record()},
+    )
+    assert verified == expected
+
+    report = envelope["report"]
+    assert isinstance(report, dict)
+    report["state"] = "STALE"
+    report["controls"]["nav"] = False
+    report["rows"][0]["aum"] = 2
+
+    assert verified == expected
+
+
+def test_verification_resolves_the_key_record_from_its_own_snapshot() -> None:
+    instance = signer()
+    other = signer(2)
+    report = {"state": "CONFIRMED"}
+    envelope = instance.sign_report(report)
+
+    # Same kid, so the record survives the identity check and is refused, if at all, only
+    # by the signature it cannot produce.
+    divergent = {**other.public_key_record(), "kid": instance.kid}
+    records = DivergentKeyRecords(
+        {instance.kid: instance.public_key_record()},
+        {instance.kid: divergent},
+    )
+
+    assert verify_signed_report(envelope, records) == report

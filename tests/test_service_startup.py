@@ -47,6 +47,20 @@ def _workspace_is_a_file(root: Path) -> Path:
     return workspace
 
 
+def _operations_directory_is_a_file(root: Path) -> Path:
+    """A refusal the operating system raises, not one this project words itself.
+
+    `OperationsStore` creates its directory, so a file already occupying that name fails
+    the construction with `FileExistsError`. Every refusal covered above is a `ValueError`
+    this project writes, and catching only those left the whole `OSError` family — the
+    refusals the workspace's own filesystem issues — reaching the operator as a traceback.
+    """
+    workspace = root / "workspace"
+    workspace.mkdir()
+    (workspace / "operations").write_bytes(b"")
+    return workspace
+
+
 @pytest.mark.parametrize(
     "make_workspace",
     [
@@ -61,6 +75,10 @@ def _workspace_is_a_file(root: Path) -> Path:
         pytest.param(
             _workspace_is_a_file,
             id="workspace-is-a-file",
+        ),
+        pytest.param(
+            _operations_directory_is_a_file,
+            id="operations-directory-is-a-file",
         ),
     ],
 )
