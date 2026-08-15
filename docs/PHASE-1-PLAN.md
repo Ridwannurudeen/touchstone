@@ -17,8 +17,8 @@ previous one passes audit.**
 | PLAN-T3 | Complete brand-clearance research | M | **Done** (`1135c25`) |
 | PLAN-T4 | Source manifests and golden fixtures for USTB, USDY, FOBXX | M | **Done** (`d96f944`) |
 | PLAN-T5 | Hero evidence security and the authoritative USTB oracle check | L | **Done** (`5c73edf`) |
-| PLAN-T6 | Production-capable publisher and staged deployment path | L | In progress |
-| PLAN-T7 | Autonomous epoch operations and append-only incidents | L | |
+| PLAN-T6 | Production-capable publisher and staged deployment path | L | **Done** (`016de1b`) |
+| PLAN-T7 | Autonomous epoch operations and append-only incidents | L | In progress |
 | PLAN-T8 | Heartbeat, watchdog, alerts, gas runway, encrypted backup and restore | L | |
 | PLAN-T9 | Wallet-free living dossier and developer surface | L | |
 | PLAN-T10 | USDY autonomous daily adapter | L | |
@@ -78,7 +78,35 @@ scripts and manifest templates; Ed25519 reporting-key rollover that keeps existi
 verifiable while selecting the new key for future reports; `docs/KEY-MANAGEMENT.md`.
 **Sends no testnet or mainnet transaction.**
 
-**PLAN-T7 — operations and incidents.** Restartable service with atomic per-asset state;
+**PLAN-T6 closed 2026-08-15 after seven audit rounds.** Worth recording what the rounds
+cost, because the pattern repeated: three separate times a fix *relocated* a defect rather
+than closing it — the retired-key rule moved from the CLI into a client that took its own
+manifest; the journal was bound to a destination but not to an intent; and pinning
+reconciliation to the current publisher address fixed false provenance while breaking every
+publisher rotation. The final round failed on coverage alone: fixes verified by hand in a
+shell and never committed as tests. The ABI is now frozen.
+
+**PLAN-T7 — operations and incidents.** *Scope amended 2026-08-15 by audit direction.*
+Do not rebuild T6's transaction state machine. Criterion 7 is complete at the publisher
+layer and incomplete at the service layer: T7 persists the complete signed report, URI,
+correction mode and scheduled timestamp, reconciles that durable operation before any new
+fetch or sign, handles a crash after publisher finalization but before operations-state
+cleanup, and proves it with a real subprocess restart. Criterion 8 needs an explicit
+transient pre-broadcast error type — `PreflightFailed` currently mixes transport failure
+with permanent chain, bytecode, authorization, lineage and gas failures — bounded
+sleep-injected backoff for that type only and only while no pending journal exists, and
+`exception_retry_configuration=None` on the HTTP provider.
+
+That last one is verified against the installed `web3==7.16.0`: the default configuration is
+active, retries five times, and its allowlist contains `eth_sendRawTransaction`. Those
+retries are idempotent for this design — identical signed bytes produce an identical hash —
+but they are a resend loop *outside* the reconciliation boundary, and a boundary with a
+hidden bypass is not a boundary.
+
+For criterion 5, the incident log is verified against a separately persisted expected head
+and count: a self-contained hash chain cannot detect deletion of a complete final entry.
+
+Restartable service with atomic per-asset state;
 append-only hash-chained incident history where recovery closes an incident with a new
 event rather than deleting it; `SOURCE_ERROR` recorded and the previous state preserved
 until its deadline; a failed epoch never ends future scheduling; restart reconciliation
