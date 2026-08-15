@@ -311,7 +311,10 @@ def test_restore_never_overwrites_an_existing_directory(tmp_path: Path) -> None:
     workspace = populated(tmp_path)
     (tmp_path / "restored").mkdir()
 
-    with pytest.raises(BackupError, match="already exists"):
+    # Matched on this module's own words, not on "already exists" — Windows puts that exact
+    # phrase in the FileExistsError that `mkdir` raises, so the loose pattern passed while
+    # the deliberate refusal was gone and the target was being created anyway.
+    with pytest.raises(BackupError, match="the restore target already exists"):
         restore(
             archive_of(workspace),
             tmp_path / "restored",
@@ -572,7 +575,11 @@ def test_a_backup_requires_a_live_hold_on_this_workspaces_lock(tmp_path: Path) -
 
     with pytest.raises(BackupError, match="requires the Held"):
         create(
-            object(), workspace.root, now=AT, key=KEY, asset_key=ASSET,
+            object(),
+            workspace.root,
+            now=AT,
+            key=KEY,
+            asset_key=ASSET,
             registry_address=REGISTRY,
         )
 
@@ -580,14 +587,22 @@ def test_a_backup_requires_a_live_hold_on_this_workspaces_lock(tmp_path: Path) -
         pass
     with pytest.raises(BackupError, match="released"):
         create(
-            held, workspace.root, now=AT, key=KEY, asset_key=ASSET,
+            held,
+            workspace.root,
+            now=AT,
+            key=KEY,
+            asset_key=ASSET,
             registry_address=REGISTRY,
         )
 
     with exclusive_lock(other.lock) as elsewhere:
         with pytest.raises(BackupError, match="not"):
             create(
-                elsewhere, workspace.root, now=AT, key=KEY, asset_key=ASSET,
+                elsewhere,
+                workspace.root,
+                now=AT,
+                key=KEY,
+                asset_key=ASSET,
                 registry_address=REGISTRY,
             )
 
@@ -606,17 +621,33 @@ def test_an_authenticated_archive_that_is_not_json_is_this_modules_failure(
     archive = nonce + AESGCM(KEY).encrypt(nonce, b"not json at all", associated)
 
     with pytest.raises(BackupError, match="not readable JSON"):
-        restore(archive, tmp_path / "out", key=KEY, asset_key=ASSET,
-                registry_address=REGISTRY)
+        restore(
+            archive,
+            tmp_path / "out",
+            key=KEY,
+            asset_key=ASSET,
+            registry_address=REGISTRY,
+        )
     assert not (tmp_path / "out").exists()
 
 
 def test_an_undecodable_member_payload_is_this_modules_failure(tmp_path: Path) -> None:
     lying = payload(
-        files=[{"bytes": "zzzz", "path": "transparency.jsonl",
-                "sha256": "ab" * 32, "size": 2}]
+        files=[
+            {
+                "bytes": "zzzz",
+                "path": "transparency.jsonl",
+                "sha256": "ab" * 32,
+                "size": 2,
+            }
+        ]
     )
 
     with pytest.raises(BackupError, match="decodable content"):
-        restore(forged(lying), tmp_path / "out", key=KEY, asset_key=ASSET,
-                registry_address=REGISTRY)
+        restore(
+            forged(lying),
+            tmp_path / "out",
+            key=KEY,
+            asset_key=ASSET,
+            registry_address=REGISTRY,
+        )
