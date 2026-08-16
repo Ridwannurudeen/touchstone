@@ -8,7 +8,9 @@ from web3.exceptions import TimeExhausted
 
 from touchstone.deployment import DeploymentManifest
 from touchstone.keyring import PublisherKey
-from touchstone.publish import (
+from touchstone.publish import (  # noqa: F401
+    _STATUS,
+    _unix_timestamp,
     CONFIRMED,
     INCLUDED,
     MISSING,
@@ -186,12 +188,16 @@ class FakeBackend:
         ]
         self.submissions.append(correction_of)
         self.reports.setdefault(asset_key, []).append(
+            # Derived from the report, as a registry does. Canned values matched the
+            # fixtures this double was written for and nothing else, so the first real
+            # report published through it failed its own on-chain match check — a defect
+            # in the stand-in, reported as a defect in the service.
             ChainReport(
                 control_set_root=report["control_set_root"],
                 evidence_root=report["evidence_root"],
-                status=0,
-                observed_at=1_786_630_577,
-                valid_until=1_786_665_599,
+                status=_STATUS[report["state"]],
+                observed_at=_unix_timestamp(report["observed_at"], "observed_at"),
+                valid_until=_unix_timestamp(report["valid_until"], "valid_until"),
                 publisher=self.publisher_override or self.manifest.publisher_address,
                 sequence=report["sequence"],
                 report_uri=report_uri,

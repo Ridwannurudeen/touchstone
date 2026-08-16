@@ -94,6 +94,17 @@ class FetchResult:
     redirect_count: int
 
 
+class SourceUnavailable(RuntimeError):
+    """Evidence could not be retrieved. Says nothing about the asset.
+
+    Lives here rather than in the service script because the epoch producer is a package
+    module and must be able to raise it. A package importing from `scripts/` to reach an
+    exception type is a layering inversion, and the alternative — the producer raising a
+    retrieval error the service reads as an epoch failure — would record a source outage as
+    a finding about the issuer.
+    """
+
+
 class SourceFetchError(RuntimeError):
     """Base class for typed source retrieval failures."""
 

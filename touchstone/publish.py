@@ -1324,10 +1324,21 @@ def _validate_publishable_report(report: Mapping[str, object]) -> None:
         raise ValueError("report valid_until does not match its evidence deadline")
 
 
-def _asset_key_bytes(value: object) -> bytes:
+def asset_key_bytes(value: object) -> bytes:
+    """The registry's 32-byte key for an asset identifier.
+
+    Public because the epoch producer needs the same bytes to ask the registry for the
+    next sequence, and a second implementation of this is a second answer. The first
+    version of that producer hashed with SHA-256 while this hashed with keccak, so it
+    queried a key the registry had never heard of, read a sequence of zero, and would have
+    proposed a sequence the chain already held — refused on publication, permanently.
+    """
     if not isinstance(value, str) or _ASSET_KEY.fullmatch(value) is None:
         raise ValueError("asset_key must be a canonical eip155 identifier")
     return bytes(Web3.keccak(text=value))
+
+
+_asset_key_bytes = asset_key_bytes
 
 
 def _unix_timestamp(value: object, field: str) -> int:

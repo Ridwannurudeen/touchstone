@@ -23,7 +23,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import json
 import math
 import os
@@ -61,10 +61,16 @@ from touchstone.publish import (  # noqa: E402
     SignedRegistryBackend,
     TransportUnavailable,
 )
+from touchstone.controls import AssetState  # noqa: E402
+from touchstone.evidence import EvidenceStore  # noqa: E402
 from touchstone.schedule import ScheduleOutcome, run_schedule  # noqa: E402
-from touchstone.signing import (  # noqa: E402
-    frozen_snapshot,
+from touchstone.ustb_daemon import (  # noqa: E402
+    asset_key_bytes,
+    make_producer,
+    report_uri,
 )
+from touchstone.sources import SourceUnavailable  # noqa: E402,F401
+from touchstone.signing import Ed25519Signer, frozen_snapshot  # noqa: E402
 from touchstone import backup, heartbeat  # noqa: E402
 from touchstone.backup import BackupError  # noqa: E402
 from touchstone.heartbeat import HeartbeatError  # noqa: E402
@@ -81,10 +87,6 @@ MAX_BACKOFF_SECONDS = 3600.0
 # 2 ** 1024 is the first power of two no float can hold. Past it the delay is infinite
 # whatever the base, so the count can be refused without the integer ever being built.
 _MAX_DOUBLINGS = 1024
-
-
-class SourceUnavailable(RuntimeError):
-    """Evidence could not be retrieved. Says nothing about the asset."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -831,6 +833,72 @@ def build_service(manifest_path: str, workspace: str, *, asset_key: str) -> Serv
     )
 
 
+def _serve_ustb(service: Service, arguments) -> int:
+    """Run the unattended USTB loop: the mode this service refused to offer until now.
+
+    Everything it composes already existed and was already audited. What did not exist was
+    anything calling it on a schedule, so the honest refusal that stood here was accurate
+    right up until this function replaced it.
+    """
+    manifest = DeploymentManifest.load(arguments.manifest)
+    signer = Ed25519Signer.from_env()
+    if signer.kid != manifest.active_key.kid:
+        # The manifest names the key the registry's consumers will verify against. Signing
+        # with anything else produces reports that verify for nobody.
+        print(
+            f"SERVICE FAIL: the signing seed derives {signer.kid}, but the manifest's "
+            f"active reporting key is {manifest.active_key.kid}",
+            file=sys.stderr,
+        )
+        return 1
+
+    store = EvidenceStore(Workspace(arguments.workspace).evidence)
+    key_bytes = asset_key_bytes(arguments.asset_key)
+
+    def next_sequence() -> int:
+        # Asked of the chain, never counted locally. A local counter drifts from the
+        # registry the first time a publication fails, and the registry refuses an
+        # out-of-order sequence — so the drift would surface as a permanent outage.
+        return service.client.backend.latest_sequence(key_bytes) + 1
+
+    def previous_state(on: date) -> AssetState:
+        state = service.operations.load_state(arguments.asset_key)
+        return AssetState.UNVERIFIABLE if state is None else state.projected(on)
+
+    transport = None
+    if arguments.fixtures:
+        from touchstone.epoch import FixtureTransport
+
+        transport = FixtureTransport(arguments.fixtures)
+
+    outcome = serve(
+        service,
+        make_producer(
+            store=store,
+            signer=signer,
+            next_sequence=next_sequence,
+            previous_state=previous_state,
+            transport=transport,
+        ),
+        report_uri=report_uri,
+        interval_seconds=arguments.interval_seconds,
+        max_runs=arguments.max_runs,
+    )
+    print(
+        json.dumps(
+            {
+                "completed": outcome.completed,
+                "failed": len(outcome.failed),
+                "missed": outcome.missed_count,
+                "clock_error": outcome.clock_error,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0 if outcome.completed and not outcome.failed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", required=True)
@@ -840,6 +908,26 @@ def main(argv: list[str] | None = None) -> int:
         "--resolve-only",
         action="store_true",
         help="settle any publication left in flight and stop, signing nothing new",
+    )
+    parser.add_argument(
+        "--interval-seconds",
+        type=float,
+        default=86_400.0,
+        help="seconds between slots; one day by default, because an epoch is a statement "
+        "about a particular day's evidence",
+    )
+    parser.add_argument(
+        "--max-runs",
+        type=int,
+        default=None,
+        help="stop after this many slots. Omit to serve until stopped, which is the "
+        "unattended mode; 1 is the canary.",
+    )
+    parser.add_argument(
+        "--fixtures",
+        default=None,
+        help="serve from committed fixtures instead of the live sources. For rehearsing "
+        "the unattended path without touching an issuer endpoint.",
     )
     arguments = parser.parse_args(argv)
     try:
@@ -855,13 +943,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"SERVICE FAIL: {error}", file=sys.stderr)
         return 1
     try:
-        if not arguments.resolve_only:  # noqa: SIM102
-            # A slot needs an epoch runner, and this project has no live-source runner
-            # yet: PLAN-T10 and PLAN-T11 own the adapters. Refusing is honest; a service
-            # that started and silently published nothing would look like it was working.
-            parser.error(
-                "no live epoch adapter is wired yet; --resolve-only is the supported mode"
-            )
+        if not arguments.resolve_only:
+            return _serve_ustb(service, arguments)
         with exclusive_lock(service.lock_path):
             outcome = service.resolve_startup()
     except (
