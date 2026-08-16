@@ -651,3 +651,37 @@ def test_an_undecodable_member_payload_is_this_modules_failure(tmp_path: Path) -
             asset_key=ASSET,
             registry_address=REGISTRY,
         )
+
+
+def test_a_live_descriptor_borrowed_from_another_lock_is_refused(
+    tmp_path: Path,
+) -> None:
+    """The forgery the inode comparison exists for, and the only one that reaches it.
+
+    Hold a real lock on one workspace, then claim it is a hold on another: the descriptor
+    is genuinely live and the path names the target, so both the liveness check and the
+    path check pass. Only asking the operating system what that descriptor actually refers
+    to can tell the difference.
+    """
+    from touchstone.locking import Held
+
+    target = populated(tmp_path)
+    other = Workspace(tmp_path / "elsewhere")
+    other.root.mkdir(parents=True, exist_ok=True)
+    # The target's lock file has to exist, or the refusal comes from `stat` failing and
+    # the inode comparison — the branch under test — is never reached.
+    target.lock.touch()
+
+    with exclusive_lock(other.lock) as borrowed:
+        forged = Held(path=target.lock.resolve(), descriptor=borrowed.descriptor)
+        assert forged.active, "the descriptor really is live; that is the point"
+
+        with pytest.raises(BackupError, match="does not refer to"):
+            create(
+                forged,
+                target.root,
+                now=AT,
+                key=KEY,
+                asset_key=ASSET,
+                registry_address=REGISTRY,
+            )
