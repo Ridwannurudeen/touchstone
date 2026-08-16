@@ -206,7 +206,9 @@ Everything here needs explicit approval. One has been given and executed; the re
       `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, block 38369203. **Now superseded**: it
       predates the `epochKey` change, is marked `deployment_state: superseded`, and is
       refused by the publishing boundary. It published nothing.
-- [ ] **Testnet deploy (replacement)** — the design is approved **in principle**;
+- [ ] **Testnet deploy (replacement)** — see `docs/DEPLOYMENT-G1.md`, which is the
+      authorization packet and is itself marked DRAFT. The design is approved **in
+      principle**;
       **execution authorization has not been granted.** No replacement registry exists, no
       gas has been spent on one, and `docs/DEPLOYMENT-G1.md` must be complete and approved
       before it is requested. Tracked separately from the entry above because they are two
