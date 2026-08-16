@@ -294,3 +294,23 @@ def test_a_malformed_url_is_this_modules_refusal() -> None:
     """
     with pytest.raises(AlertError, match="cannot be parsed"):
         webhook_from_env(env(**{WEBHOOK_URL_ENV: "https://["}))
+
+
+def test_a_hand_made_webhook_over_plaintext_http_is_refused() -> None:
+    """`Webhook` is public, so validating only at construction validated nothing.
+
+    A caller could build one directly and send the bearer credential over plaintext HTTP
+    to whatever host it named. The endpoint rules now run again where the bytes leave.
+    """
+    recorder = Recorder()
+
+    with pytest.raises(AlertError, match="absolute HTTPS"):
+        send(alert(), Webhook(url="http://alerts.invalid/hook", token=TOKEN),
+             opener=recorder)
+
+    assert recorder.request is None, "a plaintext request was built and sent"
+
+
+def test_a_hand_made_webhook_with_a_malformed_url_is_this_modules_refusal() -> None:
+    with pytest.raises(AlertError, match="cannot be parsed"):
+        send(alert(), Webhook(url="https://[", token=TOKEN), opener=Recorder())

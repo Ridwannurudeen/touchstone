@@ -230,3 +230,55 @@ def test_a_valid_restart_command_is_returned_unchanged() -> None:
         "restart",
         "touchstone",
     )
+
+
+def test_an_alert_fires_on_the_edge_not_on_every_check(tmp_path: Path) -> None:
+    """A watchdog that alerts every 60 seconds is a watchdog whose alerts get muted."""
+    from touchstone.watchdog import transition
+
+    alive(Workspace(tmp_path))
+    healthy = looked_at(tmp_path)
+    sick = looked_at(tmp_path, now=AT + timedelta(minutes=4))
+
+    first_bad = transition(sick, None)
+    assert first_bad.changed
+    assert first_bad.event == "HEARTBEAT_STALE"
+    assert first_bad.severity == "CRITICAL"
+
+    again = transition(sick, first_bad.fingerprint)
+    assert not again.changed, "the same condition alerted twice"
+
+    recovered = transition(healthy, first_bad.fingerprint)
+    assert recovered.changed
+    assert recovered.event == "RECOVERED"
+    assert recovered.severity == "INFO"
+
+    assert not transition(healthy, recovered.fingerprint).changed
+
+
+def test_a_first_healthy_observation_announces_nothing(tmp_path: Path) -> None:
+    """There is nothing to recover from, and nobody was told of a condition."""
+    from touchstone.watchdog import transition
+
+    alive(Workspace(tmp_path))
+
+    assert not transition(looked_at(tmp_path), None).changed
+
+
+def test_different_failures_are_different_conditions(tmp_path: Path) -> None:
+    """A stale heartbeat and a broken log must not collapse into one 'unhealthy'."""
+    from touchstone.watchdog import transition
+
+    workspace = Workspace(tmp_path)
+    alive(workspace)
+    stale = transition(looked_at(tmp_path, now=AT + timedelta(minutes=4)), None)
+
+    workspace.pending_journal.parent.mkdir(parents=True, exist_ok=True)
+    workspace.pending_journal.write_bytes(
+        canonical_json_bytes({"transaction_hash": "0x" + "11" * 32}) + b"\n"
+    )
+    unresolved = transition(looked_at(tmp_path), None)
+
+    assert stale.event == "HEARTBEAT_STALE"
+    assert unresolved.event == "PUBLICATION_UNRESOLVED"
+    assert stale.fingerprint != unresolved.fingerprint

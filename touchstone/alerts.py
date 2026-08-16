@@ -93,6 +93,20 @@ def webhook_from_env(environ: Mapping[str, str] | None = None) -> Webhook:
         raise AlertError(f"{WEBHOOK_URL_ENV} is not set")
     if not token:
         raise AlertError(f"{WEBHOOK_TOKEN_ENV} is not set")
+    validate_endpoint(url, token)
+    return Webhook(url=url, token=token)
+
+
+def validate_endpoint(url: object, token: str) -> None:
+    """Every rule an endpoint must satisfy, in one place that both entry points call.
+
+    Validating only at construction was not validation: `Webhook` is public, so a caller
+    could build one directly and `send` would carry the bearer credential over plaintext
+    HTTP to whatever host it named. The rules live here and run again where the bytes
+    actually leave, because that is the only place they cannot be skipped.
+    """
+    if not isinstance(url, str) or not url:
+        raise AlertError("the webhook URL must be a non-empty string")
     try:
         parsed = urlsplit(url)
         parsed.port  # noqa: B018 - parsing is lazy; touching a field is what validates it
@@ -106,14 +120,10 @@ def webhook_from_env(environ: Mapping[str, str] | None = None) -> Webhook:
         # A query is where a webhook secret is usually smuggled, and query strings are
         # logged by every proxy in the path. Refusing the shape refuses the habit.
         raise AlertError("the webhook URL must not carry a query or fragment")
-    if token in url:
-        # Refusing userinfo, query and fragment left the *path*, and a URL is logged whole.
-        # Many services issue exactly this shape — the secret as a path segment — so the
-        # check has to be on the token's presence rather than on the URL's structure.
-        raise AlertError(
-            "the webhook URL contains the credential; it must travel only in the header"
-        )
-    return Webhook(url=url, token=token)
+    # Refusing userinfo, query and fragment left the *path*, and a URL is logged whole.
+    # Many services issue exactly this shape — the secret as a path segment — so the check
+    # has to be on the token's presence rather than on the URL's structure.
+    _refuse_credential(url, token, "URL")
 
 
 def build(
@@ -186,7 +196,7 @@ def send(
     # is public and `send` is the one place bytes actually leave the process, so a hand-made
     # webhook with the credential in its URL previously sailed straight past the validator
     # that exists to refuse exactly that.
-    _refuse_credential(webhook.url, webhook.token, "URL")
+    validate_endpoint(webhook.url, webhook.token)
     _refuse_credential(payload.decode("utf-8"), webhook.token, "body")
     request = urllib.request.Request(
         webhook.url,

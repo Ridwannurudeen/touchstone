@@ -508,7 +508,7 @@ MUTATIONS = (
     Mutation(
         name="a-released-hold-still-proves-the-lock",
         path="touchstone/locking.py",
-        old="        if not self._active:",
+        old="        if not self.active:",
         new="        if False:",
         tests=(
             "tests/test_backup.py::test_a_backup_requires_a_live_hold_on_this_workspaces_lock",
@@ -517,7 +517,7 @@ MUTATIONS = (
     Mutation(
         name="the-credential-may-ride-in-a-hand-made-url",
         path="touchstone/alerts.py",
-        old='    _refuse_credential(webhook.url, webhook.token, "URL")',
+        old='    _refuse_credential(url, token, "URL")',
         new="    pass",
         tests=(
             "tests/test_alerts.py::test_a_hand_made_webhook_with_the_credential_in_its_url_is_refused",
@@ -555,6 +555,52 @@ MUTATIONS = (
         new='            raw = bytes.fromhex(str(item["bytes"]))\n        except UnicodeDecodeError as error:',
         tests=(
             "tests/test_backup.py::test_an_undecodable_member_payload_is_this_modules_failure",
+        ),
+    ),
+    Mutation(
+        name="a-forged-hold-passes-as-proof-of-the-lock",
+        path="touchstone/locking.py",
+        old="        if (held.st_ino, held.st_dev) != (named.st_ino, named.st_dev):",
+        new="        if False:",
+        tests=(
+            "tests/test_backup.py::test_a_backup_requires_a_live_hold_on_this_workspaces_lock",
+        ),
+    ),
+    Mutation(
+        name="the-endpoint-is-validated-only-at-construction",
+        path="touchstone/alerts.py",
+        old="    validate_endpoint(webhook.url, webhook.token)",
+        new="    pass",
+        tests=(
+            "tests/test_alerts.py::test_a_hand_made_webhook_with_the_credential_in_its_url_is_refused",
+            "tests/test_alerts.py::test_a_hand_made_webhook_over_plaintext_http_is_refused",
+        ),
+    ),
+    Mutation(
+        name="a-pending-operations-signature-is-not-verified",
+        path="scripts/restore_workspace.py",
+        old='            verify_signed_report(record["signed_report"], keys)',
+        new="            pass",
+        tests=(
+            "tests/test_restore_cli.py::test_a_pending_operation_signed_by_an_unknown_key_fails_the_restore",
+        ),
+    ),
+    Mutation(
+        name="an-alert-fires-on-every-check",
+        path="touchstone/watchdog.py",
+        old="    if material == previous_fingerprint:",
+        new="    if False:",
+        tests=(
+            "tests/test_watchdog.py::test_an_alert_fires_on_the_edge_not_on_every_check",
+        ),
+    ),
+    Mutation(
+        name="a-first-healthy-check-announces-a-recovery",
+        path="touchstone/watchdog.py",
+        old="        if previous_fingerprint is None:",
+        new="        if False:",
+        tests=(
+            "tests/test_watchdog.py::test_a_first_healthy_observation_announces_nothing",
         ),
     ),
     Mutation(

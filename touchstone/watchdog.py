@@ -199,3 +199,70 @@ def restart_command(argv: Sequence[str]) -> tuple[str, ...]:
     if not command or any(not isinstance(part, str) or not part for part in command):
         raise ValueError("a restart command must be a non-empty vector of strings")
     return command
+
+
+@dataclass(frozen=True, slots=True)
+class Transition:
+    """What changed between the last observation and this one, if anything."""
+
+    event: str | None
+    severity: str | None
+    detail_code: str | None
+    fingerprint: str
+
+    @property
+    def changed(self) -> bool:
+        return self.event is not None
+
+
+def transition(report: Report, previous_fingerprint: str | None) -> Transition:
+    """Decide whether this observation is worth telling anyone about.
+
+    A watchdog that alerts on every unhealthy check is a watchdog whose alerts get muted,
+    and one that never alerts on recovery leaves an operator watching a condition that
+    cleared hours ago. So the signal is the *edge*: the first check that finds a condition,
+    and the first that finds it gone.
+
+    The fingerprint deliberately excludes the timestamp and the free-text detail, so the
+    same condition observed at 60-second intervals is one condition rather than a hundred.
+    """
+    from touchstone.alerts import Event, Severity, fingerprint as alert_fingerprint
+
+    if report.healthy:
+        current = "healthy"
+    else:
+        # Named by the first failing check, so a stale heartbeat and a broken log are
+        # different conditions rather than one undifferentiated "unhealthy".
+        current = report.failures[0].name
+
+    material = alert_fingerprint(
+        {
+            "asset_key": "watchdog",
+            "detail_code": None,
+            "event": current,
+            "severity": "INFO" if report.healthy else "CRITICAL",
+        }
+    )
+    if material == previous_fingerprint:
+        return Transition(None, None, None, material)
+    if report.healthy:
+        # Only a *return* to health is worth sending. A first-ever healthy observation has
+        # nothing to recover from and would announce a condition nobody was told about.
+        if previous_fingerprint is None:
+            return Transition(None, None, None, material)
+        return Transition(Event.RECOVERED.value, Severity.INFO.value, None, material)
+    return Transition(
+        _EVENT_BY_CHECK.get(current, Event.VERIFICATION_FAILED.value),
+        Severity.CRITICAL.value,
+        None,
+        material,
+    )
+
+
+_EVENT_BY_CHECK = {
+    "heartbeat": "HEARTBEAT_STALE",
+    "epoch": "EPOCH_MISSED",
+    "transparency-log": "VERIFICATION_FAILED",
+    "incident-log": "VERIFICATION_FAILED",
+    "publication": "PUBLICATION_UNRESOLVED",
+}

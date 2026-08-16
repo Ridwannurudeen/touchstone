@@ -51,37 +51,60 @@ class LockUnavailable(RuntimeError):
     """Another live process holds this lock."""
 
 
-@dataclass(slots=True)
+# Descriptors this process currently holds a lock on. The set is the authority for whether
+# a hold is live, rather than a flag on the object: a flag can be set back to True by anyone
+# holding the object, and a set entry can only be created by an acquisition and removed by
+# the release that follows it.
+_LIVE: set[int] = set()
+
+
+@dataclass(frozen=True, slots=True)
 class Held:
-    """Evidence that this process holds one specific lock, right now.
+    """Proof that this process holds one specific lock, right now.
 
-    Handed out only by :func:`exclusive_lock`, after the kernel has granted the lock, and
-    invalidated when the block exits. That is what separates it from a value a caller can
-    simply construct: a function requiring one cannot be satisfied by intent alone, and a
-    caller holding a stale one is refused rather than believed.
+    The first version of this carried a path and a boolean, and was therefore exactly as
+    forgeable as the comment it replaced: `Held(path=the_expected_lock)` satisfied every
+    check and produced a real archive with no kernel lock ever taken. Nothing about naming
+    a file proves you locked it.
 
-    It cannot defend against code that deliberately forges internals — nothing in a Python
-    process can — but it makes the ordinary mistake, calling a lock-requiring operation
-    without the lock, impossible rather than merely discouraged.
+    So the proof is the descriptor. It is registered when the kernel grants the lock and
+    unregistered when the block exits, and :meth:`verify` asks the operating system whether
+    that descriptor still refers to the very file being claimed — an inode comparison, not
+    a path comparison, so a second name for one file cannot be passed off as a different
+    lock and a stale descriptor number cannot be reused.
+
+    A determined caller can still reach into module internals; nothing in a Python process
+    prevents that. What this makes impossible is the *ordinary* mistake, which is the one
+    that actually happens: calling a lock-requiring operation without the lock.
     """
 
     path: Path
-    _active: bool = True
+    descriptor: int
 
     @property
     def active(self) -> bool:
-        return self._active
+        return self.descriptor in _LIVE
 
     def verify(self, expected: str | os.PathLike[str]) -> None:
-        """Refuse unless this is a live hold on exactly the lock named."""
-        if not self._active:
+        """Refuse unless this is a live hold, by this process, on exactly that file."""
+        target = Path(expected).resolve()
+        if not self.active:
             raise LockUnavailable(
                 f"the hold on {self.path.name} has been released; it proves nothing now"
             )
-        if self.path != Path(expected).resolve():
+        if self.path != target:
+            raise LockUnavailable(f"this holds {self.path}, not {target}")
+        try:
+            held = os.fstat(self.descriptor)
+            named = os.stat(target)
+        except OSError as error:
             raise LockUnavailable(
-                f"this holds {self.path}, not {Path(expected).resolve()}"
-            )
+                f"the hold on {target} cannot be confirmed: {error}"
+            ) from error
+        # The inode, not the name. This is what a fabricated descriptor number cannot
+        # satisfy: it would have to already be an open handle on this exact file.
+        if (held.st_ino, held.st_dev) != (named.st_ino, named.st_dev):
+            raise LockUnavailable(f"the descriptor offered does not refer to {target}")
 
 
 @contextmanager
@@ -102,13 +125,15 @@ def exclusive_lock(path: str | os.PathLike[str]) -> Iterator[Held]:
     except LockUnavailable:
         os.close(descriptor)
         raise
-    held = Held(path=location.resolve())
+    _LIVE.add(descriptor)
     try:
-        yield held
+        yield Held(path=location.resolve(), descriptor=descriptor)
     finally:
-        # Invalidated before the descriptor closes, so a reference kept past the block
+        # Unregistered before the descriptor closes, so a reference kept past the block
         # cannot be used in the window where the lock is gone but the object looks fine.
-        held._active = False
+        # Discarded rather than removed, because a failure earlier in this block must not
+        # be masked by a KeyError raised while cleaning up after it.
+        _LIVE.discard(descriptor)
         try:
             _release(descriptor)
         finally:
