@@ -14,7 +14,7 @@ from datetime import datetime, time, timezone
 import hashlib
 import re
 
-from touchstone.approval import provenance_digests
+from touchstone.approval import ledger_digest, provenance_digests
 from touchstone.controls import (
     AssetState,
     ControlRecord,
@@ -27,7 +27,7 @@ from touchstone.quantities import utc_instant
 from touchstone.signing import canonical_json_bytes
 
 
-REPORT_VERSION = "touchstone.observation-report.v3"
+REPORT_VERSION = "touchstone.observation-report.v4"
 CAPTURE_ROLES = ("current", "confirmation")
 _EVIDENCE_FIELDS = {"capture_role", "retrieved_at", "sha256", "source_id"}
 USTB_LIMITATIONS = (
@@ -302,6 +302,11 @@ def build_observation_report(
         )
 
     return {
+        # The ledger this report's controls were approved under. Without it a reader can
+        # confirm a control is exactly what a compilation accepted and still not know
+        # whether a human declined it — both declined candidates remain in their artifacts,
+        # because an artifact records what the compiler did, not what a person decided.
+        "approval_ledger_sha256": ledger_digest(),
         "asset_key": epoch.asset_key,
         "compiler_provenance_digests": list(provenance),
         "control_set_root": control_set_root(records),
