@@ -381,6 +381,7 @@ describe("deployment safeguards", function () {
     reserveDestination,
     recordAttempt,
     readAttempt,
+    journalBroadcasts,
     deploymentSpendCeiling,
     assertWithinCeiling,
   } = require("../scripts/deploy");
@@ -474,13 +475,17 @@ describe("deployment safeguards", function () {
     const records = readAttempt(destination);
     const stages = records.map((record) => record.stage);
 
-    // Every earlier stage still present, in order.
-    expect(stages[0]).to.equal("prepared");
-    expect(stages).to.include("broadcast");
-    expect(stages).to.include("deploying");
-    expect(stages).to.include("deployed");
-    expect(stages).to.include("authorizing");
-    expect(stages[stages.length - 1]).to.equal("authorized");
+    // The exact order, not membership. `include` assertions were satisfied by a reordered
+    // sequence, so they proved the stages existed and nothing about when.
+    expect(stages).to.deep.equal([
+      "prepared",
+      "broadcast",
+      "deploying",
+      "deployed",
+      "broadcast",
+      "authorizing",
+      "authorized",
+    ]);
 
     // The RPC-boundary records carry hashes the node returned.
     const broadcasts = records.filter((record) => record.stage === "broadcast");
@@ -494,6 +499,48 @@ describe("deployment safeguards", function () {
     const final = records[records.length - 1];
     expect(final.deployment_transaction).to.match(/^0x[0-9a-f]{64}$/);
     expect(final.authorization_transaction).to.match(/^0x[0-9a-f]{64}$/);
+  });
+
+  it("has the hash on disk the instant the node returns it", function () {
+    // The timing the whole mechanism exists for. The happy-path test cannot distinguish
+    // boundary journaling from a later write, because on this network nothing is polled
+    // after the send — only `eth_accounts` and `eth_sendTransaction` are called, verified
+    // directly. So the boundary itself is exercised: a provider whose `send` returns a
+    // hash, and an assertion that the journal already holds it *at the moment send
+    // returns*, before anything the caller might do next.
+    const destination = join(scratch(), "manifest.json");
+    reserveDestination(destination);
+    const hash = `0x${"ab".repeat(32)}`;
+    let onDiskWhenSendReturned = null;
+
+    const fake = {
+      async send(method) {
+        return method === "eth_sendTransaction" ? hash : "0x";
+      },
+    };
+    const journal = journalBroadcasts(fake, destination, { chain_id: 31337 });
+
+    return (async () => {
+      await fake.send("eth_sendTransaction", []);
+      // Read immediately, as the very next statement after the send resolved.
+      onDiskWhenSendReturned = readAttempt(destination);
+      journal.release();
+
+      const broadcasts = onDiskWhenSendReturned.filter(
+        (record) => record.stage === "broadcast",
+      );
+      expect(
+        broadcasts.length,
+        "the hash must already be durable when send returns",
+      ).to.equal(1);
+      expect(broadcasts[0].broadcast_transactions).to.deep.equal([hash]);
+      // And a call that is not a send writes nothing.
+      const before = readAttempt(destination).length;
+      const restored = journalBroadcasts(fake, destination, { chain_id: 31337 });
+      await fake.send("eth_blockNumber", []);
+      restored.release();
+      expect(readAttempt(destination).length).to.equal(before);
+    })();
   });
 
   it("advances the breadcrumb through every stage, keeping the second hash", function () {

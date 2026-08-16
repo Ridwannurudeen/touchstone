@@ -232,7 +232,6 @@ async function deploy({
   });
   await registry.waitForDeployment();
   const deploymentReceipt = await registry.deploymentTransaction().wait();
-  journal.settled();
   const address = await registry.getAddress();
 
   recordAttempt(destination, {
@@ -387,16 +386,18 @@ function journalBroadcasts(provider, destination, context) {
   // `eth_sendTransaction` (node-managed keys) and `eth_sendRawTransaction` (locally signed)
   // return the hash as their result, so one interception covers every path a transaction
   // can take out of this process.
-  if (!destination) return { settled() {}, release() {} };
-  const original = provider.send.bind(provider);
+  if (!destination) return { release() {} };
   const broadcast = [];
-  provider.send = async (method, params) => {
-    const result = await original(method, params);
+  const record = (result) => {
+    // Deduplicated by hash. Both layers are wrapped and the outer one delegates to the
+    // inner, so a single logical send passes through twice; recording both would report
+    // four broadcasts for two transactions.
     if (
-      /^eth_send(Raw)?Transaction$/.test(method) &&
       typeof result === "string" &&
-      /^0x[0-9a-f]{64}$/i.test(result)
+      /^0x[0-9a-f]{64}$/i.test(result) &&
+      !broadcast.includes(result.toLowerCase())
     ) {
+      result = result.toLowerCase();
       broadcast.push(result);
       recordAttempt(destination, {
         stage: "broadcast",
@@ -410,12 +411,24 @@ function journalBroadcasts(provider, destination, context) {
     }
     return result;
   };
+
+  // Both layers. `HardhatEthersProvider.broadcastTransaction()` calls the *underlying*
+  // provider's `send` directly, so wrapping only the ethers-facing one left locally signed
+  // raw transactions unjournaled — the exact path a production deployment with a configured
+  // private key would take. Wrapping one and claiming "every path" was wrong.
+  const wrapped = [];
+  for (const target of [provider, provider._hardhatProvider]) {
+    if (!target || typeof target.send !== "function") continue;
+    const original = target.send.bind(target);
+    wrapped.push([target, original]);
+    target.send = async (method, params) => {
+      const result = await original(method, params);
+      return /^eth_send(Raw)?Transaction$/.test(method) ? record(result) : result;
+    };
+  }
   return {
-    settled() {
-      /* later stages overwrite with richer context */
-    },
     release() {
-      provider.send = original;
+      for (const [target, original] of wrapped) target.send = original;
     },
   };
 }
@@ -691,6 +704,7 @@ module.exports = {
   reserveDestination,
   recordAttempt,
   readAttempt,
+  journalBroadcasts,
   deploymentSpendCeiling,
   assertWithinCeiling,
 };
