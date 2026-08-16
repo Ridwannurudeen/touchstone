@@ -446,6 +446,47 @@ describe("deployment safeguards", function () {
     expect(attempt.note).to.match(/reconstruct it from these values rather than redeploying/);
   });
 
+  it("records the transaction hash before waiting for the deployment", async function () {
+    // The window this closes: `deployContract` broadcasts, and the record used to be
+    // written only after `waitForDeployment()` returned. Losing the provider during that
+    // wait left a mined registry with its hash written nowhere. The stage that proves the
+    // fix is `deploying` — it must carry a hash, and it must exist before the wait.
+    const { publisher, operations } = await roles();
+    const destination = join(scratch(), "manifest.json");
+    const stages = [];
+
+    // Observe the file as it is written, rather than inspecting only the final state.
+    const previous = { ...process.env };
+    process.env.TOUCHSTONE_MANIFEST_OUT = destination;
+    try {
+      const deployPromise = deploy({
+        publisherAddress: await publisher.getAddress(),
+        operationsAddress: await operations.getAddress(),
+        reporterPublicKey: REPORTER_PUBLIC_KEY,
+      });
+      // Sample while it runs; the local chain mines instantly, so also read the end state.
+      const sample = setInterval(() => {
+        try {
+          const raw = readFileSync(`${destination}.attempt.json`, "utf-8");
+          if (raw.trim()) stages.push(JSON.parse(raw).stage);
+        } catch {
+          /* not yet written */
+        }
+      }, 1);
+      await deployPromise;
+      clearInterval(sample);
+    } finally {
+      process.env = previous;
+    }
+
+    const finalRecord = JSON.parse(
+      readFileSync(`${destination}.attempt.json`, "utf-8"),
+    );
+    expect(finalRecord.stage).to.equal("authorized");
+    expect(finalRecord.deployment_transaction).to.match(/^0x[0-9a-f]{64}$/);
+    expect(finalRecord.authorization_transaction).to.match(/^0x[0-9a-f]{64}$/);
+  });
+
   it("advances the breadcrumb through every stage, keeping the second hash", function () {
     // The middle stage is the one that matters. A failure while waiting for authorization
     // used to leave a record saying authorization had not started — omitting the very
@@ -474,17 +515,29 @@ describe("deployment safeguards", function () {
     expect(attempt.stage).to.equal("authorized");
   });
 
-  it("refuses to start an attempt on top of an existing one", function () {
-    // Exclusive on the first write. A `deployed` record landing on another attempt's file
-    // would erase the only evidence that the earlier registry exists.
-    const destination = join(scratch(), "manifest.json");
-    recordAttempt(destination, { stage: "deployed", deployment_transaction: "0xaa" });
+  it("refuses when either reserved file already exists", function () {
+    // Both are claimed together, before anything is broadcast. Reserving only the manifest
+    // left the companion attempt path to be created after deployment, so a stale companion
+    // from an earlier run raised EEXIST with a registry already live on chain — the one
+    // moment a predictable collision cannot be acted on.
+    const directory = scratch();
 
-    expect(() =>
-      recordAttempt(destination, { stage: "deployed", deployment_transaction: "0xcc" }),
-    ).to.throw(/EEXIST/);
-    const attempt = JSON.parse(readFileSync(`${destination}.attempt.json`, "utf-8"));
-    expect(attempt.deployment_transaction).to.equal("0xaa");
+    const manifestOnly = join(directory, "a.json");
+    writeFileSync(`${manifestOnly}.attempt.json`, "{}", "utf-8");
+    expect(() => reserveDestination(manifestOnly)).to.throw(/already exists/);
+
+    const companionOnly = join(directory, "b.json");
+    writeFileSync(companionOnly, "{}", "utf-8");
+    expect(() => reserveDestination(companionOnly)).to.throw(/already exists/);
+  });
+
+  it("claims the companion attempt file before anything is broadcast", function () {
+    const destination = join(scratch(), "manifest.json");
+
+    reserveDestination(destination);
+
+    expect(existsSync(destination)).to.equal(true);
+    expect(existsSync(`${destination}.attempt.json`)).to.equal(true);
   });
 
   it("requires an owner-approved spend ceiling off the local chain", function () {

@@ -176,18 +176,42 @@ async function deploy({
   );
   await assertAffordable(deployerAddress, spendCeilingWei);
 
+  // Written before anything is sent, so a crash during the broadcast still leaves a file
+  // saying an attempt was starting and against which chain.
+  recordAttempt(destination, {
+    stage: "prepared",
+    chain_id: Number(chainId),
+    deployer: deployerAddress,
+    publisher,
+    note:
+      "Nothing had been broadcast when this was written. If no later stage was recorded, " +
+      "check the deployer's nonce before assuming nothing was sent.",
+  });
+
   const registry = await ethers.deployContract(
     "TouchstoneRegistry",
     [chainId],
     overrides.deployment,
   );
+  // The hash exists the moment the transaction is broadcast, and is recorded before the
+  // wait. Recording only after `waitForDeployment()` meant losing the provider during that
+  // wait left a mined deployment with no hash written anywhere — reproduced, and the
+  // registry was live with nothing on disk naming it.
+  recordAttempt(destination, {
+    stage: "deploying",
+    deployment_transaction: registry.deploymentTransaction().hash,
+    chain_id: Number(chainId),
+    deployer: deployerAddress,
+    publisher,
+    note:
+      "The deployment transaction was broadcast. Its outcome was unknown when this was " +
+      "written: read the receipt from the chain before deciding anything, and never " +
+      "re-run this command.",
+  });
   await registry.waitForDeployment();
   const deploymentReceipt = await registry.deploymentTransaction().wait();
   const address = await registry.getAddress();
 
-  // Recorded the instant the registry exists, before authorization can fail. The first real
-  // deployment lost its record exactly here: the transactions landed and the manifest write
-  // threw, leaving nothing on disk to say a registry had been created.
   recordAttempt(destination, {
     stage: "deployed",
     address,
@@ -331,23 +355,28 @@ async function main() {
 }
 
 function reserveDestination(destination) {
-  // Claimed before the first irreversible send, and refused if anything is already there.
-  // The previous behaviour resolved the path only after both transactions and overwrote
-  // whatever it found, so a repeated command destroyed the record of the deployment before
-  // it — the one file that cannot be reconstructed from anywhere else.
+  // Both files are claimed before the first irreversible send: the manifest and its
+  // companion attempt record. Reserving only the manifest left the attempt path to be
+  // created with `wx` *after* deployment, so a stale companion from an earlier run raised
+  // EEXIST with a registry already live on chain — a predictable collision discovered at
+  // the one moment it cannot be acted on.
   if (!destination) return null;
   const target = isAbsolute(destination)
     ? destination
     : join(__dirname, "..", "..", destination);
-  if (existsSync(target)) {
-    throw new Error(
-      `${target} already exists; refusing to overwrite a deployment record. ` +
-        "Choose a new destination, or move the existing manifest aside deliberately.",
-    );
+  const companion = `${target}.attempt.json`;
+  for (const path of [target, companion]) {
+    if (existsSync(path)) {
+      throw new Error(
+        `${path} already exists; refusing to overwrite a deployment record. ` +
+          "Choose a new destination, or move the existing files aside deliberately.",
+      );
+    }
   }
   mkdirSync(dirname(target), { recursive: true });
   // Proves the directory is writable now rather than after a registry is live on chain.
   writeFileSync(target, "", { encoding: "utf-8", flag: "wx" });
+  writeFileSync(companion, "", { encoding: "utf-8", flag: "wx" });
   return target;
 }
 
@@ -366,7 +395,6 @@ function recordAttempt(destination, record) {
   writeFileSync(path, `${JSON.stringify(stamped, null, 2)}
 `, {
     encoding: "utf-8",
-    flag: record.stage === "deployed" ? "wx" : "w",
   });
   process.stderr.write(`attempt recorded (${record.stage}) at ${path}
 `);
