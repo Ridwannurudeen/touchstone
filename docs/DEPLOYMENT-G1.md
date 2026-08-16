@@ -296,16 +296,27 @@ exists whether or not anyone wrote it down — that is the lesson of 2026-08-15.
    | `deploying` | Deployment hash; no address or block yet | Read the receipt to learn whether it mined and at what address |
    | `deployed` | Address, deployment hash, block. **No authorization hash** | The registry exists and is unauthorized. Do not assume authorization was attempted |
    | `authorizing` | Both hashes; authorization outcome unknown | Read the authorization receipt |
-   | `authorized` | Both hashes; both succeeded | Only the manifest write can have failed. Reconstruct it from these values |
-3. Read the outcome off the chain rather than guessing it. The breadcrumb carries both
-   transaction hashes:
+   | `authorized` | Both hashes; deployment and authorization succeeded; post-deployment verification or manifest persistence failed | Freshly verify the runtime code and digest, chain id, owner, authorization and publisher lineage on chain. Reconstruct only if every value matches |
+3. Read the outcome off the chain rather than guessing it. Run a receipt command only for
+   each hash the last complete record actually contains. A `broadcast` record carries an
+   array instead of the named fields, while an empty or `prepared` journal carries none:
 
    ```
+   # If deployment_transaction is present:
    cast receipt <deployment_transaction> --rpc-url https://testrpc.xlayer.tech/terigon
+   # If authorization_transaction is present:
    cast receipt <authorization_transaction> --rpc-url https://testrpc.xlayer.tech/terigon
+   # For a broadcast record, run once for each hash in broadcast_transactions:
+   cast receipt <broadcast_transaction> --rpc-url https://testrpc.xlayer.tech/terigon
+   # Run state checks only when the record or deployment receipt supplies the address:
    cast call <address> "owner()(address)" --rpc-url https://testrpc.xlayer.tech/terigon
    cast call <address> "isPublisherAuthorized(address)(bool)"      0x86A100BDdF8754c95fec97BeC96dBFd64Be44710      --rpc-url https://testrpc.xlayer.tech/terigon
+   cast call <address> "publisherIdentity(address)(address)"      0x86A100BDdF8754c95fec97BeC96dBFd64Be44710      --rpc-url https://testrpc.xlayer.tech/terigon
    ```
+
+   For `authorized`, also fetch `eth_getCode`, hash the returned runtime bytecode and compare
+   it with the approved as-deployed digest before reconstructing a manifest. The journal
+   proves the two transactions succeeded; it does not prove that later verification passed.
 
 4. **Do not try to write a manifest unless the attempt got as far as `authorized`.** A
    manifest cannot describe an incomplete deployment, and attempting one produces a file

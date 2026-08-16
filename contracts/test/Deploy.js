@@ -1,4 +1,7 @@
 const { createHash } = require("node:crypto");
+const {
+  HardhatEthersProvider,
+} = require("@nomicfoundation/hardhat-ethers/internal/hardhat-ethers-provider");
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
@@ -503,11 +506,10 @@ describe("deployment safeguards", function () {
 
   it("has the hash on disk the instant the node returns it", function () {
     // The timing the whole mechanism exists for. The happy-path test cannot distinguish
-    // boundary journaling from a later write, because on this network nothing is polled
-    // after the send — only `eth_accounts` and `eth_sendTransaction` are called, verified
-    // directly. So the boundary itself is exercised: a provider whose `send` returns a
-    // hash, and an assertion that the journal already holds it *at the moment send
-    // returns*, before anything the caller might do next.
+    // boundary journaling from a later write. Hardhat does poll through its underlying
+    // provider after the outer `eth_sendTransaction`; watching only the outer provider hid
+    // those calls. This test exercises the outer boundary directly and asserts that the
+    // journal already holds the hash before anything the caller might do next.
     const destination = join(scratch(), "manifest.json");
     reserveDestination(destination);
     const hash = `0x${"ab".repeat(32)}`;
@@ -541,6 +543,47 @@ describe("deployment safeguards", function () {
       restored.release();
       expect(readAttempt(destination).length).to.equal(before);
     })();
+  });
+
+  it("keeps a raw broadcast hash when the underlying provider fails after send", async function () {
+    // Locally signed transactions bypass the outer `send`: `broadcastTransaction()` calls
+    // `_hardhatProvider.send` directly, then performs provider bookkeeping. The old fake had
+    // no underlying layer, so deleting that layer from `journalBroadcasts` left it green.
+    const destination = join(scratch(), "manifest.json");
+    reserveDestination(destination);
+    const hash = `0x${"cd".repeat(32)}`;
+    const calls = [];
+    const underlying = {
+      async send(method) {
+        calls.push(method);
+        if (method === "eth_sendRawTransaction") return hash;
+        if (method === "eth_blockNumber") {
+          throw new Error(
+            "provider failed after returning the transaction hash",
+          );
+        }
+        throw new Error(`unexpected method ${method}`);
+      },
+    };
+    const provider = new HardhatEthersProvider(underlying, "hardhat");
+    const journal = journalBroadcasts(provider, destination, {
+      chain_id: 31337,
+    });
+
+    try {
+      await expect(provider.broadcastTransaction("0x00")).to.be.rejectedWith(
+        "provider failed after returning the transaction hash",
+      );
+    } finally {
+      journal.release();
+    }
+
+    expect(calls).to.deep.equal(["eth_sendRawTransaction", "eth_blockNumber"]);
+    const broadcasts = readAttempt(destination).filter(
+      (record) => record.stage === "broadcast",
+    );
+    expect(broadcasts).to.have.lengthOf(1);
+    expect(broadcasts[0].broadcast_transactions).to.deep.equal([hash]);
   });
 
   it("advances the breadcrumb through every stage, keeping the second hash", function () {
