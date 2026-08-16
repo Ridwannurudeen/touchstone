@@ -19,5 +19,5 @@
       "state": "active"
     }
   ],
-  "notes": "Reconstructed from the chain on 2026-08-15 after the deploy script's manifest write failed on a relative path. Every field is read from the deployment itself: creation tx bdd1d330764eb6f38d137efd627083230e81447ef7b4b5436b71bddafa4196dd in block 38369203, runtime digest taken from eth_getCode, publisher lineage from publisherIdentity(). No second deployment was made."
+  "notes": "Reconstructed on 2026-08-15 after the deploy script's manifest write failed on a relative path, leaving the registry live with no record of it. No second deployment was made. READ FROM THE CHAIN: registry_address (derived from deployer and nonce 0, confirmed by eth_getCode), registry_runtime_bytecode_sha256, deployment_block, chain_id, publisher_identity_address (publisherIdentity()), and the creation transaction bdd1d330764eb6f38d137efd627083230e81447ef7b4b5436b71bddafa4196dd. RECONSTRUCTED CONFIGURATION, not chain facts: rpc_url, confirmations, max_fee_wei, operations_address and reporting_keys \u2014 these were the deploy inputs and the chain does not attest them. Saying every field was read from the deployment was too broad."
 }

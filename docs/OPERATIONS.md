@@ -22,7 +22,20 @@ honest state, and a runbook that invented them would be worse than one that admi
 | Restore | `touchstone/backup.py` | `scripts/restore_workspace.py` | rehearsal only |
 
 **Host:** `not_configured`. **Supervisor units:** `not_configured` — packaging is PLAN-T13.
-**Deployment:** `not_deployed` on both X Layer testnet (chain 1952) and mainnet (chain 196).
+
+**Deployment:**
+
+| Network | State |
+|---|---|
+| X Layer **testnet** (chain 1952) | **LIVE** — registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, block 38369203 |
+| X Layer **mainnet** (chain 196) | `not_deployed` — owner-gated |
+
+Testnet publisher `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710`, authorized with its lineage
+recorded. The manifest is `deployments/xlayer-testnet.json`; its note distinguishes the
+fields read from the chain from the ones that are reconstructed configuration.
+
+**Nothing publishes to this registry yet.** `scripts/run_service.py` still refuses every mode
+except `--resolve-only`, so the deployment is reachable and idle. That is the next item.
 
 ---
 
@@ -109,7 +122,14 @@ If any operand is missing the answer is **`UNKNOWN`**, and unknown **fails the g
 Treating "we could not tell" as "we are fine" is the same error in a different costume.
 
 **Top-up is manual.** There is no automatic funding, no treasury logic, no price conversion.
-Publisher address: `not_deployed`.
+
+Testnet publisher: `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710`, funded with 0.05 OKB on
+2026-08-15 from the deployer. Testnet OKB comes only from the faucet at
+`web3.okx.com/xlayer/faucet` (0.2 OKB per day) and cannot be bought or bridged. A registry
+deploy measured 1,284,548 gas at 20,000,001 wei — about 0.0000257 OKB — so one faucet claim
+covers the operating window many times over.
+
+Mainnet publisher: `not_deployed`.
 
 ---
 
@@ -175,12 +195,14 @@ Destination: `not_configured`.
 
 ---
 
-## 9. Owner-gated, and unexecuted
+## 9. Owner gates
 
-None of the following has been done, and none may be done without explicit approval:
+Everything here needs explicit approval. One has been given and executed; the rest have not.
 
-- [ ] **Testnet deploy** — approved 2026-08-15; awaiting a funded deployer key
-- [ ] **Mainnet deploy + canary** — after a proven testnet loop only
+- [x] **Testnet deploy** — approved and executed 2026-08-15. Registry
+      `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, block 38369203
+- [ ] **Mainnet deploy + canary** — after a proven testnet loop only, and nothing has
+      published to testnet yet
 - [ ] **Submission** — owner-handled
 - [ ] **Domains and handles** — deliberately last; see `docs/BRAND-CLEARANCE.md`
 - [ ] **Public git remote**
@@ -200,3 +222,8 @@ host runs a single daemon, and the honest availability claim is bounded by that.
 Detection and recovery timings are proven in a local subprocess harness that kills a real
 daemon. They have **not** been proven on production hardware, because there is no production
 host yet.
+
+A live testnet registry is not a running system. Nothing has published to it, no epoch has
+been produced unattended, and the schedule in section 2 describes what this service is built
+to do rather than what it has done. Until an epoch is produced and published without a
+person present, every reliability figure here is a property of the tests.
