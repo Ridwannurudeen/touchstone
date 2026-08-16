@@ -296,6 +296,7 @@ def _local_manifest(
             "deployer_address": deployer,
             "operations_address": operations,
             "confirmations": 1,
+            "deployment_state": "active",
             "deployment_block": deployment_block,
             "reporting_keys": [
                 {

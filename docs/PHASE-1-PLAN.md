@@ -271,7 +271,12 @@ separate; a deterministic "why this state?" drawn only from accepted graph data,
 open-ended Q&A; explorer links absent rather than fabricated when nothing is deployed;
 desktop and mobile browser tests.
 
-**PLAN-T10 — USDY adapter. BLOCKED as written (2026-08-15).** Retrieval is not bounded: the
+**PLAN-T10 — USDY adapter. CUT (2026-08-16); the item was reused for the USTB adapter,
+which is done.** Everything below is the record of why USDY could not be built, retained
+because a cut asset should say what blocked it. None of the scope described here is
+outstanding work.
+
+**BLOCKED as written (2026-08-15).** Retrieval is not bounded: the
 archive is served only as a single 260,431,605-byte zip, the `subpath` parameter is ignored,
 the folder page carries no embedded listing, and the unauthenticated listing API returns 404.
 This item cannot begin until a bounded mechanism is found and verified, or until the second
@@ -284,7 +289,13 @@ timeout in an isolated worker; select attestations by report date, never by uplo
 metadata; evaluate collateralisation; implement the documented publication lag; state that
 the attestation covers Ondo USDY LLC only.
 
-**PLAN-T11 — FOBXX adapter. NARROWED (2026-08-15).** The daily issuer feed returns Cloudflare
+**PLAN-T11 — FOBXX adapter. DROPPED FROM PHASE 1 (2026-08-16).** FOBXX is retained as a
+documented monthly contrast asset — its N-MFP3 fixture is committed and its manifest records
+the daily feed's Cloudflare 403 — but no adapter ships. Everything below is the narrowed
+scope as it stood before the cut, kept as the record of what was considered. None of it is
+outstanding work.
+
+**NARROWED (2026-08-15).** The daily issuer feed returns Cloudflare
 403 from the development environment, so this item covers the **monthly SEC path only**:
 filing discovery, N-MFP3 freshness, the NAV peg and liquidity floors as read from the filing,
 with liquidity taken from its dated rows rather than by position. Daily-liveness and

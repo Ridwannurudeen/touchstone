@@ -78,6 +78,7 @@ def _manifest(**overrides: object) -> DeploymentManifest:
         "deployer_address": address(DEPLOYER_SECRET),
         "operations_address": address(OPERATIONS_SECRET),
         "confirmations": 1,
+        "deployment_state": "active",
         "deployment_block": 3,
         "reporting_keys": [
             {

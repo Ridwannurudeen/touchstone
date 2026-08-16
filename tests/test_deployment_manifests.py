@@ -103,3 +103,52 @@ def test_a_manifest_state_outside_the_closed_set_is_refused(tmp_path: Path) -> N
 
     with pytest.raises(DeploymentError, match="deployment_state must be one of"):
         DeploymentManifest.load(path)
+
+
+def _without_state() -> dict:
+    manifest = json.loads(
+        (DEPLOYMENTS / "xlayer-testnet.json").read_text(encoding="utf-8")
+    )
+    del manifest["deployment_state"]
+    return manifest
+
+
+def test_the_schema_rejects_a_manifest_with_no_state() -> None:
+    """A negative case. The other schema tests only validate correct manifests.
+
+    Validating known-good files proves the files are good, not that the schema would refuse
+    a bad one — removing `deployment_state` from `required` would have survived every test
+    written before this.
+    """
+    errors = list(Draft202012Validator(SCHEMA).iter_errors(_without_state()))
+
+    assert any("deployment_state" in error.message for error in errors)
+
+
+def test_the_schema_rejects_a_state_outside_the_closed_set() -> None:
+    """Relaxing or deleting the enum would otherwise survive."""
+    manifest = json.loads(
+        (DEPLOYMENTS / "xlayer-testnet.json").read_text(encoding="utf-8")
+    )
+    manifest["deployment_state"] = "retired"
+
+    errors = list(Draft202012Validator(SCHEMA).iter_errors(manifest))
+
+    assert any("retired" in error.message for error in errors)
+
+
+def test_the_loader_refuses_a_manifest_with_no_state(tmp_path: Path) -> None:
+    """Schema and loader must agree.
+
+    They did not: the schema listed the field as required while the loader defaulted an
+    absent one to "active" — so a manifest the schema rejected still loaded, and loaded as
+    publishable. The one manifest that must never read as active is an obsolete one, which
+    is exactly where a field goes missing.
+    """
+    from touchstone.deployment import DeploymentError
+
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(_without_state()), encoding="utf-8")
+
+    with pytest.raises(DeploymentError, match="deployment_state"):
+        DeploymentManifest.load(path)

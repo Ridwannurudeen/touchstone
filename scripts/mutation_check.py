@@ -653,6 +653,25 @@ MUTATIONS = (
         ),
     ),
     Mutation(
+        name="the-schema-stops-requiring-a-deployment-state",
+        path="deployments/manifest.schema.json",
+        old='    "deployment_state"\n  ]',
+        new='    "reporting_keys"\n  ]',
+        tests=(
+            "tests/test_deployment_manifests.py::test_the_schema_rejects_a_manifest_with_no_state",
+        ),
+    ),
+    Mutation(
+        name="a-superseded-deployment-is-publishable",
+        path="touchstone/publish.py",
+        old="        if not manifest.is_active:",
+        new="        if False:",
+        tests=(
+            "tests/test_publish_epoch_cli.py::test_the_backend_refuses_a_superseded_deployment",
+            "tests/test_publish_epoch_cli.py::test_the_direct_publisher_refuses_before_touching_the_network",
+        ),
+    ),
+    Mutation(
         name="fixture-mode-reaches-a-public-network",
         path="scripts/run_service.py",
         old="    if arguments.fixtures and not manifest.is_local:",

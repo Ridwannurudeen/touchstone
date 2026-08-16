@@ -387,6 +387,16 @@ class SignedRegistryBackend:
         *,
         request_timeout: float = 30.0,
     ) -> None:
+        if not manifest.is_active:
+            # Here rather than in each entry point. The unattended service checked this and
+            # `scripts/publish_epoch.py` did not, so the documented one-shot operational
+            # command could still publish to a superseded registry with a perfectly valid
+            # key. Every publication passes through this constructor; nothing else is a
+            # boundary.
+            raise PreflightFailed(
+                f"{manifest.network} deployment is marked "
+                f"{manifest.deployment_state!r}; nothing may be published to it"
+            )
         if publisher_key.address != manifest.publisher_address:
             raise PreflightFailed(
                 f"publisher key {publisher_key.address} is not the manifest's "

@@ -190,8 +190,10 @@ what a revocation means for reports already onchain is a correction question —
    transaction**.
 3. **Testnet, then mainnet.** Both are owner decisions and neither has been taken. The
    deploy script refuses to send until `TOUCHSTONE_DEPLOY_CONFIRM_CHAIN_ID` names the
-   exact chain. As of this document, **no transaction has been sent on any public
-   network** — PLAN gate G1.
+   exact chain. *(Amended 2026-08-16: this said no transaction had been sent on any public
+   network. That is no longer true — the testnet deploy was approved and executed on
+   2026-08-15, sending two transactions. That registry is now superseded, and no
+   **publication** transaction has ever been sent on any public network.)* — PLAN gate G1.
 
 ## Residual risks
 

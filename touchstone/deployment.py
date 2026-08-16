@@ -109,6 +109,7 @@ _REQUIRED_MANIFEST_FIELDS = frozenset(
         "deployer_address",
         "operations_address",
         "confirmations",
+        "deployment_state",
         "reporting_keys",
     }
 )
@@ -302,9 +303,11 @@ class DeploymentManifest:
         if type(deployment_block) is not int or deployment_block < 0:
             raise DeploymentError("deployment_block must be a non-negative integer")
 
-        # Defaults to "active" so every existing manifest keeps working, and is validated
-        # against a closed set so a typo cannot silently read as permission.
-        deployment_state = value.get("deployment_state", "active")
+        # Required, not defaulted. A default of "active" disagreed with the schema, which
+        # already listed the field as required — so a manifest the schema rejected still
+        # loaded, and loaded as publishable. The one manifest that must never read as active
+        # is an obsolete one, which is exactly where a field goes missing.
+        deployment_state = value["deployment_state"]
         if deployment_state not in DEPLOYMENT_STATES:
             raise DeploymentError(
                 f"deployment_state must be one of {sorted(DEPLOYMENT_STATES)}"

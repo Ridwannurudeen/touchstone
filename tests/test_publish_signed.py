@@ -171,6 +171,7 @@ def manifest_for(node: StubNode, **overrides: object) -> DeploymentManifest:
             bytes.fromhex(OPERATIONS_SECRET)
         ).address,
         "confirmations": 1,
+        "deployment_state": "active",
         "deployment_block": 3,
         "reporting_keys": [
             {
@@ -587,6 +588,7 @@ def _manifest_shape() -> dict:
             bytes.fromhex(OPERATIONS_SECRET)
         ).address,
         "confirmations": 1,
+        "deployment_state": "active",
         "deployment_block": 3,
         "reporting_keys": [
             {

@@ -127,7 +127,12 @@ also records what retrieval and parsing do and do not defend against).
 
 ---
 
-## OUSG / USDY (Ondo) — **BOTH PASS** (verified 2026-08-13; USDY selected for the sprint)
+## OUSG / USDY (Ondo) — **BOTH PASS** (verified 2026-08-13)
+
+> **Superseded 2026-08-16.** This section recorded USDY as selected for the sprint. Both
+> assets are now cut: USDY because its retrieval is unbounded (a single 260 MB archive), and
+> OUSG because the second-adapter metric was abandoned rather than chased. Phase 1 ships one
+> USTB vertical. The Phase-0 findings below stand as the record of what was probed.
 
 **USDY — PASS, selected as second daily asset.** 759 Ankura Trust daily attestation
 PDFs in a public Dropbox folder (links embedded in the server-rendered

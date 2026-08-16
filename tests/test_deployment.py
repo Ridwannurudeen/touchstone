@@ -41,6 +41,7 @@ def manifest(**overrides: object) -> dict[str, object]:
         "deployer_address": DEPLOYER,
         "operations_address": OPERATIONS,
         "confirmations": 1,
+        "deployment_state": "active",
         "deployment_block": 7,
         "reporting_keys": [{"kid": KID, "public_key": PUBLIC_KEY, "state": "active"}],
     }

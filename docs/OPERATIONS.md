@@ -34,8 +34,11 @@ Testnet publisher `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710`, authorized with 
 recorded. The manifest is `deployments/xlayer-testnet.json`; its note distinguishes the
 fields read from the chain from the ones that are reconstructed configuration.
 
-**Nothing publishes to this registry yet.** `scripts/run_service.py` still refuses every mode
-except `--resolve-only`, so the deployment is reachable and idle. That is the next item.
+**Nothing has ever published to this registry, and nothing may.** The service no longer
+refuses every mode — `scripts/run_service.py` runs the unattended USTB loop — but this
+deployment is marked `superseded` and is refused before any key is read, because it predates
+the `epochKey` change that makes one report per epoch enforceable on chain. The next item is
+the replacement deployment, which is owner-gated.
 
 ---
 

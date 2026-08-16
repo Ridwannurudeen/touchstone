@@ -222,7 +222,9 @@ integration page. No wallet required to browse. Second source only after the her
 is polished.
 
 ### Aug 19 — Coverage and operations
-Second daily asset; contrast asset if it passed Phase 0; public heartbeat; source
+*(Amended 2026-08-16: the second daily asset and the contrast asset are cut. See the
+completion-metrics table — the two-adapter target is recorded as missed, not retargeted.)*
+Public heartbeat; source
 health; last successful epoch; next scheduled epoch; gas runway; incident history;
 watchdog; alerting; backup/restore; production-like deployment rehearsal. **Contract
 interface frozen at end of day.**
@@ -232,7 +234,10 @@ Full contract suite; pipeline tests; golden compiler evaluations; adversarial-do
 tests; browser smoke tests; restart/recovery; duplicate-publication tests; source-outage
 simulations; key-rotation rehearsal; restore rehearsal; full hero-demo rehearsal.
 Prepare: verified addresses, release commit, deployment manifest, rollback procedure,
-public limitations, submission form draft, X posts (drafts). Stage mainnet deployment
+public limitations, submission form draft, X posts (drafts). *(Amended 2026-08-16: the
+line that stood here staged a mainnet deployment for approval on Aug 20 — before the
+Aug 21 testnet proof it was supposed to depend on. Mainnet is unscheduled and conditional
+on a proven testnet loop.)* Stage the **testnet** replacement-registry deployment package
 and request owner approval.
 
 ### Aug 21 — Testnet release candidate (internal deadline 18:00 UTC)
@@ -265,7 +270,7 @@ recorded as missed.
 |---|---|---|
 | Accepted controls | ≥6 | **8 — met.** Each is a candidate a model proposed from issuer bytes, bound by digest to the compilation that accepted it |
 | Assets documented | 3 | **3 — met.** USTB, USDY and FOBXX source manifests with golden fixtures |
-| Fully autonomous live adapters | ≥2 | **1 — MISSED.** USTB is built, wired and tested end to end, but has never run against live sources. USDY is blocked on unbounded retrieval; FOBXX is retained as a documented monthly contrast asset, not an adapter. **Phase 1 deliberately ships one flawless vertical rather than two hurried ones** |
+| Fully autonomous live adapters | ≥2 | **0 proven live — MISSED.** One adapter (USTB) is built, wired and tested end to end, but has never run against live sources, so the count of *live* adapters is zero. Counting it as one while saying it has never run live would be self-contradictory. USDY is blocked on unbounded retrieval; FOBXX is retained as a documented monthly contrast asset, not an adapter. **Phase 1 deliberately ships one flawless vertical rather than two hurried ones** |
 | Live consumer contract gating on state | 1 | **0 — MISSED.** `AssetGate` is written and tested, but deployed only ephemerally inside the local end-to-end run. It has never existed on a persistent chain |
 | Production canary epoch | 1 | **0 — MISSED.** Nothing has been published to any registry |
 | Claims span-cited and hash-bound | 100% | Met for every accepted control |
@@ -469,9 +474,10 @@ technical progress. Deliberate, not promotional.
    signed report → registry transaction → AssetGate decision → explorer link.
 4. **Living dossier** (Aug 18–20): the public dossier and the verified / not-verified
    distinction.
-5. **Submission and mainnet launch** (Aug 21): hero demo, mainnet addresses, open
-   verification endpoint, limitations, the @XLayerOfficial mention. Separate approvals
-   for post and submission.
+5. **Testnet release candidate** (Aug 21): hero demo, **testnet** addresses, open
+   verification endpoint, limitations, the @XLayerOfficial mention. Separate approvals for
+   post and submission. *(Amended 2026-08-16: mainnet is unscheduled and conditional on a
+   proven testnet loop, so it cannot be a launch item on a fixed date.)*
 6. **Reliability proof** (Aug 28): scheduled vs completed epochs, evidence changes,
    incidents and recovery, uptime. Observation counts are never presented as adoption.
 7. **Snapshot report** (Sept 1): full judging-window history, signed archive, roadmap.
