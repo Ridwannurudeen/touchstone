@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
+from touchstone.approval import APPROVED_KEY, approved_control, load_approval_ledger
 from touchstone.controls import (
     AssetState,
     ComparisonOperator,
@@ -38,6 +39,83 @@ USTB_ASSET_KEY = "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
 # old, but two captures cannot establish that no older row is ever revised. The count is
 # weekday-only — exchange and bank holidays are not modelled.
 MINIMUM_ROW_AGE_BUSINESS_DAYS = 2
+
+# The NAV row fields the adapter can actually read. `_observed_value` maps exactly these;
+# a control naming anything else observes nothing and would be UNEVALUABLE for ever.
+NAV_FIELDS = frozenset(
+    {
+        "fund_id",
+        "net_asset_value",
+        "subscription_nav_per_share",
+        "assets_under_management",
+        "outstanding_shares",
+        "net_income_expenses",
+    }
+)
+
+# Which scalars a presence control may observe, per source.
+#
+# Confirmation across two captures is a *source* policy, not a property of `exists`. It
+# exists for nav-daily because the issuer publishes a provisional row and rewrites it; the
+# yield and holdings endpoints publish scalars that the strict normalizer has already
+# established as present and typed in the capture being evaluated, and there is nothing
+# there for a second capture to confirm. Requiring one anyway made every presence control
+# on those two sources permanently UNEVALUABLE — the compiler proposed five of them against
+# real evidence and not one could ever be decided.
+#
+# `holdings` is deliberately absent. It is a collection, and whether "exists" means
+# "present" or "non-empty" is undefined; inventing that meaning here would be a semantics
+# decision smuggled in as a lookup table.
+PRESENCE_FIELDS: Mapping[str, frozenset[str]] = {
+    USTB_YIELD_SOURCE_ID: frozenset(
+        {"as_of_date", "thirty_day", "seven_day", "one_day"}
+    ),
+    USTB_HOLDINGS_SOURCE_ID: frozenset({"as_of_date"}),
+}
+
+
+def supports(
+    source_id: str, operator: ComparisonOperator, expected_value: FrozenJSONValue
+) -> bool:
+    """Whether the deterministic evaluator can reach a verdict on this combination.
+
+    Shared by the compiler's policy gate, because a control the evaluator can never decide
+    must not be accepted in the first place however well it cites its evidence. Two copies
+    of this rule would be two answers to what this system can actually prove.
+
+    It judges the whole `expected_value`, not just the source and operator. An earlier
+    version checked only those two and so waved through a NAV control naming a field the
+    adapter cannot read, a `within_tolerance` with no tolerance, and a `fresh_within` whose
+    window was a string — every one of which the compiler would then accept and the
+    evaluator would then answer UNEVALUABLE for ever.
+    """
+    if operator is ComparisonOperator.FRESH_WITHIN:
+        if not isinstance(expected_value, Mapping):
+            return False
+        windows = [
+            expected_value[unit]
+            for unit in ("business_days", "calendar_days")
+            if unit in expected_value
+        ]
+        return len(windows) == 1 and type(windows[0]) is int and windows[0] >= 0
+
+    field = _expected_field(expected_value)
+    if field is None:
+        return False
+    if source_id != USTB_NAV_SOURCE_ID:
+        return operator is ComparisonOperator.EXISTS and field in PRESENCE_FIELDS.get(
+            source_id, frozenset()
+        )
+    if field not in NAV_FIELDS:
+        return False
+    if operator is ComparisonOperator.EXISTS:
+        return True
+    if _expected_decimal(expected_value, "value") is None:
+        return False
+    if operator is ComparisonOperator.WITHIN_TOLERANCE:
+        tolerance = _expected_decimal(expected_value, "tolerance")
+        return tolerance is not None and tolerance >= 0
+    return operator in {ComparisonOperator.EQ, ComparisonOperator.NON_DECREASING}
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,89 +168,22 @@ def business_day_deadline(observed_on: date, grace_business_days: int) -> date:
 
 
 def default_ustb_controls() -> tuple[ControlRecord, ...]:
-    """Return the approved fixture-backed USTB control set for this vertical."""
-    common: dict[str, object] = {
-        "asset_key": USTB_ASSET_KEY,
-        "control_version": 1,
-        "predicate_type": "observation",
-        "source_authority_class": "issuer-api",
-        "effective_from": "2026-08-13",
-        "effective_until": None,
-        "compiler_confidence": 1.0,
-        "approval_state": "approved",
-    }
-    mappings = [
-        {
-            **common,
-            "control_id": "nav-row-freshness",
-            "subject": "USTB daily NAV row",
-            "source_id": USTB_NAV_SOURCE_ID,
-            "evidence_span": '"net_asset_value_date":"08/13/2026"',
-            "cadence": "business-daily",
-            "grace_period": 0,
-            "observation_adapter": "ustb-nav-daily",
-            "comparison_operator": "fresh_within",
-            "expected_value": {"business_days": 0},
-        },
-        {
-            **common,
-            "control_id": "yield-freshness",
-            "subject": "USTB published yield date",
-            "source_id": USTB_YIELD_SOURCE_ID,
-            "evidence_span": '"as_of_date":"2026-08-13"',
-            "cadence": "business-daily",
-            "grace_period": 2,
-            "observation_adapter": "ustb-yield",
-            "comparison_operator": "fresh_within",
-            "expected_value": {"business_days": 2},
-        },
-        {
-            **common,
-            "control_id": "holdings-freshness",
-            "subject": "USTB published holdings date",
-            "source_id": USTB_HOLDINGS_SOURCE_ID,
-            "evidence_span": '"as_of_date":"07/24/2026"',
-            "cadence": "periodic",
-            "grace_period": 40,
-            "observation_adapter": "ustb-holdings",
-            "comparison_operator": "fresh_within",
-            "expected_value": {"calendar_days": 40, "provisional": True},
-        },
-        {
-            **common,
-            "control_id": "aum-published",
-            "control_version": 3,
-            "subject": "USTB assets under management",
-            "source_id": USTB_NAV_SOURCE_ID,
-            "evidence_span": '"assets_under_management":"958406746.9500"',
-            "cadence": "business-daily",
-            "grace_period": 0,
-            "observation_adapter": "ustb-nav-daily",
-            "comparison_operator": "exists",
-            "expected_value": {
-                "field": "assets_under_management",
-                "minimum_row_age_business_days": MINIMUM_ROW_AGE_BUSINESS_DAYS,
-            },
-        },
-        {
-            **common,
-            "control_id": "value-vs-expected",
-            "control_version": 3,
-            "subject": "USTB issuer fund identifier",
-            "source_id": USTB_NAV_SOURCE_ID,
-            "evidence_span": '"fund_id":1',
-            "cadence": "business-daily",
-            "grace_period": 0,
-            "observation_adapter": "ustb-nav-daily",
-            "comparison_operator": "eq",
-            "expected_value": {
-                "field": "fund_id",
-                "value": "1",
-                "minimum_row_age_business_days": MINIMUM_ROW_AGE_BUSINESS_DAYS,
-            },
-        },
-    ]
-    return tuple(ControlRecord.from_mapping(mapping) for mapping in mappings)
+    """The approved USTB control set, resolved from the compilations that produced it.
+
+    These were not written here. Each one is a candidate a model proposed from the issuer's
+    own bytes, which passed the compiler's deterministic gates, and which a human then
+    approved — an approval that may change exactly two things, the ``approval_state`` and
+    the digest of the artifact the candidate came out of.
+
+    The five controls that stood here before were hand-written and marked approved
+    directly. They cited real spans and evaluated correctly, but nothing had compiled them,
+    so a report claiming they came from a compiler was claiming something untrue. They are
+    retired rather than retrofitted: feeding an already-approved control back through a
+    canned provider to manufacture an artifact is self-attestation, not provenance.
+    """
+    return tuple(
+        approved_control(entry) for entry in load_approval_ledger()[APPROVED_KEY]
+    )
 
 
 def evaluate_ustb(
@@ -282,6 +293,11 @@ def _evaluate_control(
         )
     if control.comparison_operator is ComparisonOperator.FRESH_WITHIN:
         return _evaluate_freshness(control, observation, now)
+    if control.source_id != USTB_NAV_SOURCE_ID:
+        # Before the NAV route below, which returns None for any observation that is not a
+        # NAV one and so silently made every non-freshness control on the other two sources
+        # UNEVALUABLE forever.
+        return _evaluate_presence(control, observation)
     row = _confirmed_nav_row(control, observation, prior_observation, now)
     if row is None:
         return ControlEvaluation(
@@ -313,6 +329,43 @@ def _evaluate_control(
             result = EvaluationResult.UNEVALUABLE
     return ControlEvaluation(
         control.control_id, result, observed, None, row.observed_on
+    )
+
+
+def _evaluate_presence(
+    control: ControlRecord, observation: USTBObservation
+) -> ControlEvaluation:
+    """A scalar the issuer published, in the bytes this epoch captured. Nothing more.
+
+    What this proves is narrow and worth stating: the issuer returned this normalized field
+    in these hash-bound bytes. It is not evidence the value is correct, final, stable, or
+    that it will be published again tomorrow.
+
+    Never CONTRADICTED. A required field that is absent fails normalization outright, so
+    the observation would not exist to evaluate; reporting a contradiction here would claim
+    an observation about the asset that was never made.
+    """
+    if not supports(
+        control.source_id, control.comparison_operator, control.expected_value
+    ):
+        return ControlEvaluation(
+            control.control_id, EvaluationResult.UNEVALUABLE, None, None
+        )
+    value = getattr(observation, _expected_field(control.expected_value), None)
+    if value is None:
+        return ControlEvaluation(
+            control.control_id, EvaluationResult.UNEVALUABLE, None, None
+        )
+    observed = value if isinstance(value, (date, Decimal)) else None
+    # The capture's own as-of date, not None. A conclusive evaluation carrying no evidence
+    # date is refused outright by the offline verifier, so returning None here produced
+    # controls that evaluated cleanly and then made every bundle unverifiable.
+    return ControlEvaluation(
+        control.control_id,
+        EvaluationResult.SATISFIED,
+        observed,
+        None,
+        getattr(observation, "as_of_date", None),
     )
 
 

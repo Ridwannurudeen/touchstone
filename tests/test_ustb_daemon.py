@@ -169,7 +169,7 @@ def test_the_daemon_produces_and_publishes_a_ustb_epoch_unattended(
     )
     assert report["state"] == "CONFIRMED"
     assert report["epoch_id"] == "ustb-2026-08-14"
-    assert len(report["controls"]) == 5
+    assert len(report["controls"]) == 8
 
 
 def test_the_published_report_is_the_one_that_was_signed(tmp_path: Path) -> None:

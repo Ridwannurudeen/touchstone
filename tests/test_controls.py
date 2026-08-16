@@ -37,6 +37,7 @@ FIELD_NAMES = [
     "effective_until",
     "compiler_confidence",
     "approval_state",
+    "compilation_sha256",
 ]
 
 
@@ -59,6 +60,7 @@ def control_values() -> dict[str, object]:
         "effective_until": None,
         "compiler_confidence": 0.97,
         "approval_state": "accepted",
+        "compilation_sha256": None,
     }
 
 

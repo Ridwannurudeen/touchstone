@@ -21,6 +21,7 @@ from touchstone.controls import (
     transition_state,
 )
 from touchstone.evidence import CONFIRMATION_INTERVAL_SECONDS
+from touchstone.normalize.ustb import USTB_NAV_SOURCE_ID
 from touchstone.report import (
     CAPTURE_ROLES,
     REPORT_VERSION,
@@ -301,6 +302,14 @@ def _verify_capture_roles(
         evaluation = item["evaluation"]
         control = controls_by_id[item["control_id"]]
         if control.comparison_operator is ComparisonOperator.FRESH_WITHIN:
+            continue
+        if control.source_id != USTB_NAV_SOURCE_ID:
+            # A presence claim on the yield or holdings endpoint is a statement about the
+            # capture it was made from: the issuer returned this normalized scalar in these
+            # hash-bound bytes. There is nothing for an earlier capture to confirm, and
+            # demanding one refused bundles whose controls were perfectly sound. The
+            # cross-capture rule stays where it earns its keep — nav-daily, whose newest
+            # rows are provisional and get rewritten.
             continue
         if EvaluationResult(evaluation["result"]) not in _CONCLUSIVE_RESULTS:
             continue

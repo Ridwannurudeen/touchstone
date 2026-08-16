@@ -48,7 +48,6 @@ def _bundle(tmp_path: Path, *, confirmed: bool = True):
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid=signer.kid,
-        compiler_provenance_digests=["33" * 32],
     )
     return create_bundle(
         signer.sign_report(report),
@@ -170,7 +169,7 @@ def test_verifier_rejects_a_value_attributed_to_a_future_date(tmp_path: Path) ->
     bundle = _bundle(tmp_path)
     report = deepcopy(bundle["signed_report"]["report"])
     for control in report["controls"]:
-        if control["control_id"] == "aum-published":
+        if control["control_id"] == "ustb-aum-published":
             control["evaluation"]["observed_on"] = "2099-01-01"
 
     with pytest.raises(VerificationError, match="later than the evaluated epoch"):
@@ -181,7 +180,7 @@ def test_verifier_rejects_a_value_with_no_evidence_date(tmp_path: Path) -> None:
     bundle = _bundle(tmp_path)
     report = deepcopy(bundle["signed_report"]["report"])
     for control in report["controls"]:
-        if control["control_id"] == "aum-published":
+        if control["control_id"] == "ustb-aum-published":
             control["evaluation"]["observed_on"] = None
 
     with pytest.raises(VerificationError, match="not attributed to an evidence date"):
@@ -194,7 +193,7 @@ def test_verifier_rejects_a_conclusive_evaluation_with_no_evidence_date(
     bundle = _bundle(tmp_path)
     report = deepcopy(bundle["signed_report"]["report"])
     for control in report["controls"]:
-        if control["control_id"] == "aum-published":
+        if control["control_id"] == "ustb-aum-published":
             control["evaluation"]["observed_on"] = None
             control["evaluation"]["observed_value"] = None
 
@@ -263,7 +262,7 @@ def test_verifier_rejects_an_unconfirmed_absence_claim(tmp_path: Path) -> None:
     bundle = _bundle(tmp_path, confirmed=False)
     report = deepcopy(bundle["signed_report"]["report"])
     for control in report["controls"]:
-        if control["control_id"] == "aum-published":
+        if control["control_id"] == "ustb-aum-published":
             control["evaluation"] = {
                 "evidence_deadline": None,
                 "observed_on": "2026-08-11",
@@ -280,15 +279,15 @@ def test_verifier_rejects_a_bundle_carrying_unapproved_controls(tmp_path: Path) 
     """Approval was enforced only inside the evaluator, on the publisher's own machine.
 
     An independent verifier could therefore accept a bundle whose controls were still
-    proposals. R-11 in the threat model records the remaining gap: this closes the
-    verifier half, not the binding between a control and the compilation that produced it.
+    proposals. The binding between a control and the compilation that produced it is
+    enforced separately, at report construction.
     """
     bundle = _bundle(tmp_path)
     for record in bundle["control_records"]:
-        if record["control_id"] == "aum-published":
+        if record["control_id"] == "ustb-aum-published":
             record["approval_state"] = "proposed"
 
-    with pytest.raises(VerificationError, match="not approved: aum-published"):
+    with pytest.raises(VerificationError, match="not approved: ustb-aum-published"):
         verify_bundle(bundle)
 
 
@@ -336,7 +335,6 @@ def test_a_bundle_describes_one_report_even_if_the_caller_changes_it(
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid=signer.kid,
-        compiler_provenance_digests=["33" * 32],
     )
     envelope = dict(signer.sign_report(report))
     shifting = _ShiftingReport(envelope["report"])
@@ -370,7 +368,6 @@ def test_a_bundle_keeps_the_key_and_digests_it_was_given(tmp_path: Path) -> None
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid=signer.kid,
-        compiler_provenance_digests=["33" * 32],
     )
     key = dict(signer.public_key_record())
     key["provenance"] = {"issued_by": "the operator"}
@@ -404,7 +401,6 @@ def test_a_bundle_holds_every_control_of_a_single_pass_sequence(
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid=signer.kid,
-        compiler_provenance_digests=["33" * 32],
     )
     controls = default_ustb_controls()
     digests = evidence_references(epoch)

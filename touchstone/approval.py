@@ -1,0 +1,256 @@
+"""The binding between an approved control and the compilation that produced it.
+
+Compilation and evaluation used to be two disconnected paths. The compiler validated a
+candidate's span, bindings and confidence and emitted a ``proposed`` record; evaluation
+admitted any record whose ``approval_state`` happened to read ``approved``, and nothing
+required that record to have come from a compilation, to match one, or to be reachable from
+any provenance digest. A report carried ``compiler_provenance_digests`` that the report
+builder and the offline verifier checked only as well-formed hex. The compiler's work was
+therefore advisory to whoever curated the control set, and the "AI proposes, deterministic
+systems decide" separation rested entirely on that curator.
+
+This module is the binding. An approved control names the artifact it came from; the
+artifact is resolved, hashed, and searched for the exact candidate; and the approved record
+is required to differ from that candidate in exactly two fields — ``approval_state`` and
+``compilation_sha256``. Anything else is a different control that no compiler proposed.
+
+The ledger also records what a human *declined*. A candidate that passed every deterministic
+gate and was still not approved is a decision someone made, and a control set that silently
+omits it cannot be audited for why.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+import hashlib
+import json
+from pathlib import Path
+
+from touchstone.controls import ControlRecord
+
+
+ROOT = Path(__file__).parents[1]
+COMPILATIONS = ROOT / "data" / "compilations"
+LEDGER = ROOT / "data" / "compilations" / "APPROVALS.json"
+LEDGER_VERSION = "touchstone.approval-ledger.v1"
+APPROVED_KEY = "approved"
+DECLINED_KEY = "declined"
+
+# The only two fields approval may touch. Everything else is what the compiler proposed.
+_APPROVAL_FIELDS = frozenset({"approval_state", "compilation_sha256"})
+
+
+class ApprovalError(RuntimeError):
+    """An approved control cannot be resolved to the compilation that produced it."""
+
+
+def load_approval_ledger(path: str | Path = LEDGER) -> Mapping[str, list]:
+    """Read the committed record of what was approved and what was declined."""
+    location = Path(path)
+    try:
+        ledger = json.loads(location.read_text(encoding="utf-8"))
+    except FileNotFoundError as error:
+        raise ApprovalError(f"no approval ledger at {location}") from error
+    except (OSError, json.JSONDecodeError) as error:
+        raise ApprovalError(f"the approval ledger cannot be read: {error}") from error
+    if not isinstance(ledger, Mapping) or ledger.get("version") != LEDGER_VERSION:
+        raise ApprovalError("the approval ledger is not a supported version")
+    for key in (APPROVED_KEY, DECLINED_KEY):
+        if not isinstance(ledger.get(key), list):
+            raise ApprovalError(f"the approval ledger has no {key} list")
+    return ledger
+
+
+def load_compilation(digest: str, *, directory: str | Path = COMPILATIONS) -> Mapping:
+    """Read one compilation artifact and prove it is the artifact that digest names.
+
+    Hashed on the way in rather than trusted by filename. A file is not its name, and an
+    artifact that no longer hashes to the digest a control pins is not the compilation that
+    control was approved against.
+    """
+    location = Path(directory) / f"{digest}.json"
+    try:
+        raw = location.read_bytes()
+    except OSError as error:
+        raise ApprovalError(f"compilation {digest} is missing: {error}") from error
+    actual = hashlib.sha256(raw).hexdigest()
+    if actual != digest:
+        raise ApprovalError(
+            f"compilation {digest} hashes to {actual}; it is not the artifact named"
+        )
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ApprovalError(
+            f"compilation {digest} is not readable JSON: {error}"
+        ) from error
+
+
+def accepted_candidates(compilation: Mapping) -> list[Mapping]:
+    """Every candidate this compilation accepted, as the compiler recorded it."""
+    outcomes = compilation.get("outcomes")
+    if not isinstance(outcomes, list):
+        raise ApprovalError("a compilation must carry its outcomes")
+    return [
+        outcome["control"]
+        for outcome in outcomes
+        if isinstance(outcome, Mapping)
+        and outcome.get("status") == "accepted"
+        and isinstance(outcome.get("control"), Mapping)
+    ]
+
+
+def assert_ledger_approves(
+    control_id: str, digest: str, *, ledger: Mapping | None = None
+) -> None:
+    """Refuse a control the committed ledger does not approve, exactly once.
+
+    Without this the declined list is decorative: `holdings-line-items-present` was
+    declined on the record and still resolved cleanly to an approved control, because
+    resolution only ever consulted the artifact — which of course still contains the
+    candidate a human rejected. A decline that cannot refuse anything is a note, not a
+    control.
+    """
+    ledger = load_approval_ledger() if ledger is None else ledger
+    pair = (control_id, digest)
+    declined = [
+        entry
+        for entry in ledger[DECLINED_KEY]
+        if isinstance(entry, Mapping)
+        and (entry.get("control_id"), entry.get("compilation_sha256")) == pair
+    ]
+    if declined:
+        reason = declined[0].get("reason", "no reason recorded")
+        raise ApprovalError(
+            f"{control_id!r} from compilation {digest} was declined: {reason}"
+        )
+    approved = [
+        entry
+        for entry in ledger[APPROVED_KEY]
+        if isinstance(entry, Mapping)
+        and (entry.get("control_id"), entry.get("compilation_sha256")) == pair
+    ]
+    if not approved:
+        raise ApprovalError(
+            f"{control_id!r} from compilation {digest} is not in the approval ledger"
+        )
+    if len(approved) > 1:
+        # Two approvals of one pair make "the approval" undefined, and would let a later
+        # entry silently shadow an earlier one.
+        raise ApprovalError(
+            f"{control_id!r} from compilation {digest} is approved {len(approved)} times"
+        )
+
+
+def approved_control(
+    entry: Mapping, *, directory: str | Path = COMPILATIONS
+) -> ControlRecord:
+    """Resolve one ledger entry into the approved control, or refuse to.
+
+    The entry names a control and the artifact it was approved from. Everything else about
+    the control comes from that artifact, so the ledger cannot restate a control into
+    something the compiler never proposed — it can only point at one.
+    """
+    if not isinstance(entry, Mapping):
+        raise ApprovalError("an approval entry must be a mapping")
+    digest = entry.get("compilation_sha256")
+    control_id = entry.get("control_id")
+    if not isinstance(digest, str) or not isinstance(control_id, str):
+        raise ApprovalError("an approval entry must name a control and a compilation")
+    assert_ledger_approves(control_id, digest)
+
+    candidates = [
+        candidate
+        for candidate in accepted_candidates(
+            load_compilation(digest, directory=directory)
+        )
+        if candidate.get("control_id") == control_id
+    ]
+    if not candidates:
+        raise ApprovalError(
+            f"compilation {digest} accepted no candidate called {control_id!r}"
+        )
+    if len(candidates) > 1:
+        # Two candidates under one name make "the one that was approved" undefined.
+        raise ApprovalError(
+            f"compilation {digest} accepted {len(candidates)} candidates called "
+            f"{control_id!r}; the approval is ambiguous"
+        )
+    candidate = candidates[0]
+    if candidate.get("compilation_sha256") is not None:
+        raise ApprovalError(
+            f"the proposal for {control_id!r} carries a compilation digest; a proposal "
+            "cannot name the artifact that contains it"
+        )
+    if candidate.get("approval_state") != "proposed":
+        raise ApprovalError(f"the candidate for {control_id!r} is not a proposal")
+    return ControlRecord.from_mapping(
+        {**candidate, "approval_state": "approved", "compilation_sha256": digest}
+    )
+
+
+def assert_binding(
+    control: ControlRecord, *, directory: str | Path = COMPILATIONS
+) -> None:
+    """Refuse an approved control that is not exactly what its compilation accepted.
+
+    This is the check that makes the digest mean something. Without it a control could name
+    any artifact at all, and the report's provenance would be a well-formed hex string
+    pointing at a compilation that never proposed it.
+    """
+    if control.approval_state == "proposed":
+        # Refused outright rather than passed over. Returning here let a proposal through
+        # the report boundary, where its null digest then reached `sorted()` beside real
+        # ones and failed as a bare TypeError — a provenance defect reported as a crash.
+        raise ApprovalError(
+            f"{control.control_id!r} is a proposal; only approved controls may be reported"
+        )
+    if control.approval_state != "approved":
+        raise ApprovalError(
+            f"{control.control_id!r} has an unrecognised approval state "
+            f"{control.approval_state!r}"
+        )
+    if control.compilation_sha256 is None:
+        raise ApprovalError(
+            f"approved control {control.control_id!r} names no compilation; nothing "
+            "attests that a compiler ever proposed it"
+        )
+    resolved = approved_control(
+        {
+            "control_id": control.control_id,
+            "compilation_sha256": control.compilation_sha256,
+        },
+        directory=directory,
+    )
+    # Field by field rather than by content hash. The hash enforces the same invariant, but
+    # a mismatch reports only that something differs — and the whole point of this check is
+    # to name what an approval changed that it was not allowed to change.
+    expected = resolved.to_mapping()
+    actual = control.to_mapping()
+    edited = sorted(
+        name
+        for name in expected
+        if expected[name] != actual.get(name) and name not in _APPROVAL_FIELDS
+    )
+    if edited:
+        raise ApprovalError(
+            f"approved control {control.control_id!r} differs from the candidate "
+            f"compilation {control.compilation_sha256} accepted, in: {', '.join(edited)}"
+        )
+
+
+def provenance_digests(controls) -> list[str]:
+    """The compilation digests an observation report must carry, and only those.
+
+    Derived from the approved controls rather than supplied alongside them. A caller-supplied
+    list could name a compilation that produced none of the evaluated controls, which is the
+    shape the old report builder accepted.
+    """
+    digests = []
+    for control in controls:
+        assert_binding(control)
+        if control.compilation_sha256 not in digests:
+            digests.append(control.compilation_sha256)
+    if not digests:
+        raise ApprovalError("no approved control names a compilation")
+    return sorted(digests)

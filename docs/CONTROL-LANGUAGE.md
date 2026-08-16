@@ -54,17 +54,46 @@ version change and evaluator support.
 
 ## Cross-capture confirmation of value rows
 
-Value operators (`exists`, `eq`, `within_tolerance`, `non_decreasing`) read one dated
-record from the source. Where a source publishes provisional records and revises them in
-place, reading the newest record would attribute a value to a date the source has not
-finished restating. A value
-operator therefore observes only a record **confirmed unchanged across retained
-captures**: the evaluator compares this epoch's record against the same dated record in
-a qualifying earlier capture and accepts it only when the whole normalized record is
-identical. A record revised between captures is skipped and an older unchanged record
-may be observed instead. The accepted record's date is reported as the evaluation's
-`observed_on`, and a report that carries such a value binds both captures through
-`capture_role` evidence references.
+**Confirmation is a source policy, not a property of an operator.** It applies where a
+source publishes provisional records and revises them in place — `superstate-ustb-nav-daily`
+does exactly that, carrying the previous values forward under the current date and
+rewriting the row later. Reading the newest record there would attribute a value to a date
+the source has not finished restating.
+
+On that source, value operators (`exists`, `eq`, `within_tolerance`, `non_decreasing`) read
+one dated record and observe only a record **confirmed unchanged across retained captures**:
+the evaluator compares this epoch's record against the same dated record in a qualifying
+earlier capture and accepts it only when the whole normalized record is identical. A record
+revised between captures is skipped and an older unchanged record may be observed instead.
+The accepted record's date is reported as the evaluation's `observed_on`, and a report that
+carries such a value binds both captures through `capture_role` evidence references.
+
+### Presence on non-provisional sources
+
+`superstate-ustb-yield` and `superstate-ustb-holdings` publish scalars rather than a table
+of revisable rows, and the strict normalizer already establishes that a scalar is present
+and correctly typed in the capture being evaluated. There is nothing for an earlier capture
+to confirm. `exists` on these sources is therefore satisfied from the current capture alone,
+and requires no confirmation reference.
+
+An earlier version of this document classified *every* `exists` as requiring confirmation,
+and the evaluator implemented that by routing all non-freshness operators through the
+NAV-row rule. The effect was that a presence control on either of these sources could never
+be decided at all: the compiler proposed five such controls against real evidence and every
+one of them evaluated `UNEVALUABLE` forever.
+
+What a presence claim proves is deliberately narrow: **the issuer returned this normalized
+field in these hash-bound captured bytes.** It is not evidence that the value is correct,
+final, stable, or that it will be published again. Such a control is never `CONTRADICTED` —
+a missing required field fails normalization outright, so there is no observation to
+contradict.
+
+The addressable fields are a closed set per source, listed in `PRESENCE_FIELDS`
+(`touchstone/evaluate.py`). `holdings` is deliberately excluded: it is a collection, and
+whether `exists` means "present" or "non-empty" is undefined. That meaning will be decided
+explicitly or not at all. The compiler refuses any candidate the evaluator cannot decide, so
+an unreachable combination is rejected at compilation rather than accepted and left
+permanently unevaluable.
 
 A qualifying earlier capture is the newest retained capture of the same source retrieved
 at least 24 hours before the current one, so two captures taken minutes apart — including

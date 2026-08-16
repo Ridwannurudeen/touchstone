@@ -14,6 +14,7 @@ from datetime import datetime, time, timezone
 import hashlib
 import re
 
+from touchstone.approval import provenance_digests
 from touchstone.controls import (
     AssetState,
     ControlRecord,
@@ -200,7 +201,6 @@ def build_observation_report(
     epoch_id: str,
     sequence: int,
     publisher_kid: str,
-    compiler_provenance_digests: Iterable[str],
     previous_state: AssetState = AssetState.UNVERIFIABLE,
     event: OperationalEvent = OperationalEvent.RECONFIRMED,
     limitations: Iterable[str] = USTB_LIMITATIONS,
@@ -257,12 +257,14 @@ def build_observation_report(
     )
     valid_until = max(valid_until, observed_at.astimezone(timezone.utc))
     valid_text = _utc_timestamp(valid_until, "evidence deadline")
+    # Derived from the controls being reported, never accepted from the caller. A supplied
+    # list could name a compilation that produced none of the evaluated controls, and both
+    # the report builder and the offline verifier checked only that it was well-formed hex —
+    # so the provenance a report carried need not have had anything to do with its controls.
     provenance = tuple(
         _digest(value, "compiler provenance digest")
-        for value in compiler_provenance_digests
+        for value in provenance_digests(records)
     )
-    if not provenance:
-        raise ValueError("compiler_provenance_digests must not be empty")
     caveats = tuple(_nonempty_text(value, "limitation") for value in limitations)
     if not caveats:
         raise ValueError("limitations must not be empty")

@@ -25,8 +25,13 @@ pnpm-debug.log*
 !.env.dist
 
 # Runtime evidence and generated data
-data/
+data/*
 runtime/
+
+# Except the compilation artifacts, which are release inputs rather than runtime state.
+# Each approved control pins one of these by digest, and an offline verifier resolves the
+# binding against it — so a control set is only checkable if these travel with the source.
+!data/compilations/
 
 # Editors and operating systems
 .idea/

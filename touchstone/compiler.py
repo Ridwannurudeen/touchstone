@@ -15,6 +15,7 @@ from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from touchstone.controls import ControlRecord
+from touchstone.evaluate import supports
 from touchstone.evidence import EvidenceStore
 from touchstone.quantities import finite_positive, utc_instant
 from touchstone.sources import SourceManifest
@@ -75,12 +76,29 @@ evidence_span must occur byte-for-byte inside the excerpt. Copy it from the exce
 verbatim, including quotes and punctuation; do not normalise, reformat or summarise it. A \
 span that is not present exactly is rejected, and so is one taken from beyond the excerpt.
 
-expected_value shapes by operator:
+expected_value shapes by operator. These are the only shapes the deterministic evaluator \
+can reach; a candidate outside them is rejected however well it cites its evidence:
+
   exists             {"field": "<name in the normalised observation>"}
   fresh_within       {"business_days": N} or {"calendar_days": N}
-  eq                 the literal value expected
-  within_tolerance   {"tolerance": <number>} against the prior observation
-  non_decreasing     {} — the observation must not fall between captures
+  eq                 {"field": "<name>", "value": "<numeric literal as a string>"}
+  within_tolerance   {"field": "<name>", "value": "<numeric>", "tolerance": <number>}
+  non_decreasing     {"field": "<name>", "value": "<numeric>"}
+
+`eq`, `within_tolerance` and `non_decreasing` compare decimals, so their `value` must be a \
+number or a numeric string. A non-numeric expected value cannot be evaluated at all.
+
+Which operators are available depends on the source, because confirmation across captures \
+is a source policy rather than a property of an operator:
+
+  superstate-ustb-nav-daily   every operator; values are read from a row confirmed
+                              unchanged across two captures
+  superstate-ustb-yield       fresh_within, and exists on as_of_date, thirty_day,
+                              seven_day or one_day
+  superstate-ustb-holdings    fresh_within, and exists on as_of_date
+
+Nothing else is decidable. In particular there is no way to express a control over the \
+holdings collection itself.
 
 Only propose what the excerpt actually shows. A candidate is a proposal: it is validated \
 deterministically afterwards and approved by a human, so an over-confident guess is worse \
@@ -107,11 +125,43 @@ class ProviderResponse:
     raw_response: str
 
 
+ADAPTER_BY_SOURCE = {
+    "superstate-ustb-nav-daily": "ustb-nav-daily",
+    "superstate-ustb-yield": "ustb-yield",
+    "superstate-ustb-holdings": "ustb-holdings",
+}
+
+
+def request_bindings(
+    source_manifest: SourceManifest, retrieved_at: datetime
+) -> dict[str, object]:
+    """The fields a candidate does not get to choose, stated rather than guessed.
+
+    Every one of these is checked afterwards by `_validate_candidate_policy`, so a model
+    left to infer them produces candidates that are rejected for reasons it was never told.
+    Naming them in the request is what makes the acceptance gate a check rather than a trap.
+    """
+    return {
+        "asset_key": USTB_ASSET_KEY,
+        "source_id": source_manifest.source_id,
+        "source_authority_class": source_manifest.authority_class,
+        "cadence": source_manifest.cadence,
+        "observation_adapter": ADAPTER_BY_SOURCE.get(source_manifest.source_id),
+        "predicate_type": "observation",
+        "approval_state": "proposed",
+        "effective_from": retrieved_at.date().isoformat(),
+        "effective_until": None,
+    }
+
+
 class Provider(Protocol):
     """Untrusted proposal boundary; providers receive only a bounded excerpt."""
 
     def propose_controls(
-        self, evidence_excerpt: str, source_manifest: SourceManifest
+        self,
+        evidence_excerpt: str,
+        source_manifest: SourceManifest,
+        bindings: Mapping[str, object],
     ) -> ProviderResponse:
         """Return the provider's answer, carrying raw JSON text and its own identity."""
         ...
@@ -133,12 +183,17 @@ class DeterministicFixtureProvider:
         self.output = output
         self.last_evidence_excerpt: str | None = None
         self.last_source_manifest: SourceManifest | None = None
+        self.last_bindings: dict[str, object] | None = None
 
     def propose_controls(
-        self, evidence_excerpt: str, source_manifest: SourceManifest
+        self,
+        evidence_excerpt: str,
+        source_manifest: SourceManifest,
+        bindings: Mapping[str, object],
     ) -> ProviderResponse:
         self.last_evidence_excerpt = evidence_excerpt
         self.last_source_manifest = source_manifest
+        self.last_bindings = dict(bindings)
         return ProviderResponse(
             content=self.output,
             requested_model="fixture",
@@ -182,7 +237,10 @@ class HTTPProvider:
         self.timeout = finite_positive(timeout, "timeout")
 
     def propose_controls(
-        self, evidence_excerpt: str, source_manifest: SourceManifest
+        self,
+        evidence_excerpt: str,
+        source_manifest: SourceManifest,
+        bindings: Mapping[str, object],
     ) -> ProviderResponse:
         # No `temperature`. It was set to 0 for reproducible proposals, and current models
         # reject the parameter outright as deprecated. Nothing security-bearing rested on
@@ -198,6 +256,7 @@ class HTTPProvider:
                     "role": "user",
                     "content": json.dumps(
                         {
+                            "fixed_bindings": dict(bindings),
                             "source_manifest": _manifest_mapping(source_manifest),
                             "evidence_excerpt": evidence_excerpt,
                         },
@@ -352,17 +411,19 @@ def compile_evidence(
         store, evidence_sha256, source_manifest, retrieved_at
     )
     excerpt_bytes, excerpt = _bounded_utf8_excerpt(evidence, excerpt_limit)
+    bindings = request_bindings(source_manifest, retrieved_at)
     prompt_hash = hashlib.sha256(
         _canonical_bytes(
             {
                 "compiler_version": COMPILER_VERSION,
                 "evidence_excerpt": excerpt,
+                "fixed_bindings": bindings,
                 "prompt": _PROMPT_TEMPLATE,
                 "source_manifest": _manifest_mapping(source_manifest),
             }
         )
     ).hexdigest()
-    answer = provider.propose_controls(excerpt, source_manifest)
+    answer = provider.propose_controls(excerpt, source_manifest, bindings)
     if not isinstance(answer, ProviderResponse):
         raise TypeError("provider must return a ProviderResponse")
     raw_output = answer.content
@@ -457,7 +518,14 @@ def _validate_output(
             if not isinstance(proposal, Mapping):
                 raise TypeError("control candidate must be an object")
             _reject_injection_shaped_fields(proposal, source_manifest)
-            control = ControlRecord.from_mapping(proposal)
+            if "compilation_sha256" in proposal:
+                # The digest is over the artifact that will contain this proposal, so a
+                # proposal cannot name it without a cycle — and one that tries is claiming
+                # a provenance it is not in a position to know. It is attached at approval.
+                raise ValueError("a proposal must not carry a compilation digest")
+            control = ControlRecord.from_mapping(
+                {**proposal, "compilation_sha256": None}
+            )
             _validate_candidate_policy(control, source_manifest)
             if control.evidence_span.encode("utf-8") not in evidence:
                 raise ValueError("evidence span is not byte-exact present in artifact")
@@ -519,6 +587,16 @@ def _validate_candidate_policy(
         raise ValueError("observation_adapter does not match source manifest")
     if control.cadence != source_manifest.cadence:
         raise ValueError("control cadence does not match source manifest")
+    if not supports(
+        control.source_id, control.comparison_operator, control.expected_value
+    ):
+        # The gate, not merely the prompt. A candidate the deterministic evaluator can
+        # never reach a verdict on is worthless however well it cites its evidence, and
+        # accepting one puts a control into the set that reports UNEVALUABLE forever. The
+        # compiler proposed five such candidates against real evidence before this existed.
+        raise ValueError(
+            "the evaluator cannot decide this source and operator combination"
+        )
 
 
 def _reject_injection_shaped_fields(

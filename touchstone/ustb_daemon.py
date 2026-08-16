@@ -24,15 +24,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import date, datetime
-import json
 
-from touchstone.compiler import (
-    CompilationStatus,
-    DeterministicFixtureProvider,
-    compile_evidence,
-)
 from touchstone.controls import AssetState, OperationalEvent
-from touchstone.epoch import USTBEpochReport, run_ustb_epoch
+from touchstone.epoch import run_ustb_epoch
 from touchstone.evaluate import USTB_ASSET_KEY, default_ustb_controls
 from touchstone.evidence import EvidenceStore
 from touchstone.publish import asset_key_bytes  # noqa: F401 - re-exported for the CLI
@@ -40,7 +34,6 @@ from touchstone.quantities import utc_instant
 from touchstone.report import build_observation_report
 from touchstone.signing import Ed25519Signer
 from touchstone.sources import (
-    USTB_SOURCES,
     LiveTransport,
     SourceFetchError,
     SourceUnavailable,
@@ -108,58 +101,12 @@ def make_producer(
             epoch_id=epoch_id,
             sequence=next_sequence(),
             publisher_kid=signer.kid,
-            compiler_provenance_digests=compilation_provenance(
-                controls, epoch, store, moment
-            ),
             previous_state=previous_state(observed_on),
             event=OperationalEvent.RECONFIRMED,
         )
         return signer.sign_report(report)
 
     return produce
-
-
-def compilation_provenance(
-    controls, epoch: USTBEpochReport, store: EvidenceStore, retrieved_at: datetime
-) -> list[str]:
-    """Bind each control to the exact artifact it was compiled against, this epoch.
-
-    The provider is deterministic rather than a model call. What the report commits to is
-    that these controls were compiled from *these bytes* — the span check, the confidence
-    gate and the approval state are the same code either way, and a live model call inside
-    an unattended daily slot would make the record depend on a service that can change its
-    mind between epochs.
-    """
-    evidence_by_source = {
-        source.source_id: source.evidence_sha256 for source in epoch.sources
-    }
-    digests: list[str] = []
-    for manifest in USTB_SOURCES:
-        proposals = []
-        for control in controls:
-            if control.source_id == manifest.source_id:
-                proposal = control.to_mapping()
-                proposal["approval_state"] = "proposed"
-                proposals.append(proposal)
-        result = compile_evidence(
-            DeterministicFixtureProvider(
-                json.dumps({"controls": proposals}, separators=(",", ":"))
-            ),
-            evidence_sha256=evidence_by_source[manifest.source_id],
-            source_manifest=manifest,
-            store=store,
-            retrieved_at=retrieved_at,
-        )
-        if any(
-            outcome.status is not CompilationStatus.ACCEPTED
-            for outcome in result.outcomes
-        ):
-            raise EpochProductionError(
-                f"control compilation for {manifest.source_id} was not accepted; the "
-                "report would claim provenance it does not have"
-            )
-        digests.append(result.compilation_sha256)
-    return digests
 
 
 def report_uri(signed_report: Mapping[str, object]) -> str:

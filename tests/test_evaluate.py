@@ -62,11 +62,43 @@ def replace_control(control: ControlRecord, **changes: object) -> ControlRecord:
     return ControlRecord.from_mapping(mapping)
 
 
+def synthetic(**changes: object) -> ControlRecord:
+    """A control built here, not resolved from a compilation artifact.
+
+    Evaluation is deliberately provenance-free — it is a pure function of controls and
+    observations, and the binding to a compilation is enforced at the report boundary
+    instead. That is what lets these tests exercise state transitions, cross-wiring and
+    fail-closed behaviour without a filesystem of artifacts behind every case.
+    """
+    mapping: dict[str, object] = {
+        "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+        "control_id": "synthetic-aum",
+        "control_version": 1,
+        "predicate_type": "observation",
+        "subject": "USTB assets under management",
+        "source_id": USTB_NAV_SOURCE_ID,
+        "source_authority_class": "issuer-api",
+        "evidence_span": '"assets_under_management":"958406746.9500"',
+        "cadence": "business-daily",
+        "grace_period": 0,
+        "observation_adapter": "ustb-nav-daily",
+        "comparison_operator": "exists",
+        "expected_value": {"field": "assets_under_management"},
+        "effective_from": "2026-08-13",
+        "effective_until": None,
+        "compiler_confidence": 1.0,
+        "approval_state": "approved",
+        "compilation_sha256": None,
+    }
+    mapping.update(changes)
+    return ControlRecord.from_mapping(mapping)
+
+
 def aum_control() -> ControlRecord:
     return next(
         control
         for control in default_ustb_controls()
-        if control.control_id == "aum-published"
+        if control.control_id == "ustb-aum-published"
     )
 
 
@@ -90,7 +122,7 @@ def evaluate_rows(
     control: ControlRecord | None = None,
 ):
     report = evaluate_ustb(
-        [control or aum_control()],
+        [control or synthetic()],
         {USTB_NAV_SOURCE_ID: USTBNavObservation(rows=rows)},
         prior_observations={USTB_NAV_SOURCE_ID: USTBNavObservation(rows=prior_rows)},
         now=now,
@@ -138,13 +170,16 @@ def test_golden_ustb_evaluation_is_confirmed() -> None:
     )
 
     assert report.state is AssetState.CONFIRMED
-    assert report.evidence_deadline == date(2026, 8, 16)
-    assert [item.control_id for item in report.evaluations] == [
-        "nav-row-freshness",
-        "yield-freshness",
-        "holdings-freshness",
-        "aum-published",
-        "value-vs-expected",
+    assert report.evidence_deadline == date(2026, 8, 17)
+    assert sorted(item.control_id for item in report.evaluations) == [
+        "holdings-as-of-date-present",
+        "ustb-aum-published",
+        "ustb-nav-date-freshness",
+        "ustb-nav-per-share-published",
+        "ustb-one-day-yield-present",
+        "ustb-outstanding-shares-published",
+        "ustb-seven-day-yield-present",
+        "ustb-thirty-day-yield-present",
     ]
     assert all(item.result is EvaluationResult.SATISFIED for item in report.evaluations)
 
@@ -160,11 +195,11 @@ def test_value_controls_observe_the_newest_row_confirmed_across_both_captures() 
     values = {
         item.control_id: item
         for item in report.evaluations
-        if item.control_id in {"aum-published", "value-vs-expected"}
+        if item.control_id in {"ustb-aum-published", "ustb-nav-per-share-published", "ustb-outstanding-shares-published"}
     }
 
     assert {item.observed_on for item in values.values()} == {CONFIRMED_ON}
-    assert values["aum-published"].observed_value == Decimal("958406746.9500")
+    assert values["ustb-aum-published"].observed_value == Decimal("958406746.9500")
     assert CONFIRMED_ON < max(
         row.observed_on for row in observations()[USTB_NAV_SOURCE_ID].rows
     )
@@ -179,11 +214,15 @@ def test_missing_prior_capture_makes_every_value_control_unevaluable() -> None:
     )
     results = {item.control_id: item for item in report.evaluations}
 
-    assert results["aum-published"].result is EvaluationResult.UNEVALUABLE
-    assert results["aum-published"].observed_value is None
-    assert results["aum-published"].observed_on is None
-    assert results["value-vs-expected"].result is EvaluationResult.UNEVALUABLE
-    assert results["nav-row-freshness"].result is EvaluationResult.SATISFIED
+    assert results["ustb-aum-published"].result is EvaluationResult.UNEVALUABLE
+    assert results["ustb-aum-published"].observed_value is None
+    assert results["ustb-aum-published"].observed_on is None
+    assert results["ustb-nav-per-share-published"].result is (
+        EvaluationResult.UNEVALUABLE
+    )
+    assert results["ustb-nav-date-freshness"].result is EvaluationResult.SATISFIED
+    # Presence on the other two sources needs no predecessor at all.
+    assert results["ustb-one-day-yield-present"].result is EvaluationResult.SATISFIED
     assert report.state is AssetState.UNVERIFIABLE
 
 
@@ -208,22 +247,32 @@ def test_future_dated_rows_cannot_qualify() -> None:
 
 
 def test_minimum_row_age_boundary_is_enforced() -> None:
+    """The age floor is declared per control, and none of the approved set declares one.
+
+    The retired hand-written controls carried `minimum_row_age_business_days: 2`, holding
+    a row back until the issuer had had two business days to revise it. The compiler did
+    not propose that, and approval may not add it — so the approved set observes the newest
+    row confirmed across both captures, with confirmation alone as the safeguard. The floor
+    still works when a control declares it, which is what this pins.
+    """
     current = (row(date(2026, 8, 11)), row(date(2026, 8, 12)), row(date(2026, 8, 13)))
 
-    assert evaluate_rows(current, current, now=date(2026, 8, 14)).observed_on == date(
-        2026, 8, 12
-    )
-    assert evaluate_rows(
-        current,
-        current,
-        now=date(2026, 8, 14),
-        control=replace_control(
-            aum_control(),
+    def with_floor(days: int) -> ControlRecord:
+        return synthetic(
             expected_value={
                 "field": "assets_under_management",
-                "minimum_row_age_business_days": 3,
-            },
-        ),
+                "minimum_row_age_business_days": days,
+            }
+        )
+
+    assert evaluate_rows(current, current, now=date(2026, 8, 14)).observed_on == date(
+        2026, 8, 13
+    ), "no declared floor means the newest confirmed row"
+    assert evaluate_rows(
+        current, current, now=date(2026, 8, 14), control=with_floor(2)
+    ).observed_on == date(2026, 8, 12)
+    assert evaluate_rows(
+        current, current, now=date(2026, 8, 14), control=with_floor(3)
     ).observed_on == date(2026, 8, 11)
 
 
@@ -279,21 +328,20 @@ def test_row_selection_is_independent_of_payload_order() -> None:
     assert all(
         evaluation.observed_on == CONFIRMED_ON
         for evaluation in report.evaluations
-        if evaluation.control_id == "aum-published"
+        if evaluation.control_id == "ustb-aum-published"
     )
 
 
 @pytest.mark.parametrize(
     ("now", "expected_state", "stale_controls"),
     [
-        (date(2026, 8, 14), AssetState.CONFIRMED, set()),
-        (date(2026, 8, 17), AssetState.STALE, {"nav-row-freshness"}),
-        (date(2026, 9, 2), AssetState.STALE, {"nav-row-freshness", "yield-freshness"}),
-        (
-            date(2026, 9, 3),
-            AssetState.STALE,
-            {"nav-row-freshness", "yield-freshness", "holdings-freshness"},
-        ),
+        # Inclusive on the deadline itself, stale the day after. The approved set carries
+        # exactly one freshness control — on nav-daily, with a one-business-day grace — so
+        # the whole asset ages on that single deadline.
+        (date(2026, 8, 16), AssetState.CONFIRMED, set()),
+        (date(2026, 8, 17), AssetState.CONFIRMED, set()),
+        (date(2026, 8, 18), AssetState.STALE, {"ustb-nav-date-freshness"}),
+        (date(2026, 9, 3), AssetState.STALE, {"ustb-nav-date-freshness"}),
     ],
 )
 def test_staleness_boundaries_are_inclusive(
@@ -318,9 +366,15 @@ def test_staleness_boundaries_are_inclusive(
 
 
 def test_value_vs_expected_supports_closed_numeric_operators() -> None:
-    value_control = default_ustb_controls()[-1]
-    tolerance = replace_control(
-        value_control,
+    """The numeric operators, on synthetic controls.
+
+    The approved set contains no comparison control — the compiler proposed one and it was
+    declined, because its expected value was a literal identifier the decimal comparison
+    cannot resolve. These operators are still part of the language and still evaluated, so
+    they are exercised here on controls built for the purpose.
+    """
+    tolerance = synthetic(
+        control_id="synthetic-within-tolerance",
         comparison_operator=ComparisonOperator.WITHIN_TOLERANCE.value,
         expected_value={
             "field": "net_asset_value",
@@ -329,8 +383,8 @@ def test_value_vs_expected_supports_closed_numeric_operators() -> None:
             "minimum_row_age_business_days": 2,
         },
     )
-    non_decreasing = replace_control(
-        value_control,
+    non_decreasing = synthetic(
+        control_id="synthetic-non-decreasing",
         comparison_operator=ComparisonOperator.NON_DECREASING.value,
         expected_value={
             "field": "net_asset_value",
@@ -351,8 +405,8 @@ def test_value_vs_expected_supports_closed_numeric_operators() -> None:
 
 
 def test_value_mismatch_is_contradicted_and_drives_inconsistent_state() -> None:
-    value_control = replace_control(
-        default_ustb_controls()[-1],
+    value_control = synthetic(
+        comparison_operator=ComparisonOperator.EQ.value,
         expected_value={
             "field": "net_asset_value",
             "value": "9.99",
@@ -397,9 +451,10 @@ def test_non_freshness_only_control_set_fails_closed() -> None:
 
 
 def test_cross_wired_approved_control_is_rejected() -> None:
-    cross_wired = replace_control(
-        default_ustb_controls()[0], observation_adapter="ustb-holdings"
-    )
+    # A NAV-sourced control wearing the holdings adapter. Taking the first approved
+    # control and setting that adapter no longer cross-wires anything, because the first
+    # approved control *is* the holdings one.
+    cross_wired = synthetic(observation_adapter="ustb-holdings")
 
     with pytest.raises(ValueError, match="source and adapter"):
         evaluate_ustb(

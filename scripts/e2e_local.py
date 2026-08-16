@@ -25,11 +25,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from touchstone.controls import AssetState, OperationalEvent  # noqa: E402
-from touchstone.compiler import (  # noqa: E402
-    CompilationStatus,
-    DeterministicFixtureProvider,
-    compile_evidence,
-)
 from touchstone.deployment import (  # noqa: E402
     DeploymentManifest,
     runtime_bytecode_sha256,
@@ -50,7 +45,6 @@ from touchstone.report import (  # noqa: E402
 from touchstone.signing import Ed25519Signer  # noqa: E402
 from touchstone.translog import TransparencyLog  # noqa: E402
 from touchstone.verify import create_bundle, verify_bundle  # noqa: E402
-from touchstone.sources import USTB_SOURCES  # noqa: E402
 
 
 CONTRACTS = ROOT / "contracts"
@@ -107,9 +101,6 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
             retrieved_at=retrieved_at,
         )
         controls = default_ustb_controls()
-        compiler_provenance = _compile_provenance(
-            controls, epoch, evidence_store, retrieved_at
-        )
         signer = Ed25519Signer.from_seed(bytes(range(32)))
         report = build_observation_report(
             epoch,
@@ -117,7 +108,6 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
             epoch_id="ustb-fixture-2026-08-14",
             sequence=1,
             publisher_kid=signer.kid,
-            compiler_provenance_digests=compiler_provenance,
         )
         signed = signer.sign_report(report)
         evidence_digests = evidence_references(epoch)
@@ -191,7 +181,6 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
             epoch_id="ustb-fixture-2026-08-14",
             sequence=2,
             publisher_kid=signer.kid,
-            compiler_provenance_digests=compiler_provenance,
             previous_state=AssetState.CONFIRMED,
             event=OperationalEvent.CORRECTION_PUBLISHED,
             correction_of=1,
@@ -332,38 +321,6 @@ def _artifact(contract_name: str) -> dict[str, object]:
             f"missing {contract_name} artifact; run npm run compile in contracts"
         )
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _compile_provenance(controls, epoch, store, retrieved_at) -> list[str]:
-    evidence_by_source = {
-        source.source_id: source.evidence_sha256 for source in epoch.sources
-    }
-    digests = []
-    for manifest in USTB_SOURCES:
-        proposals = []
-        for control in controls:
-            if control.source_id == manifest.source_id:
-                proposal = control.to_mapping()
-                proposal["approval_state"] = "proposed"
-                proposals.append(proposal)
-        result = compile_evidence(
-            DeterministicFixtureProvider(
-                json.dumps({"controls": proposals}, separators=(",", ":"))
-            ),
-            evidence_sha256=evidence_by_source[manifest.source_id],
-            source_manifest=manifest,
-            store=store,
-            retrieved_at=retrieved_at,
-        )
-        if any(
-            outcome.status is not CompilationStatus.ACCEPTED
-            for outcome in result.outcomes
-        ):
-            raise AssertionError(
-                "fixture control compilation did not produce accepted provenance"
-            )
-        digests.append(result.compilation_sha256)
-    return digests
 
 
 def _compile_contracts() -> None:

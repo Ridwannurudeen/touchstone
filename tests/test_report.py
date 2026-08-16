@@ -51,7 +51,6 @@ def _report(tmp_path: Path):
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
-        compiler_provenance_digests=["22" * 32],
     )
 
 
@@ -65,7 +64,6 @@ def test_report_contains_recomputable_roots_and_honest_limitations(
         epoch_id="ustb-2026-08-13",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
-        compiler_provenance_digests=["22" * 32],
     )
 
     assert report["control_set_root"] == control_set_root(default_ustb_controls())
@@ -114,7 +112,6 @@ def test_report_rejects_inconsistent_state(tmp_path: Path) -> None:
             epoch_id="ustb-2026-08-13",
             sequence=1,
             publisher_kid="ed25519:" + "11" * 32,
-            compiler_provenance_digests=["22" * 32],
         )
 
 
@@ -127,7 +124,6 @@ def test_report_rejects_invalid_correction_reference(tmp_path: Path) -> None:
             sequence=2,
             correction_of=2,
             publisher_kid="ed25519:" + "11" * 32,
-            compiler_provenance_digests=["22" * 32],
         )
 
 
@@ -143,31 +139,43 @@ def test_report_rejects_controls_for_another_asset(tmp_path: Path) -> None:
             epoch_id="ustb-2026-08-13",
             sequence=1,
             publisher_kid="ed25519:" + "11" * 32,
-            compiler_provenance_digests=["22" * 32],
         )
 
 
 def test_report_builds_stale_epoch_with_contract_valid_timestamps(
     tmp_path: Path,
 ) -> None:
-    retrieved_at = datetime(2026, 8, 14, 14, 16, 17, tzinfo=timezone.utc)
-    epoch = run_ustb_epoch(
+    """Evidence that aged past its deadline, with timestamps the registry accepts.
+
+    `AssetGate` compares `block.timestamp` against `observedAt` and `validUntil`, and the
+    registry refuses `validUntil < observedAt`. An epoch observed after its own deadline
+    would derive a `validUntil` in the past, so it is clamped to the observation instant —
+    which is exactly the case this pins.
+    """
+    store = EvidenceStore(tmp_path)
+    run_ustb_epoch(
         transport=FixtureTransport(FIXTURES, date(2026, 8, 13)),
-        store=EvidenceStore(tmp_path),
-        now=date(2026, 8, 14),
+        store=store,
+        now=date(2026, 8, 13),
+        retrieved_at=CONFIRMED_AT,
+    )
+    retrieved_at = datetime(2026, 8, 20, 14, 16, 17, tzinfo=timezone.utc)
+    epoch = run_ustb_epoch(
+        transport=FixtureTransport(FIXTURES, date(2026, 8, 14)),
+        store=store,
+        now=date(2026, 8, 20),
         retrieved_at=retrieved_at,
     )
     report = build_observation_report(
         epoch,
         default_ustb_controls(),
-        epoch_id="ustb-2026-08-14",
+        epoch_id="ustb-2026-08-20",
         sequence=2,
         publisher_kid="ed25519:" + "11" * 32,
-        compiler_provenance_digests=["22" * 32],
     )
 
     assert report["state"] == "STALE"
-    assert report["observed_at"] == "2026-08-14T14:16:17Z"
+    assert report["observed_at"] == "2026-08-20T14:16:17Z"
     assert report["valid_until"] == report["observed_at"]
 
 
@@ -179,37 +187,75 @@ def test_report_requires_explicit_limitations(tmp_path: Path) -> None:
             epoch_id="ustb-2026-08-13",
             sequence=1,
             publisher_kid="ed25519:" + "11" * 32,
-            compiler_provenance_digests=["22" * 32],
             limitations=[],
         )
 
 
-def test_report_provenance_digests_are_strict(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="compiler provenance"):
+def test_report_provenance_comes_from_the_controls_not_the_caller(
+    tmp_path: Path,
+) -> None:
+    """A caller cannot name a compilation that produced none of the reported controls.
+
+    The digests used to be a parameter, checked only as well-formed hex by both the builder
+    and the offline verifier — so a report could carry provenance with no relationship to
+    the controls it reported. They are now derived from the approved controls themselves.
+    """
+    controls = default_ustb_controls()
+    report = build_observation_report(
+        _epoch(tmp_path),
+        controls,
+        epoch_id="ustb-2026-08-13",
+        sequence=1,
+        publisher_kid="ed25519:" + "11" * 32,
+    )
+
+    assert report["compiler_provenance_digests"] == sorted(
+        {control.compilation_sha256 for control in controls}
+    )
+
+
+def test_a_control_bound_to_no_compilation_cannot_be_reported(tmp_path: Path) -> None:
+    """An approved control naming no artifact is exactly what the binding exists to stop."""
+    from touchstone.approval import ApprovalError
+
+    controls = list(default_ustb_controls())
+    unbound = controls[0].to_mapping()
+    unbound["compilation_sha256"] = None
+    controls[0] = ControlRecord.from_mapping(unbound)
+
+    with pytest.raises(ApprovalError, match="names no compilation"):
         build_observation_report(
             _epoch(tmp_path),
-            default_ustb_controls(),
+            controls,
             epoch_id="ustb-2026-08-13",
             sequence=1,
             publisher_kid="ed25519:" + "11" * 32,
-            compiler_provenance_digests=["not-a-digest"],
         )
 
-    with pytest.raises(ValueError, match="must not be empty"):
+
+def test_a_control_edited_after_approval_cannot_be_reported(tmp_path: Path) -> None:
+    """Approval may change two fields. Anything else is a control no compiler proposed."""
+    from touchstone.approval import ApprovalError
+
+    controls = list(default_ustb_controls())
+    edited = controls[0].to_mapping()
+    edited["grace_period"] = edited["grace_period"] + 7
+    controls[0] = ControlRecord.from_mapping(edited)
+
+    with pytest.raises(ApprovalError, match="differs from the candidate"):
         build_observation_report(
             _epoch(tmp_path),
-            default_ustb_controls(),
+            controls,
             epoch_id="ustb-2026-08-13",
             sequence=1,
             publisher_kid="ed25519:" + "11" * 32,
-            compiler_provenance_digests=[],
         )
 
 
 def test_report_fixture_helper_is_canonical_json_compatible(tmp_path: Path) -> None:
     report = _report(tmp_path)
     assert report["version"] == "touchstone.observation-report.v3"
-    assert report["compiler_provenance_digests"] == ["22" * 32]
+    assert all(len(digest) == 64 for digest in report["compiler_provenance_digests"])
 
 
 class _CountingEpoch(USTBEpochReport):
@@ -269,7 +315,6 @@ def test_a_report_describes_one_epoch(tmp_path: Path) -> None:
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
-        compiler_provenance_digests=["22" * 32],
     )
 
     assert counting._reads == {"sources": 1, "evaluations": 1}
@@ -336,7 +381,6 @@ def test_a_report_describes_one_reading_of_each_evaluation(tmp_path: Path) -> No
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
-        compiler_provenance_digests=["22" * 32],
     )
 
     assert report["state"] == "CONFIRMED"
@@ -381,7 +425,6 @@ def test_a_report_resolves_each_instant_once(tmp_path: Path) -> None:
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
-        compiler_provenance_digests=["22" * 32],
     )
 
     assert zone.reads == 1, "the instant was resolved exactly once"

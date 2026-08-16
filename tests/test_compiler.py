@@ -419,7 +419,7 @@ def test_a_response_from_another_model_is_refused(
     )
 
     with pytest.raises(RuntimeError, match="not the requested"):
-        provider.propose_controls("{}", SOURCE)
+        provider.propose_controls("{}", SOURCE, {})
 
 
 def test_a_truncated_response_is_refused_as_truncation(
@@ -440,7 +440,7 @@ def test_a_truncated_response_is_refused_as_truncation(
     )
 
     with pytest.raises(RuntimeError, match="rather than a complete stop"):
-        provider.propose_controls("{}", SOURCE)
+        provider.propose_controls("{}", SOURCE, {})
 
 
 @pytest.mark.parametrize(
@@ -462,7 +462,7 @@ def test_an_unidentifiable_response_is_refused(
     _answered(monkeypatch, body)
 
     with pytest.raises(RuntimeError):
-        provider.propose_controls("{}", SOURCE)
+        provider.propose_controls("{}", SOURCE, {})
 
 
 def test_the_answering_model_and_the_whole_body_reach_provenance(
@@ -478,7 +478,7 @@ def test_the_answering_model_and_the_whole_body_reach_provenance(
     }
     _answered(monkeypatch, body)
 
-    answer = provider.propose_controls("{}", SOURCE)
+    answer = provider.propose_controls("{}", SOURCE, {})
 
     assert answer.content == '{"controls":[]}'
     assert answer.requested_model == "the-requested-model"

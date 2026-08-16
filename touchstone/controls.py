@@ -9,10 +9,14 @@ from enum import Enum
 import hashlib
 import json
 import math
+import re
 from types import MappingProxyType
 from typing import TypeAlias
 
 from touchstone.quantities import finite_number
+
+
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 JSONScalar: TypeAlias = None | bool | int | float | str
@@ -132,6 +136,15 @@ class ControlRecord:
     effective_until: date | None
     compiler_confidence: float
     approval_state: str
+    # The compilation artifact this control came out of, or None on a proposal.
+    #
+    # A proposal cannot carry it: the digest is over the artifact that contains the
+    # proposal, so a proposal naming its own digest is a cycle. It is attached at approval,
+    # which is the only other thing approval may change. Because it is part of
+    # `canonical_bytes`, the control-set root commits to it — an approved control cannot
+    # later be pointed at a different compilation without changing the root a consumer
+    # contract is pinned to.
+    compilation_sha256: str | None
 
     def __post_init__(self) -> None:
         for name in (
@@ -172,6 +185,14 @@ class ControlRecord:
         if not 0.0 <= confidence <= 1.0:
             raise ValueError("compiler_confidence must be between 0 and 1")
         object.__setattr__(self, "compiler_confidence", confidence)
+
+        if self.compilation_sha256 is not None and (
+            not isinstance(self.compilation_sha256, str)
+            or _SHA256.fullmatch(self.compilation_sha256) is None
+        ):
+            raise ValueError(
+                "compilation_sha256 must be a lowercase SHA-256 digest or None"
+            )
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, object]) -> ControlRecord:
@@ -227,6 +248,7 @@ class ControlRecord:
             ),
             "compiler_confidence": self.compiler_confidence,
             "approval_state": self.approval_state,
+            "compilation_sha256": self.compilation_sha256,
         }
 
     def canonical_bytes(self) -> bytes:
