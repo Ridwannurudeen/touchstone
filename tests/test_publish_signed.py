@@ -433,15 +433,26 @@ def test_the_cli_reports_a_refusal_rather_than_raising(
 
 
 PUBLISHED_TOPIC = Web3.keccak(
-    text="Published(bytes32,uint64,address,bytes32,bytes32,uint8,uint64,uint64,string)"
+    text=(
+        "Published(bytes32,uint64,address,bytes32,bytes32,bytes32,uint8,uint64,"
+        "uint64,string)"
+    )
 ).hex()
 
 
 def published_log(asset_key: bytes, sequence: int, publisher: str) -> dict:
     """One Published event, encoded the way a node would return it."""
     body = Web3().codec.encode(
-        ["bytes32", "bytes32", "uint8", "uint64", "uint64", "string"],
-        [b"\x22" * 32, b"\x33" * 32, 0, 1_786_630_577, 1_786_665_599, "urn:t:1"],
+        ["bytes32", "bytes32", "bytes32", "uint8", "uint64", "uint64", "string"],
+        [
+            b"\x22" * 32,
+            b"\x33" * 32,
+            b"\x44" * 32,
+            0,
+            1_786_630_577,
+            1_786_665_599,
+            "urn:t:1",
+        ],
     )
     return {
         "address": REGISTRY,

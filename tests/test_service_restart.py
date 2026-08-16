@@ -77,6 +77,7 @@ def workspace(tmp_path: Path) -> Path:
                     "asset_key": ASSET,
                     "control_set_root": "22" * 32,
                     "correction_of": None,
+                    "epoch_id": "ustb-2026-08-13",
                     "evidence_root": "33" * 32,
                     "observed_at": "2026-08-13T14:16:17Z",
                     "publisher_kid": REPORTER.kid,

@@ -32,6 +32,7 @@ from touchstone.publish import (  # noqa: E402
     DeploymentIdentity,
     PreparedTransaction,
     PublisherClient,
+    SubmissionFailed,
 )
 from touchstone.signing import canonical_json_bytes  # noqa: E402
 from touchstone.translog import TransparencyLog  # noqa: E402
@@ -42,6 +43,19 @@ from run_service import Service  # type: ignore # noqa: E402
 
 PUBLISHER_SECRET = "a1" * 32
 REPORT_URI = "urn:touchstone:restart:1"
+# The registry's encoding, taken from `enum Status` in TouchstoneRegistry.sol rather than
+# from the publisher this double exists to check.
+_CHAIN_STATUS = {"CONFIRMED": 0, "STALE": 1, "INCONSISTENT": 2, "UNVERIFIABLE": 3}
+
+
+def _chain_seconds(value: str) -> int:
+    return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
+
+
+def _epoch_key(epoch_id: str) -> str:
+    from web3 import Web3
+
+    return bytes(Web3.keccak(text=epoch_id)).hex()
 
 
 class FileChainBackend:
@@ -90,6 +104,10 @@ class FileChainBackend:
     def latest_sequence(self, asset_key: bytes) -> int:
         return len(self._load()["reports"].get(asset_key.hex(), []))
 
+    def epoch_sequence(self, asset_key: bytes, epoch_key: bytes) -> int:
+        published = self._load().get("epochs", {})
+        return published.get(f"{asset_key.hex()}:{epoch_key.hex()}", 0)
+
     def get_report(self, asset_key: bytes, sequence: int) -> ChainReport:
         stored = self._load()["reports"][asset_key.hex()][sequence - 1]
         return ChainReport(**stored)
@@ -126,19 +144,34 @@ class FileChainBackend:
             return prepared.transaction_hash
         intent = chain["intents"][prepared.transaction_hash]
         report = intent["report"]
+        epoch_key = _epoch_key(report["epoch_id"])
+        published = chain.setdefault("epochs", {})
+        slot = f"{intent['asset_key']}:{epoch_key}"
+        if intent["correction_of"] is None and slot in published:
+            # The registry's own refusal, so a restarted child that offers a second report
+            # about one day is stopped here rather than quietly adding one.
+            raise SubmissionFailed(
+                f"epoch {report['epoch_id']} was already published at sequence "
+                f"{published[slot]}"
+            )
         reports = chain["reports"].setdefault(intent["asset_key"], [])
         reports.append(
             {
                 "control_set_root": report["control_set_root"],
                 "evidence_root": report["evidence_root"],
-                "status": 0,
-                "observed_at": 1_786_630_577,
-                "valid_until": 1_786_665_599,
+                "epoch_key": epoch_key,
+                # Derived, not canned. The three constants that stood here matched exactly
+                # the one fixture report these restart tests use, so this double agreed
+                # with the publisher's on-chain comparison by coincidence.
+                "status": _CHAIN_STATUS[report["state"]],
+                "observed_at": _chain_seconds(report["observed_at"]),
+                "valid_until": _chain_seconds(report["valid_until"]),
                 "publisher": self.manifest.publisher_address,
                 "sequence": report["sequence"],
                 "report_uri": intent["report_uri"],
             }
         )
+        published.setdefault(slot, report["sequence"])
         chain["receipts"][prepared.transaction_hash] = {
             "blockHash": "0x" + "aa" * 32,
             "blockNumber": len(chain["receipts"]) + 1,

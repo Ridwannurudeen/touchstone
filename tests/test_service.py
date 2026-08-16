@@ -565,7 +565,9 @@ def test_a_caller_handler_runs_as_well_as_the_incident_record_not_instead(
     clock = Clock()
     seen = []
 
-    def explode(scheduled_at, produce, *, report_uri, correction_of=None):
+    def explode(
+        scheduled_at, produce, *, report_uri, correction_of=None, epoch_of=None
+    ):
         raise RuntimeError("the whole slot fell over")
 
     # Make run_slot itself fail, so the failure escapes to the scheduler.

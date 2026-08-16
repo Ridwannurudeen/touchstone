@@ -81,6 +81,7 @@ REGISTRY_ABI = [
             {"indexed": True, "name": "publisher", "type": "address"},
             {"indexed": False, "name": "controlSetRoot", "type": "bytes32"},
             {"indexed": False, "name": "evidenceRoot", "type": "bytes32"},
+            {"indexed": False, "name": "epochKey", "type": "bytes32"},
             {"indexed": False, "name": "status", "type": "uint8"},
             {"indexed": False, "name": "observedAt", "type": "uint64"},
             {"indexed": False, "name": "validUntil", "type": "uint64"},
@@ -98,6 +99,7 @@ REGISTRY_ABI = [
             {"indexed": True, "name": "publisher", "type": "address"},
             {"indexed": False, "name": "controlSetRoot", "type": "bytes32"},
             {"indexed": False, "name": "evidenceRoot", "type": "bytes32"},
+            {"indexed": False, "name": "epochKey", "type": "bytes32"},
             {"indexed": False, "name": "status", "type": "uint8"},
             {"indexed": False, "name": "observedAt", "type": "uint64"},
             {"indexed": False, "name": "validUntil", "type": "uint64"},
@@ -109,6 +111,16 @@ REGISTRY_ABI = [
     {
         "inputs": [{"name": "", "type": "bytes32"}],
         "name": "latestSequence",
+        "outputs": [{"name": "", "type": "uint64"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [
+            {"name": "", "type": "bytes32"},
+            {"name": "", "type": "bytes32"},
+        ],
+        "name": "epochSequence",
         "outputs": [{"name": "", "type": "uint64"}],
         "stateMutability": "view",
         "type": "function",
@@ -152,6 +164,7 @@ REGISTRY_ABI = [
                 "components": [
                     {"name": "controlSetRoot", "type": "bytes32"},
                     {"name": "evidenceRoot", "type": "bytes32"},
+                    {"name": "epochKey", "type": "bytes32"},
                     {"name": "status", "type": "uint8"},
                     {"name": "observedAt", "type": "uint64"},
                     {"name": "validUntil", "type": "uint64"},
@@ -171,6 +184,7 @@ REGISTRY_ABI = [
             {"name": "assetKey", "type": "bytes32"},
             {"name": "controlSetRoot", "type": "bytes32"},
             {"name": "evidenceRoot", "type": "bytes32"},
+            {"name": "epochKey", "type": "bytes32"},
             {"name": "status", "type": "uint8"},
             {"name": "observedAt", "type": "uint64"},
             {"name": "validUntil", "type": "uint64"},
@@ -188,6 +202,7 @@ REGISTRY_ABI = [
             {"name": "correctedSequence", "type": "uint64"},
             {"name": "controlSetRoot", "type": "bytes32"},
             {"name": "evidenceRoot", "type": "bytes32"},
+            {"name": "epochKey", "type": "bytes32"},
             {"name": "status", "type": "uint8"},
             {"name": "observedAt", "type": "uint64"},
             {"name": "validUntil", "type": "uint64"},
@@ -249,6 +264,7 @@ class FeeCeilingExceeded(PublicationError):
 class ChainReport:
     control_set_root: str
     evidence_root: str
+    epoch_key: str
     status: int
     observed_at: int
     valid_until: int
@@ -330,6 +346,8 @@ class RegistryBackend(Protocol):
     ) -> bytes: ...
 
     def latest_sequence(self, asset_key: bytes) -> int: ...
+
+    def epoch_sequence(self, asset_key: bytes, epoch_key: bytes) -> int: ...
 
     def get_report(self, asset_key: bytes, sequence: int) -> ChainReport: ...
 
@@ -514,13 +532,31 @@ class SignedRegistryBackend:
         return ChainReport(
             control_set_root=_bytes32_hex(value[0]),
             evidence_root=_bytes32_hex(value[1]),
-            status=int(value[2]),
-            observed_at=int(value[3]),
-            valid_until=int(value[4]),
-            publisher=value[5],
-            sequence=int(value[6]),
-            report_uri=value[7],
+            epoch_key=_bytes32_hex(value[2]),
+            status=int(value[3]),
+            observed_at=int(value[4]),
+            valid_until=int(value[5]),
+            publisher=value[6],
+            sequence=int(value[7]),
+            report_uri=value[8],
         )
+
+    def epoch_sequence(self, asset_key: bytes, epoch_key: bytes) -> int:
+        """The sequence that first published this epoch, or zero if none has.
+
+        Asked of the registry rather than remembered locally, for the same reason the
+        sequence is: a wiped or restored workspace remembers nothing, and the chain is the
+        only party that knows what was actually published.
+        """
+        self._ensure_preflight()
+        try:
+            return int(
+                self.contract.functions.epochSequence(asset_key, epoch_key).call()
+            )
+        except (Web3RPCError, OSError) as error:
+            raise TransportUnavailable(
+                f"registry did not answer an epoch read: {error}"
+            ) from error
 
     def calldata(
         self,
@@ -547,6 +583,7 @@ class SignedRegistryBackend:
             asset_key,
             bytes.fromhex(report["control_set_root"]),
             bytes.fromhex(report["evidence_root"]),
+            epoch_key_bytes(report["epoch_id"]),
             _STATUS[report["state"]],
             _unix_timestamp(report["observed_at"], "observed_at"),
             _unix_timestamp(report["valid_until"], "valid_until"),
@@ -1142,6 +1179,7 @@ class PublisherClient:
         expected = (
             report["control_set_root"],
             report["evidence_root"],
+            epoch_key_bytes(report["epoch_id"]).hex(),
             _STATUS[report["state"]],
             _unix_timestamp(report["observed_at"], "observed_at"),
             _unix_timestamp(report["valid_until"], "valid_until"),
@@ -1151,6 +1189,7 @@ class PublisherClient:
         actual = (
             onchain.control_set_root,
             onchain.evidence_root,
+            onchain.epoch_key,
             onchain.status,
             onchain.observed_at,
             onchain.valid_until,
@@ -1304,6 +1343,10 @@ def _validate_publishable_report(report: Mapping[str, object]) -> None:
             raise ValueError(f"report {field} must be a lowercase SHA-256 digest")
     if report.get("state") not in _STATUS:
         raise ValueError("report state is invalid")
+    # The calldata now carries a key derived from this, and the registry refuses a zero
+    # one. Left unchecked here, a report without an epoch failed inside the encoder with a
+    # KeyError rather than as a refusal this module words.
+    epoch_key_bytes(report.get("epoch_id"))
     observed_at = _normalized_timestamp(report.get("observed_at"), "observed_at")
     valid_until = _normalized_timestamp(report.get("valid_until"), "valid_until")
     transition = report.get("state_transition")
@@ -1335,6 +1378,18 @@ def asset_key_bytes(value: object) -> bytes:
     """
     if not isinstance(value, str) or _ASSET_KEY.fullmatch(value) is None:
         raise ValueError("asset_key must be a canonical eip155 identifier")
+    return bytes(Web3.keccak(text=value))
+
+
+def epoch_key_bytes(value: object) -> bytes:
+    """The registry's 32-byte key for the period a report is a statement about.
+
+    One derivation, exported, for the same reason `asset_key_bytes` is: the producer asks
+    the registry whether this epoch is already published and the publisher writes the key
+    the answer is about, and two implementations of that are two different questions.
+    """
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("epoch_id must be nonempty text")
     return bytes(Web3.keccak(text=value))
 
 

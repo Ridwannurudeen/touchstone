@@ -29,6 +29,24 @@ previous one passes audit.**
 **The contract ABI freezes after PLAN-T6.** Later changes require a reproduced correctness
 or security defect.
 
+**Broken once, on 2026-08-16, under exactly that clause.** The T10 round-1 audit found —
+and a reproduction confirmed — that a daemon restarted on a day it had already served
+publishes a second signed report for that day: it derives the same epoch, reads the correct
+next sequence, and the registry accepts it. Two valid reports about one day, and a consumer
+reading the latest one sees whichever landed last. Both cheaper remedies were rejected on
+review: durable local state is a projection rather than chain truth and is lost with the
+workspace, and inferring the epoch from the latest report's URI fails because a correction
+can become the latest report and hide the earlier duplicate. So `Report` gained
+`bytes32 epochKey`, the registry gained `epochSequence[assetKey][epochKey]`, `publish`
+refuses a non-zero entry with `EpochAlreadyPublished`, and a correction must carry the
+epoch it corrects. The owner approved the change and the replacement deployment on
+2026-08-16.
+
+The registry already deployed to X Layer testnet is therefore **superseded and must not be
+published to** — it has no `epochSequence`, and preflight refuses it on the runtime
+bytecode digest, which is correct. It published nothing, so no history is lost. Deploying
+the replacement is an owner gate that has not yet been requested.
+
 ## Item detail
 
 **PLAN-T1 — deterministic hero E2E.** Pin the local chain clock to the committed capture's
@@ -84,7 +102,8 @@ than closing it — the retired-key rule moved from the CLI into a client that t
 manifest; the journal was bound to a destination but not to an intent; and pinning
 reconciliation to the current publisher address fixed false provenance while breaking every
 publisher rotation. The final round failed on coverage alone: fixes verified by hand in a
-shell and never committed as tests. The ABI is now frozen.
+shell and never committed as tests. The ABI is now frozen — and was reopened once, on
+2026-08-16, for the epoch-uniqueness defect described above.
 
 **PLAN-T7 closed 2026-08-15 after eighteen audit rounds**, against T6's seven. Two things
 account for the difference, and both are worth carrying forward.

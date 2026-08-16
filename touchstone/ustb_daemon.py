@@ -52,6 +52,18 @@ class EpochProductionError(RuntimeError):
     """An epoch could not be produced for a reason that is not a source outage."""
 
 
+def epoch_id_for(scheduled_at: datetime) -> str:
+    """The epoch a slot at this instant is a statement about.
+
+    One derivation, used by the producer that names the report and by the slot runner that
+    asks the registry whether this epoch is already on the chain. A second implementation
+    of this would be a second answer to "which day is this", and the two would disagree on
+    exactly the boundary the suppression exists for — which is how the asset key came to be
+    hashed two different ways and query a registry key that had never existed.
+    """
+    return f"ustb-{utc_instant(scheduled_at, 'scheduled_at').date().isoformat()}"
+
+
 def make_producer(
     *,
     store: EvidenceStore,
@@ -72,6 +84,7 @@ def make_producer(
     def produce(scheduled_at: datetime) -> Mapping[str, object] | None:
         moment = utc_instant(scheduled_at, "scheduled_at")
         observed_on = moment.date()
+        epoch_id = epoch_id_for(moment)
 
         try:
             epoch = run_ustb_epoch(
@@ -92,7 +105,7 @@ def make_producer(
         report = build_observation_report(
             epoch,
             controls,
-            epoch_id=f"ustb-{observed_on.isoformat()}",
+            epoch_id=epoch_id,
             sequence=next_sequence(),
             publisher_kid=signer.kid,
             compiler_provenance_digests=compilation_provenance(

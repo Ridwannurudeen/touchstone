@@ -9,9 +9,15 @@ contract TouchstoneRegistry {
         UNVERIFIABLE
     }
 
+    // `epochKey` names the period a report is a statement about, and is what makes
+    // "one report per epoch" something the registry enforces rather than something a
+    // publisher is trusted to remember. A daemon restarted the same day derives the same
+    // epoch and asks for the next sequence, which the chain would otherwise happily
+    // accept: two signed reports about one day, both valid, disagreeing or not.
     struct Report {
         bytes32 controlSetRoot;
         bytes32 evidenceRoot;
+        bytes32 epochKey;
         Status status;
         uint64 observedAt;
         uint64 validUntil;
@@ -33,7 +39,10 @@ contract TouchstoneRegistry {
     error PublisherNotAuthorized(address publisher);
     error ChainIdMismatch(uint256 expected, uint256 actual);
     error InvalidAssetKey();
+    error InvalidEpochKey();
     error InvalidReportURI();
+    error EpochAlreadyPublished(bytes32 assetKey, bytes32 epochKey, uint64 sequence);
+    error CorrectionEpochMismatch(bytes32 expected, bytes32 provided);
     error FutureObservation(uint64 observedAt, uint256 currentTimestamp);
     error InvalidValidityWindow(uint64 observedAt, uint64 validUntil);
     error SequenceMismatch(bytes32 assetKey, uint64 expected, uint64 provided);
@@ -46,6 +55,7 @@ contract TouchstoneRegistry {
         address indexed publisher,
         bytes32 controlSetRoot,
         bytes32 evidenceRoot,
+        bytes32 epochKey,
         Status status,
         uint64 observedAt,
         uint64 validUntil,
@@ -59,6 +69,7 @@ contract TouchstoneRegistry {
         address indexed publisher,
         bytes32 controlSetRoot,
         bytes32 evidenceRoot,
+        bytes32 epochKey,
         Status status,
         uint64 observedAt,
         uint64 validUntil,
@@ -77,6 +88,11 @@ contract TouchstoneRegistry {
     mapping(bytes32 assetKey => mapping(uint64 sequence => Report report)) private _reports;
     mapping(bytes32 assetKey => mapping(uint64 sequence => uint64 correctedSequence))
         public correctionTarget;
+    // The sequence that first published each epoch, and zero for an epoch never published.
+    // A correction does not write here: it restates an epoch that already has an entry, and
+    // `correctionTarget` is what distinguishes it.
+    mapping(bytes32 assetKey => mapping(bytes32 epochKey => uint64 sequence))
+        public epochSequence;
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert UnauthorizedOwner(msg.sender);
@@ -127,6 +143,7 @@ contract TouchstoneRegistry {
         bytes32 assetKey,
         bytes32 controlSetRoot,
         bytes32 evidenceRoot,
+        bytes32 epochKey,
         Status status,
         uint64 observedAt,
         uint64 validUntil,
@@ -134,16 +151,22 @@ contract TouchstoneRegistry {
         string calldata reportURI
     ) external onlyPublisher {
         _validateChain();
+        uint64 published = epochSequence[assetKey][epochKey];
+        if (published != 0) {
+            revert EpochAlreadyPublished(assetKey, epochKey, published);
+        }
         _writeReport(
             assetKey,
             controlSetRoot,
             evidenceRoot,
+            epochKey,
             status,
             observedAt,
             validUntil,
             sequence,
             reportURI
         );
+        epochSequence[assetKey][epochKey] = sequence;
 
         emit Published(
             assetKey,
@@ -151,6 +174,7 @@ contract TouchstoneRegistry {
             msg.sender,
             controlSetRoot,
             evidenceRoot,
+            epochKey,
             status,
             observedAt,
             validUntil,
@@ -163,6 +187,7 @@ contract TouchstoneRegistry {
         uint64 correctedSequence,
         bytes32 controlSetRoot,
         bytes32 evidenceRoot,
+        bytes32 epochKey,
         Status status,
         uint64 observedAt,
         uint64 validUntil,
@@ -174,11 +199,20 @@ contract TouchstoneRegistry {
         if (correctedSequence == 0 || correctedSequence > currentSequence) {
             revert InvalidCorrection(assetKey, correctedSequence);
         }
+        // A correction restates one epoch; it does not open another. Letting it carry a
+        // different epoch would make `epochSequence` describe the first publication of an
+        // epoch that no longer has a latest report, and a second daily report could then
+        // be filed as a "correction" of an unrelated day.
+        bytes32 correctedEpoch = _reports[assetKey][correctedSequence].epochKey;
+        if (epochKey != correctedEpoch) {
+            revert CorrectionEpochMismatch(correctedEpoch, epochKey);
+        }
 
         _writeReport(
             assetKey,
             controlSetRoot,
             evidenceRoot,
+            epochKey,
             status,
             observedAt,
             validUntil,
@@ -194,6 +228,7 @@ contract TouchstoneRegistry {
             msg.sender,
             controlSetRoot,
             evidenceRoot,
+            epochKey,
             status,
             observedAt,
             validUntil,
@@ -246,6 +281,7 @@ contract TouchstoneRegistry {
         bytes32 assetKey,
         bytes32 controlSetRoot,
         bytes32 evidenceRoot,
+        bytes32 epochKey,
         Status status,
         uint64 observedAt,
         uint64 validUntil,
@@ -253,6 +289,9 @@ contract TouchstoneRegistry {
         string calldata reportURI
     ) private {
         if (assetKey == bytes32(0)) revert InvalidAssetKey();
+        // Zero is how `epochSequence` says "never published", so a zero epoch key would be
+        // an epoch that can be published without limit and read as absent afterwards.
+        if (epochKey == bytes32(0)) revert InvalidEpochKey();
         if (bytes(reportURI).length == 0) revert InvalidReportURI();
         if (observedAt > block.timestamp) {
             revert FutureObservation(observedAt, block.timestamp);
@@ -269,6 +308,7 @@ contract TouchstoneRegistry {
         _reports[assetKey][sequence] = Report({
             controlSetRoot: controlSetRoot,
             evidenceRoot: evidenceRoot,
+            epochKey: epochKey,
             status: status,
             observedAt: observedAt,
             validUntil: validUntil,

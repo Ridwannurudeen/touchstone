@@ -17,6 +17,7 @@ import time
 
 from eth_account import Account
 from web3 import Web3
+from web3.exceptions import ContractLogicError
 
 
 ROOT = Path(__file__).parents[1]
@@ -37,7 +38,11 @@ from touchstone.epoch import FixtureTransport, run_ustb_epoch  # noqa: E402
 from touchstone.evidence import EvidenceStore  # noqa: E402
 from touchstone.evaluate import default_ustb_controls  # noqa: E402
 from touchstone.keyring import PublisherKey  # noqa: E402
-from touchstone.publish import PublisherClient, SignedRegistryBackend  # noqa: E402
+from touchstone.publish import (  # noqa: E402
+    PublisherClient,
+    SignedRegistryBackend,
+    epoch_key_bytes,
+)
 from touchstone.report import (  # noqa: E402
     build_observation_report,
     evidence_references,
@@ -179,7 +184,11 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
         correction = build_observation_report(
             epoch,
             controls,
-            epoch_id="ustb-fixture-2026-08-14-correction",
+            # The epoch it corrects, not a new one. A correction restates one day; naming
+            # it separately would make it a second report about that day wearing the one
+            # word the registry allows to follow an existing publication, and the registry
+            # now refuses it outright.
+            epoch_id="ustb-fixture-2026-08-14",
             sequence=2,
             publisher_kid=signer.kid,
             compiler_provenance_digests=compiler_provenance,
@@ -200,17 +209,43 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
             signed_correction, report_uri="urn:touchstone:ustb:fixture:2"
         )
         historical = registry.functions.getReport(asset_key, 1).call()
-        if historical[6] != 1 or historical[7] != "urn:touchstone:ustb:fixture:1":
+        if historical[7] != 1 or historical[8] != "urn:touchstone:ustb:fixture:1":
             raise AssertionError("correction changed the prior report")
         if registry.functions.correctionTarget(asset_key, 2).call() != 1:
             raise AssertionError("correction target was not recorded")
+        epoch_key = epoch_key_bytes(report["epoch_id"])
+        if registry.functions.epochSequence(asset_key, epoch_key).call() != 1:
+            raise AssertionError("the epoch no longer names its first publication")
+        # The one thing the registry must refuse outright: a second report about the day
+        # this loop already published, offered with a correct next sequence.
+        try:
+            registry.functions.publish(
+                asset_key,
+                bytes.fromhex(report["control_set_root"]),
+                bytes.fromhex(report["evidence_root"]),
+                epoch_key,
+                0,
+                int(
+                    datetime.fromisoformat(
+                        report["observed_at"].replace("Z", "+00:00")
+                    ).timestamp()
+                ),
+                valid_until,
+                3,
+                "urn:touchstone:ustb:fixture:3",
+            ).call({"from": publisher})
+        except ContractLogicError as error:
+            if "EpochAlreadyPublished" not in str(error):
+                raise AssertionError(f"unexpected refusal: {error}") from error
+        else:
+            raise AssertionError("the registry accepted a second report for one epoch")
 
         return {
             "asset_gate_after_age": reason,
             "asset_gate_initial": "allowed",
             "correction_transaction": second.transaction_hash,
             "first_transaction": first.transaction_hash,
-            "historical_sequence": historical[6],
+            "historical_sequence": historical[7],
             "log_entries": len(log.verify()),
             "publisher_authorized": preflight.publisher_authorized,
             "publisher_identity": preflight.publisher_identity,

@@ -48,6 +48,17 @@ describe("TouchstoneRegistry", function () {
     };
   }
 
+  // Each sequence is a different epoch unless a test says otherwise. The registry now
+  // refuses a second publication of one epoch, so a test advancing the sequence is
+  // describing the next day and has to say so; a test that means to republish the same
+  // epoch sets `epochKey` explicitly.
+  function epochKeyOf(value) {
+    return (
+      value.epochKey ??
+      ethers.keccak256(ethers.toUtf8Bytes(`epoch:${value.sequence}`))
+    );
+  }
+
   function publish(registry, publisher, value) {
     return registry
       .connect(publisher)
@@ -55,6 +66,7 @@ describe("TouchstoneRegistry", function () {
         value.assetKey,
         value.controlSetRoot,
         value.evidenceRoot,
+        epochKeyOf(value),
         value.status,
         value.observedAt,
         value.validUntil,
@@ -84,6 +96,7 @@ describe("TouchstoneRegistry", function () {
         publisher.address,
         value.controlSetRoot,
         value.evidenceRoot,
+        epochKeyOf(value),
         value.status,
         value.observedAt,
         value.validUntil,
@@ -94,6 +107,7 @@ describe("TouchstoneRegistry", function () {
     expect(stored).to.deep.equal([
       value.controlSetRoot,
       value.evidenceRoot,
+      epochKeyOf(value),
       BigInt(value.status),
       value.observedAt,
       value.validUntil,
@@ -101,6 +115,9 @@ describe("TouchstoneRegistry", function () {
       BigInt(value.sequence),
       value.reportURI,
     ]);
+    expect(
+      await registry.epochSequence(value.assetKey, epochKeyOf(value))
+    ).to.equal(BigInt(value.sequence));
   });
 
   for (const [name, status] of STATUSES) {
@@ -147,24 +164,78 @@ describe("TouchstoneRegistry", function () {
   it("rejects gaps, duplicates, and replayed sequences", async function () {
     const { publisher, registry } = await loadFixture(deployRegistryFixture);
     const first = await report();
+    // Each replay below carries an epoch nobody has published, so what refuses it is the
+    // sequence check and only the sequence check. Reusing the first report's epoch would
+    // make every case here pass on the epoch guard instead and prove nothing about
+    // sequencing.
+    const fresh = (sequence, tag) => ({
+      ...first,
+      sequence,
+      epochKey: ethers.keccak256(ethers.toUtf8Bytes(`epoch:replay:${tag}`)),
+    });
 
-    await expect(publish(registry, publisher, { ...first, sequence: 2 }))
+    await expect(publish(registry, publisher, fresh(2, "a")))
       .to.be.revertedWithCustomError(registry, "SequenceMismatch")
       .withArgs(ASSET_KEY, 1, 2);
 
     await publish(registry, publisher, first);
 
-    await expect(publish(registry, publisher, first))
+    await expect(publish(registry, publisher, fresh(1, "b")))
       .to.be.revertedWithCustomError(registry, "SequenceMismatch")
       .withArgs(ASSET_KEY, 2, 1);
-    await expect(publish(registry, publisher, { ...first, sequence: 3 }))
+    await expect(publish(registry, publisher, fresh(3, "c")))
       .to.be.revertedWithCustomError(registry, "SequenceMismatch")
       .withArgs(ASSET_KEY, 2, 3);
 
     await publish(registry, publisher, { ...first, sequence: 2 });
-    await expect(publish(registry, publisher, first))
+    await expect(publish(registry, publisher, fresh(1, "d")))
       .to.be.revertedWithCustomError(registry, "SequenceMismatch")
       .withArgs(ASSET_KEY, 3, 1);
+  });
+
+  it("refuses a second publication of an epoch already on the chain", async function () {
+    const { publisher, registry } = await loadFixture(deployRegistryFixture);
+    const first = await report();
+
+    await publish(registry, publisher, first);
+
+    // What a restarted daemon does: derive the same epoch for today, ask the chain for the
+    // next sequence, and offer a second report about one day. The sequence is correct, so
+    // nothing but this guard stands between that and two valid reports for one epoch.
+    await expect(
+      publish(registry, publisher, {
+        ...first,
+        sequence: 2,
+        epochKey: epochKeyOf(first),
+        reportURI: `${REPORT_URI}/again`,
+      })
+    )
+      .to.be.revertedWithCustomError(registry, "EpochAlreadyPublished")
+      .withArgs(ASSET_KEY, epochKeyOf(first), 1);
+
+    expect(await registry.latestSequence(ASSET_KEY)).to.equal(1n);
+  });
+
+  it("refuses an epoch key of zero", async function () {
+    const { publisher, registry } = await loadFixture(deployRegistryFixture);
+
+    await expect(
+      publish(registry, publisher, {
+        ...(await report()),
+        epochKey: ethers.ZeroHash,
+      })
+    ).to.be.revertedWithCustomError(registry, "InvalidEpochKey");
+  });
+
+  it("keeps epochs separate between assets", async function () {
+    const { publisher, registry } = await loadFixture(deployRegistryFixture);
+    const first = await report();
+    const other = ethers.keccak256(ethers.toUtf8Bytes("eip155:1:0xother"));
+
+    await publish(registry, publisher, first);
+    await publish(registry, publisher, { ...first, assetKey: other });
+
+    expect(await registry.epochSequence(other, epochKeyOf(first))).to.equal(1n);
   });
 
   it("rejects an unauthorized publisher", async function () {
@@ -355,6 +426,7 @@ describe("TouchstoneRegistry", function () {
         1,
         corrected.controlSetRoot,
         corrected.evidenceRoot,
+        epochKeyOf(first),
         corrected.status,
         corrected.observedAt,
         corrected.validUntil,
@@ -370,6 +442,7 @@ describe("TouchstoneRegistry", function () {
         publisher.address,
         corrected.controlSetRoot,
         corrected.evidenceRoot,
+        epochKeyOf(first),
         corrected.status,
         corrected.observedAt,
         corrected.validUntil,
@@ -394,6 +467,41 @@ describe("TouchstoneRegistry", function () {
     expect((await registry.getReport(ASSET_KEY, 2)).evidenceRoot).to.equal(
       corrected.evidenceRoot
     );
+    // The epoch still points at the publication that opened it. Had the correction
+    // overwritten this, a later observation of the same day would find the epoch occupied
+    // by a correction and the original's place in the record lost.
+    expect(await registry.epochSequence(ASSET_KEY, epochKeyOf(first))).to.equal(
+      1n
+    );
+  });
+
+  it("refuses a correction that renames the epoch it corrects", async function () {
+    const { publisher, registry } = await loadFixture(deployRegistryFixture);
+    const first = await report();
+    await publish(registry, publisher, first);
+    const foreign = ethers.keccak256(ethers.toUtf8Bytes("epoch:another-day"));
+
+    // Without this the second daily report of one asset could be filed as a "correction"
+    // of a different day, which is a second publication wearing the one word that is
+    // allowed to follow an existing report.
+    await expect(
+      registry
+        .connect(publisher)
+        .publishCorrection(
+          ASSET_KEY,
+          1,
+          CONTROL_ROOT,
+          EVIDENCE_ROOT,
+          foreign,
+          0,
+          first.observedAt,
+          first.validUntil,
+          2,
+          `${REPORT_URI}/correction`
+        )
+    )
+      .to.be.revertedWithCustomError(registry, "CorrectionEpochMismatch")
+      .withArgs(epochKeyOf(first), foreign);
   });
 
   it("rejects corrections that do not reference an existing prior sequence", async function () {
@@ -410,6 +518,7 @@ describe("TouchstoneRegistry", function () {
             correctedSequence,
             CONTROL_ROOT,
             EVIDENCE_ROOT,
+            epochKeyOf(first),
             0,
             first.observedAt,
             first.validUntil,
@@ -444,6 +553,7 @@ describe("TouchstoneRegistry", function () {
           1,
           CONTROL_ROOT,
           EVIDENCE_ROOT,
+          epochKeyOf(value),
           0,
           value.observedAt,
           value.validUntil,

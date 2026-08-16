@@ -60,6 +60,11 @@ def _chain_seconds(value: str) -> int:
     return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
 
 
+def _chain_epoch_key(epoch_id: str) -> bytes:
+    """The epoch key the registry would be given, derived here rather than imported."""
+    return bytes(Web3.keccak(text=epoch_id))
+
+
 def _manifest(**overrides: object) -> DeploymentManifest:
     value: dict[str, object] = {
         "manifest_version": 1,
@@ -102,6 +107,8 @@ class FakeBackend:
         self.manifest = manifest if manifest is not None else _manifest()
         self.key = PublisherKey.from_hex(secret, self.manifest)
         self.reports: dict[bytes, list[ChainReport]] = {}
+        # (asset key, epoch key) -> the sequence that first published that epoch.
+        self.epochs: dict[tuple[bytes, bytes], int] = {}
         self.receipts: dict[str, dict[str, object]] = {}
         self.submissions: list[int | None] = []
         self.intents: dict[str, tuple] = {}
@@ -144,6 +151,10 @@ class FakeBackend:
     def latest_sequence(self, asset_key: bytes) -> int:
         self.reads.append("latest_sequence")
         return len(self.reports.get(asset_key, []))
+
+    def epoch_sequence(self, asset_key: bytes, epoch_key: bytes) -> int:
+        self.reads.append("epoch_sequence")
+        return self.epochs.get((asset_key, epoch_key), 0)
 
     def get_report(self, asset_key: bytes, sequence: int) -> ChainReport:
         self.reads.append("get_report")
@@ -197,6 +208,16 @@ class FakeBackend:
         asset_key, report, report_uri, correction_of = self.intents[
             prepared.transaction_hash
         ]
+        epoch_key = _chain_epoch_key(report["epoch_id"])
+        if correction_of is None and (asset_key, epoch_key) in self.epochs:
+            # The registry's `EpochAlreadyPublished`, which is what actually stops a
+            # restarted daemon publishing a second report about one day. A fake that
+            # accepted it would let every test of that suppression pass whether the guard
+            # existed or not.
+            raise SubmissionFailed(
+                f"epoch {report['epoch_id']} was already published at sequence "
+                f"{self.epochs[(asset_key, epoch_key)]}"
+            )
         self.submissions.append(correction_of)
         self.reports.setdefault(asset_key, []).append(
             # Derived from the report, as a registry does. Canned values matched the
@@ -206,6 +227,7 @@ class FakeBackend:
             ChainReport(
                 control_set_root=report["control_set_root"],
                 evidence_root=report["evidence_root"],
+                epoch_key=epoch_key.hex(),
                 status=_CHAIN_STATUS[report["state"]],
                 observed_at=_chain_seconds(report["observed_at"]),
                 valid_until=_chain_seconds(report["valid_until"]),
@@ -214,6 +236,9 @@ class FakeBackend:
                 report_uri=report_uri,
             )
         )
+        # A correction restates the epoch it corrects and does not claim it, exactly as the
+        # registry leaves `epochSequence` pointing at the first publication.
+        self.epochs.setdefault((asset_key, epoch_key), report["sequence"])
         self.receipts[prepared.transaction_hash] = {
             "blockHash": bytes.fromhex("aa" * 32),
             "blockNumber": len(self.submissions),
@@ -279,8 +304,14 @@ def _signed_report(
     evidence_root: str = "33" * 32,
     state: str = "CONFIRMED",
     observed_at: str = "2026-08-13T14:16:17Z",
+    epoch_id: str | None = None,
 ):
     signer = Ed25519Signer.from_seed(bytes(range(32)))
+    # One epoch per sequence by default, because the registry refuses a second publication
+    # of an epoch: a suite that advanced the sequence while restating one epoch would be
+    # refused everywhere for a reason none of its tests are about. A test that means to
+    # republish an epoch names it.
+    epoch_id = f"epoch-{sequence}" if epoch_id is None else epoch_id
     # Derived rather than written out beside the timestamp, so a caller choosing a different
     # observation instant cannot accidentally leave the two disagreeing — which the
     # publisher refuses outright.
@@ -294,6 +325,7 @@ def _signed_report(
             "asset_key": ASSET_KEY_OF,
             "control_set_root": control_set_root,
             "correction_of": correction_of,
+            "epoch_id": epoch_id,
             "evidence_root": evidence_root,
             "observed_at": observed_at,
             "publisher_kid": signer.kid,

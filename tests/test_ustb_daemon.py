@@ -24,12 +24,14 @@ from touchstone.epoch import FixtureTransport
 from touchstone.evidence import EvidenceStore
 from touchstone.incidents import IncidentLog
 from touchstone.operations import OperationsStore
-from touchstone.publish import PublisherClient
+from touchstone.publish import PublisherClient, TransportUnavailable
 from touchstone.signing import Ed25519Signer, verify_signed_report
+from touchstone.sources import SourceTransportError
 from touchstone.translog import TransparencyLog
 from touchstone.ustb_daemon import (
     EpochProductionError,
     asset_key_bytes,
+    epoch_id_for,
     make_producer,
     report_uri,
 )
@@ -40,6 +42,23 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 from run_service import Service, serve  # noqa: E402
 from test_publish import FakeBackend, _signed_report  # noqa: E402
 from test_service import Clock  # noqa: E402
+
+
+class Dead:
+    """A transport that refuses, and records that it was asked at all.
+
+    Several tests here assert the issuer is *not* reached — a slot that suppresses itself
+    must do so before fetching. Recording the calls is what makes that assertion mean
+    something rather than merely not crashing.
+    """
+
+    def __init__(self, detail: str = "the issuer endpoint did not answer") -> None:
+        self.detail = detail
+        self.calls: list[str] = []
+
+    def get(self, url, *, timeout, max_bytes):
+        self.calls.append(url)
+        raise SourceTransportError(self.detail)
 
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
@@ -121,6 +140,7 @@ def run(service: Service, produce, *, runs: int = 1):
         report_uri=report_uri,
         interval_seconds=86_400.0,
         max_runs=runs,
+        epoch_of=epoch_id_for,
         monotonic=clock.monotonic,
         sleep=clock.sleep,
         now=lambda: RETRIEVED_AT,
@@ -177,16 +197,9 @@ def test_a_source_outage_opens_an_incident_and_publishes_nothing(
     tmp_path: Path,
 ) -> None:
     """Silence is recorded as silence. It is never rendered as an observation."""
-    from touchstone.sources import SourceTransportError
-
     store = seeded_store(tmp_path)
     backend = FakeBackend()
     service, workspace = built(tmp_path, backend)
-
-    class Dead:
-        def get(self, url, *, timeout, max_bytes):
-            raise SourceTransportError("the issuer endpoint did not answer")
-
     _, produce = producer(store, service, backend, transport=Dead())
 
     outcome = run(service, produce)
@@ -202,17 +215,10 @@ def test_a_source_outage_opens_an_incident_and_publishes_nothing(
 
 def test_the_source_outage_is_not_recorded_as_an_epoch_failure(tmp_path: Path) -> None:
     """A retrieval failure is not a finding about the issuer, and the kinds differ."""
-    from touchstone.sources import SourceTransportError
-
     store = seeded_store(tmp_path)
     backend = FakeBackend()
     service, workspace = built(tmp_path, backend)
-
-    class Dead:
-        def get(self, url, *, timeout, max_bytes):
-            raise SourceTransportError("403")
-
-    _, produce = producer(store, service, backend, transport=Dead())
+    _, produce = producer(store, service, backend, transport=Dead("403"))
     run(service, produce)
 
     kinds = {entry["kind"] for entry in IncidentLog(workspace.incidents).verify()}
@@ -308,3 +314,85 @@ def test_a_second_slot_does_not_republish_the_same_day(tmp_path: Path) -> None:
     assert sequences == sorted(set(sequences)), (
         "a sequence was reused or went backwards"
     )
+
+
+def test_a_restart_on_a_served_day_publishes_nothing_and_reports_no_fault(
+    tmp_path: Path,
+) -> None:
+    """The defect this closes, reproduced exactly as it was found.
+
+    A clean process starts its first slot at `now()`. A second process started the same day
+    derives the same epoch, asks the chain for the next sequence — correctly getting 2 —
+    and offers a second signed report about one day. Both are valid, both verify, and a
+    consumer reading the latest report sees whichever landed last. Nothing in the durable
+    state stopped it, because that state records a projection rather than what the chain
+    holds.
+
+    The second process must fetch nothing, sign nothing and publish nothing, and must not
+    call that a failure: a daemon restarted on a day it has already served is working.
+    """
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+
+    first_service, workspace = built(tmp_path, backend)
+    _, first_produce = producer(store, first_service, backend)
+    run(first_service, first_produce)
+    assert len(backend.submissions) == 1
+
+    # A different Service object on the same workspace and the same chain, holding nothing
+    # in memory from the first — which is what a restart is.
+    second_service, _ = built(tmp_path, backend)
+    dead = Dead("the issuer must not even be asked")
+    _, second_produce = producer(store, second_service, backend, transport=dead)
+
+    outcome = run(second_service, second_produce)
+
+    assert outcome.completed == 1
+    assert not outcome.failed
+    assert len(backend.submissions) == 1, "the restart published a second report"
+    assert not dead.calls, "the restart fetched evidence it had no reason to fetch"
+    assert IncidentLog(workspace.incidents).verify() == [], (
+        "a correct suppression was recorded as a fault"
+    )
+    epochs = [
+        entry["signed_report"]["report"]["epoch_id"]
+        for entry in TransparencyLog(workspace.transparency_log).verify()
+    ]
+    assert epochs == ["ustb-2026-08-14"]
+
+
+def test_a_chain_that_will_not_answer_stops_the_slot_rather_than_guessing(
+    tmp_path: Path,
+) -> None:
+    """Not knowing whether the epoch is published is not permission to publish it."""
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+    service, workspace = built(tmp_path, backend)
+
+    def refuse(asset_key, epoch_key):
+        raise TransportUnavailable("the registry did not answer")
+
+    backend.epoch_sequence = refuse
+    dead = Dead("the issuer must not be asked before the chain has answered")
+    _, produce = producer(store, service, backend, transport=dead)
+
+    run(service, produce)
+
+    assert not backend.submissions
+    assert not dead.calls
+    incidents = IncidentLog(workspace.incidents).verify()
+    assert [entry["kind"] for entry in incidents] == ["PUBLICATION_UNRESOLVED"]
+    assert "would not say whether" in incidents[0]["detail"]
+
+
+def test_the_slot_asks_about_the_epoch_the_producer_would_name(tmp_path: Path) -> None:
+    """One derivation, or the suppression asks about a day the report is not about."""
+    moment = datetime(2026, 8, 14, 17, 8, 12, tzinfo=timezone.utc)
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+    service, _ = built(tmp_path, backend)
+    _, produce = producer(store, service, backend)
+
+    signed = produce(moment)
+
+    assert signed["report"]["epoch_id"] == epoch_id_for(moment)

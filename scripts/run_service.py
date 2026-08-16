@@ -60,12 +60,14 @@ from touchstone.publish import (  # noqa: E402
     PublisherClient,
     SignedRegistryBackend,
     TransportUnavailable,
+    epoch_key_bytes,
 )
 from touchstone.controls import AssetState  # noqa: E402
 from touchstone.evidence import EvidenceStore  # noqa: E402
 from touchstone.schedule import ScheduleOutcome, run_schedule  # noqa: E402
 from touchstone.ustb_daemon import (  # noqa: E402
     asset_key_bytes,
+    epoch_id_for,
     make_producer,
     report_uri,
 )
@@ -395,6 +397,7 @@ class Service:
         *,
         report_uri: Callable[[Mapping[str, object]], str],
         correction_of: int | None = None,
+        epoch_of: Callable[[datetime], str] | None = None,
     ) -> SlotOutcome:
         """Produce a report for this slot and publish it, or record why neither happened."""
         # Every slot, not only the first. A publication that failed leaves an operation
@@ -409,6 +412,11 @@ class Service:
                 f"an earlier publication is still unresolved: {error}",
                 scheduled_at,
             )
+
+        if epoch_of is not None and correction_of is None:
+            settled = self._epoch_already_published(scheduled_at, epoch_of)
+            if isinstance(settled, SlotOutcome):
+                return settled
 
         try:
             signed_report = produce(scheduled_at)
@@ -509,6 +517,49 @@ class Service:
             published=True,
             incident_id=None,
             detail="published",
+        )
+
+    def _epoch_already_published(
+        self, scheduled_at: datetime, epoch_of: Callable[[datetime], str]
+    ) -> SlotOutcome | None:
+        """Ask the chain whether this slot's epoch is already on it.
+
+        A restart is the case this exists for, and the durable state cannot answer it: a
+        clean process starts its first slot at `now()`, derives the same epoch, and reads
+        the next sequence — which is correct, and would put a second signed report about one
+        day on the chain. The registry refuses that outright, but arriving at the refusal
+        means having fetched the issuer, evaluated, and signed first, and then recording a
+        failure for something that is not one.
+
+        Asked of the registry rather than remembered here, because a restored or wiped
+        workspace remembers nothing and the chain is the only party that knows.
+        """
+        epoch_id = epoch_of(scheduled_at)
+        try:
+            published = self.client.backend.epoch_sequence(
+                asset_key_bytes(self.asset_key), epoch_key_bytes(epoch_id)
+            )
+        except Exception as error:  # noqa: BLE001 - recorded, and the slot does not run
+            # Not knowing whether the epoch is published is not permission to publish it.
+            return self._record_incident(
+                PUBLICATION_UNRESOLVED,
+                f"the registry would not say whether {epoch_id} is already published: "
+                f"{error}",
+                scheduled_at,
+            )
+        if not published:
+            return None
+        # Not an incident. Nothing is wrong: the epoch this slot is about has a report on
+        # the chain, which is the outcome the slot exists to produce. Opening EPOCH_FAILED
+        # here would alert an operator every time a daemon restarted on a day it had
+        # already served.
+        self._close_open_incidents("the epoch for this slot is already published")
+        self.note_success(scheduled_at)
+        return SlotOutcome(
+            scheduled_at=scheduled_at,
+            published=False,
+            incident_id=None,
+            detail=f"epoch {epoch_id} was already published at sequence {published}",
         )
 
     def _resolve_outstanding(self) -> None:
@@ -693,6 +744,7 @@ def serve(
     report_uri: Callable[[Mapping[str, object]], str],
     interval_seconds: float,
     max_runs: int | None = None,
+    epoch_of: Callable[[datetime], str] | None = None,
     **schedule_arguments: object,
 ) -> ScheduleOutcome:
     """Resolve what was left in flight, then run slots until asked to stop."""
@@ -707,6 +759,7 @@ def serve(
             report_uri=report_uri,
             interval_seconds=interval_seconds,
             max_runs=max_runs,
+            epoch_of=epoch_of,
             **schedule_arguments,
         )
 
@@ -739,6 +792,7 @@ def _serve_locked(
     report_uri: Callable[[Mapping[str, object]], str],
     interval_seconds: float,
     max_runs: int | None = None,
+    epoch_of: Callable[[datetime], str] | None = None,
     **schedule_arguments: object,
 ) -> ScheduleOutcome:
     service.resolve_startup()
@@ -749,7 +803,9 @@ def _serve_locked(
 
     def slot(scheduled_at: datetime) -> None:
         try:
-            service.run_slot(scheduled_at, produce, report_uri=report_uri)
+            service.run_slot(
+                scheduled_at, produce, report_uri=report_uri, epoch_of=epoch_of
+            )
         finally:
             # In the `finally`, because a failed slot is exactly when the heartbeat has to
             # record that an attempt was made. Recording only successes would leave a
@@ -905,6 +961,9 @@ def _serve_ustb(service: Service, arguments) -> int:
         report_uri=report_uri,
         interval_seconds=arguments.interval_seconds,
         max_runs=arguments.max_runs,
+        # The same derivation the producer names its report with, so the question asked of
+        # the registry is about the epoch the slot would actually publish.
+        epoch_of=epoch_id_for,
     )
     print(
         json.dumps(
