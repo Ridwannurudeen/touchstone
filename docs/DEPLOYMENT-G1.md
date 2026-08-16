@@ -17,10 +17,19 @@
 > ceiling actually permits is `999999999295360` wei — **~0.001 OKB, 27.67× higher.** The
 > honest figure is the enforced maximum, not the expected spend.
 >
-> Execution requires one written owner approval naming **both** the sha256 of this packet's
-> raw Git blob — supplied to the owner alongside this document, and reproducible with the
-> `git show` command below — **and** the ceiling `1000000000000000` wei. The digest is
-> deliberately not printed inside the document, since a document cannot state its own hash.
+> Execution requires one written owner approval naming **all three**:
+>
+> 1. the **full packet commit SHA**;
+> 2. the **sha256 of this packet's raw Git blob** — supplied alongside this document and
+>    reproducible with the `git show` command below, deliberately not printed inside it, since
+>    a document cannot state its own hash;
+> 3. the ceiling **`1000000000000000` wei**.
+>
+> The commit is not redundant with the blob. **A blob digest does not identify a unique
+> commit** — a later commit can carry this document byte-for-byte while `tests/`,
+> `scripts/`, `pyproject.toml` or the manifest schema have moved, and the approval would still
+> appear to match. Naming both binds the approval to a tree, not just to wording.
+>
 > Nothing else unlocks execution.
 >
 > **Approval binds to a digest, not to this path.** `docs/DEPLOYMENT-G1.md` is mutable;
@@ -42,10 +51,15 @@
 > ```
 >
 > **`<approved-packet-commit>` is not the release commit.** They are different commits and
-> hash to different values: the release commit names the executable implementation, this one
-> names this document. Hashing the packet "at the commit being executed from" produces the
-> wrong digest and fails this very check — an earlier version of this section said exactly
-> that.
+> hash to different values: the release commit names the executable implementation, the packet
+> commit names this document. Hashing the packet at the **release** commit produces the wrong
+> digest — an earlier version of this section made that mistake.
+>
+> The packet commit **is** the commit execution runs from; §7 requires it. An earlier version
+> of this banner said hashing "at the commit being executed from" gives the wrong digest. That
+> was true when execution ran from the release commit and became false the moment §7 pinned
+> `HEAD` to the packet commit — the two statements sat in the same document contradicting each
+> other.
 >
 > If the digest does not match at execution time, **stop** — the packet has changed since it
 > was approved and must be re-read and re-approved.
@@ -85,19 +99,23 @@ it is being replaced because it cannot enforce something it was never built to.*
 | npm lockfile | `contracts/package-lock.json`, raw-blob sha256 `3c506269d6e7a73580760c9ab759fad032aa7ed82045a2bc93faa3d9295e2ff8` |
 | Python project | `pyproject.toml`, raw-blob sha256 `9f5346f8f1ed53d7c2090a1ab631d9f35a6896b17c8bf39b3e4a396ba019a009` |
 
-**The digests in this table have two different bases, and an operator checking them needs to
+**The digests in this table have three different bases, and an operator checking them needs to
 know which is which.**
 
 - `package-lock.json` and `pyproject.toml` are **raw Git blobs at the release commit**,
   obtained with `git show <commit>:<path> | sha256sum` — the same basis as the packet's own
   approval digest. A working-tree copy of a text file hashes differently under
   `core.autocrlf`, so the blob is the only stable basis.
-- The three bytecode digests are **hashes of compiler output**, over the raw bytes decoded
+- **Creation** and **runtime template** are hashes of raw compiler output — the bytes decoded
   from the artifact's hex. They cannot be Git blobs: `contracts/artifacts/` is gitignored, so
   no artifact is tracked at any commit. Reproduce them by compiling, not by `git show`.
+- **Runtime as deployed** is a *third* basis. It does not exist in any artifact and compiling
+  will not produce it. It is the template with the immutables spliced in, per the recipe below
+  — hashing the artifact's `deployedBytecode` gives `9b7019b0…`, not `cecada9e…`.
 
-An earlier version of this table claimed a single raw-blob basis for all five, which is not
-achievable for the three that do not exist in Git.
+An earlier version of this table claimed a single raw-blob basis for all five. A later one
+claimed two, which still told an operator to reproduce `cecada9e…` by compiling — which cannot
+work.
 
 **The two runtime digests are different things, and confusing them would abort this
 deployment after the money was spent.** `owner` and `expectedChainId` are Solidity
@@ -130,8 +148,8 @@ digest identifies the exact approved wording.
 It moved from `15f6127` to `bcbd8b4` because the manifest test collected the deployment
 journal as a manifest and failed. That defect does not need a successful deployment to fire —
 `reserveDestination` creates the journal at `deploy.js:457–458`, before the spend checks and
-before any send, so **even an attempt that aborts early leaves the file that breaks the
-test**. It had to be fixed inside the release rather than after it. **The deployed bytecode
+before any send, so **any attempt that gets as far as reserving its destination leaves the file that
+breaks the test**. It had to be fixed inside the release rather than after it. **The deployed bytecode
 did not change.** `git diff 15f6127..bcbd8b4` touches only `tests/`, `contracts/test/` and this
 document; the three digests above and both raw-blob digests are identical at either commit.
 
@@ -190,7 +208,7 @@ approval to deploy became an approval to spend an unstated amount.
 | Ceiling | Variable | Bounds |
 |---|---|---|
 | Deployment total | `TOUCHSTONE_DEPLOY_MAX_SPEND_WEI` | The deployment **and** authorization transactions of this one command. Required off the local chain |
-| Per publication | `TOUCHSTONE_MAX_FEE_WEI` | One publication's worth-case fee, recorded in the manifest as `max_fee_wei`. Currently `2000000000000000` |
+| Per publication | `TOUCHSTONE_MAX_FEE_WEI` | One publication's worst-case fee, recorded in the manifest as `max_fee_wei`. Currently `2000000000000000` |
 
 ### How the ceiling is enforced
 
