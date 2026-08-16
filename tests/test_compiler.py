@@ -91,7 +91,11 @@ def test_valid_candidate_is_accepted_with_complete_persisted_provenance(
     assert outcome.control is not None
     assert outcome.control.evidence_span == SPAN
     assert outcome.provenance.provider_name == "DeterministicFixtureProvider"
-    assert outcome.provenance.model_name == "fixture"
+    assert outcome.provenance.requested_model_name == "fixture"
+    # The identity that answered, recorded beside the one that was asked for. Provenance
+    # used to carry only the request, which attests nothing about which model replied.
+    assert outcome.provenance.returned_model_name == "fixture"
+    assert outcome.provenance.provider_response_id == "fixture"
     assert outcome.provenance.compiler_version
     assert outcome.provenance.input_evidence_sha256 == digest
     assert (
@@ -108,6 +112,15 @@ def test_valid_candidate_is_accepted_with_complete_persisted_provenance(
     assert persisted["outcomes"][0]["status"] == "accepted"
     assert persisted["provenance"]["source_url"] == SOURCE.url
     assert persisted["raw_output"] == raw_output(candidate())
+    # The whole response body is kept, and the digest in provenance is over that body — so
+    # a reader can check the claim rather than take it.
+    assert persisted["provider_response"] == raw_output(candidate())
+    assert persisted["provenance"]["provider_response_sha256"] == (
+        hashlib.sha256(raw_output(candidate()).encode()).hexdigest()
+    )
+    assert "model_name" not in persisted["provenance"], (
+        "the ambiguous field must be gone, not aliased"
+    )
 
 
 def test_real_committed_nav_fixture_compiles_to_exact_cited_control(
@@ -349,6 +362,131 @@ def test_http_provider_requires_all_three_environment_variables(
 
     with pytest.raises(ValueError, match="TOUCHSTONE_MODEL_ENDPOINT"):
         HTTPProvider()
+
+
+def _http_provider(monkeypatch: pytest.MonkeyPatch) -> HTTPProvider:
+    monkeypatch.setenv("TOUCHSTONE_MODEL_ENDPOINT", "https://model.invalid/v1")
+    monkeypatch.setenv("TOUCHSTONE_MODEL_KEY", "secret")
+    monkeypatch.setenv("TOUCHSTONE_MODEL_NAME", "the-requested-model")
+    return HTTPProvider()
+
+
+def _answered(monkeypatch: pytest.MonkeyPatch, body: dict) -> None:
+    """Make the provider's single HTTP call return exactly this body."""
+    import io
+
+    from touchstone import compiler as module
+
+    encoded = json.dumps(body).encode("utf-8")
+
+    class _Opener:
+        def open(self, request, timeout):
+            del request, timeout
+            return io.BytesIO(encoded)
+
+    monkeypatch.setattr(module, "build_opener", lambda *handlers: _Opener())
+
+
+def test_the_request_carries_no_temperature(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Current models reject it as deprecated, and nothing here rested on it.
+
+    Provider output is untrusted by construction: the span must be byte-exact present in
+    the artifact and inside the excerpt, the bindings are re-checked, and confidence is
+    gated. Reproducibility comes from the persisted artifact and its digest, which is what
+    a report pins — not from re-running a model and hoping for the same words.
+    """
+    import inspect
+
+    source = inspect.getsource(HTTPProvider.propose_controls)
+
+    assert '"temperature"' not in source and "'temperature'" not in source
+
+
+def test_a_response_from_another_model_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A service may route elsewhere. Provenance that cannot notice attests nothing."""
+    provider = _http_provider(monkeypatch)
+    _answered(
+        monkeypatch,
+        {
+            "id": "resp-1",
+            "model": "some-other-model",
+            "choices": [
+                {"finish_reason": "stop", "message": {"content": '{"controls":[]}'}}
+            ],
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="not the requested"):
+        provider.propose_controls("{}", SOURCE)
+
+
+def test_a_truncated_response_is_refused_as_truncation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Otherwise a cut-off proposal is rejected downstream as malformed JSON — reported as
+    a bad model rather than as an answer that never finished."""
+    provider = _http_provider(monkeypatch)
+    _answered(
+        monkeypatch,
+        {
+            "id": "resp-1",
+            "model": "the-requested-model",
+            "choices": [
+                {"finish_reason": "length", "message": {"content": '{"controls":['}}
+            ],
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="rather than a complete stop"):
+        provider.propose_controls("{}", SOURCE)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("model", ""), ("model", None), ("id", ""), ("id", 7)],
+)
+def test_an_unidentifiable_response_is_refused(
+    monkeypatch: pytest.MonkeyPatch, field: str, value: object
+) -> None:
+    provider = _http_provider(monkeypatch)
+    body = {
+        "id": "resp-1",
+        "model": "the-requested-model",
+        "choices": [
+            {"finish_reason": "stop", "message": {"content": '{"controls":[]}'}}
+        ],
+    }
+    body[field] = value
+    _answered(monkeypatch, body)
+
+    with pytest.raises(RuntimeError):
+        provider.propose_controls("{}", SOURCE)
+
+
+def test_the_answering_model_and_the_whole_body_reach_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = _http_provider(monkeypatch)
+    body = {
+        "id": "resp-42",
+        "model": "the-requested-model",
+        "choices": [
+            {"finish_reason": "stop", "message": {"content": '{"controls":[]}'}}
+        ],
+    }
+    _answered(monkeypatch, body)
+
+    answer = provider.propose_controls("{}", SOURCE)
+
+    assert answer.content == '{"controls":[]}'
+    assert answer.requested_model == "the-requested-model"
+    assert answer.returned_model == "the-requested-model"
+    assert answer.response_id == "resp-42"
+    assert answer.finish_reason == "stop"
+    assert answer.endpoint == "https://model.invalid/v1/chat/completions"
+    assert json.loads(answer.raw_response) == body
 
 
 @pytest.mark.parametrize(
