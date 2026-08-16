@@ -625,6 +625,42 @@ MUTATIONS = (
             "tests/test_workspace.py::test_a_relative_path_holder_operates_where_it_was_created",
         ),
     ),
+    Mutation(
+        name="restart-republishes-a-served-epoch",
+        path="scripts/run_service.py",
+        old="        if not published:\n            return None",
+        new="        if True:\n            return None",
+        tests=(
+            "tests/test_ustb_daemon.py::test_a_restart_on_a_served_day_publishes_nothing_and_reports_no_fault",
+        ),
+    ),
+    Mutation(
+        name="an-unreachable-registry-is-taken-as-permission",
+        path="scripts/run_service.py",
+        old="        except Exception as error:  # noqa: BLE001 - recorded, and the slot does not run\n            # Not knowing whether the epoch is published is not permission to publish it.\n            return self._record_incident(",
+        new="        except Exception as error:  # noqa: BLE001 - recorded, and the slot does not run\n            del error\n            return None\n            return self._record_incident(",
+        tests=(
+            "tests/test_ustb_daemon.py::test_a_chain_that_will_not_answer_stops_the_slot_rather_than_guessing",
+        ),
+    ),
+    Mutation(
+        name="the-status-mapping-is-its-own-oracle",
+        path="touchstone/publish.py",
+        old="    AssetState.STALE.value: 1,\n    AssetState.INCONSISTENT.value: 2,",
+        new="    AssetState.STALE.value: 2,\n    AssetState.INCONSISTENT.value: 1,",
+        tests=(
+            "tests/test_publish.py::test_each_state_reaches_the_chain_as_the_registry_declares_it",
+        ),
+    ),
+    Mutation(
+        name="fixture-mode-reaches-a-public-network",
+        path="scripts/run_service.py",
+        old="        if not manifest.is_local:",
+        new="        if False:",
+        tests=(
+            "tests/test_service_startup.py::test_a_public_network_is_never_served_from_committed_fixtures",
+        ),
+    ),
 )
 
 
