@@ -17,7 +17,8 @@
     "deployer_address",
     "operations_address",
     "confirmations",
-    "reporting_keys"
+    "reporting_keys",
+    "deployment_state"
   ],
   "properties": {
     "manifest_version": {
@@ -75,6 +76,14 @@
       "description": "Blocks required before a publication is treated as settled.",
       "type": "integer",
       "minimum": 1
+    },
+    "deployment_state": {
+      "type": "string",
+      "enum": [
+        "active",
+        "superseded"
+      ],
+      "description": "Whether anything may still be published to this deployment. A superseded deployment cannot be caught by preflight, which compares deployed code against the digest this manifest itself records \u2014 so an obsolete manifest agrees with its obsolete registry. Only this field refuses it."
     },
     "max_fee_wei": {
       "description": "Refuse to sign above this. A spend ceiling is an owner decision, not a runtime one.",

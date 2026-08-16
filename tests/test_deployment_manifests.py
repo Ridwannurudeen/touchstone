@@ -1,0 +1,105 @@
+"""Every committed manifest, checked against the schema that describes it.
+
+Nothing validated these against `manifest.schema.json`, so the schema and the files drifted
+apart in silence — and when `deployment_state` was added to the loader, neither the schema,
+the deploy script nor the two templates knew about it. A schema nobody runs is documentation
+that happens to be machine-readable.
+
+The deploy script is checked too, because the manifest that matters most is the one nobody
+writes by hand: a fresh deployment's. If it omits a field the loader defaults, the default
+is what a real deployment ends up carrying.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import re
+
+import pytest
+from jsonschema import Draft202012Validator
+
+from touchstone.deployment import DEPLOYMENT_STATES, DeploymentManifest
+
+
+ROOT = Path(__file__).parents[1]
+DEPLOYMENTS = ROOT / "deployments"
+SCHEMA = json.loads((DEPLOYMENTS / "manifest.schema.json").read_text(encoding="utf-8"))
+MANIFESTS = sorted(
+    path for path in DEPLOYMENTS.glob("*.json") if path.name != "manifest.schema.json"
+)
+
+
+def test_there_are_manifests_to_check() -> None:
+    """Guards against this whole module silently passing on an empty glob."""
+    assert MANIFESTS
+
+
+@pytest.mark.parametrize("path", MANIFESTS, ids=lambda path: path.name)
+def test_every_committed_manifest_matches_the_schema(path: Path) -> None:
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    errors = sorted(
+        Draft202012Validator(SCHEMA).iter_errors(manifest), key=lambda e: e.path
+    )
+    assert not errors, "; ".join(
+        f"{'/'.join(str(p) for p in error.path) or '<root>'}: {error.message}"
+        for error in errors
+    )
+
+
+@pytest.mark.parametrize("path", MANIFESTS, ids=lambda path: path.name)
+def test_every_committed_manifest_declares_its_state(path: Path) -> None:
+    """Declared, never defaulted.
+
+    The loader treats an absent state as active, which is right for a fresh deployment and
+    wrong to rely on: the one manifest that must not read as active is an obsolete one, and
+    that is exactly the case where nobody remembers to add a field by hand.
+    """
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+
+    assert manifest["deployment_state"] in DEPLOYMENT_STATES
+
+
+def test_the_deploy_script_emits_a_state_rather_than_omitting_it() -> None:
+    """A fresh deployment's manifest is the one nobody writes by hand."""
+    source = (ROOT / "contracts" / "scripts" / "deploy.js").read_text(encoding="utf-8")
+
+    assert re.search(r'deployment_state:\s*"active"', source), (
+        "deploy.js must state deployment_state explicitly"
+    )
+
+
+def test_the_superseded_testnet_deployment_is_refused() -> None:
+    """The deployed registry predates epochKey and cannot enforce one report per epoch."""
+    manifest = DeploymentManifest.load(DEPLOYMENTS / "xlayer-testnet.json")
+
+    assert manifest.deployment_state == "superseded"
+    assert not manifest.is_active
+
+
+@pytest.mark.parametrize(
+    "path",
+    [p for p in MANIFESTS if p.name.endswith(".template.json")],
+    ids=lambda path: path.name,
+)
+def test_a_template_is_refused_as_a_deployment(path: Path) -> None:
+    """Templates carry the marker and must never load as a real deployment."""
+    from touchstone.deployment import DeploymentError
+
+    with pytest.raises(DeploymentError, match="template"):
+        DeploymentManifest.load(path)
+
+
+def test_a_manifest_state_outside_the_closed_set_is_refused(tmp_path: Path) -> None:
+    """A typo must not read as permission to publish."""
+    from touchstone.deployment import DeploymentError
+
+    manifest = json.loads(
+        (DEPLOYMENTS / "xlayer-testnet.json").read_text(encoding="utf-8")
+    )
+    manifest["deployment_state"] = "activ"
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(DeploymentError, match="deployment_state must be one of"):
+        DeploymentManifest.load(path)

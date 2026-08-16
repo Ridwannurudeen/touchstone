@@ -235,11 +235,20 @@ Prepare: verified addresses, release commit, deployment manifest, rollback proce
 public limitations, submission form draft, X posts (drafts). Stage mainnet deployment
 and request owner approval.
 
-### Aug 21 — Buffer, mainnet, submission (internal deadline 18:00 UTC)
-After explicit approval only: deploy tested release to mainnet; verify bytecode and
-roles; one production canary epoch; clean-browser site check; verify all links; publish
-approved launch post; submit approved form; archive the exact submitted release and
-evidence bundle. No feature work on submission day.
+### Aug 21 — Testnet release candidate (internal deadline 18:00 UTC)
+
+**Amended 2026-08-16.** This date previously scheduled a mainnet deploy and production
+canary. That was not a credible plan and contradicted this repository's own owner gates,
+which permit mainnet only "after a proven testnet loop" — and nothing had then published to
+testnet at all. Scheduling an action the same documents forbid is how an operator ends up
+taking it.
+
+Aug 21 is now a **testnet** target: prove the loop end to end on X Layer testnet — deployed
+registry, one autonomous live epoch, an offline-verifiable bundle, and a consumer contract
+gating on the published state. After explicit approval only, and no feature work on the day.
+
+**Mainnet is unscheduled.** It is conditional on the completed testnet loop above being
+proven, not on a date, and returns as a separate owner decision.
 
 ### Hackathon completion metrics
 Three real assets documented; ≥2 fully autonomous live adapters; ≥6 accepted controls;
@@ -248,6 +257,18 @@ live consumer contract gating on Touchstone state; every transition independentl
 verifiable; all contract authorization boundaries tested; public interface wallet-free;
 watchdog + incident history + reconciliation operational; every scheduled epoch through
 Sept 1 completed or publicly recorded as an incident.
+
+**Standing as of 2026-08-16.** The targets are not restated downward; what is missed is
+recorded as missed.
+
+| Metric | Target | Actual |
+|---|---|---|
+| Accepted controls | ≥6 | **8 — met.** Each is a candidate a model proposed from issuer bytes, bound by digest to the compilation that accepted it |
+| Assets documented | 3 | **3 — met.** USTB, USDY and FOBXX source manifests with golden fixtures |
+| Fully autonomous live adapters | ≥2 | **1 — MISSED.** USTB is built, wired and tested end to end, but has never run against live sources. USDY is blocked on unbounded retrieval; FOBXX is retained as a documented monthly contrast asset, not an adapter. **Phase 1 deliberately ships one flawless vertical rather than two hurried ones** |
+| Live consumer contract gating on state | 1 | **0 — MISSED.** `AssetGate` is written and tested, but deployed only ephemerally inside the local end-to-end run. It has never existed on a persistent chain |
+| Production canary epoch | 1 | **0 — MISSED.** Nothing has been published to any registry |
+| Claims span-cited and hash-bound | 100% | Met for every accepted control |
 
 ## The minimum hero demo (90–120 seconds, two acts)
 
@@ -285,7 +306,7 @@ onchain reconciliation; gas and watchdog checks.
 
 | Date | System activity | Public milestone (drafts; owner approves) |
 |---|---|---|
-| Fri Aug 21 | Launch epoch, mainnet canary, initial dossier roots | Launch/submission post |
+| Fri Aug 21 | **Testnet** RC target: first live testnet epoch, initial dossier roots. No mainnet action | Drafts only; nothing published |
 | Sat Aug 22 | Weekend re-observation (no business-day NAV promised) | Architecture/verification thread |
 | Sun Aug 23 | Reconfirmation or honest source-health incident | — |
 | Mon Aug 24 | First post-weekend publication windows | First genuine fresh observation, if published |

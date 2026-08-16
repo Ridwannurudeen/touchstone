@@ -45,7 +45,7 @@ Per the roadmap's operations calendar, and reproduced here so an operator needs 
 
 | Date | System activity |
 |---|---|
-| Fri Aug 21 | Launch epoch, mainnet canary, initial dossier roots |
+| Fri Aug 21 | **Testnet** RC target: first live testnet epoch and initial dossier roots. **No mainnet action** — see the owner gates below |
 | Sat Aug 22 | Weekend re-observation — **no business-day NAV is promised** |
 | Sun Aug 23 | Reconfirmation, or an honest source-health incident |
 | Mon Aug 24 | First post-weekend publication windows |

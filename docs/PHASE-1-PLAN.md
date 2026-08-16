@@ -21,8 +21,8 @@ previous one passes audit.**
 | PLAN-T7 | Autonomous epoch operations and append-only incidents | L | **Done** (`2c2ae27`) |
 | PLAN-T8 | Heartbeat, watchdog, alerts, gas runway, encrypted backup and restore | L | **Done** (`d71e9cb`) |
 | PLAN-T9 | Wallet-free living dossier and developer surface | L | |
-| PLAN-T10 | USDY autonomous daily adapter | L | |
-| PLAN-T11 | FOBXX issuer/SEC contrast adapter | L | |
+| PLAN-T10 | **Amended:** USTB autonomous daily adapter | L | **Done** (`e9df186`) — USDY was cut; see below |
+| PLAN-T11 | FOBXX issuer/SEC contrast adapter | L | **Dropped from Phase 1** (2026-08-16) |
 | PLAN-T12 | Release-candidate hardening matrix and CI | L | |
 | PLAN-T13 | Release and owner-gate package | M | |
 
@@ -43,9 +43,15 @@ epoch it corrects. The owner approved the change and the replacement deployment 
 2026-08-16.
 
 The registry already deployed to X Layer testnet is therefore **superseded and must not be
-published to** — it has no `epochSequence`, and preflight refuses it on the runtime
-bytecode digest, which is correct. It published nothing, so no history is lost. Deploying
-the replacement is an owner gate that has not yet been requested.
+published to** — it has no `epochSequence`. It published nothing, so no history is lost.
+Deploying the replacement is an owner gate that has not yet been requested.
+
+An earlier version of this paragraph claimed preflight would refuse it on the runtime
+bytecode digest. **That was false**, and the audit caught it: preflight compares the
+deployed code against the digest *the manifest itself records*, and that manifest records
+the obsolete registry's own digest, so the two agree. What refuses it is a machine-readable
+`deployment_state` on the manifest, checked in `main()` before any key is read. Prose in a
+notes field refuses nothing.
 
 ## Item detail
 
@@ -205,10 +211,34 @@ kernel granted, checked by file identity — and the accepted limitation is reco
 ruling was to stop there: a Python capability cannot be made unforgeable against
 same-process code, and the remaining calendar belongs to the live vertical.
 
-**Build order amended 2026-08-15 by audit direction, pending owner confirmation of the
-asset decision.** T8 (Aug 15–16) → **amended T10** (Aug 17): wire USTB into the unattended
-daemon, then run a half-day promotion gate on OUSG as the second live adapter → T9 (Aug 18)
-→ T12 (Aug 19–20) → T13 (Aug 20) → Aug 21 buffer and owner gates only.
+**Build order amended again 2026-08-16 by audit direction, and this supersedes the order
+below.** Amended T10 is closed: USTB runs unattended, the registry enforces one report per
+epoch, and every control is bound by digest to the compilation that proposed it. What
+remains, in order:
+
+1. Rewrite the committed plan to the real critical path *(this change)*.
+2. Finish the replacement-deployment package — `deployment_state` emitted explicitly by the
+   deploy script and required by the schema, plus frozen bytecode hash, roles, fee ceiling
+   and abort criteria.
+3. **Owner gate:** deploy the replacement registry to X Layer testnet.
+4. Bundle v4 — carry and hash-bind the approval ledger, and re-run compilation validation
+   rather than trusting an artifact's serialised outcomes. A hard canary prerequisite: a
+   v3 bundle can verify a control the approval process rejected.
+5. Canary release gate — the repository's first CI workflow and the full check matrix.
+6. **Owner gate:** one live USTB testnet epoch. Publish whatever emerges, including
+   `UNVERIFIABLE`.
+7. **Owner gate (key rotation + paid call):** recompile the NAV controls so they carry the
+   two-business-day minimum row age. Mandatory before an `AssetGate` is pinned to a control
+   root, because deploying earlier would pin the obsolete one.
+8. **Owner gate:** deploy and prove the live `AssetGate`.
+9. T9 dossier, built from real canary data rather than fixtures.
+10. T12/T13 release package.
+
+**The deliberate cuts are final for Phase 1: no OUSG adapter, no FOBXX adapter, no second
+autonomous adapter, and no Aug 21 mainnet canary.** One flawless USTB vertical, with the
+two-adapter and production-canary metrics reported as unmet.
+
+The superseded order that stood here:
 
 The wiring comes first because it is the real gap: `scripts/run_service.py` refuses every
 mode except `--resolve-only`, saying so honestly — "no live epoch adapter is wired yet". The

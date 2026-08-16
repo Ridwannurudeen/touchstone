@@ -180,6 +180,11 @@ async function deploy({
     operations_address: operations,
     confirmations,
     deployment_block: deploymentReceipt.blockNumber,
+    // Stated, never left to a default. A manifest that omits this reads as "active" in the
+    // Python loader, which is the right default for a fresh deployment but the wrong thing
+    // to rely on: the one manifest that must NOT read as active is an obsolete one, and
+    // that is exactly the case where nobody remembers to add a field by hand.
+    deployment_state: "active",
     reporting_keys: [
       {
         kid: `ed25519:${createHash("sha256")
