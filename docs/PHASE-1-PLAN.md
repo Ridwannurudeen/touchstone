@@ -19,7 +19,7 @@ previous one passes audit.**
 | PLAN-T5 | Hero evidence security and the authoritative USTB oracle check | L | **Done** (`5c73edf`) |
 | PLAN-T6 | Production-capable publisher and staged deployment path | L | **Done** (`016de1b`) |
 | PLAN-T7 | Autonomous epoch operations and append-only incidents | L | **Done** (`2c2ae27`) |
-| PLAN-T8 | Heartbeat, watchdog, alerts, gas runway, encrypted backup and restore | L | In progress |
+| PLAN-T8 | Heartbeat, watchdog, alerts, gas runway, encrypted backup and restore | L | **Done** (`d71e9cb`) |
 | PLAN-T9 | Wallet-free living dossier and developer surface | L | |
 | PLAN-T10 | USDY autonomous daily adapter | L | |
 | PLAN-T11 | FOBXX issuer/SEC contrast adapter | L | |
@@ -170,6 +170,21 @@ deduplicated archives; cloud-storage SDKs; and any contract or ABI change.
 **One unknown to close during implementation:** whether X Layer receipts expose a fee
 component beyond `gas_used × effective_gas_price`. If they do the calculator must include
 it; if it cannot be established, runway is `UNKNOWN`.
+
+**PLAN-T8 closed 2026-08-16 after three audit rounds.** Two things are worth carrying.
+
+The first round found that all five modules were built, tested and **wired to nothing** —
+every one passed its own tests while an operator would have seen exactly what an absent
+module looks like. When a module is done, check that something calls it.
+
+The second is that the same design was wrong three times: a docstring asking callers to hold
+the lock, then a `Lease` anyone could construct, then a `Held` carrying a path and a boolean
+that a one-line forgery satisfied. Each version stated the requirement more formally without
+establishing it. What finally worked was proof the caller cannot fabricate — a descriptor the
+kernel granted, checked by file identity — and the accepted limitation is recorded in
+`touchstone/locking.py` and `docs/OPERATIONS.md` rather than left implied. The director's
+ruling was to stop there: a Python capability cannot be made unforgeable against
+same-process code, and the remaining calendar belongs to the live vertical.
 
 **Build order amended 2026-08-15 by audit direction, pending owner confirmation of the
 asset decision.** T8 (Aug 15–16) → **amended T10** (Aug 17): wire USTB into the unattended

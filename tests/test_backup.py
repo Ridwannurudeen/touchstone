@@ -685,3 +685,37 @@ def test_a_live_descriptor_borrowed_from_another_lock_is_refused(
                 asset_key=ASSET,
                 registry_address=REGISTRY,
             )
+
+
+def test_a_filesystem_with_no_file_identity_cannot_confirm_a_hold(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Zero identity makes the comparison vacuous, so it is refused rather than trusted.
+
+    NTFS supplies a file id and volume serial here, but FAT, some network filesystems and
+    some shares report zero — and a check that silently degrades to always-true on those
+    is worse than no check, because it reads as proof.
+    """
+    import os as _os
+
+    workspace = populated(tmp_path)
+
+    class _NoIdentity:
+        st_ino = 0
+        st_dev = 0
+
+    with exclusive_lock(workspace.lock) as held:
+        # Only `fstat`. Patching `os.stat` as well recurses, because `Path.resolve()` calls
+        # it — and one zero-identity operand is enough to make the comparison vacuous,
+        # which is the condition under test.
+        monkeypatch.setattr(_os, "fstat", lambda fd: _NoIdentity())
+
+        with pytest.raises(BackupError, match="no file identity"):
+            create(
+                held,
+                workspace.root,
+                now=AT,
+                key=KEY,
+                asset_key=ASSET,
+                registry_address=REGISTRY,
+            )

@@ -219,6 +219,15 @@ protect. Key rotation is manual.
 There is no multi-region failover, no leader election, and no second publisher. A single
 host runs a single daemon, and the honest availability claim is bounded by that.
 
+The workspace lock stops a **second process** from copying a live workspace, and the `Held`
+capability stops trusted in-process code from taking a backup without holding it. Neither is
+a security boundary against code able to alter the locking module's own state, or to close
+its descriptor and reuse the number. One such bypass is known and documented in
+`touchstone/locking.py` rather than papered over: closing the descriptor releases the kernel
+lock while its integer remains registered, and this platform reuses that integer on the next
+open. Closing it properly needs a separate lock-owning process and IPC, which is out of
+proportion to what it protects. Reviewed and accepted 2026-08-16.
+
 Detection and recovery timings are proven in a local subprocess harness that kills a real
 daemon. They have **not** been proven on production hardware, because there is no production
 host yet.

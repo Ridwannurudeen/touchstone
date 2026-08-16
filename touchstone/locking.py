@@ -73,9 +73,19 @@ class Held:
     a path comparison, so a second name for one file cannot be passed off as a different
     lock and a stale descriptor number cannot be reused.
 
-    A determined caller can still reach into module internals; nothing in a Python process
-    prevents that. What this makes impossible is the *ordinary* mistake, which is the one
-    that actually happens: calling a lock-requiring operation without the lock.
+    **The trust boundary, stated rather than implied.** `Held` prevents accidental lock
+    omission by trusted in-process code. It is *not* a security boundary against code able
+    to alter this module's state or to close and reuse the underlying descriptor.
+
+    One concrete bypass is known and deliberately left open. A caller who closes
+    `held.descriptor` releases the kernel lock while its integer stays in `_LIVE`; the next
+    `open` on this platform reuses that same integer, so both the liveness check and the
+    identity comparison pass against a descriptor holding no lock. Verified here: after
+    closing descriptor 3, the following open returned 3 again. Closing that properly means
+    an opaque capability registered by object identity with the descriptor hidden in a
+    closure — which raises the cost of the *deliberate* attack without changing the
+    accidental one at all, and true resistance to hostile same-process code needs a
+    separate lock-owning process and IPC. That is out of proportion to what this protects.
     """
 
     path: Path
@@ -101,6 +111,16 @@ class Held:
             raise LockUnavailable(
                 f"the hold on {target} cannot be confirmed: {error}"
             ) from error
+        # A filesystem that reports no identity makes the comparison below vacuous: zero
+        # equals zero, so every descriptor would "refer to" every file. NTFS supplies a
+        # 128-bit file id and a volume serial here, but FAT, some network filesystems and
+        # some shares do not, and a check that silently degrades to always-true on those is
+        # worse than no check at all.
+        if 0 in (held.st_ino, held.st_dev, named.st_ino, named.st_dev):
+            raise LockUnavailable(
+                f"this filesystem reports no file identity for {target}, so a hold on it "
+                "cannot be confirmed"
+            )
         # The inode, not the name. This is what a fabricated descriptor number cannot
         # satisfy: it would have to already be an open handle on this exact file.
         if (held.st_ino, held.st_dev) != (named.st_ino, named.st_dev):
