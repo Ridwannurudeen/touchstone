@@ -254,7 +254,7 @@ def test_a_control_edited_after_approval_cannot_be_reported(tmp_path: Path) -> N
 
 def test_report_fixture_helper_is_canonical_json_compatible(tmp_path: Path) -> None:
     report = _report(tmp_path)
-    assert report["version"] == "touchstone.observation-report.v3"
+    assert report["version"] == "touchstone.observation-report.v4"
     assert all(len(digest) == 64 for digest in report["compiler_provenance_digests"])
 
 

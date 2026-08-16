@@ -44,6 +44,72 @@ class ApprovalError(RuntimeError):
     """An approved control cannot be resolved to the compilation that produced it."""
 
 
+def ledger_bytes(path: str | Path = LEDGER) -> bytes:
+    """The ledger's exact bytes, for hashing and for carrying in a bundle."""
+    try:
+        return Path(path).read_bytes()
+    except OSError as error:
+        raise ApprovalError(f"the approval ledger cannot be read: {error}") from error
+
+
+def ledger_digest(path: str | Path = LEDGER) -> str:
+    """The digest a report commits to, so a reader can tell which ledger it meant."""
+    return hashlib.sha256(ledger_bytes(path)).hexdigest()
+
+
+def assert_ledger_permits(controls, ledger: Mapping) -> None:
+    """Every reported control approved exactly once, and none of them declined.
+
+    Without this an offline reader can confirm a control is exactly what a compilation
+    accepted — and still not know whether a human refused it. The compiler accepted ten
+    candidates; two were declined. Both remain in their artifacts, because an artifact
+    records what the compiler did, not what a person decided afterwards.
+    """
+    approved = [e for e in ledger[APPROVED_KEY] if isinstance(e, Mapping)]
+    declined = [e for e in ledger[DECLINED_KEY] if isinstance(e, Mapping)]
+    for control in controls:
+        pair = (control.control_id, control.compilation_sha256)
+        refused = [
+            e
+            for e in declined
+            if (e.get("control_id"), e.get("compilation_sha256")) == pair
+        ]
+        if refused:
+            reason = refused[0].get("reason", "no reason recorded")
+            raise ApprovalError(
+                f"{control.control_id!r} was declined: {reason}"
+            )
+        matches = [
+            e
+            for e in approved
+            if (e.get("control_id"), e.get("compilation_sha256")) == pair
+        ]
+        if len(matches) != 1:
+            raise ApprovalError(
+                f"{control.control_id!r} appears {len(matches)} times in the approved "
+                "ledger; exactly one approval is required"
+            )
+
+
+def ledger_from_bytes(raw: bytes) -> Mapping[str, list]:
+    """Parse and validate a ledger carried in a bundle, with no filesystem involved."""
+    try:
+        ledger = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ApprovalError(f"the approval ledger is not readable JSON: {error}") from error
+    return _validated_ledger(ledger)
+
+
+def _validated_ledger(ledger: object) -> Mapping[str, list]:
+    """One shape check, shared by the on-disk and in-bundle readers."""
+    if not isinstance(ledger, Mapping) or ledger.get("version") != LEDGER_VERSION:
+        raise ApprovalError("the approval ledger is not a supported version")
+    for key in (APPROVED_KEY, DECLINED_KEY):
+        if not isinstance(ledger.get(key), list):
+            raise ApprovalError(f"the approval ledger has no {key} list")
+    return ledger
+
+
 def load_approval_ledger(path: str | Path = LEDGER) -> Mapping[str, list]:
     """Read the committed record of what was approved and what was declined."""
     location = Path(path)
@@ -53,12 +119,7 @@ def load_approval_ledger(path: str | Path = LEDGER) -> Mapping[str, list]:
         raise ApprovalError(f"no approval ledger at {location}") from error
     except (OSError, json.JSONDecodeError) as error:
         raise ApprovalError(f"the approval ledger cannot be read: {error}") from error
-    if not isinstance(ledger, Mapping) or ledger.get("version") != LEDGER_VERSION:
-        raise ApprovalError("the approval ledger is not a supported version")
-    for key in (APPROVED_KEY, DECLINED_KEY):
-        if not isinstance(ledger.get(key), list):
-            raise ApprovalError(f"the approval ledger has no {key} list")
-    return ledger
+    return _validated_ledger(ledger)
 
 
 def compilation_from_bytes(digest: str, raw: bytes) -> Mapping:

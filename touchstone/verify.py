@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime, time, timedelta, timezone
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -23,8 +24,11 @@ from touchstone.controls import (
 from touchstone.approval import (
     ApprovalError,
     assert_binding,
+    assert_ledger_permits,
     compilation_bytes,
     from_mapping,
+    ledger_bytes,
+    ledger_from_bytes,
     provenance_digests,
 )
 from touchstone.evidence import CONFIRMATION_INTERVAL_SECONDS
@@ -47,8 +51,9 @@ from touchstone.signing import (
 # digests` that an offline verifier could only check were well-formed hexadecimal — it had
 # no way to resolve one, so "these controls came out of a compiler" was a claim a reader had
 # to take on trust from the party making it.
-BUNDLE_VERSION = "touchstone.verification-bundle.v3"
+BUNDLE_VERSION = "touchstone.verification-bundle.v4"
 _BUNDLE_FIELDS = {
+    "approval_ledger",
     "compilations",
     "control_records",
     "evidence_digests",
@@ -58,6 +63,7 @@ _BUNDLE_FIELDS = {
     "version",
 }
 _REPORT_FIELDS = {
+    "approval_ledger_sha256",
     "asset_key",
     "compiler_provenance_digests",
     "control_set_root",
@@ -132,6 +138,7 @@ def create_bundle(
         else dict(compilations)
     )
     return {
+        "approval_ledger": ledger_bytes().decode("utf-8"),
         "compilations": {
             digest: raw.decode("utf-8") for digest, raw in sorted(artifacts.items())
         },
@@ -215,7 +222,48 @@ def verify_bundle(value: bytes | str | Mapping[str, object]) -> Mapping[str, obj
     _verify_state(report)
     _verify_capture_roles(evidence, report, controls)
     _verify_compilations(bundle["compilations"], report, controls)
+    _verify_approval_ledger(bundle["approval_ledger"], report, controls)
     return report
+
+
+def _verify_approval_ledger(
+    raw_ledger: object,
+    report: Mapping[str, object],
+    controls: Sequence[ControlRecord],
+) -> None:
+    """The human decision, made checkable by a reader who was not there.
+
+    A v3 bundle proved a control was exactly what a compilation accepted. It could not
+    prove a human had approved it — and both candidates a human *declined* are still sitting
+    in their artifacts marked `accepted`, because an artifact records what the compiler did,
+    not what anyone decided afterwards. So a declined control could be published and no
+    offline reader could tell.
+
+    Three checks. The ledger must hash to the digest the signed report commits to, so the
+    reader knows which ledger the publisher meant and cannot be handed a different one.
+    Every reported control must appear exactly once in `approved`. None may appear in
+    `declined`.
+
+    What this still does not establish is *who* approved: the ledger records what and when
+    and why-not, but carries no approver identity and nothing signs the decision. That is
+    R-9 in the threat model, and it stays open.
+    """
+    if not isinstance(raw_ledger, str):
+        raise VerificationError("the bundled approval ledger must be text")
+    encoded = raw_ledger.encode("utf-8")
+    committed = report["approval_ledger_sha256"]
+    if not isinstance(committed, str) or _DIGEST.fullmatch(committed) is None:
+        raise VerificationError("approval_ledger_sha256 must be a SHA-256 digest")
+    actual = hashlib.sha256(encoded).hexdigest()
+    if actual != committed:
+        raise VerificationError(
+            f"the bundled approval ledger hashes to {actual}, but the report commits to "
+            f"{committed}"
+        )
+    try:
+        assert_ledger_permits(controls, ledger_from_bytes(encoded))
+    except ApprovalError as error:
+        raise VerificationError(f"approval does not verify: {error}") from error
 
 
 def _verify_compilations(

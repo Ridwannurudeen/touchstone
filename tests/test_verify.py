@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from datetime import date, datetime, timezone
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -525,3 +526,68 @@ def test_a_control_edited_after_approval_is_refused_by_the_verifier(
 
     with pytest.raises(VerificationError, match="differs from the candidate"):
         verify_bundle(_resign(bundle, report))
+
+
+def test_a_bundle_carries_the_approval_ledger_its_report_commits_to(
+    tmp_path: Path,
+) -> None:
+    """The human decision, made checkable by a reader who was not there."""
+    bundle = _bundle(tmp_path)
+
+    committed = bundle["signed_report"]["report"]["approval_ledger_sha256"]
+    assert (
+        hashlib.sha256(bundle["approval_ledger"].encode("utf-8")).hexdigest()
+        == committed
+    )
+
+
+def test_a_substituted_approval_ledger_is_refused(tmp_path: Path) -> None:
+    """The report commits to a digest, so a reader cannot be handed a different ledger."""
+    bundle = _bundle(tmp_path)
+    ledger = json.loads(bundle["approval_ledger"])
+    ledger["declined"] = []
+    bundle["approval_ledger"] = json.dumps(ledger)
+
+    with pytest.raises(VerificationError, match="hashes to"):
+        verify_bundle(bundle)
+
+
+def test_a_control_a_human_declined_cannot_be_published(tmp_path: Path) -> None:
+    """The gap v3 left open, closed.
+
+    A v3 bundle proved a control was exactly what a compilation accepted — and both
+    candidates a human declined are still sitting in their artifacts marked `accepted`,
+    because an artifact records what the compiler did, not what anyone decided afterwards.
+    So a declined control could be published and no offline reader could tell.
+    """
+    from touchstone.approval import (
+        DECLINED_KEY,
+        ApprovalError,
+        approved_control,
+        load_approval_ledger,
+    )
+
+    declined = load_approval_ledger()[DECLINED_KEY][0]
+    # It cannot even be resolved into an approved control any more.
+    with pytest.raises(ApprovalError, match="was declined"):
+        approved_control(
+            {
+                "control_id": declined["control_id"],
+                "compilation_sha256": declined["compilation_sha256"],
+            }
+        )
+
+
+def test_a_control_absent_from_the_ledger_is_refused(tmp_path: Path) -> None:
+    """Being what a compilation accepted is not the same as having been approved."""
+    from touchstone.approval import ApprovalError, assert_ledger_permits
+
+    controls = list(default_ustb_controls())
+    renamed = controls[0].to_mapping()
+    renamed["control_id"] = "a-control-nobody-approved"
+    controls[0] = ControlRecord.from_mapping(renamed)
+
+    with pytest.raises(ApprovalError, match="appears 0 times"):
+        assert_ledger_permits(controls, __import__(
+            "touchstone.approval", fromlist=["load_approval_ledger"]
+        ).load_approval_ledger())
