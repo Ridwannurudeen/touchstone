@@ -34,7 +34,7 @@ assumptions are the product, so they are enumerated rather than minimised.
 |---|---|---|---|
 | B1 | **Source** (issuer endpoint) | Publishing its own figures | Touchstone reports what the issuer published; it cannot detect issuer dishonesty |
 | B2 | **Network path to the source** | Transport integrity via TLS | A successful TLS MITM could substitute evidence; pinning is not implemented |
-| B3 | **Model provider** (control compiler) | Proposing candidate controls only | A hostile model cannot itself change state: compilation only ever emits `proposed` records. But the evaluator's admission rule is the `approval_state` field alone (`touchstone/evaluate.py:201`), and it is **not bound to a compiler record** — see R-11 |
+| B3 | **Model provider** (control compiler) | Proposing candidate controls only | A hostile model cannot itself change state: compilation only ever emits `proposed` records, and a candidate the deterministic evaluator cannot decide is refused at compilation. An approved control is bound to the compilation that accepted it, checked at report construction and repeated by the offline verifier from artifacts the bundle carries. What remains is that the approval decision itself is unattributed — see R-9 |
 | B4 | **Parsing worker** | Normalising bytes into typed observations | Process isolation only, not a kernel sandbox — see R-3 |
 | B5 | **Evidence store** | Retaining exact bytes and their order | Local filesystem trust; chain verification detects modification, not a privileged rewrite of both objects and index |
 | B6 | **Ed25519 reporting key** | Authenticity of a report's content | A compromised key can sign false reports. A bundle verifies against the key it carries, so a consumer must decide which key it trusts out of band. Rollover is built (`touchstone/keyring.py`) and is additive: a superseded key stays published and trusted, and only the active key may sign or publish anew. Note the limit this creates — because a bundle carries its own key, a bundle signed by a **revoked** key still passes `verify_bundle` (`touchstone/verify.py:133`). Revocation is a manifest-level withdrawal of trust, not a cryptographic one, so a consumer who cares must consult the manifest. Custody is the open part — R-5 |
@@ -89,7 +89,7 @@ threat identifiers `T1`–`T27` used in this section.
 |---|---|---|
 | T9 | **Prompt injection** — instructions embedded in issuer evidence steer the compiler | **Partially mitigated, and the limit is now pinned by tests.** The model is given no tool surface at all: the request body carries only `model`, `messages` and `temperature` (`touchstone/compiler.py:114`), so there is no shell, network, wallet or contract capability for injected text to invoke. Impact is further bounded because output is only a *proposal* that must survive schema validation, an adapter/source binding check (`touchstone/compiler.py:379`) and explicit approval before evaluation. **This constrains impact; it does not prevent steering** — embedded instructions can still shape a schema-valid, byte-citable proposal. **Tested as of PLAN-T5:** evidence carrying explicit self-approval instructions is refused outright, because a candidate declaring any `approval_state` other than `proposed` is rejected; a fabricated citation is rejected; a control redirected to another adapter is rejected; and the request carries no tool schema for injected text to invoke. **The honest limit is also pinned:** a *well-formed* injected candidate — correct adapter, exact citation, `proposed`, maximum confidence — is ACCEPTED by the compiler, because nothing detects that a human never intended it. Only the approval gate stops it, and approval is unattributed (B14, R-9) |
 | T10 | **False citation** — a proposed control cites evidence it did not come from | **Partially implemented — byte-presence only.** The cited span must occur byte-exactly in both the stored artifact and the excerpt shown to the model (`touchstone/compiler.py:325`). That proves the bytes are present; it does not prove uniqueness or that they denote the value the adapter consumed. The broader threat remains open under **R-1** |
-| T11 | **Silent model substitution** — output attributed to a model that did not produce it | **Not implemented — residual R-11.** Prompt hash, compiler version, input hash and the exact raw output are recorded, but the recorded model id is the *requested* one read from configuration (`touchstone/compiler.py:90`), and the response parser reads only the message content and never the provider's returned model identity (`touchstone/compiler.py:157`). A substituted model is therefore attributed to the configured name. The actual model remains provider-attested and untested by Touchstone |
+| T11 | **Silent model substitution** — output attributed to a model that did not produce it | **Closed 2026-08-16.** The provider boundary returns the identity the service answered with, and provenance records `returned_model_name` beside `requested_model_name`, the resolved endpoint, the response id, and a digest over the whole response body — which is persisted in the artifact, so the digest is checkable rather than asserted. A response whose returned model differs from the requested one is refused, as is any finish reason other than `stop`. The identity is still the provider's own claim about itself: Touchstone can prove what the service *said* it used, not what it actually ran |
 | T12 | **Overconfident acceptance** — an ambiguous document yields a confident control | **Partially implemented.** Below-threshold confidence abstains rather than accepting (`touchstone/compiler.py:340`), but `compiler_confidence` is **supplied by the model in its own proposal**, so a confidently wrong or hostile output can clear the threshold by asserting a high number. The remaining protection is that a control must be marked approved before it becomes evaluable — which is a string comparison on a field, not an attested human decision (B14, R-9, R-11) |
 
 ### Evaluation and state
@@ -155,7 +155,7 @@ These distinctions are load-bearing and must not be collapsed:
 | Page limits | Not applicable until PDFs land. Backlog: **PLAN-T10** |
 | Time limits | Implemented and **proved (PLAN-T5)** — a worker that never returns is terminated by the wall-clock limit and raises a typed failure |
 | Isolated parsing worker | Implemented, with **R-3** stated |
-| Model id, prompt hash, compiler version, input hash, raw output recorded | Partially — prompt hash, compiler version, input hash and raw output are recorded; the **requested** model id is recorded rather than the provider's returned identity (T11, R-11) |
+| Model id, prompt hash, compiler version, input hash, raw output recorded | Yes — prompt hash, compiler version, input hash, raw output and the full response body are recorded, with the provider's **returned** model identity beside the requested one and a mismatch refused (T11 closed) |
 
 ### 5.2 Immediate (hackathon) security ladder
 
@@ -195,8 +195,11 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
 - **R-2 — The confirmation window is empirical, not proven.** Cross-capture confirmation
   shows only that a row was identical *at* two capture instants (`touchstone/evaluate.py:361`);
   a row revised and restored between them is indistinguishable from one never touched, and
-  nothing establishes that an older row is never revised later. The two-business-day minimum age is derived from two captures
-  and the business-day count ignores exchange and bank holidays.
+  nothing establishes that an older row is never revised later. **The approved control set
+  declares no minimum row age at all** — the retired hand-written controls used two business
+  days, derived from those same two captures, but the compiler did not propose it and
+  approval may not add it, so confirmation is now the only safeguard on this path. The
+  business-day count ignores exchange and bank holidays.
 - **R-3 — Parser isolation bounds runtime, not compromise.** Normalisation runs in a
   spawned worker with a wall-clock timeout. There is no seccomp, container, namespace or
   capability restriction, and the worker retains the privileges of the service account.
@@ -243,34 +246,38 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   the approval decision, and no separation between the person proposing a control and the
   person approving it. The compiler's confidence gate cannot substitute for this, because
   the confidence value is supplied by the model itself (T12).
-- **R-11 — Compilation is not bound to evaluation.** These are two disconnected paths.
-  Compilation validates a candidate's span, adapter binding and confidence, and emits a
-  `proposed` record. Evaluation admits any `ControlRecord` whose `approval_state` reads
-  `approved` (`touchstone/evaluate.py:201`); nothing requires that record to have come from
-  a compilation, to match one, or to be reachable from any provenance digest. A report
-  carries `compiler_provenance_digests`, but the report builder and the offline verifier
-  check those only as well-formed digests — they are never resolved back to a compilation
-  that produced the evaluated control. Consequently the compiler's validation is advisory
-  to whoever curates the control set rather than a precondition of evaluation, and the
-  "AI proposes, deterministic systems decide" separation rests entirely on that curator
-  (B14, R-9). Also unresolved: the recorded model identity is the requested one, not the
-  provider's returned one (T11), so provenance cannot attest which model proposed a
-  control.
+- **R-11 — Compilation is bound to evaluation. Closed 2026-08-16.** These were two
+  disconnected paths: compilation validated a candidate and emitted a `proposed` record,
+  evaluation admitted any record whose `approval_state` read `approved`, and the
+  `compiler_provenance_digests` a report carried were checked by both the builder and the
+  offline verifier only as well-formed hexadecimal. Nothing required an evaluated control to
+  have come from a compilation, to match one, or to be reachable from any digest. The
+  compiler's validation was therefore advisory to whoever curated the control set.
 
-  **Closed in part by PLAN-T5:** the offline verifier now refuses a bundle whose controls
-  are not `approved`, so an independent verifier no longer accepts one carrying proposals.
-  What remains is the binding itself — report construction still matches controls to
-  evaluations by `control_id` alone (`touchstone/report.py:161`), and nothing ties an
-  approved control to the compilation that produced it.
+  Three things closed it. **The binding exists:** `ControlRecord` carries
+  `compilation_sha256`, part of `canonical_bytes()` and so of the control-set root a
+  consumer contract pins. A proposal must carry none — the digest is over the artifact
+  containing the proposal — and approval attaches it. **It is enforced:** report
+  construction resolves each artifact, hashes it, finds the accepted candidate, and requires
+  the approved record to differ only in `approval_state` and `compilation_sha256`, naming
+  any other edited field. **It is independently checkable:** a v3 verification bundle
+  carries the artifacts themselves, and the offline verifier resolves them in memory, hashes
+  them against the digests they are filed under, requires the set to equal the report's
+  provenance exactly, and repeats the binding — with no filesystem and no access to the
+  publisher's ledger.
 
-  Of the three changes needed, the offline verifier's rejection of controls whose
-  `approval_state` is not `approved` is **done (PLAN-T5)**. The other two remain
-  unscheduled: (a) bind an approved control to the specific compilation record that
-  produced it and have the verifier check that binding; and (b) separately, record the
-  model identity the provider returned rather than the one requested
-  (`touchstone/compiler.py:152`), without which provenance cannot attest which model
-  proposed a control at all. The PLAN-T5 check closes neither the binding gap nor T11;
-  remedy (a) does not close T11, and remedy (b) does not close the binding gap.
+  The hand-written control set that predated this is retired. It cited real spans and
+  evaluated correctly, but nothing had compiled it, so a report claiming compiler provenance
+  for it claimed something untrue. The approved set is eight candidates a model proposed from
+  the issuer's own bytes; two further accepted candidates were declined by a human, recorded
+  with reasons in `data/compilations/APPROVALS.json`, and cannot be relabelled approved.
+
+  **What remains is R-9, and it is the load-bearing gap now.** The approval decision itself
+  is unattributed: the ledger records what was approved, when, and why a candidate was
+  declined, but not *by whom*, and nothing signs the decision. "AI proposes, deterministic
+  systems decide" now holds for the compile-to-evaluate path; who approves remains a
+  question this system does not answer.
+
 - **R-10 — Time is taken from the host clock, with only a one-sided chain check.**
   Retrieval timestamps, freshness deadlines and the 24-hour confirmation separation all
   derive from the local clock (B15). The chain catches one direction: the registry rejects

@@ -20,6 +20,13 @@ from touchstone.controls import (
     OperationalEvent,
     transition_state,
 )
+from touchstone.approval import (
+    ApprovalError,
+    assert_binding,
+    compilation_bytes,
+    from_mapping,
+    provenance_digests,
+)
 from touchstone.evidence import CONFIRMATION_INTERVAL_SECONDS
 from touchstone.normalize.ustb import USTB_NAV_SOURCE_ID
 from touchstone.report import (
@@ -36,8 +43,13 @@ from touchstone.signing import (
 )
 
 
-BUNDLE_VERSION = "touchstone.verification-bundle.v2"
+# v3 carries the compilation artifacts. Before it, a bundle asserted `compiler_provenance_
+# digests` that an offline verifier could only check were well-formed hexadecimal — it had
+# no way to resolve one, so "these controls came out of a compiler" was a claim a reader had
+# to take on trust from the party making it.
+BUNDLE_VERSION = "touchstone.verification-bundle.v3"
 _BUNDLE_FIELDS = {
+    "compilations",
     "control_records",
     "evidence_digests",
     "published_key",
@@ -81,6 +93,8 @@ def create_bundle(
     published_key: Mapping[str, object],
     control_records: Sequence[ControlRecord],
     evidence_digests: Sequence[Mapping[str, object]],
+    *,
+    compilations: Mapping[str, bytes] | None = None,
 ) -> dict[str, object]:
     """Create the exact self-contained bundle mapping at ``BUNDLE_VERSION``.
 
@@ -109,7 +123,18 @@ def create_bundle(
         frozen_snapshot(record, f"evidence_digests[{index}]")
         for index, record in enumerate(evidence_digests)
     ]
+    # The artifacts themselves, as text, keyed by their digest. Read from the committed
+    # directory when the caller does not supply them, because a bundle that omitted one
+    # would be refused by its own verifier.
+    artifacts = (
+        {digest: compilation_bytes(digest) for digest in provenance_digests(records)}
+        if compilations is None
+        else dict(compilations)
+    )
     return {
+        "compilations": {
+            digest: raw.decode("utf-8") for digest, raw in sorted(artifacts.items())
+        },
         "control_records": [record.to_mapping() for record in records],
         "evidence_digests": frozen_digests,
         "published_key": frozen_key,
@@ -189,7 +214,62 @@ def verify_bundle(value: bytes | str | Mapping[str, object]) -> Mapping[str, obj
     )
     _verify_state(report)
     _verify_capture_roles(evidence, report, controls)
+    _verify_compilations(bundle["compilations"], report, controls)
     return report
+
+
+def _verify_compilations(
+    compilations: object,
+    report: Mapping[str, object],
+    controls: Sequence[ControlRecord],
+) -> None:
+    """Resolve every compilation the report cites and repeat the binding, in memory.
+
+    This is the half of the provenance claim an independent reader could not previously
+    check. The report named compilation digests; the verifier confirmed only that they were
+    lowercase hexadecimal. So a bundle could assert that a model proposed its controls while
+    carrying nothing that could be resolved, and a reader had to take the claim from the
+    party making it.
+
+    Three things are checked, and each closes a different way of lying. The artifacts must
+    hash to the digests they are filed under, or they are not the compilations named. The
+    set carried must equal the set the report cites exactly — a surplus artifact is one the
+    report does not stand behind, and a missing one is a claim with nothing behind it. And
+    each control must be exactly the candidate its own compilation accepted, differing only
+    in the two fields approval is allowed to touch.
+    """
+    if not isinstance(compilations, Mapping):
+        raise VerificationError("bundle compilations must be a mapping")
+    artifacts: dict[str, bytes] = {}
+    for digest, text in compilations.items():
+        if not isinstance(digest, str) or _DIGEST.fullmatch(digest) is None:
+            raise VerificationError("a compilation key must be a SHA-256 digest")
+        if not isinstance(text, str):
+            raise VerificationError(f"compilation {digest} must be text")
+        artifacts[digest] = text.encode("utf-8")
+
+    cited = report["compiler_provenance_digests"]
+    if not isinstance(cited, Sequence) or isinstance(cited, str):
+        raise VerificationError("compiler_provenance_digests must be a list")
+    if set(cited) != set(artifacts):
+        missing = sorted(set(cited) - set(artifacts))
+        surplus = sorted(set(artifacts) - set(cited))
+        raise VerificationError(
+            "bundled compilations do not match the report's provenance; "
+            f"missing {missing}, unexpected {surplus}"
+        )
+
+    resolve = from_mapping(artifacts)
+    try:
+        for control in controls:
+            assert_binding(control, resolve=resolve)
+        derived = provenance_digests(controls, resolve=resolve)
+    except ApprovalError as error:
+        raise VerificationError(f"control provenance does not verify: {error}") from error
+    if sorted(cited) != derived:
+        raise VerificationError(
+            "the report's provenance is not the set its controls name"
+        )
 
 
 def _verify_report_schema(report: Mapping[str, object], envelope_kid: str) -> None:

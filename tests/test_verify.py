@@ -1,15 +1,18 @@
 from collections.abc import Mapping
 from copy import deepcopy
 from datetime import date, datetime, timezone
+import hashlib
 from pathlib import Path
 
 import pytest
 
+from touchstone.controls import ControlRecord
 from touchstone.epoch import FixtureTransport, run_ustb_epoch
 from touchstone.evidence import EvidenceStore
 from touchstone.evaluate import default_ustb_controls
 from touchstone.report import (
     build_observation_report,
+    control_set_root,
     evidence_references,
     evidence_root,
 )
@@ -437,3 +440,88 @@ def test_a_verified_report_does_not_change_when_the_caller_mutates_the_bundle(
     bundle["signed_report"]["report"]["sequence"] = 99
 
     assert verified == expected
+
+
+def test_a_bundle_carries_the_compilations_its_report_cites(tmp_path: Path) -> None:
+    """The claim "a compiler proposed these controls" is now checkable, not merely made.
+
+    Before this the report named compilation digests and an offline verifier confirmed only
+    that they were lowercase hexadecimal. A bundle could assert compiler provenance while
+    carrying nothing anyone could resolve, so a reader had to take the claim from the party
+    making it.
+    """
+    bundle = _bundle(tmp_path)
+
+    assert set(bundle["compilations"]) == set(
+        bundle["signed_report"]["report"]["compiler_provenance_digests"]
+    )
+    for digest, text in bundle["compilations"].items():
+        assert hashlib.sha256(text.encode("utf-8")).hexdigest() == digest
+
+
+def test_a_bundle_missing_a_compilation_it_cites_is_refused(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path)
+    bundle["compilations"].popitem()
+
+    with pytest.raises(VerificationError, match="do not match the report's provenance"):
+        verify_bundle(bundle)
+
+
+def test_a_bundle_carrying_a_compilation_it_does_not_cite_is_refused(
+    tmp_path: Path,
+) -> None:
+    """A surplus artifact is one the report does not stand behind."""
+    bundle = _bundle(tmp_path)
+    bundle["compilations"]["ab" * 32] = "{}"
+
+    with pytest.raises(VerificationError, match="unexpected"):
+        verify_bundle(bundle)
+
+
+def test_an_altered_compilation_no_longer_hashes_to_its_digest(tmp_path: Path) -> None:
+    """Editing an artifact to accept something it did not is caught by the hash."""
+    bundle = _bundle(tmp_path)
+    bundle["compilations"] = {
+        digest: text.replace("accepted", "rejected", 1)
+        for digest, text in bundle["compilations"].items()
+    }
+
+    with pytest.raises(VerificationError, match="is not the artifact named"):
+        verify_bundle(bundle)
+
+
+def test_compilations_swapped_under_each_others_digests_are_refused(
+    tmp_path: Path,
+) -> None:
+    """Filing a real artifact under another real artifact's digest proves nothing."""
+    bundle = _bundle(tmp_path)
+    digests = sorted(bundle["compilations"])
+    values = [bundle["compilations"][digest] for digest in digests]
+    bundle["compilations"] = dict(zip(digests, reversed(values)))
+
+    with pytest.raises(VerificationError, match="is not the artifact named"):
+        verify_bundle(bundle)
+
+
+def test_a_control_edited_after_approval_is_refused_by_the_verifier(
+    tmp_path: Path,
+) -> None:
+    """The verifier repeats the binding rather than trusting the publisher's word on it."""
+    bundle = _bundle(tmp_path)
+    for record in bundle["control_records"]:
+        if record["control_id"] == "ustb-aum-published":
+            record["grace_period"] = record["grace_period"] + 5
+    report = deepcopy(bundle["signed_report"]["report"])
+    report["control_set_root"] = control_set_root(
+        [ControlRecord.from_mapping(record) for record in bundle["control_records"]]
+    )
+    for item in report["controls"]:
+        if item["control_id"] == "ustb-aum-published":
+            item["content_hash"] = next(
+                ControlRecord.from_mapping(record).content_hash
+                for record in bundle["control_records"]
+                if record["control_id"] == "ustb-aum-published"
+            )
+
+    with pytest.raises(VerificationError, match="differs from the candidate"):
+        verify_bundle(_resign(bundle, report))

@@ -61,18 +61,13 @@ def load_approval_ledger(path: str | Path = LEDGER) -> Mapping[str, list]:
     return ledger
 
 
-def load_compilation(digest: str, *, directory: str | Path = COMPILATIONS) -> Mapping:
-    """Read one compilation artifact and prove it is the artifact that digest names.
+def compilation_from_bytes(digest: str, raw: bytes) -> Mapping:
+    """Prove these bytes are the artifact ``digest`` names, and read them.
 
-    Hashed on the way in rather than trusted by filename. A file is not its name, and an
-    artifact that no longer hashes to the digest a control pins is not the compilation that
-    control was approved against.
+    The hash is over the bytes as they arrived, never over a re-serialisation. A bundle
+    that carried a pretty-printed copy of an artifact would hash to something else and be
+    refused, which is the point: the digest is a claim about exact bytes.
     """
-    location = Path(directory) / f"{digest}.json"
-    try:
-        raw = location.read_bytes()
-    except OSError as error:
-        raise ApprovalError(f"compilation {digest} is missing: {error}") from error
     actual = hashlib.sha256(raw).hexdigest()
     if actual != digest:
         raise ApprovalError(
@@ -84,6 +79,53 @@ def load_compilation(digest: str, *, directory: str | Path = COMPILATIONS) -> Ma
         raise ApprovalError(
             f"compilation {digest} is not readable JSON: {error}"
         ) from error
+
+
+def load_compilation(digest: str, *, directory: str | Path = COMPILATIONS) -> Mapping:
+    """Read one committed compilation artifact from disk, hash-checked."""
+    location = Path(directory) / f"{digest}.json"
+    try:
+        raw = location.read_bytes()
+    except OSError as error:
+        raise ApprovalError(f"compilation {digest} is missing: {error}") from error
+    return compilation_from_bytes(digest, raw)
+
+
+def compilation_bytes(digest: str, *, directory: str | Path = COMPILATIONS) -> bytes:
+    """The artifact's exact bytes, for embedding in a bundle."""
+    location = Path(directory) / f"{digest}.json"
+    try:
+        raw = location.read_bytes()
+    except OSError as error:
+        raise ApprovalError(f"compilation {digest} is missing: {error}") from error
+    compilation_from_bytes(digest, raw)
+    return raw
+
+
+def from_directory(directory: str | Path = COMPILATIONS):
+    """A resolver that reads artifacts from a committed directory."""
+
+    def resolve(digest: str) -> Mapping:
+        return load_compilation(digest, directory=directory)
+
+    return resolve
+
+
+def from_mapping(artifacts: Mapping[str, bytes]):
+    """A resolver over artifacts carried in a bundle, with no filesystem at all.
+
+    This is what lets an independent verifier repeat the binding. Threading a temporary
+    directory through verification instead would make offline checking depend on being able
+    to write to disk, which is precisely what a portable bundle exists to avoid.
+    """
+
+    def resolve(digest: str) -> Mapping:
+        raw = artifacts.get(digest)
+        if raw is None:
+            raise ApprovalError(f"the bundle carries no compilation {digest}")
+        return compilation_from_bytes(digest, raw)
+
+    return resolve
 
 
 def accepted_candidates(compilation: Mapping) -> list[Mapping]:
@@ -142,9 +184,7 @@ def assert_ledger_approves(
         )
 
 
-def approved_control(
-    entry: Mapping, *, directory: str | Path = COMPILATIONS
-) -> ControlRecord:
+def approved_control(entry: Mapping, *, resolve=None) -> ControlRecord:
     """Resolve one ledger entry into the approved control, or refuse to.
 
     The entry names a control and the artifact it was approved from. Everything else about
@@ -158,12 +198,21 @@ def approved_control(
     if not isinstance(digest, str) or not isinstance(control_id, str):
         raise ApprovalError("an approval entry must name a control and a compilation")
     assert_ledger_approves(control_id, digest)
+    return _candidate_as_approved(control_id, digest, resolve)
 
+
+def _candidate_as_approved(control_id: str, digest: str, resolve) -> ControlRecord:
+    """The one accepted candidate under this name, with approval's two fields applied.
+
+    Deliberately free of the ledger. An independent verifier holds the artifacts a bundle
+    carries and nothing else — it can check that a control is exactly what a compilation
+    accepted, which is the claim the digest makes, but it has no access to the publisher's
+    curation record and must not be made to depend on one.
+    """
+    resolve = from_directory() if resolve is None else resolve
     candidates = [
         candidate
-        for candidate in accepted_candidates(
-            load_compilation(digest, directory=directory)
-        )
+        for candidate in accepted_candidates(resolve(digest))
         if candidate.get("control_id") == control_id
     ]
     if not candidates:
@@ -189,9 +238,7 @@ def approved_control(
     )
 
 
-def assert_binding(
-    control: ControlRecord, *, directory: str | Path = COMPILATIONS
-) -> None:
+def assert_binding(control: ControlRecord, *, resolve=None) -> None:
     """Refuse an approved control that is not exactly what its compilation accepted.
 
     This is the check that makes the digest mean something. Without it a control could name
@@ -215,12 +262,8 @@ def assert_binding(
             f"approved control {control.control_id!r} names no compilation; nothing "
             "attests that a compiler ever proposed it"
         )
-    resolved = approved_control(
-        {
-            "control_id": control.control_id,
-            "compilation_sha256": control.compilation_sha256,
-        },
-        directory=directory,
+    resolved = _candidate_as_approved(
+        control.control_id, control.compilation_sha256, resolve
     )
     # Field by field rather than by content hash. The hash enforces the same invariant, but
     # a mismatch reports only that something differs — and the whole point of this check is
@@ -239,7 +282,7 @@ def assert_binding(
         )
 
 
-def provenance_digests(controls) -> list[str]:
+def provenance_digests(controls, *, resolve=None) -> list[str]:
     """The compilation digests an observation report must carry, and only those.
 
     Derived from the approved controls rather than supplied alongside them. A caller-supplied
@@ -248,7 +291,7 @@ def provenance_digests(controls) -> list[str]:
     """
     digests = []
     for control in controls:
-        assert_binding(control)
+        assert_binding(control, resolve=resolve)
         if control.compilation_sha256 not in digests:
             digests.append(control.compilation_sha256)
     if not digests:

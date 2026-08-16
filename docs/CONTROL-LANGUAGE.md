@@ -28,10 +28,32 @@ The canonical record has exactly these fields, in roadmap order:
 | `effective_until` | `YYYY-MM-DD` or null | Last effective calendar date, not earlier than `effective_from`. |
 | `compiler_confidence` | finite number from 0 through 1 | Compiler confidence; it does not bypass approval. |
 | `approval_state` | non-empty string | Workflow state assigned by the approval system. |
+| `compilation_sha256` | 64-char lowercase hex or null | The compilation artifact this control came out of. Null on a proposal — the digest is over the artifact containing the proposal, so naming it would be a cycle. Attached at approval. |
 
 The roadmap does not yet freeze vocabularies for predicate type, authority class,
 cadence, adapter, or approval state. V0 therefore validates those fields as non-empty
 strings and does not invent closed values for them.
+
+## Approval binds a control to its compilation
+
+An approved control names the compilation artifact it came from, and that binding is
+checked rather than asserted. The artifact is resolved and hashed — a file is not its name —
+the accepted candidate under that `control_id` is found, and the approved record must equal
+it except in the two fields approval is permitted to change: `approval_state` and
+`compilation_sha256`. Any other difference is reported by field name, because "something
+differs" is not an auditable diagnosis.
+
+Approval is recorded in `data/compilations/APPROVALS.json`, which also records candidates
+that passed every deterministic gate and a human declined, with the reason. The ledger can
+only *point at* a control — the control is read from the artifact — so it cannot restate one
+into something the compiler never proposed, and a declined candidate cannot be relabelled
+approved.
+
+Enforcement lives at report construction, not in the evaluator. Evaluation is a pure
+function of controls and observations; the only route from a control to a published claim
+runs through the report builder, so the check belongs there. A verification bundle carries
+the artifacts themselves, letting an independent reader repeat the whole check offline with
+no filesystem and no access to the publisher's ledger.
 
 Construction is strict. A mapping must contain every field and no unknown fields.
 Dates and integer fields are type checked, and expected values are recursively checked
@@ -106,11 +128,17 @@ precedence and yields `STALE`.
 `minimum_row_age_business_days` in `expected_value` is a cheap pre-filter in front of
 that comparison, not proof of settlement. Absent the key the window is zero, which admits
 any record that is not future-dated; a negative, boolean, or non-integer window is
-malformed and the control evaluates as `UNEVALUABLE` rather than falling back. The USTB
-nav-daily controls declare two business days, the smallest window under which no record
-changed between the 2026-08-13 and 2026-08-14 captures retained in `fixtures/`. Two
-captures cannot establish that no older record is ever revised, and the count is
-weekday-only — exchange and bank holidays are not modelled.
+malformed and the control evaluates as `UNEVALUABLE` rather than falling back.
+
+**No approved USTB control currently declares one.** The retired hand-written controls
+declared two business days — the smallest window under which no record changed between the
+2026-08-13 and 2026-08-14 captures retained in `fixtures/`. The compiler did not propose
+it, and approval may change only `approval_state` and `compilation_sha256`, so it cannot be
+added to an approved control. The approved set therefore rests on cross-capture confirmation
+alone, which still skips any record revised between the two captures. Restoring the floor
+means compiling a control that declares it. Two captures cannot establish that no older
+record is ever revised, and the count is weekday-only — exchange and bank holidays are not
+modelled.
 
 `fresh_within` is deliberately unaffected: it reads the newest record because its subject
 is whether the source is still publishing, not what the record is worth.

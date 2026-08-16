@@ -1,0 +1,198 @@
+"""The binding between an approved control and the compilation that produced it.
+
+This module had no tests of its own while being the thing that decides whether a control
+set means anything. Every case here is a way the binding could be false while looking true:
+an artifact that is not the one named, a candidate the compiler never accepted, an approval
+that edited more than approval may edit, and a control a human explicitly declined.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+
+import pytest
+
+from touchstone.approval import (
+    APPROVED_KEY,
+    DECLINED_KEY,
+    ApprovalError,
+    approved_control,
+    assert_binding,
+    assert_ledger_approves,
+    compilation_from_bytes,
+    from_mapping,
+    load_approval_ledger,
+    provenance_digests,
+)
+from touchstone.controls import ControlRecord
+from touchstone.evaluate import default_ustb_controls
+
+
+COMPILATIONS = Path(__file__).parents[1] / "data" / "compilations"
+DECLINED = "holdings-line-items-present"
+
+
+def artifacts() -> dict[str, bytes]:
+    return {
+        path.stem: path.read_bytes()
+        for path in COMPILATIONS.glob("*.json")
+        if path.stem != "APPROVALS"
+    }
+
+
+def edited(control: ControlRecord, **changes: object) -> ControlRecord:
+    mapping = control.to_mapping()
+    mapping.update(changes)
+    return ControlRecord.from_mapping(mapping)
+
+
+def test_the_committed_control_set_is_bound_to_its_compilations() -> None:
+    """The whole claim, checked against what is actually on disk."""
+    controls = default_ustb_controls()
+
+    assert len(controls) == 8
+    for control in controls:
+        assert control.approval_state == "approved"
+        assert control.compilation_sha256 is not None
+        assert_binding(control)
+    assert provenance_digests(controls) == sorted(
+        {control.compilation_sha256 for control in controls}
+    )
+
+
+def test_every_artifact_hashes_to_the_name_it_is_filed_under() -> None:
+    for digest, raw in artifacts().items():
+        assert hashlib.sha256(raw).hexdigest() == digest
+
+
+def test_bytes_that_are_not_the_artifact_named_are_refused() -> None:
+    digest, raw = next(iter(artifacts().items()))
+
+    with pytest.raises(ApprovalError, match="is not the artifact named"):
+        compilation_from_bytes(digest, raw + b" ")
+
+
+def test_an_artifact_that_is_not_json_is_refused() -> None:
+    raw = b"not json at all"
+    with pytest.raises(ApprovalError, match="not readable JSON"):
+        compilation_from_bytes(hashlib.sha256(raw).hexdigest(), raw)
+
+
+def test_an_approved_control_naming_no_compilation_is_refused() -> None:
+    control = edited(default_ustb_controls()[0], compilation_sha256=None)
+
+    with pytest.raises(ApprovalError, match="names no compilation"):
+        assert_binding(control)
+
+
+def test_a_proposal_is_refused_rather_than_waved_through() -> None:
+    """It used to return early, and its null digest then failed later as a bare TypeError."""
+    control = edited(
+        default_ustb_controls()[0], approval_state="proposed", compilation_sha256=None
+    )
+
+    with pytest.raises(ApprovalError, match="is a proposal"):
+        assert_binding(control)
+    with pytest.raises(ApprovalError, match="is a proposal"):
+        provenance_digests([control])
+
+
+def test_an_edit_beyond_approval_is_named_field_by_field() -> None:
+    """Reporting only that something differs is useless; the point is to say what."""
+    control = edited(default_ustb_controls()[0], grace_period=99, subject="rewritten")
+
+    with pytest.raises(ApprovalError, match="grace_period, subject"):
+        assert_binding(control)
+
+
+def test_a_control_pointed_at_a_compilation_that_never_proposed_it() -> None:
+    controls = {control.control_id: control for control in default_ustb_controls()}
+    yield_control = controls["ustb-one-day-yield-present"]
+    other = controls["ustb-aum-published"].compilation_sha256
+
+    with pytest.raises(ApprovalError, match="accepted no candidate"):
+        assert_binding(edited(yield_control, compilation_sha256=other))
+
+
+def test_a_declined_candidate_cannot_be_relabelled_approved() -> None:
+    """The decline was decorative until the ledger was consulted.
+
+    Resolution read only the artifact, which of course still contains the candidate a human
+    rejected — so a control someone had explicitly refused resolved cleanly to `approved`.
+    """
+    ledger = load_approval_ledger()
+    entry = next(
+        item for item in ledger[DECLINED_KEY] if item["control_id"] == DECLINED
+    )
+
+    with pytest.raises(ApprovalError, match="was declined"):
+        approved_control(
+            {
+                "control_id": DECLINED,
+                "compilation_sha256": entry["compilation_sha256"],
+            }
+        )
+
+
+def test_a_candidate_in_neither_list_is_refused() -> None:
+    digest = default_ustb_controls()[0].compilation_sha256
+
+    with pytest.raises(ApprovalError, match="not in the approval ledger"):
+        assert_ledger_approves("a-control-nobody-ruled-on", digest)
+
+
+def test_a_control_approved_twice_is_ambiguous() -> None:
+    ledger = load_approval_ledger()
+    entry = ledger[APPROVED_KEY][0]
+    doubled = {
+        **ledger,
+        APPROVED_KEY: [*ledger[APPROVED_KEY], dict(entry)],
+    }
+
+    with pytest.raises(ApprovalError, match="approved 2 times"):
+        assert_ledger_approves(
+            entry["control_id"], entry["compilation_sha256"], ledger=doubled
+        )
+
+
+def test_the_ledger_records_why_each_declined_candidate_was_refused() -> None:
+    """A control set that silently omits a rejected candidate cannot be audited for why."""
+    ledger = load_approval_ledger()
+
+    assert len(ledger[DECLINED_KEY]) == 2
+    for entry in ledger[DECLINED_KEY]:
+        assert entry["reason"].strip()
+        assert entry["compilation_sha256"] in artifacts()
+    # Reviewer identity is deliberately absent: there is no approver identity anywhere in
+    # this project, and a placeholder would assert an attribution that does not exist.
+    assert not any("reviewer" in entry for entry in ledger[DECLINED_KEY])
+
+
+def test_an_in_memory_resolver_needs_no_filesystem() -> None:
+    """What lets an offline verifier repeat the binding from a bundle alone."""
+    resolve = from_mapping(artifacts())
+
+    for control in default_ustb_controls():
+        assert_binding(control, resolve=resolve)
+
+
+def test_an_in_memory_resolver_refuses_an_artifact_it_does_not_hold() -> None:
+    resolve = from_mapping({})
+
+    with pytest.raises(ApprovalError, match="carries no compilation"):
+        assert_binding(default_ustb_controls()[0], resolve=resolve)
+
+
+def test_an_unsupported_ledger_version_is_refused(tmp_path: Path) -> None:
+    ledger = tmp_path / "APPROVALS.json"
+    ledger.write_text(json.dumps({"version": "something.else"}), encoding="utf-8")
+
+    with pytest.raises(ApprovalError, match="not a supported version"):
+        load_approval_ledger(ledger)
+
+
+def test_a_missing_ledger_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(ApprovalError, match="no approval ledger"):
+        load_approval_ledger(tmp_path / "absent.json")

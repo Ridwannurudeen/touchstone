@@ -206,7 +206,14 @@ def build_observation_report(
     limitations: Iterable[str] = USTB_LIMITATIONS,
     correction_of: int | None = None,
 ) -> dict[str, object]:
-    """Build a strict report from a completed epoch without performing I/O."""
+    """Build a strict report from a completed epoch.
+
+    This is the enforcement boundary for control provenance, and therefore the one place
+    here that reads from disk: each control's compilation artifact is resolved and the
+    control checked against the candidate it accepted. Evaluation is deliberately left a
+    pure function of controls and observations — the only route from a control to a
+    published claim runs through here, so the check belongs here rather than everywhere.
+    """
     # One reading of the epoch for the whole report. `sources` and `evaluations` were each
     # read three times — once to check they were non-empty, once for the derived values,
     # once for the state check — and `evidence_references` read `sources` again. An epoch
