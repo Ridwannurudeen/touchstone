@@ -9,15 +9,25 @@
 > **has not been granted**.
 >
 > **Approval binds to a digest, not to this path.** `docs/DEPLOYMENT-G1.md` is mutable;
-> approving "the G1 packet" would approve whatever it later says. An approval must name the
-> sha256 of the exact file being approved, printed by:
+> approving "the G1 packet" would approve whatever it later says.
+>
+> **The approved artifact is the raw Git blob**, not the file in a working tree. This
+> repository runs with `core.autocrlf=true`, so a checked-out copy has CRLF line endings and
+> hashes differently from the blob — the same document, two digests, which is precisely the
+> ambiguity a digest is supposed to remove. Print the approved digest with:
 >
 > ```
 > git show <commit>:docs/DEPLOYMENT-G1.md | sha256sum
 > ```
 >
-> If that digest does not match what the operator holds at execution time, **stop** — the
-> packet has changed since it was approved and must be re-read and re-approved.
+> and export a byte-identical copy for reading with:
+>
+> ```
+> git cat-file blob <commit>:docs/DEPLOYMENT-G1.md > DEPLOYMENT-G1.approved.md
+> ```
+>
+> If the digest does not match at execution time, **stop** — the packet has changed since it
+> was approved and must be re-read and re-approved.
 
 ## 1. Why there is a second deployment at all
 
@@ -44,7 +54,7 @@ it is being replaced because it cannot enforce something it was never built to.*
 
 | | |
 |---|---|
-| Release commit | `4a3303ac577afe79010a00c03dc18a8a3f4157a2` — see §2.1 |
+| Release commit | `6648b4c01e275b8cbd2dd1475e15152413007a20` — see §2.1 |
 | Contract | `contracts/contracts/TouchstoneRegistry.sol` |
 | Solidity | `0.8.24`, optimizer **enabled**, `runs: 200`, evm target `paris` |
 | Creation bytecode | 6,303 bytes, sha256 `e1702c40bafef7a36ede227a32b19cf1904a78cd6cd70d00068a3643c4fa6926` |
@@ -229,7 +239,10 @@ Every one of these must hold. Any failure is an abort, not a retry.
 - [ ] Deployer nonce is what the operator expects; an unexpected nonce means something else has used this key.
 - [ ] The three EVM addresses in §4 are distinct and are the ones the owner intends.
 - [ ] `deployments/xlayer-testnet-2.json` does not exist.
-- [ ] The owner has approved a specific maximum total spend, in writing, naming this document.
+- [ ] The owner has approved a specific maximum total spend, in writing, **naming the
+      sha256 of the approved packet blob** — not this document's path or title.
+- [ ] That digest matches `git show <commit>:docs/DEPLOYMENT-G1.md | sha256sum` for the
+      commit being executed from.
 
 ## 8. After deployment
 
@@ -265,8 +278,20 @@ A failed attempt is not erased. It is recorded, because a registry that exists o
 exists whether or not anyone wrote it down — that is the lesson of 2026-08-15.
 
 1. **Stop.** Do not re-run the command.
-2. Keep the `.attempt.json` breadcrumb. It carries the address, transaction and block, and it
-   is written the instant the registry exists — before authorization can fail.
+2. Read `<manifest>.attempt.json`. It is an append-only journal, one JSON object per line,
+   fsynced as each stage completes. **The last complete line is how far the attempt got**,
+   and every earlier line survives it. What each terminal stage tells you differs, so read
+   the stage before assuming what it contains:
+
+   | Last stage | What exists | What to do |
+   |---|---|---|
+   | *(file empty)* | Nothing was sent | Check the deployer's nonce to confirm. If unchanged, nothing happened |
+   | `prepared` | Nothing was broadcast | Same — confirm via the nonce before assuming |
+   | `broadcast` | One or more hashes, outcome unknown | Read each receipt. This line is written at the RPC boundary and is the earliest evidence |
+   | `deploying` | Deployment hash; no address or block yet | Read the receipt to learn whether it mined and at what address |
+   | `deployed` | Address, deployment hash, block. **No authorization hash** | The registry exists and is unauthorized. Do not assume authorization was attempted |
+   | `authorizing` | Both hashes; authorization outcome unknown | Read the authorization receipt |
+   | `authorized` | Both hashes; both succeeded | Only the manifest write can have failed. Reconstruct it from these values |
 3. Read the outcome off the chain rather than guessing it. The breadcrumb carries both
    transaction hashes:
 
@@ -278,7 +303,9 @@ exists whether or not anyone wrote it down — that is the lesson of 2026-08-15.
    ```
 
 4. Write a manifest for the failed attempt at its own destination with
-   `deployment_state: "superseded"`, recording the reason, both transactions and the block.
+   `deployment_state: "superseded"`, recording the reason and whatever the journal actually
+   holds. **Do not invent a hash the journal does not contain** — if the attempt stopped at
+   `deploying`, there is no authorization transaction and the record must say so.
    Verify it is refused:
 
    ```
