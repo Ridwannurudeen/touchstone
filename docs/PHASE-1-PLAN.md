@@ -240,20 +240,29 @@ two-adapter and production-canary metrics reported as unmet.
 
 The superseded order that stood here:
 
-The wiring comes first because it is the real gap: `scripts/run_service.py` refuses every
+The wiring came first because it was the real gap: `scripts/run_service.py` refused every
 mode except `--resolve-only`, saying so honestly — "no live epoch adapter is wired yet". The
-USTB pipeline is complete and the daemon can reconcile, but nothing drives an epoch on a
-schedule, so the number of *autonomous* adapters today is zero rather than one.
+USTB pipeline was complete and the daemon could reconcile, but nothing drove an epoch on a
+schedule, so the number of *autonomous* adapters was zero rather than one. **That is closed:
+USTB now runs unattended.** It has still never run against live sources, so the adapter count
+is one built-and-tested, zero proven live.
 
 **USDY is cut.** Its retrieval is unbounded and no official bounded route has been found, so
-further work on it buys nothing. **FOBXX is deferred** as a documented third asset: the SEC
-EDGAR fixture is committed and honest, the live adapter is not shipped, and the manifest says
-so. **OUSG is the recommended second adapter** — it has a bounded on-chain oracle and passed
-the Phase-0 gate, and two conservative controls would take the portfolio to seven accepted
-controls against the roadmap's six. Its promotion gate is not a formality: the oracle address
-and ABI, a golden fixture and stable extraction anchors are all still unverified, and if the
-gate fails by Aug 17 the honest fallback is USTB alone with the missed metric stated plainly
-rather than a substitute asset chosen to inflate a count.
+further work on it buys nothing. **FOBXX is cut as an adapter and retained as a documented
+monthly contrast asset**: the SEC EDGAR fixture is committed and honest, no live adapter is
+shipped, and the manifest says so.
+
+**OUSG is cut too, and the second-adapter metric is abandoned rather than chased.** This
+paragraph previously recommended OUSG and set an Aug 17 promotion gate. That gate was never
+run — the calendar went instead to the epoch-uniqueness defect, the compilation binding and
+the provenance work, all of which were load-bearing for the one vertical that exists. Two
+conservative OUSG controls would have taken the count to seven, but the count was never the
+point: eight controls are already accepted, and the metric that is actually missed is a
+*second live adapter*, which a rushed one would satisfy only nominally.
+
+**Phase 1 therefore ships one flawless USTB vertical**, with the two-adapter and
+production-canary metrics reported as unmet in `ROADMAP.md`. That is the honest fallback the
+paragraph above already named, taken deliberately rather than by running out of time.
 
 **PLAN-T9 — living dossier.** Wallet-free public pages showing state, freshness, accepted
 controls, evidence excerpts and hashes, transition timeline, incident history, source

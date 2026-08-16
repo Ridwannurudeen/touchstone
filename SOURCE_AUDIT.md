@@ -65,6 +65,13 @@ also records what retrieval and parsing do and do not defend against).
 
 ### Proposed controls (all empirically supported today)
 
+> **Historical.** This section records what the 2026-08-13 probes supported, and the names
+> below are the hand-written control set that was **retired on 2026-08-16**. No control in
+> this list exists any longer. The live set is eight controls a model proposed from issuer
+> bytes, each bound by digest to the compilation that accepted it and listed in
+> `data/compilations/APPROVALS.json`. Kept unedited because it is the record of what the
+> source audit found, not a description of the system.
+
 1. `nav-row-freshness`: a nav-daily row exists for a date within N business days (grace for weekends/holidays).
 2. `yield-freshness`: `as_of_date` within N business days.
 3. `holdings-freshness`: `as_of_date` within ~40 days (provisional until cadence observed).
@@ -85,10 +92,18 @@ also records what retrieval and parsing do and do not defend against).
   hand-written set used 2; the compiler did not propose it and approval may not add it,
   so confirmation ≥24h apart is currently the only safeguard — and 24 hours can fall
   entirely across a weekend, giving the issuer no business day in which to revise.
-  The floor still applies where a control declares one. The offline verifier now rejects a value with no evidence date, a
-  value dated after the epoch, a conclusive evaluation with no date, and a value claim
-  whose confirmation capture is missing, cross-source, or less than 24h older.
-  `nav-row-freshness` is unchanged and documented as feed-liveness, not settlement.
+  The floor still applies where a control declares one. The offline verifier rejects a value
+  with no evidence date, a value dated after the epoch, and a conclusive evaluation with no
+  date. It requires a confirmation capture **for nav-daily only**: confirmation is a source
+  policy, and the yield and holdings endpoints publish scalars with nothing for an earlier
+  capture to confirm.
+
+  **Superseded 2026-08-16.** `aum-published` and `value-vs-expected` no longer exist —
+  the hand-written set they belonged to was retired because nothing had compiled it, so a
+  report claiming compiler provenance for it claimed something untrue. The defect described
+  above is still closed: the replacement NAV value controls observe only a row confirmed
+  unchanged across two captures, and none of them was ever published under the old
+  newest-row semantics.
   **Residual limitation:** the confirmation window is derived from two captures and
   cannot prove that an older row is never revised; the business-day count ignores
   holidays. Both are recorded in the report's published limitations.
