@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import sys
-from types import SimpleNamespace
 
 import pytest
 
+from touchstone.deployment import DeploymentError, DeploymentManifest
+from touchstone.keyring import PUBLISHER_KEY_ENV
 from touchstone.signing import SIGNING_SEED_ENV
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
@@ -17,6 +19,11 @@ import run_service  # noqa: E402
 
 class _StubManifest:
     """Stands in for a committed deployment manifest that loads without a chain."""
+
+    network = "hardhat-local"
+    is_local = True
+    is_active = True
+    deployment_state = "active"
 
     @staticmethod
     def load(path):
@@ -127,32 +134,6 @@ def test_an_unusable_workspace_fails_the_service_rather_than_crashing_it(
     assert error.startswith("SERVICE FAIL: "), f"crashed instead of failing: {error!r}"
 
 
-def _arguments(tmp_path: Path, **overrides):
-    """The CLI arguments a fixture rehearsal is invoked with."""
-    values = {
-        "manifest": str(tmp_path / "manifest.json"),
-        "workspace": str(tmp_path / "workspace"),
-        "asset_key": "eip155:1:0x" + "11" * 20,
-        "fixtures": str(Path(__file__).parents[1] / "fixtures"),
-        "fixture_capture": "2026-08-14",
-        "interval_seconds": 86_400.0,
-        "max_runs": 1,
-    }
-    values.update(overrides)
-    return SimpleNamespace(**values)
-
-
-class _PublicManifest:
-    """A manifest for a network that is not the local chain."""
-
-    network = "xlayer-testnet"
-    is_local = False
-
-    @staticmethod
-    def load(path):
-        return _PublicManifest()
-
-
 def test_fixtures_require_a_capture_to_be_named(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -179,22 +160,98 @@ def test_fixtures_require_a_capture_to_be_named(
     assert "--fixtures requires --fixture-capture" in capsys.readouterr().err
 
 
+def _public_manifest(tmp_path: Path, **overrides: object) -> Path:
+    """A real, loadable manifest for a public network — not a stub."""
+    manifest = json.loads(
+        (Path(__file__).parents[1] / "deployments" / "xlayer-testnet.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    manifest.update(overrides)
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    return path
+
+
 def test_a_public_network_is_never_served_from_committed_fixtures(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Historical bytes signed as today's observation are indistinguishable on chain.
 
-    The refusal is placed before the signing key is read, so it holds on a host that has no
-    key at all — which is exactly the host most likely to be rehearsing.
+    Driven through `main` with no keys in the environment at all. The earlier version of
+    this called `_serve_ustb` directly and so never exercised the CLI's real ordering —
+    where `build_service` constructs the publisher, and therefore reads the EVM key, before
+    anything reached this refusal. It passed while the guard was unreachable.
     """
-    monkeypatch.setattr(run_service, "DeploymentManifest", _PublicManifest)
     monkeypatch.delenv(SIGNING_SEED_ENV, raising=False)
+    monkeypatch.delenv(PUBLISHER_KEY_ENV, raising=False)
+    manifest = _public_manifest(tmp_path, deployment_state="active")
 
-    code = run_service._serve_ustb(None, _arguments(tmp_path))
+    code = run_service.main(
+        [
+            "--manifest",
+            str(manifest),
+            "--workspace",
+            str(tmp_path / "workspace"),
+            "--asset-key",
+            "eip155:1:0x" + "11" * 20,
+            "--fixtures",
+            str(Path(__file__).parents[1] / "fixtures"),
+            "--fixture-capture",
+            "2026-08-14",
+        ]
+    )
 
     assert code == 1
     error = capsys.readouterr().err
     assert "public network" in error
     assert "must be served from live sources" in error
+
+
+def test_a_superseded_deployment_is_refused_before_any_key_is_read(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Prose in a notes field refuses nothing.
+
+    Preflight compares deployed code against the digest the manifest itself records, so a
+    manifest describing an obsolete registry agrees with it perfectly. The X Layer testnet
+    registry predates the epochKey change and cannot enforce one report per epoch; only a
+    declared, machine-readable state keeps a publisher away from it.
+    """
+    monkeypatch.delenv(SIGNING_SEED_ENV, raising=False)
+    monkeypatch.delenv(PUBLISHER_KEY_ENV, raising=False)
+    manifest = _public_manifest(tmp_path, deployment_state="superseded")
+
+    code = run_service.main(
+        [
+            "--manifest",
+            str(manifest),
+            "--workspace",
+            str(tmp_path / "workspace"),
+            "--asset-key",
+            "eip155:1:0x" + "11" * 20,
+            "--max-runs",
+            "1",
+        ]
+    )
+
+    assert code == 1
+    assert "marked 'superseded'" in capsys.readouterr().err
+
+
+def test_the_committed_testnet_manifest_is_marked_superseded() -> None:
+    """The deployed registry has no epochSequence, so nothing may publish to it."""
+    manifest = DeploymentManifest.load(
+        Path(__file__).parents[1] / "deployments" / "xlayer-testnet.json"
+    )
+
+    assert manifest.deployment_state == "superseded"
+    assert not manifest.is_active
+
+
+def test_an_unknown_deployment_state_is_refused(tmp_path: Path) -> None:
+    """A typo must not read as permission."""
+    manifest = _public_manifest(tmp_path, deployment_state="actve")
+
+    with pytest.raises(DeploymentError, match="deployment_state must be one of"):
+        DeploymentManifest.load(manifest)

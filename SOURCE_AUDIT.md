@@ -81,8 +81,11 @@ also records what retrieval and parsing do and do not defend against).
   fixtures sign reports routinely). Both controls are now `control_version: 3` and
   observe only a row **confirmed unchanged across two retained captures ≥24h apart**,
   recording its `observed_on`; a first epoch with no predecessor abstains and the asset
-  reports `UNVERIFIABLE`. `minimum_row_age_business_days: 2` remains as a pre-filter, not
-  as settlement proof. The offline verifier now rejects a value with no evidence date, a
+  reports `UNVERIFIABLE`. **No approved control declares `minimum_row_age_business_days`.** The retired
+  hand-written set used 2; the compiler did not propose it and approval may not add it,
+  so confirmation ≥24h apart is currently the only safeguard — and 24 hours can fall
+  entirely across a weekend, giving the issuer no business day in which to revise.
+  The floor still applies where a control declares one. The offline verifier now rejects a value with no evidence date, a
   value dated after the epoch, a conclusive evaluation with no date, and a value claim
   whose confirmation capture is missing, cross-source, or less than 24h older.
   `nav-row-freshness` is unchanged and documented as feed-liveness, not settlement.

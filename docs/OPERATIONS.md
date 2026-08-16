@@ -27,7 +27,7 @@ honest state, and a runbook that invented them would be worse than one that admi
 
 | Network | State |
 |---|---|
-| X Layer **testnet** (chain 1952) | **LIVE** — registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, block 38369203 |
+| X Layer **testnet** (chain 1952) | **SUPERSEDED** — registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` (block 38369203) predates the `epochKey` change and cannot enforce one report per epoch. Its manifest declares `deployment_state: superseded` and the service refuses it before reading any key. It published nothing. A replacement deployment is owner-gated and has not been requested |
 | X Layer **mainnet** (chain 196) | `not_deployed` — owner-gated |
 
 Testnet publisher `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710`, authorized with its lineage

@@ -67,6 +67,15 @@ KEY_STATES = frozenset({"active", "superseded", "revoked"})
 # the marker makes a template unusable as a manifest until it is deliberately removed.
 TEMPLATE_MARKER = "TEMPLATE"
 
+# Whether this deployment may still be published to.
+#
+# "superseded" was prose in a notes field, and prose refuses nothing: preflight compares the
+# deployed code against the digest *this manifest records*, so a manifest describing an
+# obsolete registry agrees with it perfectly. The X Layer testnet registry predates the
+# epochKey change and could not enforce one-report-per-epoch, and nothing in the code
+# noticed.
+DEPLOYMENT_STATES = frozenset({"active", "superseded"})
+
 _MANIFEST_FIELDS = frozenset(
     {
         "manifest_version",
@@ -82,6 +91,7 @@ _MANIFEST_FIELDS = frozenset(
         "confirmations",
         "max_fee_wei",
         "deployment_block",
+        "deployment_state",
         "reporting_keys",
         "notes",
     }
@@ -150,8 +160,14 @@ class DeploymentManifest:
     confirmations: int
     max_fee_wei: int | None
     deployment_block: int
+    deployment_state: str
     reporting_keys: tuple[ReportingKey, ...]
     notes: str | None
+
+    @property
+    def is_active(self) -> bool:
+        """Whether anything may still be published to this deployment."""
+        return self.deployment_state == "active"
 
     @property
     def is_local(self) -> bool:
@@ -286,6 +302,14 @@ class DeploymentManifest:
         if type(deployment_block) is not int or deployment_block < 0:
             raise DeploymentError("deployment_block must be a non-negative integer")
 
+        # Defaults to "active" so every existing manifest keeps working, and is validated
+        # against a closed set so a typo cannot silently read as permission.
+        deployment_state = value.get("deployment_state", "active")
+        if deployment_state not in DEPLOYMENT_STATES:
+            raise DeploymentError(
+                f"deployment_state must be one of {sorted(DEPLOYMENT_STATES)}"
+            )
+
         notes = value.get("notes")
         if notes is not None and not isinstance(notes, str):
             raise DeploymentError("notes must be text")
@@ -309,6 +333,7 @@ class DeploymentManifest:
             confirmations=confirmations,
             max_fee_wei=max_fee_wei,
             deployment_block=deployment_block,
+            deployment_state=deployment_state,
             reporting_keys=_reporting_keys(value["reporting_keys"]),
             notes=notes,
         )
@@ -327,6 +352,7 @@ class DeploymentManifest:
             "deployer_address": self.deployer_address,
             "operations_address": self.operations_address,
             "confirmations": self.confirmations,
+            "deployment_state": self.deployment_state,
             "deployment_block": self.deployment_block,
             "reporting_keys": [
                 {

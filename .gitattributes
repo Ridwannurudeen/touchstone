@@ -1,7 +1,14 @@
-# Compilation artifacts are content-addressed: an approved control pins one by SHA-256 and
-# the resolver hashes the file's bytes to prove it is the artifact named. Any line-ending
-# translation changes those bytes and breaks every binding — silently, and only on the
-# machines whose git converts, which is every Windows clone with core.autocrlf=true.
+# Evidence fixtures must retain their captured bytes across platforms. Any line-ending
+# conversion would change the artifact and break the digests recorded in
+# manifests/sources/*.json, which the fixture tests assert byte for byte.
+fixtures/** -text
+# The directory's own prose is documentation, not an artifact, so it is normalised.
+fixtures/README.md text eol=lf
+
+# Compilation artifacts are content-addressed the same way: an approved control pins one by
+# SHA-256 and the resolver hashes the file's bytes to prove it is the artifact named.
 #
-# `-text` tells git never to convert these, in either direction.
+# These particular artifacts are single-line canonical JSON and so contain no newlines to
+# convert — the rule is here because the next artifact format may, and content whose digest
+# is load-bearing should never be subject to translation in the first place.
 data/compilations/** -text

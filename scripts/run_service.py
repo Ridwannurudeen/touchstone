@@ -553,7 +553,11 @@ class Service:
         # the chain, which is the outcome the slot exists to produce. Opening EPOCH_FAILED
         # here would alert an operator every time a daemon restarted on a day it had
         # already served.
-        self._close_open_incidents("the epoch for this slot is already published")
+        #
+        # Nothing is *closed* either. This path fetched no evidence and evaluated nothing,
+        # so it has observed no recovery: closing without a kind filter retired open source
+        # outages and epoch failures on the strength of a publication that happened before
+        # they were opened. Recovery is something a successful retrieval establishes.
         self.note_success(scheduled_at)
         return SlotOutcome(
             scheduled_at=scheduled_at,
@@ -1022,6 +1026,34 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--fixture-capture is meaningless without --fixtures")
     if arguments.fixtures and not arguments.fixture_capture:
         parser.error("--fixtures requires --fixture-capture")
+    # Before anything reads a key or touches the network. `build_service` constructs the
+    # publisher, which reads TOUCHSTONE_PUBLISHER_PRIVATE_KEY — so the fixture-mode refusal
+    # that lived inside `_serve_ustb` was never reached on a host without that key, and the
+    # operator got "TOUCHSTONE_PUBLISHER_PRIVATE_KEY is not set" instead of the thing that
+    # actually mattered. Its test called `_serve_ustb` directly and so never exercised the
+    # ordering the CLI really has.
+    try:
+        manifest = DeploymentManifest.load(arguments.manifest)
+    except (DeploymentError, OSError, ValueError) as error:
+        print(f"SERVICE FAIL: {error}", file=sys.stderr)
+        return 1
+    if not manifest.is_active:
+        # A superseded deployment cannot be caught by preflight: it compares deployed code
+        # against the digest this manifest records, and this manifest records that very
+        # deployment's digest, so they agree. Only the declared state refuses it.
+        print(
+            f"SERVICE FAIL: {arguments.manifest} is marked "
+            f"{manifest.deployment_state!r}; nothing may be published to it",
+            file=sys.stderr,
+        )
+        return 1
+    if arguments.fixtures and not manifest.is_local:
+        print(
+            f"SERVICE FAIL: fixture mode is a local rehearsal; {manifest.network} is a "
+            "public network and must be served from live sources",
+            file=sys.stderr,
+        )
+        return 1
     try:
         # Construction is where the workspace is judged usable at all: a log that is not a
         # file, a directory that is not a directory, an incident log reachable by two

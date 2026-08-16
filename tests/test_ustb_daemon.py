@@ -396,3 +396,40 @@ def test_the_slot_asks_about_the_epoch_the_producer_would_name(tmp_path: Path) -
     signed = produce(moment)
 
     assert signed["report"]["epoch_id"] == epoch_id_for(moment)
+
+
+def test_a_suppressed_slot_does_not_retire_an_unrelated_incident(
+    tmp_path: Path,
+) -> None:
+    """Suppression observed nothing, so it may not report a recovery.
+
+    The fast path fetches no evidence and evaluates nothing. Closing every open incident
+    there retired source outages and epoch failures on the strength of a publication that
+    happened before they were opened — telling an operator the issuer was reachable again
+    when nobody had looked.
+    """
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+
+    first_service, workspace = built(tmp_path, backend)
+    _, produce = producer(store, first_service, backend)
+    run(first_service, produce)
+
+    incidents = IncidentLog(workspace.incidents)
+    incidents.open_incident(
+        asset_key=ASSET,
+        kind="SOURCE_UNAVAILABLE",
+        detail="the issuer endpoint has been down since yesterday",
+        occurred_at=RETRIEVED_AT,
+    )
+
+    second_service, _ = built(tmp_path, backend)
+    dead = Dead("the issuer must not even be asked")
+    _, suppressed = producer(store, second_service, backend, transport=dead)
+    run(second_service, suppressed)
+
+    assert not dead.calls
+    still_open = [entry.kind for entry in incidents.open_incidents()]
+    assert "SOURCE_UNAVAILABLE" in still_open, (
+        "a slot that looked at nothing reported the source recovered"
+    )
