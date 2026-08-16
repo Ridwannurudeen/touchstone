@@ -3,7 +3,8 @@
 > # DRAFT — NOT EXECUTION AUTHORIZATION
 >
 > This document exists so that an owner can decide. It authorizes nothing by existing, and
-> nothing in it may be executed until the owner has read it and said so explicitly. The
+> nothing in it may be executed until the owner has read it and approved it **by its
+> sha256**, not by name. The
 > design of the replacement registry is approved **in principle**; execution authorization
 > **has not been granted**.
 >
@@ -43,7 +44,7 @@ it is being replaced because it cannot enforce something it was never built to.*
 
 | | |
 |---|---|
-| Release commit | `e22cc7fdb6003f1afccee7957f20c86089938c3c` |
+| Release commit | `4a3303ac577afe79010a00c03dc18a8a3f4157a2` — see §2.1 |
 | Contract | `contracts/contracts/TouchstoneRegistry.sol` |
 | Solidity | `0.8.24`, optimizer **enabled**, `runs: 200`, evm target `paris` |
 | Creation bytecode | 6,303 bytes, sha256 `e1702c40bafef7a36ede227a32b19cf1904a78cd6cd70d00068a3643c4fa6926` |
@@ -73,6 +74,20 @@ which is an *instantiated* digest of the old contract. It cannot be usefully com
 template digest — an earlier version of this document did exactly that and drew a conclusion
 the comparison did not support. The old registry is superseded because its source genuinely
 lacks `epochSequence`, which is verifiable by reading it, not by comparing those two numbers.
+
+### 2.1 The release commit, and why it is not this one
+
+The release commit names the **executable implementation** that would be deployed. It is
+deliberately not the commit containing this document: a packet cannot embed its own hash, and
+the two identify different things — the release commit identifies audited code, the packet
+digest identifies the exact approved wording.
+
+An earlier version of this packet named `e22cc7f`. **That commit is broken**: its deploy
+script reads `destination` out of scope in `main()`, so the command deploys, authorizes,
+prints the manifest and then exits 1 — losing the manifest write. Its spend ceiling also only
+compared receipts after the fact. Following that packet would have deliberately selected the
+superseded implementation. It is recorded here rather than quietly corrected, because the
+failure mode was a document pointing at code it had outlived.
 
 **No AssetGate is deployed by this gate.** The consumer contract must be pinned to a control
 root, and the control set is expected to change when the NAV controls are recompiled to carry
@@ -164,8 +179,11 @@ approves, replaces, or rejects this number.**
 
 ## 6. The command
 
-Run from the repository root, on the **owner's** machine, with the deployer key present and
-the publisher key absent.
+Run from **`contracts/`**, on the **owner's** machine, with the deployer key present and the
+publisher key absent. That is where the only Hardhat project, config and script live; running
+from the repository root produces `HH1: You are not inside a Hardhat project`. The manifest
+path is still resolved against the repository root, which is deliberate — a relative path
+resolved against `contracts/` is what lost the first deployment's manifest.
 
 ```
 TOUCHSTONE_DEPLOY_CONFIRM_CHAIN_ID=1952 \
@@ -198,7 +216,7 @@ exactly where it is.
 
 Every one of these must hold. Any failure is an abort, not a retry.
 
-- [ ] Working tree clean at `e22cc7fdb6003f1afccee7957f20c86089938c3c`, verified with `git status --porcelain` returning nothing.
+- [ ] Working tree clean at the release commit in §2, verified with `git status --porcelain` returning nothing.
 - [ ] `python -m pytest -q` — full suite green.
 - [ ] `python scripts/mutation_check.py` — every mutant killed.
 - [ ] `npx hardhat test` — full contract suite green.
@@ -226,7 +244,8 @@ Every one of these must hold. Any failure is an abort, not a retry.
 - [ ] The manifest records `deployment_state: "active"`.
 - [ ] `python -m pytest tests/test_deployment_manifests.py -q` passes with the new manifest present.
 - [ ] `python scripts/publish_epoch.py --manifest deployments/xlayer-testnet-2.json --preflight` succeeds. **This sends nothing.**
-- [ ] The `.attempt.json` breadcrumb beside the manifest agrees with the final manifest; delete it only once they do.
+- [ ] The `.attempt.json` breadcrumb beside the manifest agrees with it, and its final stage is `authorized`.
+- [ ] **Keep the breadcrumb. Do not delete it.** It is the only file carrying the deployment and authorization transaction hashes — the manifest records neither — so deleting it destroys the only local evidence of how this registry came to exist. Archive it beside the manifest.
 
 ## 9. Abort criteria
 
