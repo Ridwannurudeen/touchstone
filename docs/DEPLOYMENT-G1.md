@@ -1,12 +1,20 @@
 # G1 — Replacement testnet registry deployment
 
-> # DRAFT — NOT EXECUTION AUTHORIZATION
+> # AUTHORIZED FOR TESTNET EXECUTION — under a general approval, not a digest-bound one
 >
-> This document exists so that an owner can decide. It authorizes nothing by existing, and
-> nothing in it may be executed until the owner has read it and approved it **by its
-> sha256**, not by name. The
-> design of the replacement registry is approved **in principle**; execution authorization
-> **has not been granted**.
+> The owner granted execution authorization on 2026-08-15, in these terms: *"you have my
+> approval for the everything downstream work"*, and delegated the spend ceiling — *"you and
+> codex should pick the best option"*. The ceiling in §5 was set under that delegation.
+>
+> **The digest-bound approval this document requires was not obtained, and this record must
+> not be read as though it was.** The approval is general and predates this revision. The
+> rule below exists to stop a packet drifting after approval while the executing agent holds
+> the pen — which is exactly the situation here. What limits the exposure is the target, not
+> the process: chain 1952 is a testnet, the worst case is 0.0000361 OKB, and a bad deployment
+> can be superseded the way the first one was.
+>
+> **This waiver is testnet-only and does not carry to mainnet.** Chain 196 execution requires
+> the digest-bound approval below, obtained before the fact, with no exceptions.
 >
 > **Approval binds to a digest, not to this path.** `docs/DEPLOYMENT-G1.md` is mutable;
 > approving "the G1 packet" would approve whatever it later says.
@@ -129,9 +137,10 @@ refused. The deploy script additionally requires `TOUCHSTONE_DEPLOY_CONFIRM_CHAI
 a positive confirmation naming the chain, because a boolean flag can be satisfied by a stale
 shell export.
 
-**Not verified in preparing this document:** the live `eth_chainId` response. The endpoint is
-unreachable from the environment this was written in. **The operator must confirm it returns
-`0x7a0` (1952) immediately before deploying**, and abort if it does not.
+Verified live on 2026-08-16: `eth_chainId` returns 1952, `eth_syncing` is `false`, and the head
+advanced 38457129 → 38457133 across four seconds. The operator must **re-confirm all three
+immediately before deploying** — an endpoint that answered an hour ago is not a live endpoint —
+and abort on any mismatch.
 
 ## 4. Identities
 
@@ -183,20 +192,34 @@ Measured on a local chain at this release commit:
 | `authorizePublisher` | 68,191 actual; 150,000 allowed |
 | **Worst-case total** | **1,807,060** |
 
-**Recommended: `TOUCHSTONE_DEPLOY_MAX_SPEND_WEI=36141200000000000`** — 1,807,060 gas at
-20 gwei, roughly 0.036 OKB.
+An earlier version of this document recommended `36141200000000000` wei on an assumed
+20 gwei. That assumption was wrong by three orders of magnitude. Measured live on
+2026-08-16:
 
-X Layer testnet gas prices were not measured while writing this, so 20 gwei is a working
-assumption, not an observation. **The operator must read the current fee before deploying**
-and raise or lower the ceiling accordingly; the script refuses to start if the network's fee
-exceeds what the ceiling permits, so an under-set ceiling fails safely rather than
-overspending.
+| | |
+|---|---|
+| `gasPrice` | `20000001` wei = **0.020000001 gwei** |
+| `maxFeePerGas` | `40000001` wei |
+| Worst-case actual spend | 1,807,060 × 20000001 = `36141201807060` wei ≈ **0.0000361 OKB** |
+| Deployer balance | 0.14997275 OKB |
 
-An earlier version of this document proposed no number at all, on the reasoning that
-proposing one would be the approval making itself. That was wrong: a recommendation is not
-an approval, and a gate priced at "you decide" asks the owner to invent a technical risk
-parameter they have less information about than the person who measured it. **The owner
-approves, replaces, or rejects this number.**
+**Approved ceiling: `TOUCHSTONE_DEPLOY_MAX_SPEND_WEI=1000000000000000`** (0.001 OKB).
+
+That sits deliberately above the measured worst case rather than at it:
+
+- 27.67× the measured worst-case spend.
+- Permits `553385056` wei/gas — 13.83× the network's current `maxFeePerGas`, so ordinary fee
+  volatility between approval and execution does not turn into a spurious abort.
+- 0.667% of the deployer balance, so an exhausted ceiling cannot strand the key.
+
+A ceiling pinned to the measured number would be a nominal bound that aborts on the first
+price tick; one set at balance would bound nothing. This is chosen to be the tightest number
+that is still robust to volatility.
+
+An earlier version proposed no number at all, on the reasoning that proposing one would be
+the approval making itself. That was wrong: a recommendation is not an approval, and a gate
+priced at "you decide" asks the owner to invent a technical risk parameter they have less
+information about than the person who measured it.
 
 ## 6. The command
 
@@ -246,15 +269,26 @@ Every one of these must hold. Any failure is an abort, not a retry.
 - [ ] `npx hardhat compile` from a clean `artifacts/`, and the **creation** digest and the **runtime template** digest match §2 exactly.
 - [ ] The deployer address is the one in §4. Any other address changes the as-deployed runtime digest and invalidates this packet.
 - [ ] `eth_chainId` at the endpoint returns `0x7a0`.
+- [ ] `eth_syncing` is `false` and the head block advances between two reads. A syncing or
+      stalled node can answer reads from stale state, including the nonce this deployment depends on.
 - [ ] Deployer balance ≥ the approved ceiling.
 - [ ] Deployer nonce is what the operator expects; an unexpected nonce means something else has used this key.
+- [ ] The deployer's `latest` and `pending` nonces are **equal**. `pending > latest` means an
+      outstanding transaction from this key, which would change the address the registry lands at.
+- [ ] `eth_getCode` at the CREATE address for the deployer at that nonce returns `0x`. At
+      nonce 3 that address is `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`.
+- [ ] The superseded registry still has **no** `Published` or `Corrected` logs. The packet's
+      "nothing to migrate" premise depends on it, and a publication after this was written
+      would invalidate the whole gate.
 - [ ] The three EVM addresses in §4 are distinct and are the ones the owner intends.
 - [ ] `deployments/xlayer-testnet-2.json` does not exist.
 - [ ] The owner has approved a specific maximum total spend, in writing, **naming the
       sha256 of the approved packet blob** — not this document's path or title.
+      **Waived for the 2026-08-16 testnet execution** — see the banner. Not waivable on mainnet.
 - [ ] That digest matches
       `git show <approved-packet-commit>:docs/DEPLOYMENT-G1.md | sha256sum`. Use the packet
       commit, **not** the release commit in §2 — they differ and hash differently.
+      **Waived with the item above, on the same terms.**
 
 ## 8. After deployment
 
