@@ -346,12 +346,23 @@ A failed attempt is not erased. It is recorded, because a registry that exists o
 exists whether or not anyone wrote it down — that is the lesson of 2026-08-15.
 
 **That holds from destination reservation onward, not from the first line of the script.**
-`reserveDestination` runs at `deploy.js:170` and the first journal entry is written at
-`deploy.js:203`. A failure before 170 — a missing `TOUCHSTONE_MANIFEST_OUT` or `maxFeeWei` —
-leaves no files at all; a failure between 170 and 203, such as an unaffordable ceiling, leaves
-the two reserved files but no journal line. **Neither has broadcast anything**, which is why
-the absence of a breadcrumb there is safe rather than ambiguous. If a journal exists but is
-empty, that is the 170–203 window; the recovery table below starts after it.
+`reserveDestination` runs at `deploy.js:170`, the first journal line is written at
+`deploy.js:203`, and the first send is at `deploy.js:213`.
+
+- A failure **before 170** — a missing `TOUCHSTONE_MANIFEST_OUT` or `maxFeeWei` — leaves no
+  files at all.
+- A failure **inside `reserveDestination`** can leave only the manifest: it creates the
+  manifest at `:457` and the companion at `:458` with two sequential writes, so "both files
+  are reserved" is true only once the function has *returned*.
+- A failure **between 170 and 203** leaves both reserved files and an empty journal. This
+  window covers an unaffordable or missing ceiling, a ceiling too small to permit even
+  1 wei/gas, a network `maxFeePerGas` above what the ceiling allows, a balance below the
+  ceiling, artifact/factory or gas-estimation or fee-data failures, and a failure writing the
+  `prepared` record itself.
+
+**None of these has broadcast anything** — the first send is ten lines after the journal
+opens. That is why a missing breadcrumb here is safe rather than ambiguous, and it is what
+makes the empty-journal row in the table below a statement of fact rather than a guess.
 
 1. **Stop.** Do not re-run the command.
 2. Read `<manifest>.attempt.json`. It is an append-only journal, one JSON object per line,
@@ -361,7 +372,7 @@ empty, that is the 170–203 window; the recovery table below starts after it.
 
    | Last stage | What exists | What to do |
    |---|---|---|
-   | *(file empty)* | **No hash journaled. A broadcast is not ruled out** | Read the deployer's nonce. If it advanced, something was sent that this file never recorded — find it on chain before doing anything else |
+   | *(file empty)* | **Nothing was broadcast** | The `prepared` line is appended and fsynced at `deploy.js:203` before the first send at `deploy.js:213`, so an empty journal means execution never reached a send. Confirm with the deployer's nonce, then clear the two reserved files and start over |
    | `prepared` | **No hash journaled. A broadcast is not ruled out** | Same. The node returns a hash before this file is appended to, so a crash in that window leaves `prepared` as the last stage after a real send |
    | `broadcast` | One or more hashes, outcome unknown | Read each receipt. This line is written at the RPC boundary and is the earliest evidence |
    | `deploying` | Deployment hash; no address or block yet | Read the receipt to learn whether it mined and at what address |
