@@ -655,8 +655,8 @@ MUTATIONS = (
     Mutation(
         name="fixture-mode-reaches-a-public-network",
         path="scripts/run_service.py",
-        old="        if not manifest.is_local:",
-        new="        if False:",
+        old="    if arguments.fixtures and not manifest.is_local:",
+        new="    if False:",
         tests=(
             "tests/test_service_startup.py::test_a_public_network_is_never_served_from_committed_fixtures",
         ),

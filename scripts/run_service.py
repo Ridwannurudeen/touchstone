@@ -901,23 +901,15 @@ def _serve_ustb(service: Service, arguments) -> int:
     right up until this function replaced it.
     """
     manifest = DeploymentManifest.load(arguments.manifest)
-    # Before the signing key is touched. Refusing to serve historical bytes to a public
-    # network is the cheapest check here and the one with the worst consequence if it is
-    # skipped, so it must not sit behind a key that may not be present.
+    # The public-network refusal is not here. It lives in `main`, ahead of `build_service`,
+    # because construction reads the EVM publisher key and this check must hold on a host
+    # that has none. Keeping a copy here as well left two guards for one rule, and a mutant
+    # that disabled this one survived because the other still caught it — which is exactly
+    # how a duplicated rule stops being tested.
     transport = None
     if arguments.fixtures:
         from touchstone.epoch import FixtureTransport
 
-        if not manifest.is_local:
-            # Committed fixtures are historical bytes. Publishing them to a public registry
-            # would put a dated observation on chain under today's epoch, signed, and
-            # indistinguishable to a consumer from something actually retrieved today.
-            print(
-                f"SERVICE FAIL: fixture mode is a local rehearsal; {manifest.network} is a "
-                "public network and must be served from live sources",
-                file=sys.stderr,
-            )
-            return 1
         try:
             transport = FixtureTransport(
                 arguments.fixtures, date.fromisoformat(arguments.fixture_capture)
