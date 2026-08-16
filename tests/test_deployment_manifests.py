@@ -25,9 +25,30 @@ from touchstone.deployment import DEPLOYMENT_STATES, DeploymentManifest
 ROOT = Path(__file__).parents[1]
 DEPLOYMENTS = ROOT / "deployments"
 SCHEMA = json.loads((DEPLOYMENTS / "manifest.schema.json").read_text(encoding="utf-8"))
-MANIFESTS = sorted(
-    path for path in DEPLOYMENTS.glob("*.json") if path.name != "manifest.schema.json"
-)
+
+
+def _manifest_paths(deployments: Path = DEPLOYMENTS) -> list[Path]:
+    return sorted(
+        path
+        for path in deployments.glob("*.json")
+        if path.name != "manifest.schema.json"
+        and not path.name.endswith(".attempt.json")
+    )
+
+
+MANIFESTS = _manifest_paths()
+
+
+def test_attempt_journal_is_not_collected_as_a_manifest(tmp_path: Path) -> None:
+    deployments = tmp_path / "deployments"
+    deployments.mkdir()
+    manifest = deployments / "xlayer-testnet-2.json"
+    manifest.write_text("{}", encoding="utf-8")
+    (deployments / "xlayer-testnet-2.json.attempt.json").write_text(
+        '{"stage":"prepared"}\n{"stage":"authorized"}\n', encoding="utf-8"
+    )
+
+    assert _manifest_paths(deployments) == [manifest]
 
 
 def test_there_are_manifests_to_check() -> None:

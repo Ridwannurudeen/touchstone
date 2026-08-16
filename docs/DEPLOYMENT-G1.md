@@ -314,6 +314,16 @@ Every one of these must hold. Any failure is an abort, not a retry.
 
 ## 8. After deployment
 
+The command in §6 leaves the owner's shell in `contracts/`. Return to the repository root
+before running the root-relative checks in this section:
+
+```
+cd ..
+```
+
+The publishing-host preflight below is a separate step and starts from the repository root
+on that host.
+
 - [ ] Both transactions have receipts with `status = 1` and at least 3 confirmations.
 - [ ] Record the address, both transaction hashes, and the deployment block.
 - [ ] `eth_getCode` at the address hashes to the **as-deployed** digest in §2 — not the template digest.
@@ -324,7 +334,12 @@ Every one of these must hold. Any failure is an abort, not a retry.
 - [ ] The emitted manifest validates against `deployments/manifest.schema.json`.
 - [ ] The manifest records `deployment_state: "active"`.
 - [ ] `python -m pytest tests/test_deployment_manifests.py -q` passes with the new manifest present.
-- [ ] `python scripts/publish_epoch.py --manifest deployments/xlayer-testnet-2.json --preflight` succeeds. **This sends nothing.**
+- [ ] **On the publishing host**, with `TOUCHSTONE_PUBLISHER_PRIVATE_KEY` present and the
+      deployer key absent, `python scripts/publish_epoch.py --manifest
+      deployments/xlayer-testnet-2.json --preflight` succeeds. **This sends nothing.** It
+      cannot run on the owner machine: `publish_epoch.py:43` loads and verifies the publisher
+      key before `backend.preflight()` runs at `publish_epoch.py:44`, while §4 forbids that key
+      from sharing the owner machine with the deployer key.
 - [ ] The `.attempt.json` breadcrumb beside the manifest agrees with it, and its final stage is `authorized`.
 - [ ] **Keep the breadcrumb. Do not delete it.** It is the only file carrying the deployment and authorization transaction hashes — the manifest records neither — so deleting it destroys the only local evidence of how this registry came to exist. Archive it beside the manifest.
 
@@ -333,7 +348,10 @@ Every one of these must hold. Any failure is an abort, not a retry.
 Stop at the first of these. **Never retry automatically** — a retry after a partial deployment
 is how a second unrecorded registry gets created.
 
-- Any digest, chain id, owner, authorization or lineage mismatch in §7 or §8.
+- Any §7 or §8 check fails. This includes any digest, chain id, owner, authorization or
+  lineage mismatch; fewer than three confirmations; a manifest, schema, state or test
+  failure; a publishing-host preflight failure; or a breadcrumb mismatch or final stage
+  other than `authorized`.
 - Either transaction reverted, or still pending beyond the operator's patience.
 - An unexpected deployer nonce.
 - Spend above the approved ceiling — the script raises after the fact; treat it as an abort.
@@ -355,10 +373,11 @@ exists whether or not anyone wrote it down — that is the lesson of 2026-08-15.
   manifest at `:457` and the companion at `:458` with two sequential writes, so "both files
   are reserved" is true only once the function has *returned*.
 - A failure **between 170 and 203** leaves both reserved files and an empty journal. This
-  window covers an unaffordable or missing ceiling, a ceiling too small to permit even
-  1 wei/gas, a network `maxFeePerGas` above what the ceiling allows, a balance below the
-  ceiling, artifact/factory or gas-estimation or fee-data failures, and a failure writing the
-  `prepared` record itself.
+  window covers a missing or invalid deployment-spend ceiling — `deploymentSpendCeiling` is
+  called at `deploy.js:175` and passes the value to `exactBigInt` at `deploy.js:588` — a
+  ceiling too small to permit even 1 wei/gas, a network `maxFeePerGas` above what the ceiling
+  allows, a balance below the ceiling, artifact/factory or gas-estimation or fee-data
+  failures, and a failure writing the `prepared` record itself.
 
 **None of these has broadcast anything** — the first send is ten lines after the journal
 opens. That is why a missing breadcrumb here is safe rather than ambiguous, and it is what
@@ -372,8 +391,8 @@ makes the empty-journal row in the table below a statement of fact rather than a
 
    | Last stage | What exists | What to do |
    |---|---|---|
-   | *(file empty)* | **Nothing was broadcast** | The `prepared` line is appended and fsynced at `deploy.js:203` before the first send at `deploy.js:213`, so an empty journal means execution never reached a send. Confirm with the deployer's nonce, then clear the two reserved files and start over |
-   | `prepared` | **No hash journaled. A broadcast is not ruled out** | Same. The node returns a hash before this file is appended to, so a crash in that window leaves `prepared` as the last stage after a real send |
+   | *(file empty)* | **This invocation broadcast nothing** | The `prepared` line is appended and fsynced at `deploy.js:203` before the first send at `deploy.js:213`, so this invocation never reached a send. Compare both the deployer's `latest` and `pending` nonces with the values checked before the attempt. If either moved, stop and investigate: the empty journal does not prove the key was unused elsewhere. If neither moved, the failed attempt is still not erased. In either branch, keep both reserved files, write the incident note required below, and require a new destination plus fresh owner approval before another attempt |
+   | `prepared` | **No hash journaled. A broadcast is not ruled out** | **The opposite of the row above** — do not read that row's reasoning here. `prepared` means execution passed `deploy.js:203` and reached the send at `:213`; the node returns a hash before the journal is appended to, so a crash in that window leaves `prepared` last after a real broadcast. Read both nonces and search the chain for a deployment from this key before concluding anything. Then keep both reserved files, write the incident note, and require a new destination plus fresh owner approval |
    | `broadcast` | One or more hashes, outcome unknown | Read each receipt. This line is written at the RPC boundary and is the earliest evidence |
    | `deploying` | Deployment hash; no address or block yet | Read the receipt to learn whether it mined and at what address |
    | `deployed` | Address, deployment hash, block. **No authorization hash journaled** | The registry exists. **Do not conclude it is unauthorized** — the authorization is broadcast before the journal records it, so a crash in that window leaves `deployed` last even though the transaction reached the node. Check the deployer's nonce, `isPublisherAuthorized`, `publisherIdentity`, and any `PublisherAuthorized` log at that address before classifying it |
