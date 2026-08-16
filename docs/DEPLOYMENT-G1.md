@@ -54,15 +54,20 @@ it is being replaced because it cannot enforce something it was never built to.*
 
 | | |
 |---|---|
-| Release commit | `6648b4c01e275b8cbd2dd1475e15152413007a20` — see §2.1 |
+| Release commit | `15f61271b0bdfe35fea4bc30f6a8c3d968bb44e5` — see §2.1 |
 | Contract | `contracts/contracts/TouchstoneRegistry.sol` |
 | Solidity | `0.8.24`, optimizer **enabled**, `runs: 200`, evm target `paris` |
 | Creation bytecode | 6,303 bytes, sha256 `e1702c40bafef7a36ede227a32b19cf1904a78cd6cd70d00068a3643c4fa6926` |
 | Runtime **template** | 6,147 bytes, sha256 `9b7019b0b2e3ad4242ac99adc2c0542513425c13336341505aca9674ba23bca7` |
 | Runtime **as deployed** | sha256 `cecada9e4caefaa153ea321d5831b053ad8750ffe58a4ac0ee61b81ba4dbc561` |
 | Constructor argument | `expectedChainId = 1952` |
-| npm lockfile | `contracts/package-lock.json`, sha256 `3c506269d6e7a73580760c9ab759fad032aa7ed82045a2bc93faa3d9295e2ff8` |
-| Python project | `pyproject.toml`, sha256 `823c6a5e9d33260064a927116cb018e75b769ec95b8c5f4772436cbdef2defc9` |
+| npm lockfile | `contracts/package-lock.json`, raw-blob sha256 `3c506269d6e7a73580760c9ab759fad032aa7ed82045a2bc93faa3d9295e2ff8` |
+| Python project | `pyproject.toml`, raw-blob sha256 `9f5346f8f1ed53d7c2090a1ab631d9f35a6896b17c8bf39b3e4a396ba019a009` |
+
+**Every digest in this table is over the raw Git blob at the release commit**, obtained with
+`git show <commit>:<path> | sha256sum` — the same basis as the packet's own approval digest.
+A working-tree copy of a text file hashes differently under `core.autocrlf`, and a table
+mixing the two bases is a table an operator cannot check.
 
 **The two runtime digests are different things, and confusing them would abort this
 deployment after the money was spent.** `owner` and `expectedChainId` are Solidity
@@ -285,8 +290,8 @@ exists whether or not anyone wrote it down — that is the lesson of 2026-08-15.
 
    | Last stage | What exists | What to do |
    |---|---|---|
-   | *(file empty)* | Nothing was sent | Check the deployer's nonce to confirm. If unchanged, nothing happened |
-   | `prepared` | Nothing was broadcast | Same — confirm via the nonce before assuming |
+   | *(file empty)* | **No hash journaled. A broadcast is not ruled out** | Read the deployer's nonce. If it advanced, something was sent that this file never recorded — find it on chain before doing anything else |
+   | `prepared` | **No hash journaled. A broadcast is not ruled out** | Same. The node returns a hash before this file is appended to, so a crash in that window leaves `prepared` as the last stage after a real send |
    | `broadcast` | One or more hashes, outcome unknown | Read each receipt. This line is written at the RPC boundary and is the earliest evidence |
    | `deploying` | Deployment hash; no address or block yet | Read the receipt to learn whether it mined and at what address |
    | `deployed` | Address, deployment hash, block. **No authorization hash** | The registry exists and is unauthorized. Do not assume authorization was attempted |
@@ -302,17 +307,30 @@ exists whether or not anyone wrote it down — that is the lesson of 2026-08-15.
    cast call <address> "isPublisherAuthorized(address)(bool)"      0x86A100BDdF8754c95fec97BeC96dBFd64Be44710      --rpc-url https://testrpc.xlayer.tech/terigon
    ```
 
-4. Write a manifest for the failed attempt at its own destination with
-   `deployment_state: "superseded"`, recording the reason and whatever the journal actually
-   holds. **Do not invent a hash the journal does not contain** — if the attempt stopped at
-   `deploying`, there is no authorization transaction and the record must say so.
+4. **Do not try to write a manifest unless the attempt got as far as `authorized`.** A
+   manifest cannot describe an incomplete deployment, and attempting one produces a file
+   that is refused — verified: the schema rejects a `deployment_transaction` field as
+   unknown, and a registry deployed but not yet authorized has a zero
+   `publisher_identity_address`, which the loader refuses outright. An earlier version of
+   this step told the operator to record "whatever the journal holds", which for every
+   stage before `authorized` is impossible.
+
+   | Last stage | What to record |
+   |---|---|
+   | empty, `prepared`, `broadcast`, `deploying` | **Keep the journal and write an incident note beside it** — date, what the journal contains, the deployer nonce before and after, and what was found on chain. No manifest |
+   | `deployed` | Same. The registry exists and is unauthorized; there is no publisher lineage for a manifest to record |
+   | `authorizing` | Read the authorization receipt first. If it succeeded, treat as `authorized`; if it failed or is absent, treat as `deployed` |
+   | `authorized` | A manifest is possible. Write it with `deployment_state: "superseded"`, and verify it loads and is refused for publication |
+
+   **Never invent a value to satisfy the schema.** A manifest that exists only because a
+   placeholder was supplied is worse than no manifest: it will be believed.
    Verify it is refused:
 
    ```
    python -c "from touchstone.deployment import DeploymentManifest as M;      m = M.load('deployments/<failed>.json');      print(m.deployment_state, m.is_active)"
    ```
 
-   must print `superseded False`.
+   must print `superseded False`. This applies only to the `authorized` row above.
 
 5. **If the registry deployed and authorization succeeded but the run still failed**, the
    contract is live with a publisher authorized on it. Revoking is a **separate owner
