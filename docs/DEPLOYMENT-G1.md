@@ -323,11 +323,12 @@ exactly where it is.
 Every one of these must hold. Any failure is an abort, not a retry.
 
 - [ ] Working tree clean — `git status --porcelain` returns nothing.
-- [ ] `git rev-parse HEAD` equals the **approved packet commit** — the one whose blob the
-      owner's approval names. Without this, any later clean commit would satisfy the runtime
-      check below while `tests/`, `scripts/publish_epoch.py`, `scripts/mutation_check.py`,
-      `pyproject.toml` or the manifest schema had moved, and the historical packet blob would
-      still hash correctly. The approval binds a commit, not just a document.
+- [ ] `git rev-parse HEAD` equals the **approved packet commit** — the SHA named directly in
+      the owner's approval, not one inferred from the blob. Without this, any later clean
+      commit would satisfy the runtime check below while `tests/`, `scripts/publish_epoch.py`,
+      `scripts/mutation_check.py`, `pyproject.toml` or the manifest schema had moved, and the
+      historical packet blob would still hash correctly. The approval binds a commit, not just
+      a document. Re-checked against the approval itself at the end of this list.
 - [ ] The runtime is identical to the release commit in §2:
       `git diff --stat <release-commit>..HEAD -- contracts/contracts/ contracts/scripts/ touchstone/ contracts/hardhat.config.js contracts/package.json contracts/package-lock.json`
       returns nothing. **Not** "HEAD equals the release commit" — §2.1 requires the packet
@@ -355,11 +356,19 @@ Every one of these must hold. Any failure is an abort, not a retry.
       would invalidate the whole gate.
 - [ ] The three EVM addresses in §4 are distinct and are the ones the owner intends.
 - [ ] `deployments/xlayer-testnet-2.json` does not exist.
-- [ ] The owner has approved a specific maximum total spend, in writing, **naming the
-      sha256 of the approved packet blob** — not this document's path or title.
-- [ ] That digest matches
-      `git show <approved-packet-commit>:docs/DEPLOYMENT-G1.md | sha256sum`. Use the packet
-      commit, **not** the release commit in §2 — they differ and hash differently.
+- [ ] The owner's written approval names **all three** values the banner requires — not this
+      document's path or title:
+      1. the full packet commit SHA;
+      2. the sha256 of the packet blob;
+      3. the ceiling in wei.
+      **An approval naming fewer than three does not satisfy this check.** An earlier version
+      of this list asked for the blob and the ceiling only, while the banner asked for all
+      three — so the checklist an operator actually works through was the weaker of the two.
+- [ ] `git rev-parse HEAD` equals the approved commit from (1).
+- [ ] `git show HEAD:docs/DEPLOYMENT-G1.md | sha256sum` equals the approved blob from (2).
+      Hash at the packet commit, **not** the release commit in §2 — they differ and hash
+      differently.
+- [ ] `TOUCHSTONE_DEPLOY_MAX_SPEND_WEI` in the §6 command equals the approved ceiling from (3).
 
 ## 8. After deployment
 
