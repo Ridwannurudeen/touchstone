@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from datetime import datetime, time, timezone
 from pathlib import Path
 
 import pytest
@@ -9,8 +10,6 @@ from web3.exceptions import TimeExhausted
 from touchstone.deployment import DeploymentManifest
 from touchstone.keyring import PublisherKey
 from touchstone.publish import (  # noqa: F401
-    _STATUS,
-    _unix_timestamp,
     CONFIRMED,
     INCLUDED,
     MISSING,
@@ -23,6 +22,7 @@ from touchstone.publish import (  # noqa: F401
     PublisherClient,
     SequenceMismatch,
     SubmissionFailed,
+    asset_key_bytes,
 )
 from touchstone.signing import (
     Ed25519Signer,
@@ -43,10 +43,21 @@ CHAIN_ID = 31337
 STRANGER_SECRET = "d4" * 32
 # The publishing identity the registry recorded; it survives a rotation of the address.
 REGISTRY_LINEAGE = Account.from_key(bytes.fromhex(PUBLISHER_SECRET)).address
+# The registry's own encoding, read off `TouchstoneRegistry.sol` — declaration order of
+# `enum Status`. Deliberately not imported from `touchstone.publish`: the fake stands in for
+# the chain, and a fake that shares the production mapping cannot disagree with it. A
+# regression in that mapping would move the expected value and the fake chain's value
+# together, and the comparison the publisher makes between them would still pass.
+_CHAIN_STATUS = {"CONFIRMED": 0, "STALE": 1, "INCONSISTENT": 2, "UNVERIFIABLE": 3}
 
 
 def address(secret: str) -> str:
     return Account.from_key(bytes.fromhex(secret)).address
+
+
+def _chain_seconds(value: str) -> int:
+    """A uint64 timestamp as the registry would hold it, parsed independently."""
+    return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
 
 
 def _manifest(**overrides: object) -> DeploymentManifest:
@@ -195,9 +206,9 @@ class FakeBackend:
             ChainReport(
                 control_set_root=report["control_set_root"],
                 evidence_root=report["evidence_root"],
-                status=_STATUS[report["state"]],
-                observed_at=_unix_timestamp(report["observed_at"], "observed_at"),
-                valid_until=_unix_timestamp(report["valid_until"], "valid_until"),
+                status=_CHAIN_STATUS[report["state"]],
+                observed_at=_chain_seconds(report["observed_at"]),
+                valid_until=_chain_seconds(report["valid_until"]),
                 publisher=self.publisher_override or self.manifest.publisher_address,
                 sequence=report["sequence"],
                 report_uri=report_uri,
@@ -266,23 +277,33 @@ def _signed_report(
     correction_of: int | None = None,
     control_set_root: str = "22" * 32,
     evidence_root: str = "33" * 32,
+    state: str = "CONFIRMED",
+    observed_at: str = "2026-08-13T14:16:17Z",
 ):
     signer = Ed25519Signer.from_seed(bytes(range(32)))
+    # Derived rather than written out beside the timestamp, so a caller choosing a different
+    # observation instant cannot accidentally leave the two disagreeing — which the
+    # publisher refuses outright.
+    observed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    day = observed.date()
+    valid_until = max(
+        datetime.combine(day, time(23, 59, 59), tzinfo=timezone.utc), observed
+    )
     return signer.sign_report(
         {
             "asset_key": ASSET_KEY_OF,
             "control_set_root": control_set_root,
             "correction_of": correction_of,
             "evidence_root": evidence_root,
-            "observed_at": "2026-08-13T14:16:17Z",
+            "observed_at": observed_at,
             "publisher_kid": signer.kid,
             "sequence": sequence,
-            "state": "CONFIRMED",
+            "state": state,
             "state_transition": {
-                "as_of": "2026-08-13",
-                "evidence_deadline": "2026-08-13",
+                "as_of": day.isoformat(),
+                "evidence_deadline": day.isoformat(),
             },
-            "valid_until": "2026-08-13T23:59:59Z",
+            "valid_until": valid_until.isoformat().replace("+00:00", "Z"),
         }
     )
 
@@ -293,6 +314,40 @@ def _client(tmp_path: Path, backend: FakeBackend) -> PublisherClient:
         TransparencyLog(tmp_path / "transparency.jsonl"),
         tmp_path / "pending.json",
     )
+
+
+@pytest.mark.parametrize(
+    ("state", "ordinal"),
+    [("CONFIRMED", 0), ("STALE", 1), ("INCONSISTENT", 2), ("UNVERIFIABLE", 3)],
+)
+def test_each_state_reaches_the_chain_as_the_registry_declares_it(
+    tmp_path: Path, state: str, ordinal: int
+) -> None:
+    """The four ordinals, against the Solidity enum rather than the encoder that wrote them.
+
+    `AssetGate.check` admits a report by `1 << report.status` against its allowed-status
+    mask, so the integer is not bookkeeping — it decides whether a consumer contract lets a
+    transaction through. Every report in this suite was CONFIRMED, so swapping STALE and
+    INCONSISTENT in the publisher's mapping passed all 1349 tests: a stale asset would have
+    been published as inconsistent and an inconsistent one admitted by a gate that allows
+    stale.
+
+    The timestamp is deliberately not the fixture instant either, so a mapping that happens
+    to agree on canned values is not mistaken for one that agrees.
+    """
+    backend = FakeBackend()
+    client = _client(tmp_path, backend)
+    client.publish(
+        _signed_report(1, state=state, observed_at="2026-08-14T09:41:03Z"),
+        report_uri="urn:touchstone:report:1",
+    )
+
+    published = backend.get_report(asset_key_bytes(ASSET_KEY_OF), 1)
+    assert published.status == ordinal
+    # Literal seconds, so neither the publisher's encoder nor the fake's decoder can move
+    # the expectation with them.
+    assert published.observed_at == 1786700463
+    assert published.valid_until == 1786751999
 
 
 def test_publisher_reads_sequence_before_submitting_and_refuses_duplicate(

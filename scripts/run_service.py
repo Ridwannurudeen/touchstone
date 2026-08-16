@@ -841,6 +841,34 @@ def _serve_ustb(service: Service, arguments) -> int:
     right up until this function replaced it.
     """
     manifest = DeploymentManifest.load(arguments.manifest)
+    # Before the signing key is touched. Refusing to serve historical bytes to a public
+    # network is the cheapest check here and the one with the worst consequence if it is
+    # skipped, so it must not sit behind a key that may not be present.
+    transport = None
+    if arguments.fixtures:
+        from touchstone.epoch import FixtureTransport
+
+        if not manifest.is_local:
+            # Committed fixtures are historical bytes. Publishing them to a public registry
+            # would put a dated observation on chain under today's epoch, signed, and
+            # indistinguishable to a consumer from something actually retrieved today.
+            print(
+                f"SERVICE FAIL: fixture mode is a local rehearsal; {manifest.network} is a "
+                "public network and must be served from live sources",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            transport = FixtureTransport(
+                arguments.fixtures, date.fromisoformat(arguments.fixture_capture)
+            )
+        except (TypeError, ValueError) as error:
+            print(
+                f"SERVICE FAIL: --fixture-capture must name a committed capture: {error}",
+                file=sys.stderr,
+            )
+            return 1
+
     signer = Ed25519Signer.from_env()
     if signer.kid != manifest.active_key.kid:
         # The manifest names the key the registry's consumers will verify against. Signing
@@ -864,12 +892,6 @@ def _serve_ustb(service: Service, arguments) -> int:
     def previous_state(on: date) -> AssetState:
         state = service.operations.load_state(arguments.asset_key)
         return AssetState.UNVERIFIABLE if state is None else state.projected(on)
-
-    transport = None
-    if arguments.fixtures:
-        from touchstone.epoch import FixtureTransport
-
-        transport = FixtureTransport(arguments.fixtures)
 
     outcome = serve(
         service,
@@ -927,9 +949,20 @@ def main(argv: list[str] | None = None) -> int:
         "--fixtures",
         default=None,
         help="serve from committed fixtures instead of the live sources. For rehearsing "
-        "the unattended path without touching an issuer endpoint.",
+        "the unattended path without touching an issuer endpoint. Local manifests only.",
+    )
+    parser.add_argument(
+        "--fixture-capture",
+        default=None,
+        help="which committed capture to serve, as an ISO date. Required with --fixtures "
+        "and deliberately without a default: the wrong capture rehearses a path that "
+        "cannot publish, and silently.",
     )
     arguments = parser.parse_args(argv)
+    if arguments.fixture_capture and not arguments.fixtures:
+        parser.error("--fixture-capture is meaningless without --fixtures")
+    if arguments.fixtures and not arguments.fixture_capture:
+        parser.error("--fixtures requires --fixture-capture")
     try:
         # Construction is where the workspace is judged usable at all: a log that is not a
         # file, a directory that is not a directory, an incident log reachable by two

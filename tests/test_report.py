@@ -152,7 +152,7 @@ def test_report_builds_stale_epoch_with_contract_valid_timestamps(
 ) -> None:
     retrieved_at = datetime(2026, 8, 14, 14, 16, 17, tzinfo=timezone.utc)
     epoch = run_ustb_epoch(
-        transport=FixtureTransport(FIXTURES),
+        transport=FixtureTransport(FIXTURES, date(2026, 8, 13)),
         store=EvidenceStore(tmp_path),
         now=date(2026, 8, 14),
         retrieved_at=retrieved_at,

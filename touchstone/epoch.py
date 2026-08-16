@@ -127,11 +127,15 @@ class USTBEpochReport:
 
 
 class FixtureTransport:
-    """Offline transport serving one dated capture of committed fixture bytes."""
+    """Offline transport serving one dated capture of committed fixture bytes.
 
-    def __init__(
-        self, fixtures_dir: str | Path, capture: date = _FIXTURE_CONFIRMATION
-    ) -> None:
+    The capture is named, never defaulted. It used to fall back to the earlier of the two,
+    so the service's own ``--fixtures`` rehearsal silently served bytes the approved
+    controls were not written against and could never publish — a rehearsal that proved the
+    path was broken while reading as though the path were fine.
+    """
+
+    def __init__(self, fixtures_dir: str | Path, capture: date) -> None:
         if capture not in FIXTURE_CAPTURES:
             raise ValueError(f"no committed fixture capture for {capture}")
         self.fixtures_dir = Path(fixtures_dir).resolve()
