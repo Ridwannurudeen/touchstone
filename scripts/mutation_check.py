@@ -562,8 +562,11 @@ MUTATIONS = (
         path="touchstone/locking.py",
         old="        if (held.st_ino, held.st_dev) != (named.st_ino, named.st_dev):",
         new="        if False:",
+        # Not the three-case test: every case there is refused earlier, by isinstance, by
+        # liveness or by the path. Only a live descriptor paired with the target's own path
+        # reaches the inode comparison.
         tests=(
-            "tests/test_backup.py::test_a_backup_requires_a_live_hold_on_this_workspaces_lock",
+            "tests/test_backup.py::test_a_live_descriptor_borrowed_from_another_lock_is_refused",
         ),
     ),
     Mutation(
