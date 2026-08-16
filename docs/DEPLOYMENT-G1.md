@@ -17,14 +17,20 @@
 > ambiguity a digest is supposed to remove. Print the approved digest with:
 >
 > ```
-> git show <commit>:docs/DEPLOYMENT-G1.md | sha256sum
+> git show <approved-packet-commit>:docs/DEPLOYMENT-G1.md | sha256sum
 > ```
 >
 > and export a byte-identical copy for reading with:
 >
 > ```
-> git cat-file blob <commit>:docs/DEPLOYMENT-G1.md > DEPLOYMENT-G1.approved.md
+> git cat-file blob <approved-packet-commit>:docs/DEPLOYMENT-G1.md > DEPLOYMENT-G1.approved.md
 > ```
+>
+> **`<approved-packet-commit>` is not the release commit.** They are different commits and
+> hash to different values: the release commit names the executable implementation, this one
+> names this document. Hashing the packet "at the commit being executed from" produces the
+> wrong digest and fails this very check — an earlier version of this section said exactly
+> that.
 >
 > If the digest does not match at execution time, **stop** — the packet has changed since it
 > was approved and must be re-read and re-approved.
@@ -246,8 +252,9 @@ Every one of these must hold. Any failure is an abort, not a retry.
 - [ ] `deployments/xlayer-testnet-2.json` does not exist.
 - [ ] The owner has approved a specific maximum total spend, in writing, **naming the
       sha256 of the approved packet blob** — not this document's path or title.
-- [ ] That digest matches `git show <commit>:docs/DEPLOYMENT-G1.md | sha256sum` for the
-      commit being executed from.
+- [ ] That digest matches
+      `git show <approved-packet-commit>:docs/DEPLOYMENT-G1.md | sha256sum`. Use the packet
+      commit, **not** the release commit in §2 — they differ and hash differently.
 
 ## 8. After deployment
 
@@ -294,7 +301,7 @@ exists whether or not anyone wrote it down — that is the lesson of 2026-08-15.
    | `prepared` | **No hash journaled. A broadcast is not ruled out** | Same. The node returns a hash before this file is appended to, so a crash in that window leaves `prepared` as the last stage after a real send |
    | `broadcast` | One or more hashes, outcome unknown | Read each receipt. This line is written at the RPC boundary and is the earliest evidence |
    | `deploying` | Deployment hash; no address or block yet | Read the receipt to learn whether it mined and at what address |
-   | `deployed` | Address, deployment hash, block. **No authorization hash** | The registry exists and is unauthorized. Do not assume authorization was attempted |
+   | `deployed` | Address, deployment hash, block. **No authorization hash journaled** | The registry exists. **Do not conclude it is unauthorized** — the authorization is broadcast before the journal records it, so a crash in that window leaves `deployed` last even though the transaction reached the node. Check the deployer's nonce, `isPublisherAuthorized`, `publisherIdentity`, and any `PublisherAuthorized` log at that address before classifying it |
    | `authorizing` | Both hashes; authorization outcome unknown | Read the authorization receipt |
    | `authorized` | Both hashes; deployment and authorization succeeded; post-deployment verification or manifest persistence failed | Freshly verify the runtime code and digest, chain id, owner, authorization and publisher lineage on chain. Reconstruct only if every value matches |
 3. Read the outcome off the chain rather than guessing it. Run a receipt command only for
@@ -329,7 +336,7 @@ exists whether or not anyone wrote it down — that is the lesson of 2026-08-15.
    | Last stage | What to record |
    |---|---|
    | empty, `prepared`, `broadcast`, `deploying` | **Keep the journal and write an incident note beside it** — date, what the journal contains, the deployer nonce before and after, and what was found on chain. No manifest |
-   | `deployed` | Same. The registry exists and is unauthorized; there is no publisher lineage for a manifest to record |
+   | `deployed` | Same — but establish the authorization state on chain first, because the journal cannot prove it either way. If authorization did land, treat it as `authorized`; if it did not, there is no publisher lineage for a manifest to record |
    | `authorizing` | Read the authorization receipt first. If it succeeded, treat as `authorized`; if it failed or is absent, treat as `deployed` |
    | `authorized` | A manifest is possible. Write it with `deployment_state: "superseded"`, and verify it loads and is refused for publication |
 

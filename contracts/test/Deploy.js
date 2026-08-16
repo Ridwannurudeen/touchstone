@@ -546,9 +546,14 @@ describe("deployment safeguards", function () {
   });
 
   it("keeps a raw broadcast hash when the underlying provider fails after send", async function () {
-    // Locally signed transactions bypass the outer `send`: `broadcastTransaction()` calls
-    // `_hardhatProvider.send` directly, then performs provider bookkeeping. The old fake had
-    // no underlying layer, so deleting that layer from `journalBroadcasts` left it green.
+    // Scoped honestly: this exercises `HardhatEthersProvider.broadcastTransaction()`, which
+    // calls `_hardhatProvider.send` directly and bypasses the outer wrapper. It is
+    // load-bearing for that branch — deleting the underlying target from
+    // `journalBroadcasts` fails it — but it is **not** the path this deployment takes.
+    // Touchstone obtains a `HardhatEthersSigner`, which sends `eth_sendTransaction` through
+    // the outer provider; Hardhat signs configured-account transactions internally. So the
+    // outer interception is what covers production, and this covers the bypass that would
+    // otherwise be silently unjournaled.
     const destination = join(scratch(), "manifest.json");
     reserveDestination(destination);
     const hash = `0x${"cd".repeat(32)}`;
