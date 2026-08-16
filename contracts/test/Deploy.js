@@ -380,6 +380,7 @@ describe("deployment safeguards", function () {
     SPEND_CEILING_ENV,
     reserveDestination,
     recordAttempt,
+    readAttempt,
     deploymentSpendCeiling,
     assertWithinCeiling,
   } = require("../scripts/deploy");
@@ -433,7 +434,8 @@ describe("deployment safeguards", function () {
       delete process.env.TOUCHSTONE_MANIFEST_OUT;
     }
 
-    const attempt = JSON.parse(readFileSync(`${destination}.attempt.json`, "utf-8"));
+    const records = readAttempt(destination);
+    const attempt = records[records.length - 1];
     // The final stage on a successful run. It carries both transaction hashes, so a
     // manifest write that fails afterwards leaves enough to reconstruct rather than
     // redeploy.
@@ -446,45 +448,52 @@ describe("deployment safeguards", function () {
     expect(attempt.note).to.match(/reconstruct it from these values rather than redeploying/);
   });
 
-  it("records the transaction hash before waiting for the deployment", async function () {
-    // The window this closes: `deployContract` broadcasts, and the record used to be
-    // written only after `waitForDeployment()` returned. Losing the provider during that
-    // wait left a mined registry with its hash written nowhere. The stage that proves the
-    // fix is `deploying` — it must carry a hash, and it must exist before the wait.
+  it("journals every broadcast hash, and every stage survives the next one", async function () {
+    // Two things at once, because they are the same guarantee. The hash is journaled at the
+    // RPC boundary — the node returns it there, before Hardhat polls for the full
+    // transaction, and a provider failing during that poll used to leave a broadcast
+    // transaction recorded nowhere. And the record is appended rather than rewritten, so
+    // advancing a stage cannot destroy the one before it.
+    //
+    // The previous version of this test collected the stages it saw and then asserted only
+    // on the final record. Removing the `deploying` write would have left it green.
     const { publisher, operations } = await roles();
     const destination = join(scratch(), "manifest.json");
-    const stages = [];
-
-    // Observe the file as it is written, rather than inspecting only the final state.
     const previous = { ...process.env };
     process.env.TOUCHSTONE_MANIFEST_OUT = destination;
     try {
-      const deployPromise = deploy({
+      await deploy({
         publisherAddress: await publisher.getAddress(),
         operationsAddress: await operations.getAddress(),
         reporterPublicKey: REPORTER_PUBLIC_KEY,
       });
-      // Sample while it runs; the local chain mines instantly, so also read the end state.
-      const sample = setInterval(() => {
-        try {
-          const raw = readFileSync(`${destination}.attempt.json`, "utf-8");
-          if (raw.trim()) stages.push(JSON.parse(raw).stage);
-        } catch {
-          /* not yet written */
-        }
-      }, 1);
-      await deployPromise;
-      clearInterval(sample);
     } finally {
       process.env = previous;
     }
 
-    const finalRecord = JSON.parse(
-      readFileSync(`${destination}.attempt.json`, "utf-8"),
-    );
-    expect(finalRecord.stage).to.equal("authorized");
-    expect(finalRecord.deployment_transaction).to.match(/^0x[0-9a-f]{64}$/);
-    expect(finalRecord.authorization_transaction).to.match(/^0x[0-9a-f]{64}$/);
+    const records = readAttempt(destination);
+    const stages = records.map((record) => record.stage);
+
+    // Every earlier stage still present, in order.
+    expect(stages[0]).to.equal("prepared");
+    expect(stages).to.include("broadcast");
+    expect(stages).to.include("deploying");
+    expect(stages).to.include("deployed");
+    expect(stages).to.include("authorizing");
+    expect(stages[stages.length - 1]).to.equal("authorized");
+
+    // The RPC-boundary records carry hashes the node returned.
+    const broadcasts = records.filter((record) => record.stage === "broadcast");
+    expect(broadcasts.length).to.equal(2, "one per transaction");
+    expect(broadcasts[0].broadcast_transactions).to.have.lengthOf(1);
+    expect(broadcasts[1].broadcast_transactions).to.have.lengthOf(2);
+    for (const hash of broadcasts[1].broadcast_transactions) {
+      expect(hash).to.match(/^0x[0-9a-f]{64}$/i);
+    }
+
+    const final = records[records.length - 1];
+    expect(final.deployment_transaction).to.match(/^0x[0-9a-f]{64}$/);
+    expect(final.authorization_transaction).to.match(/^0x[0-9a-f]{64}$/);
   });
 
   it("advances the breadcrumb through every stage, keeping the second hash", function () {
@@ -494,7 +503,7 @@ describe("deployment safeguards", function () {
     const destination = join(scratch(), "manifest.json");
 
     recordAttempt(destination, { stage: "deployed", deployment_transaction: "0xaa" });
-    let attempt = JSON.parse(readFileSync(`${destination}.attempt.json`, "utf-8"));
+    let attempt = readAttempt(destination).at(-1);
     expect(attempt.stage).to.equal("deployed");
 
     recordAttempt(destination, {
@@ -502,7 +511,7 @@ describe("deployment safeguards", function () {
       deployment_transaction: "0xaa",
       authorization_transaction: "0xbb",
     });
-    attempt = JSON.parse(readFileSync(`${destination}.attempt.json`, "utf-8"));
+    attempt = readAttempt(destination).at(-1);
     expect(attempt.stage).to.equal("authorizing");
     expect(attempt.authorization_transaction).to.equal("0xbb");
 
@@ -511,7 +520,7 @@ describe("deployment safeguards", function () {
       deployment_transaction: "0xaa",
       authorization_transaction: "0xbb",
     });
-    attempt = JSON.parse(readFileSync(`${destination}.attempt.json`, "utf-8"));
+    attempt = readAttempt(destination).at(-1);
     expect(attempt.stage).to.equal("authorized");
   });
 
@@ -581,7 +590,7 @@ describe("the real entry point", function () {
   const { existsSync, mkdtempSync, readFileSync } = require("node:fs");
   const { join } = require("node:path");
   const { tmpdir } = require("node:os");
-  const { main } = require("../scripts/deploy");
+  const { main, readAttempt } = require("../scripts/deploy");
 
   it("completes end to end through main, not just deploy", async function () {
     // The scope bug this exists for: `destination` was owned by `deploy()` and read by
@@ -612,7 +621,8 @@ describe("the real entry point", function () {
     expect(manifest.registry_address).to.match(/^0x[0-9a-fA-F]{40}$/);
     expect(manifest.deployment_block).to.be.greaterThan(0);
 
-    const attempt = JSON.parse(readFileSync(`${destination}.attempt.json`, "utf-8"));
+    const records = readAttempt(destination);
+    const attempt = records[records.length - 1];
     expect(attempt.stage).to.equal("authorized");
     expect(attempt.address).to.equal(manifest.registry_address);
   });

@@ -10,7 +10,16 @@
 // by accident.
 
 const { createHash } = require("node:crypto");
-const { existsSync, mkdirSync, writeFileSync } = require("node:fs");
+const {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+  writeSync,
+} = require("node:fs");
 const { dirname, isAbsolute, join } = require("node:path");
 const hre = require("hardhat");
 
@@ -45,7 +54,7 @@ async function deploy({
     const confirmed = process.env[CONFIRM_ENV];
     if (confirmed !== String(chainId)) {
       throw new Error(
-        `refusing to deploy to chain ${chainId}: set ${CONFIRM_ENV}=${chainId} to confirm`,
+        `refusing to deploy to chain ${chainId}: set ${CONFIRM_ENV}=${chainId} to confirm`
       );
     }
   }
@@ -61,18 +70,18 @@ async function deploy({
   const publisher = requireAddress(publisherAddress, "publisherAddress");
   if (publisher === deployerAddress) {
     throw new Error(
-      "the publisher must not be the deployer; the identity that owns the registry must not run unattended",
+      "the publisher must not be the deployer; the identity that owns the registry must not run unattended"
     );
   }
   if (!operationsAddress) {
     throw new Error(
-      "operationsAddress is required; an unstated role address cannot be shown to be separate",
+      "operationsAddress is required; an unstated role address cannot be shown to be separate"
     );
   }
   const operations = requireAddress(operationsAddress, "operationsAddress");
   if (operations === publisher || operations === deployerAddress) {
     throw new Error(
-      "the operations identity must be distinct from the deployer and the publisher",
+      "the operations identity must be distinct from the deployer and the publisher"
     );
   }
   if (!/^[0-9a-f]{64}$/.test(reporterPublicKey)) {
@@ -82,12 +91,14 @@ async function deploy({
     network ?? NETWORK_BY_CHAIN_ID[String(chainId)] ?? null;
   if (!NETWORKS.includes(resolvedNetwork)) {
     throw new Error(
-      `network must be one of ${NETWORKS.join(", ")}; chain ${chainId} resolved to ${resolvedNetwork}`,
+      `network must be one of ${NETWORKS.join(
+        ", "
+      )}; chain ${chainId} resolved to ${resolvedNetwork}`
     );
   }
   if (BigInt(NETWORK_CHAIN_IDS[resolvedNetwork]) !== chainId) {
     throw new Error(
-      `${resolvedNetwork} is chain ${NETWORK_CHAIN_IDS[resolvedNetwork]}, but this endpoint is chain ${chainId}`,
+      `${resolvedNetwork} is chain ${NETWORK_CHAIN_IDS[resolvedNetwork]}, but this endpoint is chain ${chainId}`
     );
   }
   // isInteger is true for 9007199254740992, the value 9007199254740993 silently becomes.
@@ -105,12 +116,12 @@ async function deploy({
     rpcUrl ?? hre.network.config.url ?? "http://127.0.0.1:8545";
   if (resolvedNetwork === "hardhat-local") {
     const loopback = /^http:\/\/(?:127\.0\.0\.1|localhost):(\d{1,5})\/?$/.exec(
-      resolvedRpcUrl,
+      resolvedRpcUrl
     );
     const port = loopback ? Number(loopback[1]) : 0;
     if (port < 1 || port > 65535) {
       throw new Error(
-        "the local network must record a loopback rpc_url with a valid port",
+        "the local network must record a loopback rpc_url with a valid port"
       );
     }
   } else {
@@ -124,12 +135,12 @@ async function deploy({
     }
     if (parsed.protocol !== "https:" || !parsed.hostname) {
       throw new Error(
-        "a public network must record an HTTPS rpc_url with a host",
+        "a public network must record an HTTPS rpc_url with a host"
       );
     }
     if (parsed.username || parsed.password || parsed.search || parsed.hash) {
       throw new Error(
-        "rpc_url must not carry credentials, a query or a fragment",
+        "rpc_url must not carry credentials, a query or a fragment"
       );
     }
     if (isLoopbackHost(parsed.hostname)) {
@@ -153,7 +164,7 @@ async function deploy({
     // reserved and no breadcrumb — the exact state that lost the first registry's record.
     throw new Error(
       "TOUCHSTONE_MANIFEST_OUT is required off the local chain: a deployment with nowhere " +
-        "to record itself is one that can be lost",
+        "to record itself is one that can be lost"
     );
   }
   const destination = reserveDestination(process.env.TOUCHSTONE_MANIFEST_OUT);
@@ -162,7 +173,7 @@ async function deploy({
   // the per-publication `max_fee_wei` the manifest carries. The script recorded a
   // publication ceiling and enforced no bound at all on the deployment itself.
   const spendCeilingWei = deploymentSpendCeiling(
-    resolvedNetwork === "hardhat-local",
+    resolvedNetwork === "hardhat-local"
   );
   // Explicit caps on both sends, and the *worst case* — every unit of gas at the maximum
   // fee — proved to sit under the approved ceiling before anything is broadcast. Checking
@@ -172,9 +183,20 @@ async function deploy({
     ethers,
     ["TouchstoneRegistry", [chainId]],
     publisher,
-    spendCeilingWei,
+    spendCeilingWei
   );
   await assertAffordable(deployerAddress, spendCeilingWei);
+
+  // Journals every transaction hash the node returns, at the moment it returns it. The
+  // previous placement recorded after `deployContract()` resolved — but Hardhat's signer
+  // receives the hash and *then* polls for the full transaction, so a provider that failed
+  // during that poll left a broadcast transaction with its hash written nowhere. This is
+  // the RPC boundary itself: nothing can be sent without passing through it.
+  const journal = journalBroadcasts(ethers.provider, destination, {
+    chain_id: Number(chainId),
+    deployer: deployerAddress,
+    publisher,
+  });
 
   // Written before anything is sent, so a crash during the broadcast still leaves a file
   // saying an attempt was starting and against which chain.
@@ -191,7 +213,7 @@ async function deploy({
   const registry = await ethers.deployContract(
     "TouchstoneRegistry",
     [chainId],
-    overrides.deployment,
+    overrides.deployment
   );
   // The hash exists the moment the transaction is broadcast, and is recorded before the
   // wait. Recording only after `waitForDeployment()` meant losing the provider during that
@@ -210,6 +232,7 @@ async function deploy({
   });
   await registry.waitForDeployment();
   const deploymentReceipt = await registry.deploymentTransaction().wait();
+  journal.settled();
   const address = await registry.getAddress();
 
   recordAttempt(destination, {
@@ -228,7 +251,7 @@ async function deploy({
 
   const authorization = await registry.authorizePublisher(
     publisher,
-    overrides.authorization,
+    overrides.authorization
   );
   recordAttempt(destination, {
     stage: "authorizing",
@@ -252,7 +275,7 @@ async function deploy({
   // spent, and would catch a provider that ignored them.
   assertWithinCeiling(
     [deploymentReceipt, authorizationReceipt],
-    spendCeilingWei,
+    spendCeilingWei
   );
   recordAttempt(destination, {
     stage: "authorized",
@@ -319,6 +342,10 @@ async function deploy({
     // 9007199254740993 wei was recorded as ...992.
     manifest.max_fee_wei = maxFeeWei;
   }
+  // Released where it was taken. Putting this in `main()` reached for a name `deploy()`
+  // owns — the same scope error as before, caught immediately by the end-to-end test added
+  // for exactly that.
+  journal.release();
   return { registry, manifest, destination };
 }
 
@@ -354,6 +381,45 @@ async function main() {
   }
 }
 
+function journalBroadcasts(provider, destination, context) {
+  // Wraps the provider's own `send`, so a transaction hash is durably recorded the instant
+  // the node returns it — before any polling, receipt wait, or library bookkeeping. Both
+  // `eth_sendTransaction` (node-managed keys) and `eth_sendRawTransaction` (locally signed)
+  // return the hash as their result, so one interception covers every path a transaction
+  // can take out of this process.
+  if (!destination) return { settled() {}, release() {} };
+  const original = provider.send.bind(provider);
+  const broadcast = [];
+  provider.send = async (method, params) => {
+    const result = await original(method, params);
+    if (
+      /^eth_send(Raw)?Transaction$/.test(method) &&
+      typeof result === "string" &&
+      /^0x[0-9a-f]{64}$/i.test(result)
+    ) {
+      broadcast.push(result);
+      recordAttempt(destination, {
+        stage: "broadcast",
+        broadcast_transactions: [...broadcast],
+        ...context,
+        note:
+          "One or more transactions were broadcast and their outcome was unknown when " +
+          "this was written. Read each receipt from the chain before deciding anything, " +
+          "and never re-run this command.",
+      });
+    }
+    return result;
+  };
+  return {
+    settled() {
+      /* later stages overwrite with richer context */
+    },
+    release() {
+      provider.send = original;
+    },
+  };
+}
+
 function reserveDestination(destination) {
   // Both files are claimed before the first irreversible send: the manifest and its
   // companion attempt record. Reserving only the manifest left the attempt path to be
@@ -369,7 +435,7 @@ function reserveDestination(destination) {
     if (existsSync(path)) {
       throw new Error(
         `${path} already exists; refusing to overwrite a deployment record. ` +
-          "Choose a new destination, or move the existing files aside deliberately.",
+          "Choose a new destination, or move the existing files aside deliberately."
       );
     }
   }
@@ -392,15 +458,50 @@ function recordAttempt(destination, record) {
   if (!destination) return;
   const path = `${destination}.attempt.json`;
   const stamped = { ...record, recorded_at: new Date().toISOString() };
-  writeFileSync(path, `${JSON.stringify(stamped, null, 2)}
-`, {
-    encoding: "utf-8",
-  });
+  // Appended and flushed, never rewritten. `writeFileSync` truncates first and does not
+  // fsync, so a write fault or a killed process while advancing a stage could destroy the
+  // previous valid record — losing evidence in exactly the situation the record exists for.
+  // One JSON object per line: the last complete line is the furthest the attempt reached,
+  // and every earlier line survives it.
+  const handle = openSync(path, "a");
+  try {
+    writeSync(
+      handle,
+      `${JSON.stringify(stamped)}
+`
+    );
+    fsyncSync(handle);
+  } finally {
+    closeSync(handle);
+  }
   process.stderr.write(`attempt recorded (${record.stage}) at ${path}
 `);
 }
 
-async function spendOverrides(ethers, [contractName, args], publisher, ceilingWei) {
+function readAttempt(destination) {
+  // Every stage the attempt reached, oldest first. A partial final line is discarded: an
+  // interrupted append is not a record, and treating it as one would report a stage that
+  // never completed.
+  const path = `${destination}.attempt.json`;
+  return readFileSync(path, "utf-8")
+    .split(/\r?\n/)
+    .filter((line) => line.trim())
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+async function spendOverrides(
+  ethers,
+  [contractName, args],
+  publisher,
+  ceilingWei
+) {
   // Explicit gas limits and a fee cap, with the combined worst case proved under the
   // approved ceiling BEFORE anything is sent. Without this the "ceiling" bounded nothing:
   // the sends used provider-selected parameters and the receipts were compared afterwards,
@@ -422,7 +523,7 @@ async function spendOverrides(ethers, [contractName, args], publisher, ceilingWe
   if (maxFeePerGas === 0n) {
     throw new Error(
       `approved ceiling ${ceilingWei} wei cannot cover ${totalGas} gas at even 1 wei per ` +
-        "gas; raise the ceiling or do not deploy",
+        "gas; raise the ceiling or do not deploy"
     );
   }
   const fees = await ethers.provider.getFeeData();
@@ -430,17 +531,20 @@ async function spendOverrides(ethers, [contractName, args], publisher, ceilingWe
     throw new Error(
       `the network's current maxFeePerGas ${fees.maxFeePerGas} exceeds the ${maxFeePerGas} ` +
         `per gas the approved ceiling of ${ceilingWei} wei allows over ${totalGas} gas; ` +
-        "the deployment would either fail or exceed what was approved",
+        "the deployment would either fail or exceed what was approved"
     );
   }
   const priority =
-    fees.maxPriorityFeePerGas !== null && fees.maxPriorityFeePerGas < maxFeePerGas
+    fees.maxPriorityFeePerGas !== null &&
+    fees.maxPriorityFeePerGas < maxFeePerGas
       ? fees.maxPriorityFeePerGas
       : maxFeePerGas;
   process.stderr.write(
-    `worst case ${totalGas} gas at ${maxFeePerGas} wei = ${totalGas * maxFeePerGas} wei, ` +
+    `worst case ${totalGas} gas at ${maxFeePerGas} wei = ${
+      totalGas * maxFeePerGas
+    } wei, ` +
       `within the approved ${ceilingWei} wei
-`,
+`
   );
   return {
     deployment: {
@@ -465,7 +569,7 @@ function deploymentSpendCeiling(local) {
     if (local) return null;
     throw new Error(
       `${SPEND_CEILING_ENV} is required off the local chain: the owner approves a maximum ` +
-        "total spend for the deployment and authorization transactions",
+        "total spend for the deployment and authorization transactions"
     );
   }
   return exactBigInt(raw, SPEND_CEILING_ENV);
@@ -478,7 +582,7 @@ async function assertAffordable(deployerAddress, ceilingWei) {
     throw new Error(
       `deployer ${deployerAddress} holds ${balance} wei, below the approved ceiling of ` +
         `${ceilingWei} wei; a run that cannot cover its own ceiling can strand a ` +
-        "half-finished deployment",
+        "half-finished deployment"
     );
   }
 }
@@ -487,14 +591,14 @@ function assertWithinCeiling(receipts, ceilingWei) {
   if (ceilingWei === null) return;
   const spent = receipts.reduce(
     (total, receipt) => total + receipt.gasUsed * receipt.gasPrice,
-    0n,
+    0n
   );
   if (spent > ceilingWei) {
     // After the fact, because a receipt is the only honest measure of what was spent. It
     // cannot un-send the transactions; it makes the overrun loud instead of silent, and
     // the operator's abort criteria take over from there.
     throw new Error(
-      `deployment spent ${spent} wei, above the approved ceiling of ${ceilingWei} wei`,
+      `deployment spent ${spent} wei, above the approved ceiling of ${ceilingWei} wei`
     );
   }
   process.stderr.write(`deployment spent ${spent} wei of ${ceilingWei} allowed
@@ -512,7 +616,7 @@ function exactBigInt(value, field) {
   if (typeof value === "number") {
     if (!Number.isSafeInteger(value)) {
       throw new Error(
-        `${field} exceeds what a JavaScript number holds exactly; pass it as a string`,
+        `${field} exceeds what a JavaScript number holds exactly; pass it as a string`
       );
     }
     if (value < 1) throw new Error(`${field} must be positive`);
@@ -522,7 +626,7 @@ function exactBigInt(value, field) {
     return BigInt(value);
   }
   throw new Error(
-    `${field} must be a positive exact integer: a bigint, a decimal string, or a safe number`,
+    `${field} must be a positive exact integer: a bigint, a decimal string, or a safe number`
   );
 }
 
@@ -572,7 +676,7 @@ function serializeManifest(manifest) {
   const marked = JSON.stringify(
     manifest,
     (_key, value) => (typeof value === "bigint" ? `@bigint:${value}@` : value),
-    2,
+    2
   );
   return marked.replace(/"@bigint:(\d+)@"/g, "$1");
 }
@@ -586,6 +690,7 @@ module.exports = {
   isLoopbackHost,
   reserveDestination,
   recordAttempt,
+  readAttempt,
   deploymentSpendCeiling,
   assertWithinCeiling,
 };
