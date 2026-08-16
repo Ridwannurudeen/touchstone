@@ -293,9 +293,18 @@ key contracts by (chain, address) — Superstate reuses addresses across chains.
 
 ---
 
-## Portfolio selection — **REOPENED 2026-08-15** (was FINAL 2026-08-13)
+## Portfolio selection — **CLOSED 2026-08-16**
 
-**Current standing as of 2026-08-15** — this supersedes the 2026-08-13 selection below it:
+**Final for Phase 1: USTB alone.** No second adapter, no contrast adapter. USDY is cut
+(unbounded retrieval), FOBXX is retained as a documented monthly contrast asset with no
+adapter, and OUSG is cut — the second-adapter metric is recorded as missed in `ROADMAP.md`
+rather than chased with a hurried asset. The build order in `docs/PHASE-1-PLAN.md` is
+authoritative.
+
+Everything below is the record of how the selection moved, retained because the reasoning is
+the audit trail. **None of it describes an open decision.**
+
+### Superseded: standing as of 2026-08-15 (was REOPENED; was FINAL 2026-08-13)
 
 - **Hero: USTB (Superstate/Invesco)** — unchanged. Public documented JSON API, verified live
   and bounded; dual issuer-official onchain oracles; digit-level API↔oracle agreement.
@@ -306,7 +315,9 @@ key contracts by (chain, address) — Superstate reuses addresses across chains.
   unreachable, so the daily-liveness and issuer-versus-regulator controls are **blocked**.
 - **Candidate for the vacant slot: OUSG (Ondo)** — bounded retrieval verified, cross-issuer
   coverage preserved, **not promoted** pending an oracle cross-check that needs the full
-  oracle address.
+  oracle address. *(Cut 2026-08-16. The cross-check was never run: the calendar went to the
+  epoch-uniqueness defect and the compilation binding instead. There is no vacant slot —
+  Phase 1 ships one vertical.)*
 - **Spare: USCC (Superstate)** — same issuer as the hero, so it cannot supply cross-issuer
   proof.
 

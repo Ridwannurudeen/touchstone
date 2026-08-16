@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://touchstone.invalid/schemas/deployment-manifest-1.json",
   "title": "Touchstone deployment manifest",
-  "description": "Everything the publisher must verify before it signs. Nothing here is a default: a missing field is a refusal to publish, not a fallback, because a fallback is how a report reaches the wrong chain.",
+  "description": "A deployment manifest. Every field listed in `required` is refused when absent \u2014 the loader agrees, and the two disagreeing is how a manifest the schema rejects still loads. `max_fee_wei` is required off the local chain, matching the loader's rule that an unbounded fee ceiling is not acceptable on a public network.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -18,7 +18,8 @@
     "operations_address",
     "confirmations",
     "reporting_keys",
-    "deployment_state"
+    "deployment_state",
+    "deployment_block"
   ],
   "properties": {
     "manifest_version": {
@@ -133,5 +134,23 @@
     "notes": {
       "type": "string"
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "network": {
+            "not": {
+              "const": "hardhat-local"
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "max_fee_wei"
+        ]
+      }
+    }
+  ]
 }

@@ -109,6 +109,7 @@ _REQUIRED_MANIFEST_FIELDS = frozenset(
         "deployer_address",
         "operations_address",
         "confirmations",
+        "deployment_block",
         "deployment_state",
         "reporting_keys",
     }
@@ -299,7 +300,11 @@ class DeploymentManifest:
                 "max_fee_wei is required off the local chain; an unbounded fee ceiling "
                 "is an owner decision that must be written down"
             )
-        deployment_block = value.get("deployment_block", 0)
+        # Required, like the state. Defaulting an absent one to zero meant a manifest could
+        # load with a genesis-block starting point and scan the entire chain for its own
+        # publication events — a silent behaviour change from a missing field, and one the
+        # schema did not permit even while the loader did.
+        deployment_block = value["deployment_block"]
         if type(deployment_block) is not int or deployment_block < 0:
             raise DeploymentError("deployment_block must be a non-negative integer")
 

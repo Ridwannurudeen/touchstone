@@ -202,8 +202,16 @@ Destination: `not_configured`.
 
 Everything here needs explicit approval. One has been given and executed; the rest have not.
 
-- [x] **Testnet deploy** — approved and executed 2026-08-15. Registry
-      `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, block 38369203
+- [x] **Testnet deploy (original)** — approved and executed 2026-08-15. Registry
+      `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, block 38369203. **Now superseded**: it
+      predates the `epochKey` change, is marked `deployment_state: superseded`, and is
+      refused by the publishing boundary. It published nothing.
+- [ ] **Testnet deploy (replacement)** — the design is approved **in principle**;
+      **execution authorization has not been granted.** No replacement registry exists, no
+      gas has been spent on one, and `docs/DEPLOYMENT-G1.md` must be complete and approved
+      before it is requested. Tracked separately from the entry above because they are two
+      different deployments and conflating them is how "approved" spreads to something
+      nobody approved
 - [ ] **Mainnet deploy + canary** — after a proven testnet loop only, and nothing has
       published to testnet yet
 - [ ] **Submission** — owner-handled

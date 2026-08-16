@@ -10,12 +10,13 @@
 // by accident.
 
 const { createHash } = require("node:crypto");
-const { mkdirSync, writeFileSync } = require("node:fs");
+const { existsSync, mkdirSync, writeFileSync } = require("node:fs");
 const { dirname, isAbsolute, join } = require("node:path");
 const hre = require("hardhat");
 
 const LOCAL_CHAIN_ID = 31337n;
 const CONFIRM_ENV = "TOUCHSTONE_DEPLOY_CONFIRM_CHAIN_ID";
+const SPEND_CEILING_ENV = "TOUCHSTONE_DEPLOY_MAX_SPEND_WEI";
 const NETWORK_BY_CHAIN_ID = {
   31337: "hardhat-local",
 };
@@ -139,16 +140,52 @@ async function deploy({
     }
   }
 
+  // The destination is claimed BEFORE anything irreversible happens. Resolving it only
+  // after both transactions meant a repeated command silently destroyed the previous
+  // manifest, and an unwritable destination was discovered with a registry already live on
+  // chain. Both are one mistake: the record must be secured before the thing it records
+  // exists.
+  const destination = reserveDestination(process.env.TOUCHSTONE_MANIFEST_OUT);
+
+  // An owner-approved ceiling on what this command may irreversibly spend, separate from
+  // the per-publication `max_fee_wei` the manifest carries. The script recorded a
+  // publication ceiling and enforced no bound at all on the deployment itself.
+  const spendCeilingWei = deploymentSpendCeiling(
+    resolvedNetwork === "hardhat-local",
+  );
+  await assertAffordable(deployerAddress, spendCeilingWei);
+
   const registry = await ethers.deployContract("TouchstoneRegistry", [chainId]);
   await registry.waitForDeployment();
   const deploymentReceipt = await registry.deploymentTransaction().wait();
   const address = await registry.getAddress();
 
+  // Recorded the instant the registry exists, before authorization can fail. The first real
+  // deployment lost its record exactly here: the transactions landed and the manifest write
+  // threw, leaving nothing on disk to say a registry had been created.
+  recordAttempt(destination, {
+    stage: "deployed",
+    address,
+    deployment_transaction: deploymentReceipt.hash,
+    deployment_block: deploymentReceipt.blockNumber,
+    chain_id: Number(chainId),
+    deployer: deployerAddress,
+    publisher,
+    note:
+      "The registry exists on chain; authorization had not completed when this was " +
+      "written. If nothing further was recorded, treat this deployment as incomplete: " +
+      "mark it superseded rather than reusing it, and never retry automatically.",
+  });
+
   const authorization = await registry.authorizePublisher(publisher);
-  await authorization.wait();
+  const authorizationReceipt = await authorization.wait();
   if (!(await registry.isPublisherAuthorized(publisher))) {
     throw new Error("publisher authorization did not take effect");
   }
+  assertWithinCeiling(
+    [deploymentReceipt, authorizationReceipt],
+    spendCeilingWei,
+  );
 
   const code = await ethers.provider.getCode(address);
   if (code === "0x") {
@@ -180,10 +217,10 @@ async function deploy({
     operations_address: operations,
     confirmations,
     deployment_block: deploymentReceipt.blockNumber,
-    // Stated, never left to a default. A manifest that omits this reads as "active" in the
-    // Python loader, which is the right default for a fresh deployment but the wrong thing
-    // to rely on: the one manifest that must NOT read as active is an obsolete one, and
-    // that is exactly the case where nobody remembers to add a field by hand.
+    // Required by both the schema and the Python loader; a manifest omitting it is refused
+    // rather than defaulted, so this is not optional politeness. The one manifest that must
+    // never read as publishable is an obsolete one, which is exactly where a field goes
+    // missing when it is allowed to.
     deployment_state: "active",
     reporting_keys: [
       {
@@ -230,15 +267,90 @@ async function main() {
   // record even when the write fails, and a relative path is now resolved against the
   // repository root rather than the working directory that happens to be in effect.
   process.stdout.write(serialized);
-  const destination = process.env.TOUCHSTONE_MANIFEST_OUT;
   if (destination) {
-    const target = isAbsolute(destination)
-      ? destination
-      : join(__dirname, "..", "..", destination);
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, serialized, { encoding: "utf-8" });
-    process.stderr.write(`manifest written to ${target}\n`);
+    writeFileSync(destination, serialized, { encoding: "utf-8" });
+    process.stderr.write(`manifest written to ${destination}\n`);
   }
+}
+
+function reserveDestination(destination) {
+  // Claimed before the first irreversible send, and refused if anything is already there.
+  // The previous behaviour resolved the path only after both transactions and overwrote
+  // whatever it found, so a repeated command destroyed the record of the deployment before
+  // it — the one file that cannot be reconstructed from anywhere else.
+  if (!destination) return null;
+  const target = isAbsolute(destination)
+    ? destination
+    : join(__dirname, "..", "..", destination);
+  if (existsSync(target)) {
+    throw new Error(
+      `${target} already exists; refusing to overwrite a deployment record. ` +
+        "Choose a new destination, or move the existing manifest aside deliberately.",
+    );
+  }
+  mkdirSync(dirname(target), { recursive: true });
+  // Proves the directory is writable now rather than after a registry is live on chain.
+  writeFileSync(target, "", { encoding: "utf-8", flag: "wx" });
+  return target;
+}
+
+function recordAttempt(destination, record) {
+  // A durable breadcrumb written the moment the registry exists. Without it, a failure
+  // between deployment and authorization leaves a live contract nobody has a record of,
+  // which is exactly what happened on 2026-08-15.
+  if (!destination) return;
+  const path = `${destination}.attempt.json`;
+  writeFileSync(path, `${JSON.stringify(record, null, 2)}
+`, {
+    encoding: "utf-8",
+  });
+  process.stderr.write(`deployment attempt recorded at ${path}
+`);
+}
+
+function deploymentSpendCeiling(local) {
+  // Separate from the manifest's per-publication `max_fee_wei`. This bounds what this one
+  // command may irreversibly spend, and off the local chain it must be stated rather than
+  // assumed — an unbounded ceiling is not something an owner can approve.
+  const raw = process.env[SPEND_CEILING_ENV];
+  if (raw === undefined || raw === "") {
+    if (local) return null;
+    throw new Error(
+      `${SPEND_CEILING_ENV} is required off the local chain: the owner approves a maximum ` +
+        "total spend for the deployment and authorization transactions",
+    );
+  }
+  return exactBigInt(raw, SPEND_CEILING_ENV);
+}
+
+async function assertAffordable(deployerAddress, ceilingWei) {
+  if (ceilingWei === null) return;
+  const balance = await hre.ethers.provider.getBalance(deployerAddress);
+  if (balance < ceilingWei) {
+    throw new Error(
+      `deployer ${deployerAddress} holds ${balance} wei, below the approved ceiling of ` +
+        `${ceilingWei} wei; a run that cannot cover its own ceiling can strand a ` +
+        "half-finished deployment",
+    );
+  }
+}
+
+function assertWithinCeiling(receipts, ceilingWei) {
+  if (ceilingWei === null) return;
+  const spent = receipts.reduce(
+    (total, receipt) => total + receipt.gasUsed * receipt.gasPrice,
+    0n,
+  );
+  if (spent > ceilingWei) {
+    // After the fact, because a receipt is the only honest measure of what was spent. It
+    // cannot un-send the transactions; it makes the overrun loud instead of silent, and
+    // the operator's abort criteria take over from there.
+    throw new Error(
+      `deployment spent ${spent} wei, above the approved ceiling of ${ceilingWei} wei`,
+    );
+  }
+  process.stderr.write(`deployment spent ${spent} wei of ${ceilingWei} allowed
+`);
 }
 
 function exactBigInt(value, field) {
@@ -317,7 +429,16 @@ function serializeManifest(manifest) {
   return marked.replace(/"@bigint:(\d+)@"/g, "$1");
 }
 
-module.exports = { deploy, CONFIRM_ENV, serializeManifest, isLoopbackHost };
+module.exports = {
+  deploy,
+  CONFIRM_ENV,
+  SPEND_CEILING_ENV,
+  serializeManifest,
+  isLoopbackHost,
+  reserveDestination,
+  deploymentSpendCeiling,
+  assertWithinCeiling,
+};
 
 if (require.main === module) {
   main().catch((error) => {

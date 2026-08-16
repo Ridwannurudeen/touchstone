@@ -51,9 +51,9 @@ def test_every_committed_manifest_matches_the_schema(path: Path) -> None:
 def test_every_committed_manifest_declares_its_state(path: Path) -> None:
     """Declared, never defaulted.
 
-    The loader treats an absent state as active, which is right for a fresh deployment and
-    wrong to rely on: the one manifest that must not read as active is an obsolete one, and
-    that is exactly the case where nobody remembers to add a field by hand.
+    Both the schema and the loader refuse a manifest that omits it. They disagreed once —
+    the schema required the field while the loader defaulted an absent one to "active", so a
+    manifest the schema rejected still loaded, and loaded as publishable.
     """
     manifest = json.loads(path.read_text(encoding="utf-8"))
 

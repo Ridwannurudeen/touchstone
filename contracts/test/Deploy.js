@@ -371,3 +371,109 @@ describe("deploy script", function () {
     expect(CONFIRM_ENV).to.equal("TOUCHSTONE_DEPLOY_CONFIRM_CHAIN_ID");
   });
 });
+
+describe("deployment safeguards", function () {
+  const { existsSync, mkdtempSync, readFileSync, writeFileSync } = require("node:fs");
+  const { join } = require("node:path");
+  const { tmpdir } = require("node:os");
+  const {
+    SPEND_CEILING_ENV,
+    reserveDestination,
+    deploymentSpendCeiling,
+    assertWithinCeiling,
+  } = require("../scripts/deploy");
+
+  function scratch() {
+    return mkdtempSync(join(tmpdir(), "touchstone-deploy-"));
+  }
+
+  async function roles() {
+    const [deployer, publisher, operations] = await ethers.getSigners();
+    return { deployer, publisher, operations };
+  }
+
+  it("refuses to overwrite an existing deployment record", async function () {
+    // The manifest is the only record of a deployment that cannot be repeated. The
+    // destination used to be resolved after both transactions and written unconditionally,
+    // so running the command twice destroyed the previous registry's only record.
+    const directory = scratch();
+    const destination = join(directory, "manifest.json");
+    writeFileSync(destination, '{"existing":true}', "utf-8");
+
+    expect(() => reserveDestination(destination)).to.throw(
+      /already exists; refusing to overwrite/,
+    );
+    expect(JSON.parse(readFileSync(destination, "utf-8")).existing).to.equal(true);
+  });
+
+  it("claims the destination before anything irreversible happens", async function () {
+    // Reserving proves the directory is writable now, rather than discovering it is not
+    // with a registry already live on chain — which is exactly what happened on
+    // 2026-08-15.
+    const destination = join(scratch(), "nested", "manifest.json");
+
+    const reserved = reserveDestination(destination);
+
+    expect(reserved).to.equal(destination);
+    expect(existsSync(destination)).to.equal(true);
+  });
+
+  it("records the registry the moment it exists, before authorization can fail", async function () {
+    const { deployer, publisher, operations } = await roles();
+    const destination = join(scratch(), "manifest.json");
+    process.env.TOUCHSTONE_MANIFEST_OUT = destination;
+    try {
+      await deploy({
+        publisherAddress: await publisher.getAddress(),
+        operationsAddress: await operations.getAddress(),
+        reporterPublicKey: REPORTER_PUBLIC_KEY,
+      });
+    } finally {
+      delete process.env.TOUCHSTONE_MANIFEST_OUT;
+    }
+
+    const attempt = JSON.parse(readFileSync(`${destination}.attempt.json`, "utf-8"));
+    expect(attempt.stage).to.equal("deployed");
+    expect(attempt.address).to.match(/^0x[0-9a-fA-F]{40}$/);
+    expect(attempt.deployment_transaction).to.match(/^0x[0-9a-f]{64}$/);
+    expect(attempt.deployer).to.equal(await deployer.getAddress());
+    // The point of the breadcrumb: it says what to do if nothing followed it.
+    expect(attempt.note).to.match(/superseded/);
+  });
+
+  it("requires an owner-approved spend ceiling off the local chain", function () {
+    // The manifest's max_fee_wei bounds a publication. Nothing bounded the deployment
+    // itself, so an approval to deploy was an approval to spend an unstated amount.
+    // Exercised directly: a public deployment cannot be simulated on the local chain,
+    // because the chain-id check correctly refuses the mismatch first.
+    delete process.env[SPEND_CEILING_ENV];
+
+    expect(() => deploymentSpendCeiling(false)).to.throw(
+      new RegExp(SPEND_CEILING_ENV),
+    );
+    // The local chain may go without one; nothing irreversible is at stake there.
+    expect(deploymentSpendCeiling(true)).to.equal(null);
+
+    process.env[SPEND_CEILING_ENV] = "2000000000000000";
+    try {
+      expect(deploymentSpendCeiling(false)).to.equal(2000000000000000n);
+    } finally {
+      delete process.env[SPEND_CEILING_ENV];
+    }
+  });
+
+  it("reports a deployment that spent more than was approved", function () {
+    // After the fact, because a receipt is the only honest measure of what was spent. It
+    // cannot un-send the transactions; it makes the overrun loud rather than silent.
+    const receipts = [
+      { gasUsed: 1000n, gasPrice: 3n },
+      { gasUsed: 500n, gasPrice: 3n },
+    ];
+
+    expect(() => assertWithinCeiling(receipts, 4000n)).to.throw(
+      /spent 4500 wei, above the approved ceiling of 4000 wei/,
+    );
+    expect(() => assertWithinCeiling(receipts, 5000n)).to.not.throw();
+    expect(() => assertWithinCeiling(receipts, null)).to.not.throw();
+  });
+});

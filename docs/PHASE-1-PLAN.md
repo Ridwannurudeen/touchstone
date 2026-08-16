@@ -39,8 +39,13 @@ workspace, and inferring the epoch from the latest report's URI fails because a 
 can become the latest report and hide the earlier duplicate. So `Report` gained
 `bytes32 epochKey`, the registry gained `epochSequence[assetKey][epochKey]`, `publish`
 refuses a non-zero entry with `EpochAlreadyPublished`, and a correction must carry the
-epoch it corrects. The owner approved the change and the replacement deployment on
-2026-08-16.
+epoch it corrects.
+
+**Authorization, stated precisely, because an earlier version of this line overstated it.**
+The owner approved the ABI change on 2026-08-16, and approved the replacement registry **in
+principle** — the approval that was given explicitly kept redeployment as a separate decision
+to be returned for. **Execution authorization has not been granted**, no replacement has been
+deployed, and no gas has been spent on one.
 
 The registry already deployed to X Layer testnet is therefore **superseded and must not be
 published to** — it has no `epochSequence`. It published nothing, so no history is lost.

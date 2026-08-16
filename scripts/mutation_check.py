@@ -655,8 +655,8 @@ MUTATIONS = (
     Mutation(
         name="the-schema-stops-requiring-a-deployment-state",
         path="deployments/manifest.schema.json",
-        old='    "deployment_state"\n  ]',
-        new='    "reporting_keys"\n  ]',
+        old='    "reporting_keys",\n    "deployment_state",',
+        new='    "reporting_keys",',
         tests=(
             "tests/test_deployment_manifests.py::test_the_schema_rejects_a_manifest_with_no_state",
         ),

@@ -1,5 +1,10 @@
 {
   "manifest_version": 1,
+  "phase_1_status": {
+    "state": "cut",
+    "decided_on": "2026-08-16",
+    "reason": "Cut from Phase 1 as the second adapter. The oracle cross-check this manifest records as UNVERIFIED was never run, and the second-adapter metric is recorded as missed in ROADMAP.md rather than met with a hurried asset. Phase 1 ships one USTB vertical. Nothing below describes outstanding work; it is the Phase-0 record of what was probed and what qualified."
+  },
   "asset": {
     "asset_key": "eip155:1:0x1b19c19393e2d034d8ff31ff34c81252fcbbee92",
     "display_name": "Ondo Short-Term U.S. Government Treasuries",
