@@ -85,10 +85,19 @@ it is being replaced because it cannot enforce something it was never built to.*
 | npm lockfile | `contracts/package-lock.json`, raw-blob sha256 `3c506269d6e7a73580760c9ab759fad032aa7ed82045a2bc93faa3d9295e2ff8` |
 | Python project | `pyproject.toml`, raw-blob sha256 `9f5346f8f1ed53d7c2090a1ab631d9f35a6896b17c8bf39b3e4a396ba019a009` |
 
-**Every digest in this table is over the raw Git blob at the release commit**, obtained with
-`git show <commit>:<path> | sha256sum` — the same basis as the packet's own approval digest.
-A working-tree copy of a text file hashes differently under `core.autocrlf`, and a table
-mixing the two bases is a table an operator cannot check.
+**The digests in this table have two different bases, and an operator checking them needs to
+know which is which.**
+
+- `package-lock.json` and `pyproject.toml` are **raw Git blobs at the release commit**,
+  obtained with `git show <commit>:<path> | sha256sum` — the same basis as the packet's own
+  approval digest. A working-tree copy of a text file hashes differently under
+  `core.autocrlf`, so the blob is the only stable basis.
+- The three bytecode digests are **hashes of compiler output**, over the raw bytes decoded
+  from the artifact's hex. They cannot be Git blobs: `contracts/artifacts/` is gitignored, so
+  no artifact is tracked at any commit. Reproduce them by compiling, not by `git show`.
+
+An earlier version of this table claimed a single raw-blob basis for all five, which is not
+achievable for the three that do not exist in Git.
 
 **The two runtime digests are different things, and confusing them would abort this
 deployment after the money was spent.** `owner` and `expectedChainId` are Solidity
@@ -119,9 +128,11 @@ the two identify different things — the release commit identifies audited code
 digest identifies the exact approved wording.
 
 It moved from `15f6127` to `bcbd8b4` because the manifest test collected the deployment
-journal as a manifest and failed — a defect that only fires once a real deployment exists, so
-it had to be fixed inside the release rather than after it. **The deployed bytecode did not
-change.** `git diff 15f6127..bcbd8b4` touches only `tests/`, `contracts/test/` and this
+journal as a manifest and failed. That defect does not need a successful deployment to fire —
+`reserveDestination` creates the journal at `deploy.js:457–458`, before the spend checks and
+before any send, so **even an attempt that aborts early leaves the file that breaks the
+test**. It had to be fixed inside the release rather than after it. **The deployed bytecode
+did not change.** `git diff 15f6127..bcbd8b4` touches only `tests/`, `contracts/test/` and this
 document; the three digests above and both raw-blob digests are identical at either commit.
 
 An earlier version of this packet named `e22cc7f`. **That commit is broken**: its deploy
@@ -213,14 +224,17 @@ An earlier version of this document recommended `36141200000000000` wei on an as
 |---|---|
 | `gasPrice` | `20000001` wei = **0.020000001 gwei** |
 | `maxFeePerGas` | `40000001` wei |
-| Worst-case actual spend | 1,807,060 × 20000001 = `36141201807060` wei ≈ **0.0000361 OKB** |
+| Illustrative spend at that price | 1,807,060 × 20000001 = `36141201807060` wei ≈ **0.0000361 OKB** |
+| **Enforced maximum under the ceiling** | 1,807,060 × 553,385,056 = `999999999295360` wei ≈ **0.001 OKB** |
 | Deployer balance | 0.14997275 OKB |
 
-**Approved ceiling: `TOUCHSTONE_DEPLOY_MAX_SPEND_WEI=1000000000000000`** (0.001 OKB).
+**Ceiling put to the owner: `TOUCHSTONE_DEPLOY_MAX_SPEND_WEI=1000000000000000`** (0.001 OKB).
+It is a proposal until approved — see the banner.
 
-That sits deliberately above the measured worst case rather than at it:
+It sits deliberately above the spend at the measured price rather than at it:
 
-- 27.67× the measured worst-case spend.
+- 27.67× the spend at the price measured on 2026-08-16. **That multiple is the point:** what
+  the owner approves is the enforced maximum in the table above, not the illustrative figure.
 - Permits `553385056` wei/gas — 13.83× the network's current `maxFeePerGas`, so ordinary fee
   volatility between approval and execution does not turn into a spurious abort.
 - 0.667% of the deployer balance, so an exhausted ceiling cannot strand the key.
@@ -291,6 +305,11 @@ exactly where it is.
 Every one of these must hold. Any failure is an abort, not a retry.
 
 - [ ] Working tree clean — `git status --porcelain` returns nothing.
+- [ ] `git rev-parse HEAD` equals the **approved packet commit** — the one whose blob the
+      owner's approval names. Without this, any later clean commit would satisfy the runtime
+      check below while `tests/`, `scripts/publish_epoch.py`, `scripts/mutation_check.py`,
+      `pyproject.toml` or the manifest schema had moved, and the historical packet blob would
+      still hash correctly. The approval binds a commit, not just a document.
 - [ ] The runtime is identical to the release commit in §2:
       `git diff --stat <release-commit>..HEAD -- contracts/contracts/ contracts/scripts/ touchstone/ contracts/hardhat.config.js contracts/package.json contracts/package-lock.json`
       returns nothing. **Not** "HEAD equals the release commit" — §2.1 requires the packet
@@ -404,7 +423,7 @@ makes the empty-journal row in the table below a statement of fact rather than a
    | Last stage | What exists | What to do |
    |---|---|---|
    | *(file empty)* | **This invocation broadcast nothing** | The `prepared` line is appended and fsynced at `deploy.js:203` before the first send at `deploy.js:213`, so this invocation never reached a send. Compare both the deployer's `latest` and `pending` nonces with the values checked before the attempt. If either moved, stop and investigate: the empty journal does not prove the key was unused elsewhere. If neither moved, the failed attempt is still not erased. In either branch, keep both reserved files, write the incident note required below, and require a new destination plus fresh owner approval before another attempt |
-   | `prepared` | **No hash journaled. A broadcast is not ruled out** | **The opposite of the row above** — do not read that row's reasoning here. `prepared` means execution passed `deploy.js:203` and reached the send at `:213`; the node returns a hash before the journal is appended to, so a crash in that window leaves `prepared` last after a real broadcast. Read both nonces and search the chain for a deployment from this key before concluding anything. Then keep both reserved files, write the incident note, and require a new destination plus fresh owner approval |
+   | `prepared` | **No hash journaled. A broadcast is possible but not established** | **The opposite of the row above** — do not read that row's reasoning here. `prepared` means execution passed `deploy.js:203`, but that alone does not prove it reached the RPC send: `deployContract()` at `:213` can fail before broadcasting. It also does not prove it did not — the node returns a hash before the journal is appended, so a crash in that window leaves `prepared` last after a real broadcast. **Treat it as unknown and resolve it on chain.** Read both nonces and search for a deployment from this key. Then keep both reserved files, write the incident note, and require a new destination plus fresh owner approval |
    | `broadcast` | One or more hashes, outcome unknown | Read each receipt. This line is written at the RPC boundary and is the earliest evidence |
    | `deploying` | Deployment hash; no address or block yet | Read the receipt to learn whether it mined and at what address |
    | `deployed` | Address, deployment hash, block. **No authorization hash journaled** | The registry exists. **Do not conclude it is unauthorized** — the authorization is broadcast before the journal records it, so a crash in that window leaves `deployed` last even though the transaction reached the node. Check the deployer's nonce, `isPublisherAuthorized`, `publisherIdentity`, and any `PublisherAuthorized` log at that address before classifying it |
