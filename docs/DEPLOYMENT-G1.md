@@ -75,7 +75,7 @@ it is being replaced because it cannot enforce something it was never built to.*
 
 | | |
 |---|---|
-| Release commit | `15f61271b0bdfe35fea4bc30f6a8c3d968bb44e5` — see §2.1 |
+| Release commit | `bcbd8b40828935888191b16f09f3c5d383e83108` — see §2.1 |
 | Contract | `contracts/contracts/TouchstoneRegistry.sol` |
 | Solidity | `0.8.24`, optimizer **enabled**, `runs: 200`, evm target `paris` |
 | Creation bytecode | 6,303 bytes, sha256 `e1702c40bafef7a36ede227a32b19cf1904a78cd6cd70d00068a3643c4fa6926` |
@@ -117,6 +117,12 @@ The release commit names the **executable implementation** that would be deploye
 deliberately not the commit containing this document: a packet cannot embed its own hash, and
 the two identify different things — the release commit identifies audited code, the packet
 digest identifies the exact approved wording.
+
+It moved from `15f6127` to `bcbd8b4` because the manifest test collected the deployment
+journal as a manifest and failed — a defect that only fires once a real deployment exists, so
+it had to be fixed inside the release rather than after it. **The deployed bytecode did not
+change.** `git diff 15f6127..bcbd8b4` touches only `tests/`, `contracts/test/` and this
+document; the three digests above and both raw-blob digests are identical at either commit.
 
 An earlier version of this packet named `e22cc7f`. **That commit is broken**: its deploy
 script reads `destination` out of scope in `main()`, so the command deploys, authorizes,
@@ -284,7 +290,13 @@ exactly where it is.
 
 Every one of these must hold. Any failure is an abort, not a retry.
 
-- [ ] Working tree clean at the release commit in §2, verified with `git status --porcelain` returning nothing.
+- [ ] Working tree clean — `git status --porcelain` returns nothing.
+- [ ] The runtime is identical to the release commit in §2:
+      `git diff --stat <release-commit>..HEAD -- contracts/contracts/ contracts/scripts/ touchstone/ contracts/hardhat.config.js contracts/package.json contracts/package-lock.json`
+      returns nothing. **Not** "HEAD equals the release commit" — §2.1 requires the packet
+      commit to be a later, different commit, so that check could never pass and an earlier
+      version of this list demanded it anyway. What matters is that no code which executes or
+      is deployed has moved.
 - [ ] `python -m pytest -q` — full suite green.
 - [ ] `python scripts/mutation_check.py` — every mutant killed.
 - [ ] `npx hardhat test` — full contract suite green.
