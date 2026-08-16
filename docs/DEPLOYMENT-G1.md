@@ -17,8 +17,11 @@
 > ceiling actually permits is `999999999295360` wei — **~0.001 OKB, 27.67× higher.** The
 > honest figure is the enforced maximum, not the expected spend.
 >
-> Execution requires one written owner approval naming **both** the packet blob sha256 in the
-> command below **and** the ceiling `1000000000000000` wei. Nothing else unlocks it.
+> Execution requires one written owner approval naming **both** the sha256 of this packet's
+> raw Git blob — supplied to the owner alongside this document, and reproducible with the
+> `git show` command below — **and** the ceiling `1000000000000000` wei. The digest is
+> deliberately not printed inside the document, since a document cannot state its own hash.
+> Nothing else unlocks execution.
 >
 > **Approval binds to a digest, not to this path.** `docs/DEPLOYMENT-G1.md` is mutable;
 > approving "the G1 packet" would approve whatever it later says.
@@ -262,10 +265,12 @@ npx hardhat run scripts/deploy.js --network xLayerTestnet
 **`TOUCHSTONE_CONFIRMATIONS=3` does not give the deployment three confirmations.** It sets the
 *publication* confirmation depth, which is recorded into the manifest as `confirmations` and
 used later when publishing reports. The deploy script's own receipt calls — `deploy.js:234`
-and `deploy.js:269` — are bare `wait()` with no depth argument, so both deployment
-transactions return at **one** confirmation. The variable is in this command because it
-belongs in the manifest, not because it deepens this deployment. **§8's confirmation check is
-therefore not a formality — it is the only thing that establishes depth.**
+and `deploy.js:269` — are bare `wait()`, whose ethers default is `confirms = 1`. **Both
+transactions wait for at least one confirmation; neither waits for three.** A receipt may
+happen to come back deeper if the transaction was already buried, but nothing in this command
+requires that. The variable is here because it belongs in the manifest, not because it
+deepens this deployment. **§8's confirmation check is therefore not a formality — it is the
+only thing that establishes depth.**
 
 ### The destination preserves the superseded manifest
 
@@ -339,6 +344,14 @@ is how a second unrecorded registry gets created.
 
 A failed attempt is not erased. It is recorded, because a registry that exists on chain
 exists whether or not anyone wrote it down — that is the lesson of 2026-08-15.
+
+**That holds from destination reservation onward, not from the first line of the script.**
+`reserveDestination` runs at `deploy.js:170` and the first journal entry is written at
+`deploy.js:203`. A failure before 170 — a missing `TOUCHSTONE_MANIFEST_OUT` or `maxFeeWei` —
+leaves no files at all; a failure between 170 and 203, such as an unaffordable ceiling, leaves
+the two reserved files but no journal line. **Neither has broadcast anything**, which is why
+the absence of a breadcrumb there is safe rather than ambiguous. If a journal exists but is
+empty, that is the 170–203 window; the recovery table below starts after it.
 
 1. **Stop.** Do not re-run the command.
 2. Read `<manifest>.attempt.json`. It is an append-only journal, one JSON object per line,
