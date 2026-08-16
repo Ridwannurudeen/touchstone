@@ -3,9 +3,20 @@
 > # DRAFT — NOT EXECUTION AUTHORIZATION
 >
 > This document exists so that an owner can decide. It authorizes nothing by existing, and
-> nothing in it may be executed until the owner has read it and said so explicitly, naming
-> this document. The design of the replacement registry is approved **in principle**;
-> execution authorization **has not been granted**.
+> nothing in it may be executed until the owner has read it and said so explicitly. The
+> design of the replacement registry is approved **in principle**; execution authorization
+> **has not been granted**.
+>
+> **Approval binds to a digest, not to this path.** `docs/DEPLOYMENT-G1.md` is mutable;
+> approving "the G1 packet" would approve whatever it later says. An approval must name the
+> sha256 of the exact file being approved, printed by:
+>
+> ```
+> git show <commit>:docs/DEPLOYMENT-G1.md | sha256sum
+> ```
+>
+> If that digest does not match what the operator holds at execution time, **stop** — the
+> packet has changed since it was approved and must be re-read and re-approved.
 
 ## 1. Why there is a second deployment at all
 
@@ -36,14 +47,32 @@ it is being replaced because it cannot enforce something it was never built to.*
 | Contract | `contracts/contracts/TouchstoneRegistry.sol` |
 | Solidity | `0.8.24`, optimizer **enabled**, `runs: 200`, evm target `paris` |
 | Creation bytecode | 6,303 bytes, sha256 `e1702c40bafef7a36ede227a32b19cf1904a78cd6cd70d00068a3643c4fa6926` |
-| Runtime bytecode | 6,147 bytes, sha256 `9b7019b0b2e3ad4242ac99adc2c0542513425c13336341505aca9674ba23bca7` |
+| Runtime **template** | 6,147 bytes, sha256 `9b7019b0b2e3ad4242ac99adc2c0542513425c13336341505aca9674ba23bca7` |
+| Runtime **as deployed** | sha256 `cecada9e4caefaa153ea321d5831b053ad8750ffe58a4ac0ee61b81ba4dbc561` |
 | Constructor argument | `expectedChainId = 1952` |
-| npm lockfile | `contracts/package-lock.json`, sha256 begins `3c506269d6e7a735…` |
-| Python project | `pyproject.toml`, sha256 begins `823c6a5e9d332600…` |
+| npm lockfile | `contracts/package-lock.json`, sha256 `3c506269d6e7a73580760c9ab759fad032aa7ed82045a2bc93faa3d9295e2ff8` |
+| Python project | `pyproject.toml`, sha256 `823c6a5e9d33260064a927116cb018e75b769ec95b8c5f4772436cbdef2defc9` |
 
-The runtime digest above is what the new manifest must record. It differs from the superseded
-manifest's `7b0b36531a3d9234fb7d72a231b5582a8516f4d99c757fe4298be57d57dd6e2a`, which is the
-old contract — and the difference is the whole point.
+**The two runtime digests are different things, and confusing them would abort this
+deployment after the money was spent.** `owner` and `expectedChainId` are Solidity
+immutables: the compiler emits a runtime with zeroed placeholders, and the constructor
+splices the real values in. So the artifact's `deployedBytecode` hash — the template — is the
+hash of no deployed contract anywhere.
+
+`cecada9e…` is the digest the deployed code will actually have, computed by splicing the
+owner in §4 and chain id 1952 into the template at the offsets the compiler records
+(`immutableReferences` ids 467 and 469). The method was checked against a real local
+deployment: splicing that chain's owner and id reproduces its on-chain `eth_getCode` hash
+exactly.
+
+**Any change to the deployer address changes this digest.** If the owner deploys from a
+different address, `cecada9e…` is wrong and this packet must be reissued.
+
+The superseded manifest records `7b0b36531a3d9234fb7d72a231b5582a8516f4d99c757fe4298be57d57dd6e2a`,
+which is an *instantiated* digest of the old contract. It cannot be usefully compared with a
+template digest — an earlier version of this document did exactly that and drew a conclusion
+the comparison did not support. The old registry is superseded because its source genuinely
+lacks `epochSequence`, which is verifiable by reading it, not by comparing those two numbers.
 
 **No AssetGate is deployed by this gate.** The consumer contract must be pinned to a control
 root, and the control set is expected to change when the NAV controls are recompiled to carry
@@ -94,14 +123,44 @@ approval to deploy became an approval to spend an unstated amount.
 | Deployment total | `TOUCHSTONE_DEPLOY_MAX_SPEND_WEI` | The deployment **and** authorization transactions of this one command. Required off the local chain |
 | Per publication | `TOUCHSTONE_MAX_FEE_WEI` | One publication's worth-case fee, recorded in the manifest as `max_fee_wei`. Currently `2000000000000000` |
 
-The deployer's balance is checked against the deployment ceiling **before** the first send, so
-a run that could not cover its own ceiling never starts and cannot strand a half-finished
-deployment. The receipts are checked against it **after**, because a receipt is the only
-honest measure of what was actually spent — that check cannot un-send anything, it makes an
-overrun loud instead of silent, and the abort criteria in §9 take over.
+### How the ceiling is enforced
 
-**The owner sets the deployment ceiling.** This document does not propose a number; proposing
-one would be the approval quietly making itself.
+The ceiling is a real bound, not a report. From it the script derives an explicit
+`gasLimit` and `maxFeePerGas` for both transactions and proves the **worst case** — every
+unit of gas at the maximum fee — sits under the approved number *before the first send*. It
+also refuses to start if the network's current `maxFeePerGas` already exceeds what the
+ceiling allows, and if the deployer's balance is below it. The receipts are compared
+afterwards as well, which would catch a provider that ignored the caps.
+
+An earlier version of this document checked receipts only. That is monitoring, not
+enforcement: it cannot un-send a transaction, and an owner who approved a number has not
+approved "that number, probably".
+
+### The recommended ceiling
+
+Measured on a local chain at this release commit:
+
+| | Gas |
+|---|---|
+| Registry deployment | 1,380,884 |
+| With 20% headroom (what the script sets as `gasLimit`) | 1,657,060 |
+| `authorizePublisher` | 68,191 actual; 150,000 allowed |
+| **Worst-case total** | **1,807,060** |
+
+**Recommended: `TOUCHSTONE_DEPLOY_MAX_SPEND_WEI=36141200000000000`** — 1,807,060 gas at
+20 gwei, roughly 0.036 OKB.
+
+X Layer testnet gas prices were not measured while writing this, so 20 gwei is a working
+assumption, not an observation. **The operator must read the current fee before deploying**
+and raise or lower the ceiling accordingly; the script refuses to start if the network's fee
+exceeds what the ceiling permits, so an under-set ceiling fails safely rather than
+overspending.
+
+An earlier version of this document proposed no number at all, on the reasoning that
+proposing one would be the approval making itself. That was wrong: a recommendation is not
+an approval, and a gate priced at "you decide" asks the owner to invent a technical risk
+parameter they have less information about than the person who measured it. **The owner
+approves, replaces, or rejects this number.**
 
 ## 6. The command
 
@@ -145,7 +204,8 @@ Every one of these must hold. Any failure is an abort, not a retry.
 - [ ] `npx hardhat test` — full contract suite green.
 - [ ] `python -m pytest tests/test_e2e_local.py -q` — the managed local-chain loop green.
 - [ ] `python -m ruff check .` — clean.
-- [ ] `npx hardhat compile` from a clean `artifacts/`, and the creation and runtime digests match §2 **exactly**.
+- [ ] `npx hardhat compile` from a clean `artifacts/`, and the **creation** digest and the **runtime template** digest match §2 exactly.
+- [ ] The deployer address is the one in §4. Any other address changes the as-deployed runtime digest and invalidates this packet.
 - [ ] `eth_chainId` at the endpoint returns `0x7a0`.
 - [ ] Deployer balance ≥ the approved ceiling.
 - [ ] Deployer nonce is what the operator expects; an unexpected nonce means something else has used this key.
@@ -157,7 +217,7 @@ Every one of these must hold. Any failure is an abort, not a retry.
 
 - [ ] Both transactions have receipts with `status = 1` and at least 3 confirmations.
 - [ ] Record the address, both transaction hashes, and the deployment block.
-- [ ] `eth_getCode` at the address hashes to the §2 runtime digest.
+- [ ] `eth_getCode` at the address hashes to the **as-deployed** digest in §2 — not the template digest.
 - [ ] `expectedChainId()` returns 1952.
 - [ ] `owner()` is the deployer in §4.
 - [ ] `isPublisherAuthorized(publisher)` is true.
@@ -188,12 +248,38 @@ exists whether or not anyone wrote it down — that is the lesson of 2026-08-15.
 1. **Stop.** Do not re-run the command.
 2. Keep the `.attempt.json` breadcrumb. It carries the address, transaction and block, and it
    is written the instant the registry exists — before authorization can fail.
-3. Write a manifest for the failed attempt at its own destination with
-   `deployment_state: "superseded"`, recording the reason, the transactions and the block.
-4. If the registry deployed but authorization failed, the contract is live and owned. Prepare
-   a **separately approved** publisher revocation if anything was authorized; do not leave an
+3. Read the outcome off the chain rather than guessing it. The breadcrumb carries both
+   transaction hashes:
+
+   ```
+   cast receipt <deployment_transaction> --rpc-url https://testrpc.xlayer.tech/terigon
+   cast receipt <authorization_transaction> --rpc-url https://testrpc.xlayer.tech/terigon
+   cast call <address> "owner()(address)" --rpc-url https://testrpc.xlayer.tech/terigon
+   cast call <address> "isPublisherAuthorized(address)(bool)"      0x86A100BDdF8754c95fec97BeC96dBFd64Be44710      --rpc-url https://testrpc.xlayer.tech/terigon
+   ```
+
+4. Write a manifest for the failed attempt at its own destination with
+   `deployment_state: "superseded"`, recording the reason, both transactions and the block.
+   Verify it is refused:
+
+   ```
+   python -c "from touchstone.deployment import DeploymentManifest as M;      m = M.load('deployments/<failed>.json');      print(m.deployment_state, m.is_active)"
+   ```
+
+   must print `superseded False`.
+
+5. **If the registry deployed and authorization succeeded but the run still failed**, the
+   contract is live with a publisher authorized on it. Revoking is a **separate owner
+   approval**, and the command is:
+
+   ```
+   cast send <address> "revokePublisher(address)"      0x86A100BDdF8754c95fec97BeC96dBFd64Be44710      --rpc-url https://testrpc.xlayer.tech/terigon      --private-key <deployer key, owner machine only>
+   ```
+
+   Confirm with the `isPublisherAuthorized` call above returning `false`. Do not leave an
    authorized publisher on a registry nobody intends to use.
-5. Only then consider a fresh attempt, with a new destination and fresh owner approval.
+
+6. Only then consider a fresh attempt, with a new destination and fresh owner approval.
 
 ## 11. What this gate does not do
 

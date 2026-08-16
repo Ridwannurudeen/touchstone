@@ -145,6 +145,17 @@ async function deploy({
   // manifest, and an unwritable destination was discovered with a registry already live on
   // chain. Both are one mistake: the record must be secured before the thing it records
   // exists.
+  if (
+    resolvedNetwork !== "hardhat-local" &&
+    !process.env.TOUCHSTONE_MANIFEST_OUT
+  ) {
+    // Optional off the local chain meant a public deployment could run with no manifest
+    // reserved and no breadcrumb — the exact state that lost the first registry's record.
+    throw new Error(
+      "TOUCHSTONE_MANIFEST_OUT is required off the local chain: a deployment with nowhere " +
+        "to record itself is one that can be lost",
+    );
+  }
   const destination = reserveDestination(process.env.TOUCHSTONE_MANIFEST_OUT);
 
   // An owner-approved ceiling on what this command may irreversibly spend, separate from
@@ -153,9 +164,23 @@ async function deploy({
   const spendCeilingWei = deploymentSpendCeiling(
     resolvedNetwork === "hardhat-local",
   );
+  // Explicit caps on both sends, and the *worst case* — every unit of gas at the maximum
+  // fee — proved to sit under the approved ceiling before anything is broadcast. Checking
+  // receipts afterwards is monitoring, not enforcement: it cannot un-send a transaction,
+  // and an owner who approved a number has not approved "that number, probably".
+  const overrides = await spendOverrides(
+    ethers,
+    ["TouchstoneRegistry", [chainId]],
+    publisher,
+    spendCeilingWei,
+  );
   await assertAffordable(deployerAddress, spendCeilingWei);
 
-  const registry = await ethers.deployContract("TouchstoneRegistry", [chainId]);
+  const registry = await ethers.deployContract(
+    "TouchstoneRegistry",
+    [chainId],
+    overrides.deployment,
+  );
   await registry.waitForDeployment();
   const deploymentReceipt = await registry.deploymentTransaction().wait();
   const address = await registry.getAddress();
@@ -177,15 +202,47 @@ async function deploy({
       "mark it superseded rather than reusing it, and never retry automatically.",
   });
 
-  const authorization = await registry.authorizePublisher(publisher);
+  const authorization = await registry.authorizePublisher(
+    publisher,
+    overrides.authorization,
+  );
+  recordAttempt(destination, {
+    stage: "authorizing",
+    address,
+    deployment_transaction: deploymentReceipt.hash,
+    deployment_block: deploymentReceipt.blockNumber,
+    authorization_transaction: authorization.hash,
+    chain_id: Number(chainId),
+    deployer: deployerAddress,
+    publisher,
+    note:
+      "The authorization transaction was broadcast. If nothing further was recorded its " +
+      "outcome is unknown: read it from the chain before deciding anything, and never " +
+      "re-run this command.",
+  });
   const authorizationReceipt = await authorization.wait();
   if (!(await registry.isPublisherAuthorized(publisher))) {
     throw new Error("publisher authorization did not take effect");
   }
+  // Belt and braces. The caps above are the enforcement; this reports what was actually
+  // spent, and would catch a provider that ignored them.
   assertWithinCeiling(
     [deploymentReceipt, authorizationReceipt],
     spendCeilingWei,
   );
+  recordAttempt(destination, {
+    stage: "authorized",
+    address,
+    deployment_transaction: deploymentReceipt.hash,
+    deployment_block: deploymentReceipt.blockNumber,
+    authorization_transaction: authorizationReceipt.hash,
+    chain_id: Number(chainId),
+    deployer: deployerAddress,
+    publisher,
+    note:
+      "Deployment and authorization both succeeded. If no manifest sits beside this file, " +
+      "the manifest write failed: reconstruct it from these values rather than redeploying.",
+  });
 
   const code = await ethers.provider.getCode(address);
   if (code === "0x") {
@@ -238,7 +295,7 @@ async function deploy({
     // 9007199254740993 wei was recorded as ...992.
     manifest.max_fee_wei = maxFeeWei;
   }
-  return { registry, manifest };
+  return { registry, manifest, destination };
 }
 
 async function main() {
@@ -249,7 +306,7 @@ async function main() {
     }
     return value;
   };
-  const { manifest } = await deploy({
+  const { manifest, destination } = await deploy({
     publisherAddress: required("TOUCHSTONE_PUBLISHER_ADDRESS"),
     operationsAddress: required("TOUCHSTONE_OPERATIONS_ADDRESS"),
     reporterPublicKey: required("TOUCHSTONE_REPORTER_PUBLIC_KEY"),
@@ -295,17 +352,80 @@ function reserveDestination(destination) {
 }
 
 function recordAttempt(destination, record) {
-  // A durable breadcrumb written the moment the registry exists. Without it, a failure
-  // between deployment and authorization leaves a live contract nobody has a record of,
-  // which is exactly what happened on 2026-08-15.
+  // A durable breadcrumb, rewritten as the attempt advances: `deployed`, then
+  // `authorizing` once the second transaction is broadcast, then `authorized`. Without the
+  // middle stage a failure while waiting for authorization leaves a record claiming
+  // authorization had not started, omitting the very transaction hash an operator needs to
+  // read the outcome off the chain.
+  //
+  // The first write is exclusive so it cannot land on top of an unrelated attempt; later
+  // stages deliberately overwrite the file they themselves created.
   if (!destination) return;
   const path = `${destination}.attempt.json`;
-  writeFileSync(path, `${JSON.stringify(record, null, 2)}
+  const stamped = { ...record, recorded_at: new Date().toISOString() };
+  writeFileSync(path, `${JSON.stringify(stamped, null, 2)}
 `, {
     encoding: "utf-8",
+    flag: record.stage === "deployed" ? "wx" : "w",
   });
-  process.stderr.write(`deployment attempt recorded at ${path}
+  process.stderr.write(`attempt recorded (${record.stage}) at ${path}
 `);
+}
+
+async function spendOverrides(ethers, [contractName, args], publisher, ceilingWei) {
+  // Explicit gas limits and a fee cap, with the combined worst case proved under the
+  // approved ceiling BEFORE anything is sent. Without this the "ceiling" bounded nothing:
+  // the sends used provider-selected parameters and the receipts were compared afterwards,
+  // which reports an overrun it cannot prevent.
+  if (ceilingWei === null) return { deployment: {}, authorization: {} };
+
+  const factory = await ethers.getContractFactory(contractName);
+  const deployData = (await factory.getDeployTransaction(...args)).data;
+  const deployGas = await ethers.provider.estimateGas({ data: deployData });
+  // A registry that has not been deployed cannot be asked to estimate its own
+  // authorization, so the second transaction uses a fixed, generous allowance. It is a
+  // single storage write and an event; 150,000 is far above what that costs, and the
+  // worst case below is what the ceiling is actually checked against.
+  const authorizeGas = 150000n;
+  // 20% headroom on the estimate, because a deployment that runs out of gas still burns it.
+  const deploymentGasLimit = (deployGas * 12n) / 10n;
+  const totalGas = deploymentGasLimit + authorizeGas;
+  const maxFeePerGas = ceilingWei / totalGas;
+  if (maxFeePerGas === 0n) {
+    throw new Error(
+      `approved ceiling ${ceilingWei} wei cannot cover ${totalGas} gas at even 1 wei per ` +
+        "gas; raise the ceiling or do not deploy",
+    );
+  }
+  const fees = await ethers.provider.getFeeData();
+  if (fees.maxFeePerGas !== null && fees.maxFeePerGas > maxFeePerGas) {
+    throw new Error(
+      `the network's current maxFeePerGas ${fees.maxFeePerGas} exceeds the ${maxFeePerGas} ` +
+        `per gas the approved ceiling of ${ceilingWei} wei allows over ${totalGas} gas; ` +
+        "the deployment would either fail or exceed what was approved",
+    );
+  }
+  const priority =
+    fees.maxPriorityFeePerGas !== null && fees.maxPriorityFeePerGas < maxFeePerGas
+      ? fees.maxPriorityFeePerGas
+      : maxFeePerGas;
+  process.stderr.write(
+    `worst case ${totalGas} gas at ${maxFeePerGas} wei = ${totalGas * maxFeePerGas} wei, ` +
+      `within the approved ${ceilingWei} wei
+`,
+  );
+  return {
+    deployment: {
+      gasLimit: deploymentGasLimit,
+      maxFeePerGas,
+      maxPriorityFeePerGas: priority,
+    },
+    authorization: {
+      gasLimit: authorizeGas,
+      maxFeePerGas,
+      maxPriorityFeePerGas: priority,
+    },
+  };
 }
 
 function deploymentSpendCeiling(local) {
@@ -431,11 +551,13 @@ function serializeManifest(manifest) {
 
 module.exports = {
   deploy,
+  main,
   CONFIRM_ENV,
   SPEND_CEILING_ENV,
   serializeManifest,
   isLoopbackHost,
   reserveDestination,
+  recordAttempt,
   deploymentSpendCeiling,
   assertWithinCeiling,
 };

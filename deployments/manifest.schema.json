@@ -92,9 +92,9 @@
       "minimum": 1
     },
     "deployment_block": {
-      "description": "Block the registry was deployed in. Event reconciliation scans from here, so a public network is not scanned from genesis.",
+      "description": "The block the registry was deployed in. Positive: an explicit zero causes the same genesis-wide scan for the deployment's own events that an absent field used to.",
       "type": "integer",
-      "minimum": 0
+      "minimum": 1
     },
     "reporting_keys": {
       "description": "Ed25519 report-signing keys. Exactly one is active; superseded keys stay listed so existing bundles remain verifiable.",

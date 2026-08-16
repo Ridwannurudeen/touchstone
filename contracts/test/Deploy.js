@@ -379,6 +379,7 @@ describe("deployment safeguards", function () {
   const {
     SPEND_CEILING_ENV,
     reserveDestination,
+    recordAttempt,
     deploymentSpendCeiling,
     assertWithinCeiling,
   } = require("../scripts/deploy");
@@ -433,12 +434,57 @@ describe("deployment safeguards", function () {
     }
 
     const attempt = JSON.parse(readFileSync(`${destination}.attempt.json`, "utf-8"));
-    expect(attempt.stage).to.equal("deployed");
+    // The final stage on a successful run. It carries both transaction hashes, so a
+    // manifest write that fails afterwards leaves enough to reconstruct rather than
+    // redeploy.
+    expect(attempt.stage).to.equal("authorized");
     expect(attempt.address).to.match(/^0x[0-9a-fA-F]{40}$/);
     expect(attempt.deployment_transaction).to.match(/^0x[0-9a-f]{64}$/);
+    expect(attempt.authorization_transaction).to.match(/^0x[0-9a-f]{64}$/);
     expect(attempt.deployer).to.equal(await deployer.getAddress());
-    // The point of the breadcrumb: it says what to do if nothing followed it.
-    expect(attempt.note).to.match(/superseded/);
+    expect(attempt.recorded_at).to.match(/^\d{4}-\d{2}-\d{2}T/);
+    expect(attempt.note).to.match(/reconstruct it from these values rather than redeploying/);
+  });
+
+  it("advances the breadcrumb through every stage, keeping the second hash", function () {
+    // The middle stage is the one that matters. A failure while waiting for authorization
+    // used to leave a record saying authorization had not started — omitting the very
+    // transaction hash an operator needs to read the outcome off the chain.
+    const destination = join(scratch(), "manifest.json");
+
+    recordAttempt(destination, { stage: "deployed", deployment_transaction: "0xaa" });
+    let attempt = JSON.parse(readFileSync(`${destination}.attempt.json`, "utf-8"));
+    expect(attempt.stage).to.equal("deployed");
+
+    recordAttempt(destination, {
+      stage: "authorizing",
+      deployment_transaction: "0xaa",
+      authorization_transaction: "0xbb",
+    });
+    attempt = JSON.parse(readFileSync(`${destination}.attempt.json`, "utf-8"));
+    expect(attempt.stage).to.equal("authorizing");
+    expect(attempt.authorization_transaction).to.equal("0xbb");
+
+    recordAttempt(destination, {
+      stage: "authorized",
+      deployment_transaction: "0xaa",
+      authorization_transaction: "0xbb",
+    });
+    attempt = JSON.parse(readFileSync(`${destination}.attempt.json`, "utf-8"));
+    expect(attempt.stage).to.equal("authorized");
+  });
+
+  it("refuses to start an attempt on top of an existing one", function () {
+    // Exclusive on the first write. A `deployed` record landing on another attempt's file
+    // would erase the only evidence that the earlier registry exists.
+    const destination = join(scratch(), "manifest.json");
+    recordAttempt(destination, { stage: "deployed", deployment_transaction: "0xaa" });
+
+    expect(() =>
+      recordAttempt(destination, { stage: "deployed", deployment_transaction: "0xcc" }),
+    ).to.throw(/EEXIST/);
+    const attempt = JSON.parse(readFileSync(`${destination}.attempt.json`, "utf-8"));
+    expect(attempt.deployment_transaction).to.equal("0xaa");
   });
 
   it("requires an owner-approved spend ceiling off the local chain", function () {
@@ -475,5 +521,46 @@ describe("deployment safeguards", function () {
     );
     expect(() => assertWithinCeiling(receipts, 5000n)).to.not.throw();
     expect(() => assertWithinCeiling(receipts, null)).to.not.throw();
+  });
+});
+
+describe("the real entry point", function () {
+  const { existsSync, mkdtempSync, readFileSync } = require("node:fs");
+  const { join } = require("node:path");
+  const { tmpdir } = require("node:os");
+  const { main } = require("../scripts/deploy");
+
+  it("completes end to end through main, not just deploy", async function () {
+    // The scope bug this exists for: `destination` was owned by `deploy()` and read by
+    // `main()`, so the real command deployed, authorized, printed the manifest and then
+    // exited 1 with "destination is not defined". Sixty-nine tests passed while it was
+    // broken, because every one of them called `deploy()` or a helper directly. A path
+    // nobody drives is a path nobody tests.
+    const [, publisher, operations] = await ethers.getSigners();
+    const directory = mkdtempSync(join(tmpdir(), "touchstone-main-"));
+    const destination = join(directory, "manifest.json");
+
+    const previous = { ...process.env };
+    Object.assign(process.env, {
+      TOUCHSTONE_PUBLISHER_ADDRESS: await publisher.getAddress(),
+      TOUCHSTONE_OPERATIONS_ADDRESS: await operations.getAddress(),
+      TOUCHSTONE_REPORTER_PUBLIC_KEY: "aa".repeat(32),
+      TOUCHSTONE_MANIFEST_OUT: destination,
+    });
+    try {
+      await main();
+    } finally {
+      process.env = previous;
+    }
+
+    expect(existsSync(destination)).to.equal(true);
+    const manifest = JSON.parse(readFileSync(destination, "utf-8"));
+    expect(manifest.deployment_state).to.equal("active");
+    expect(manifest.registry_address).to.match(/^0x[0-9a-fA-F]{40}$/);
+    expect(manifest.deployment_block).to.be.greaterThan(0);
+
+    const attempt = JSON.parse(readFileSync(`${destination}.attempt.json`, "utf-8"));
+    expect(attempt.stage).to.equal("authorized");
+    expect(attempt.address).to.equal(manifest.registry_address);
   });
 });

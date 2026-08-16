@@ -214,6 +214,16 @@ class DeploymentManifest:
             value = frozen_snapshot(value, "deployment manifest")
         except ValueError as error:
             raise DeploymentError(str(error)) from error
+        # Before any field is judged. A template's values are placeholders — its
+        # `deployment_block` is 0 because no block exists yet — so validating them produces
+        # a complaint about a placeholder rather than the one thing the reader needs to
+        # know, which is that this is not a deployment at all.
+        notes = value.get("notes")
+        if isinstance(notes, str) and notes.startswith(TEMPLATE_MARKER):
+            raise DeploymentError(
+                "this is a deployment template, not a deployment; every value must be "
+                "replaced with one from an actual deployment and the marker removed"
+            )
         unknown = set(value) - _MANIFEST_FIELDS
         if unknown:
             raise DeploymentError(
@@ -305,8 +315,12 @@ class DeploymentManifest:
         # publication events — a silent behaviour change from a missing field, and one the
         # schema did not permit even while the loader did.
         deployment_block = value["deployment_block"]
-        if type(deployment_block) is not int or deployment_block < 0:
-            raise DeploymentError("deployment_block must be a non-negative integer")
+        if type(deployment_block) is not int or deployment_block < 1:
+            # Positive, not merely non-negative. Requiring the field closed the case where
+            # it was absent and silently became zero; an explicit zero causes exactly the
+            # same genesis-wide scan for the deployment's own events, so it is refused too.
+            # No real deployment is in the genesis block.
+            raise DeploymentError("deployment_block must be a positive integer")
 
         # Required, not defaulted. A default of "active" disagreed with the schema, which
         # already listed the field as required — so a manifest the schema rejected still
@@ -321,11 +335,6 @@ class DeploymentManifest:
         notes = value.get("notes")
         if notes is not None and not isinstance(notes, str):
             raise DeploymentError("notes must be text")
-        if isinstance(notes, str) and notes.startswith(TEMPLATE_MARKER):
-            raise DeploymentError(
-                "this is a deployment template, not a deployment; every value must be "
-                "replaced with one from an actual deployment and the marker removed"
-            )
 
         return cls(
             manifest_version=MANIFEST_VERSION,

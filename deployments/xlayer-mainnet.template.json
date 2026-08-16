@@ -11,7 +11,7 @@
   "operations_address": "0x4444444444444444444444444444444444444444",
   "confirmations": 12,
   "max_fee_wei": 2000000000000000,
-  "deployment_block": 0,
+  "deployment_block": 1,
   "deployment_state": "active",
   "reporting_keys": [
     {
