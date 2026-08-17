@@ -24,6 +24,7 @@ ROOT = Path(__file__).parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from touchstone.approval import ledger_bytes, ledger_from_bytes  # noqa: E402
 from touchstone.controls import AssetState, OperationalEvent  # noqa: E402
 from touchstone.deployment import (  # noqa: E402
     DeploymentManifest,
@@ -88,19 +89,26 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
         confirmed_at = datetime(2026, 8, 13, 14, 16, 17, tzinfo=timezone.utc)
         retrieved_at = datetime(2026, 8, 14, 17, 8, 12, tzinfo=timezone.utc)
         evidence_store = EvidenceStore(workspace / "evidence")
+        # One read of the approval ledger for the whole rehearsal, threaded everywhere it is
+        # needed, matching what the unattended service does. This script read it 31 times
+        # across a full run, and two of those reads disagreeing is precisely the defect the
+        # rehearsal exists to catch rather than to demonstrate.
+        ledger = ledger_bytes()
+        controls = default_ustb_controls(ledger_from_bytes(ledger))
         run_ustb_epoch(
             transport=FixtureTransport(ROOT / "fixtures", date(2026, 8, 13)),
             store=evidence_store,
             now=date(2026, 8, 13),
             retrieved_at=confirmed_at,
+            controls=controls,
         )
         epoch = run_ustb_epoch(
             transport=FixtureTransport(ROOT / "fixtures", date(2026, 8, 14)),
             store=evidence_store,
             now=date(2026, 8, 14),
             retrieved_at=retrieved_at,
+            controls=controls,
         )
-        controls = default_ustb_controls()
         signer = Ed25519Signer.from_seed(bytes(range(32)))
         report = build_observation_report(
             epoch,
@@ -108,6 +116,7 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
             epoch_id="ustb-fixture-2026-08-14",
             sequence=1,
             publisher_kid=signer.kid,
+            approval_ledger=ledger,
         )
         signed = signer.sign_report(report)
         evidence_digests = evidence_references(epoch)
@@ -116,6 +125,7 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
             signer.public_key_record(),
             controls,
             evidence_digests,
+            approval_ledger=ledger,
         )
         verify_bundle(bundle)
 
@@ -184,6 +194,7 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
             previous_state=AssetState.CONFIRMED,
             event=OperationalEvent.CORRECTION_PUBLISHED,
             correction_of=1,
+            approval_ledger=ledger,
         )
         signed_correction = signer.sign_report(correction)
         verify_bundle(
@@ -192,6 +203,7 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
                 signer.public_key_record(),
                 controls,
                 evidence_digests,
+                approval_ledger=ledger,
             )
         )
         second = client.publish_correction(

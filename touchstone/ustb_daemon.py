@@ -44,12 +44,18 @@ from touchstone.sources import (
     SourceUnavailable,
     Transport,
 )
-from touchstone.verify import create_bundle
+from touchstone.verify import create_bundle, verify_bundle
 
 
 # One path segment: no separators, no traversal, no empty name. `.` and `..` match the
 # character class, so they are excluded explicitly.
 _EPOCH_ID = re.compile(r"(?!\.{1,2}$)[A-Za-z0-9._-]{1,128}")
+# Reserved on Windows whatever the extension, and matched case-insensitively.
+_WINDOWS_DEVICES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{n}" for n in range(1, 10)}
+    | {f"LPT{n}" for n in range(1, 10)}
+)
 
 
 class EpochProductionError(RuntimeError):
@@ -89,7 +95,8 @@ def make_producer(
     caller — the local-chain rehearsal in `scripts/e2e_local.py` — so an unattended run
     published a signed report to the registry and produced nothing a reader could verify it
     with. The dossier's whole claim is that a stranger can check the result offline, and
-    there would have been no file to hand them.
+    there would have been no file to hand them. The bundle is verified before it is handed
+    over, so "published" and "verifiable by a stranger" cannot come apart.
     """
     live = LiveTransport() if transport is None else transport
 
@@ -138,15 +145,20 @@ def make_producer(
             # Deliberately before the return, so the report the service is about to publish
             # is one that could be bundled. A bundle failure after publication would leave
             # an unverifiable report permanently on chain, correctable only by a new one.
-            bundle_sink(
-                create_bundle(
-                    signed,
-                    signer.public_key_record(),
-                    controls,
-                    evidence_references(epoch),
-                    approval_ledger=ledger,
-                )
+            bundle = create_bundle(
+                signed,
+                signer.public_key_record(),
+                controls,
+                evidence_references(epoch),
+                approval_ledger=ledger,
             )
+            # And verified, not merely built. `create_bundle` checks the fields it derives,
+            # but it does not run the verifier: it will happily snapshot a report whose
+            # signature does not check out, because signature verification lives in
+            # `verify_bundle`. Building successfully was therefore never the same claim as
+            # "a reader can verify this", which is the only claim worth publishing behind.
+            verify_bundle(bundle)
+            bundle_sink(bundle)
         return signed
 
     return produce
@@ -179,7 +191,13 @@ def write_bundle(
 
     def sink(bundle: Mapping[str, object]) -> None:
         report = bundle["signed_report"]["report"]  # type: ignore[index]
-        name = f"{_path_component(report['epoch_id'])}-{report['sequence']}.json"
+        sequence = report["sequence"]
+        if type(sequence) is not int or sequence < 1:
+            # Interpolated into the filename, so a string could carry a separator through.
+            raise EpochProductionError(
+                f"sequence must be a positive integer to name a bundle: {sequence!r}"
+            )
+        name = _safe_filename(f"{_path_component(report['epoch_id'])}-{sequence}.json")
         target.mkdir(parents=True, exist_ok=True)
         destination = target / name
         staging = destination.with_suffix(".json.partial")
@@ -191,6 +209,27 @@ def write_bundle(
     return sink
 
 
+def _safe_filename(name: str) -> str:
+    """The rendered filename, checked as a whole against Windows device names.
+
+    Validating only the epoch component was not enough. Windows resolves reserved device
+    names *before* the extension, and case-insensitively, so `CON.foo` and `NUL.` and
+    `COM1.log` are all still the console, the null device and a serial port — every one of
+    which passes an allowlist of letters, digits and dots. Writing to one silently discards
+    the bundle or blocks on a device, and the directory afterwards looks like a slot that
+    simply never produced.
+
+    Checked here on the final name rather than on the component, because it is the final
+    name the operating system resolves.
+    """
+    stem = name.split(".", 1)[0].upper()
+    if stem in _WINDOWS_DEVICES:
+        raise EpochProductionError(
+            f"{name!r} resolves to the Windows device {stem!r} rather than a file"
+        )
+    return name
+
+
 def _path_component(epoch_id: object) -> str:
     """One path segment, or a refusal. Never a traversal.
 
@@ -198,6 +237,16 @@ def _path_component(epoch_id: object) -> str:
     that was not thought of, and an epoch id has no legitimate reason to contain anything
     outside this set.
     """
+    if isinstance(epoch_id, str) and epoch_id.split(".", 1)[0].upper() in _WINDOWS_DEVICES:
+        # Refused here as well as on the rendered name. Today the `-{sequence}` suffix means
+        # a bare `CON` renders as `CON-1.json`, which Windows does not treat as the console —
+        # so the rendered-name check alone would let it through, and the only thing making
+        # that safe is the shape of a filename this function does not own. An epoch id has no
+        # business being a device name either way.
+        raise EpochProductionError(
+            f"epoch_id names the Windows device {epoch_id.split('.', 1)[0].upper()!r}: "
+            f"{epoch_id!r}"
+        )
     if not isinstance(epoch_id, str) or not _EPOCH_ID.fullmatch(epoch_id):
         raise EpochProductionError(
             f"epoch_id is not usable as a filename: {epoch_id!r}. It must be "

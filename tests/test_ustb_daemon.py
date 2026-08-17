@@ -489,7 +489,19 @@ def test_no_bundle_is_written_when_no_sink_is_given(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "epoch_id", ["../escaped", "..", ".", "a/b", "a\b", "", "x" * 200, "with space"]
+    "epoch_id",
+    [
+        "../escaped",
+        "..",
+        ".",
+        "a/b",
+        # A raw string. Written "a\b" the first time, which Python reads as a
+        # backspace character and which therefore tested nothing about separators.
+        r"a",
+        "",
+        "x" * 200,
+        "with space",
+    ],
 )
 def test_a_bundle_filename_cannot_escape_its_directory(
     tmp_path: Path, epoch_id: str
@@ -507,3 +519,85 @@ def test_a_bundle_filename_cannot_escape_its_directory(
         sink(bundle)
 
     assert not list(tmp_path.rglob("*.json")), "a file escaped the bundle directory"
+
+
+def test_one_slot_reads_the_approval_ledger_exactly_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Counted at the filesystem, not at the call I happened to write.
+
+    The first version of this claim was checked by grepping for `ledger_bytes()` in the
+    daemon, which found one call and proved nothing: `approved_control` re-read the ledger
+    file once per control underneath, so eight controls meant nine reads of one file in a
+    single slot. Reads that nobody counts are reads that can disagree.
+    """
+    import touchstone.approval as approval
+
+    real = approval.Path.read_bytes
+    real_text = approval.Path.read_text
+    reads: list[str] = []
+
+    def counting_bytes(self, *args, **kwargs):
+        if self == approval.LEDGER:
+            reads.append("bytes")
+        return real(self, *args, **kwargs)
+
+    def counting_text(self, *args, **kwargs):
+        if self == approval.LEDGER:
+            reads.append("text")
+        return real_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(approval.Path, "read_bytes", counting_bytes)
+    monkeypatch.setattr(approval.Path, "read_text", counting_text)
+
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+    service, workspace = built(tmp_path, backend)
+    _, produce = producer(
+        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+    )
+    reads.clear()
+
+    run(service, produce)
+
+    assert reads == ["bytes"], (
+        f"the approval ledger was read {len(reads)} times in one slot: {reads}. "
+        "Every read is another chance for two of them to disagree."
+    )
+
+
+@pytest.mark.parametrize(
+    "epoch_id", ["CON", "nul", "CON.foo", "NUL.", "COM1.log", "LPT1", "aux"]
+)
+def test_a_bundle_is_never_named_after_a_windows_device(
+    tmp_path: Path, epoch_id: str
+) -> None:
+    """Windows resolves a device name before the extension, and case-insensitively.
+
+    So `CON.foo`, `NUL.` and `COM1.log` are the console, the null device and a serial port
+    while passing an allowlist of letters, digits and dots perfectly. Writing a bundle to one
+    discards it or blocks, and the directory afterwards is indistinguishable from a slot that
+    never produced. Validating the epoch component alone missed all of these, because it is
+    the rendered filename the operating system resolves.
+    """
+    sink = write_bundle(tmp_path / "bundles")
+    bundle = {"signed_report": {"report": {"epoch_id": epoch_id, "sequence": 1}}}
+
+    with pytest.raises(EpochProductionError, match="[Ww]indows device"):
+        sink(bundle)
+
+    assert not list(tmp_path.rglob("*.json"))
+
+
+@pytest.mark.parametrize("sequence", ["1", "../1", 0, -1, 1.0, True, None])
+def test_a_bundle_sequence_must_be_a_positive_integer(
+    tmp_path: Path, sequence: object
+) -> None:
+    """It is interpolated into the filename, so a string could carry a separator through."""
+    sink = write_bundle(tmp_path / "bundles")
+    bundle = {"signed_report": {"report": {"epoch_id": "ustb-2026-08-14", "sequence": sequence}}}
+
+    with pytest.raises(EpochProductionError, match="positive integer"):
+        sink(bundle)
+
+    assert not list(tmp_path.rglob("*.json"))

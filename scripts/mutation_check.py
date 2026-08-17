@@ -45,6 +45,36 @@ class Mutation:
 
 MUTATIONS = (
     Mutation(
+        name="each-control-re-reads-the-ledger-under-the-snapshot",
+        path="touchstone/evaluate.py",
+        old="        approved_control(entry, ledger=snapshot) for entry in snapshot[APPROVED_KEY]",
+        new="        approved_control(entry) for entry in snapshot[APPROVED_KEY]",
+        tests=(
+            "tests/test_ustb_daemon.py::"
+            "test_one_slot_reads_the_approval_ledger_exactly_once",
+        ),
+    ),
+    Mutation(
+        name="a-bundle-is-published-without-being-verified",
+        path="touchstone/ustb_daemon.py",
+        old="            verify_bundle(bundle)",
+        new="            pass",
+        tests=(
+            "tests/test_ustb_daemon.py::"
+            "test_an_unattended_run_writes_a_bundle_that_verifies",
+        ),
+    ),
+    Mutation(
+        name="a-bundle-filename-may-be-a-windows-device",
+        path="touchstone/ustb_daemon.py",
+        old='    stem = name.split(".", 1)[0].upper()',
+        new='    stem = ""',
+        tests=(
+            "tests/test_ustb_daemon.py::"
+            "test_a_bundle_is_never_named_after_a_windows_device",
+        ),
+    ),
+    Mutation(
         name="the-report-never-checks-the-ledger-it-commits-to",
         path="touchstone/report.py",
         old="    assert_ledger_permits(records, ledger_from_bytes(ledger_snapshot))",

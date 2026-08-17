@@ -190,7 +190,9 @@ def default_ustb_controls(
     snapshot here.
     """
     snapshot = load_approval_ledger() if ledger is None else ledger
-    return tuple(approved_control(entry) for entry in snapshot[APPROVED_KEY])
+    return tuple(
+        approved_control(entry, ledger=snapshot) for entry in snapshot[APPROVED_KEY]
+    )
 
 
 def evaluate_ustb(

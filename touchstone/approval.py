@@ -245,12 +245,17 @@ def assert_ledger_approves(
         )
 
 
-def approved_control(entry: Mapping, *, resolve=None) -> ControlRecord:
+def approved_control(entry: Mapping, *, resolve=None, ledger: Mapping | None = None) -> ControlRecord:
     """Resolve one ledger entry into the approved control, or refuse to.
 
     The entry names a control and the artifact it was approved from. Everything else about
     the control comes from that artifact, so the ledger cannot restate a control into
     something the compiler never proposed — it can only point at one.
+
+    ``ledger`` is the snapshot the entry came from. Without it this re-read the ledger file
+    once **per control**, so resolving eight controls meant nine reads of one file in a
+    single slot — the caller's, plus one hidden inside each resolution. Threading it through
+    is what makes "read the ledger once" true rather than nearly true.
     """
     if not isinstance(entry, Mapping):
         raise ApprovalError("an approval entry must be a mapping")
@@ -258,7 +263,7 @@ def approved_control(entry: Mapping, *, resolve=None) -> ControlRecord:
     control_id = entry.get("control_id")
     if not isinstance(digest, str) or not isinstance(control_id, str):
         raise ApprovalError("an approval entry must name a control and a compilation")
-    assert_ledger_approves(control_id, digest)
+    assert_ledger_approves(control_id, digest, ledger=ledger)
     return _candidate_as_approved(control_id, digest, resolve)
 
 
