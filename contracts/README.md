@@ -55,6 +55,11 @@ npm ci
 npx hardhat test
 ```
 
-The reserved network name is `xLayerTestnet`. It is deliberately not configured in
-`hardhat.config.js`; an RPC URL and deployment workflow are added only after endpoint
-audit and explicit owner approval. No live-network deployment script is included.
+`xLayerTestnet` **is** configured in `hardhat.config.js` (chain 1952), added on 2026-08-15
+after the endpoint audit and with explicit owner approval, and used for the two testnet
+deployments recorded in `docs/OPERATIONS.md`. This paragraph previously said it was
+deliberately *not* configured, which was true when written and stopped being true the day
+the network was added — the drift a reader would have believed.
+
+Mainnet remains absent from the config. Deploying there is a separate owner gate and is
+additionally blocked until the deployer and publisher keys sit on separate hosts.
