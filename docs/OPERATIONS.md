@@ -41,8 +41,7 @@ fields read from the chain from the ones that are reconstructed configuration.
 
 **No report has ever been published to any registry.** The active registry holds zero reports;
 `latestSequence` is zero for every asset key. The next publication is a single USTB canary
-epoch, which the owner approved separately from the deployment — the deployment approval
-explicitly did not cover it.
+epoch under its own owner gate. The deployment approval explicitly did not cover it.
 
 The superseded predecessor is refused before any key is read, because its manifest declares
 `deployment_state: superseded`. That refusal is what stops a publication reaching it; its
@@ -209,25 +208,29 @@ Destination: `not_configured`.
 
 ## 9. Owner gates
 
-Everything here needs explicit approval. One has been given and executed; the rest have not.
+Completed owner-gated actions and the decisions still open are recorded together here. A
+checked deployment means that exact deployment was executed; it grants no approval to publish
+an epoch, deploy on another network, or make a private repository public.
 
 - [x] **Testnet deploy (original)** — approved and executed 2026-08-15. Registry
       `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, block 38369203. **Now superseded**: it
       predates the `epochKey` change, is marked `deployment_state: superseded`, and is
       refused by the publishing boundary. It published nothing.
-- [ ] **Testnet deploy (replacement)** — see `docs/DEPLOYMENT-G1.md`, which is the
-      authorization packet and is itself marked DRAFT. The design is approved **in
-      principle**;
-      **execution authorization has not been granted.** No replacement registry exists, no
-      gas has been spent on one, and `docs/DEPLOYMENT-G1.md` must be complete and approved
-      before it is requested. Tracked separately from the entry above because they are two
-      different deployments and conflating them is how "approved" spreads to something
-      nobody approved
+- [x] **Testnet deploy (replacement)** — digest-bound approval granted and executed
+      2026-08-17. Registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`, block
+      38489602; publisher authorized with identity mapped to itself; actual spend
+      `28981261449063` wei. `docs/DEPLOYMENT-G1.md` remains the unchanged, pre-execution
+      approval packet, so its `AWAITING DIGEST-BOUND APPROVAL` banner is historical rather
+      than current status. `docs/DEPLOYMENT-G1-EXECUTED.md` is the execution record
+- [ ] **Live USTB testnet epoch** — the next critical-path action. The active registry and
+      publisher are ready and hold no reports, but deployment approval did not authorize a
+      publication
 - [ ] **Mainnet deploy + canary** — after a proven testnet loop only, and nothing has
       published to testnet yet
 - [ ] **Submission** — owner-handled
 - [ ] **Domains and handles** — deliberately last; see `docs/BRAND-CLEARANCE.md`
-- [ ] **Public git remote**
+- [x] **Private git remote** — `github.com/Ridwannurudeen/touchstone` exists and is private.
+      Making it public remains a separate owner decision
 - [ ] **Any public post**
 
 ---

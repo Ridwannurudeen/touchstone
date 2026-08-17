@@ -54,7 +54,7 @@ class Mutation:
 # job that exists to prove the tests bite would go green having run nothing. That is the same
 # failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
 # Raise this deliberately when a mutation is added; a diff that changes it is the point.
-EXPECTED_MUTATIONS = 102
+EXPECTED_MUTATIONS = 108
 
 
 MUTATIONS = (
@@ -99,7 +99,7 @@ MUTATIONS = (
         path="scripts/assert_ci_gates.py",
         old="    return isinstance(body, str) and body.strip() == ENFORCER_COMMAND",
         new=(
-            "    return isinstance(body, str) and ENFORCER in body and "
+            '    return isinstance(body, str) and "scripts/assert_gates_passed.py" in body and '
             '"needs." in body and ".result" in body'
         ),
         tests=(
@@ -109,6 +109,62 @@ MUTATIONS = (
             "test_an_enforcer_whose_failure_is_ignored_is_refused",
             "tests/test_assert_ci_gates.py::"
             "test_an_enforcer_command_that_is_only_echoed_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-aggregate-execution-recipe-is-not-pinned",
+        path="scripts/assert_ci_gates.py",
+        old="""    if not _trusted_aggregate_steps(aggregate):
+        problems.append(
+            f"{AGGREGATE!r} does not use the trusted execution recipe for the enforcer"
+        )
+""",
+        new="",
+        tests=(
+            "tests/test_assert_ci_gates.py::"
+            "test_the_enforcer_step_has_one_trusted_execution_recipe",
+            "tests/test_assert_ci_gates.py::"
+            "test_a_preceding_step_cannot_replace_the_enforcer",
+        ),
+    ),
+    Mutation(
+        name="the-aggregate-execution-context-is-not-pinned",
+        path="scripts/assert_ci_gates.py",
+        old="""    if (
+        aggregate.get("runs-on") != "ubuntu-24.04"
+        or "defaults" in workflow
+        or environment not in ({}, SAFE_WORKFLOW_ENV)
+        or any(
+            key in aggregate for key in ("defaults", "env", "container", "strategy")
+        )
+    ):
+        problems.append(
+            f"{AGGREGATE!r} does not use the trusted execution context for the enforcer"
+        )
+""",
+        new="",
+        tests=(
+            "tests/test_assert_ci_gates.py::"
+            "test_the_aggregate_execution_context_is_trusted",
+        ),
+    ),
+    Mutation(
+        name="a-step-condition-may-skip-a-gate",
+        path="scripts/assert_ci_gates.py",
+        old="""            step_condition = step.get("if")
+            if step_condition is not None and not (
+                isinstance(step_condition, str)
+                and step_condition.strip() == ALWAYS
+            ):
+                problems.append(
+                    f"step {position} of job {name!r} has a step condition that can "
+                    "skip its work"
+                )
+""",
+        new="",
+        tests=(
+            "tests/test_assert_ci_gates.py::"
+            "test_a_gate_step_condition_cannot_skip_its_work",
         ),
     ),
     Mutation(
@@ -223,6 +279,44 @@ MUTATIONS = (
         ),
     ),
     Mutation(
+        name="the-junit-gate-adopts-a-buried-suite",
+        path="scripts/assert_suite_ran.py",
+        old='    suites = [root] if root.tag == "testsuite" else root.findall("testsuite")',
+        new=(
+            '    suites = [root] if root.tag == "testsuite" '
+            'else list(root.iter("testsuite"))'
+        ),
+        tests=(
+            "tests/test_assert_suite_ran.py::"
+            "test_a_suite_buried_under_a_foreign_element_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-junit-gate-adopts-a-buried-case",
+        path="scripts/assert_suite_ran.py",
+        old='    cases = [case for suite in suites for case in suite.findall("testcase")]',
+        new='    cases = [case for suite in suites for case in suite.iter("testcase")]',
+        tests=(
+            "tests/test_assert_suite_ran.py::"
+            "test_a_case_buried_under_a_foreign_element_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-junit-gate-ignores-misplaced-outcomes",
+        path="scripts/assert_suite_ran.py",
+        old="""    if misplaced_outcomes:
+        raise NotAReport(
+            "these outcomes are not direct children of test cases: "
+            + ", ".join(misplaced_outcomes)
+        )
+""",
+        new="",
+        tests=(
+            "tests/test_assert_suite_ran.py::"
+            "test_outcomes_outside_a_testcase_direct_child_are_refused",
+        ),
+    ),
+    Mutation(
         name="the-gate-accepts-a-summary-contradicting-its-cases",
         path="scripts/assert_suite_ran.py",
         old="""    if disagreements:
@@ -294,7 +388,9 @@ MUTATIONS = (
         path="scripts/assert_suite_ran.py",
         old="""    stray = len(list(root.iter("testcase"))) - len(cases)
     if stray:
-        raise NotAReport(f"{stray} <testcase> element(s) sit outside any <testsuite>")
+        raise NotAReport(
+            f"{stray} <testcase> element(s) are not a direct child of a <testsuite>"
+        )
 """,
         new="",
         tests=(

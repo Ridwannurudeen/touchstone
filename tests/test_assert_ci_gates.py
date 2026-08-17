@@ -24,6 +24,8 @@ from assert_ci_gates import (  # noqa: E402
 )
 
 WORKFLOW = Path(__file__).parents[1] / ".github" / "workflows" / "ci.yml"
+CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+SETUP_PYTHON_ACTION = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
 
 
 def covering(*jobs: str) -> dict:
@@ -127,6 +129,15 @@ def enforcing(*jobs: str) -> dict:
     workflow["jobs"][AGGREGATE]["if"] = "always()"
     workflow["jobs"][AGGREGATE]["steps"] = [
         {
+            "uses": CHECKOUT_ACTION,
+            "with": {"persist-credentials": False},
+        },
+        {
+            "uses": SETUP_PYTHON_ACTION,
+            "with": {"python-version": "3.12"},
+        },
+        {
+            "name": "Every gate must have succeeded",
             "run": "python scripts/assert_gates_passed.py \"${{ join(needs.*.result, ' ') }}\""
         }
     ]
@@ -234,7 +245,7 @@ def test_a_step_that_continues_on_error_is_refused() -> None:
     workflow = enforcing("lint")
     workflow["jobs"][AGGREGATE]["steps"][-1]["continue-on-error"] = True
 
-    assert any("step 1 of job" in problem for problem in weakened(workflow))
+    assert any("step 3 of job" in problem for problem in weakened(workflow))
 
 
 def test_a_gates_own_step_continuing_on_error_is_refused() -> None:
@@ -265,3 +276,67 @@ def test_a_condition_that_merely_contains_always_is_refused() -> None:
     workflow["jobs"][AGGREGATE]["if"] = "${{ always() && false }}"
 
     assert any("not exactly" in problem for problem in weakened(workflow))
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("shell", "bash {0} || true"),
+        ("working-directory", "forged-checkout"),
+        ("env", {"BASH_ENV": "forged-checkout/neutralise.sh"}),
+        ("if", "${{ false }}"),
+    ],
+)
+def test_the_enforcer_step_has_one_trusted_execution_recipe(
+    field: str, value: object
+) -> None:
+    workflow = enforcing("lint")
+    workflow["jobs"][AGGREGATE]["steps"][-1][field] = value
+
+    assert any("trusted execution recipe" in problem for problem in weakened(workflow))
+
+
+def test_a_preceding_step_cannot_replace_the_enforcer() -> None:
+    workflow = enforcing("lint")
+    workflow["jobs"][AGGREGATE]["steps"].insert(
+        -1,
+        {"run": "printf 'raise SystemExit(0)' > scripts/assert_gates_passed.py"},
+    )
+
+    assert any("trusted execution recipe" in problem for problem in weakened(workflow))
+
+
+@pytest.mark.parametrize(
+    ("scope", "value"),
+    [
+        ("workflow_defaults", {"run": {"shell": "bash {0} || true"}}),
+        ("workflow_env", {"BASH_ENV": "neutralise.sh"}),
+        ("job_env", {"PATH": "forged-bin"}),
+        ("runner", "self-hosted"),
+        ("container", "forged-python:latest"),
+    ],
+)
+def test_the_aggregate_execution_context_is_trusted(scope: str, value: object) -> None:
+    workflow = enforcing("lint")
+    aggregate = workflow["jobs"][AGGREGATE]
+    if scope == "workflow_defaults":
+        workflow["defaults"] = value
+    elif scope == "workflow_env":
+        workflow["env"] = value
+    elif scope == "job_env":
+        aggregate["env"] = value
+    elif scope == "runner":
+        aggregate["runs-on"] = value
+    else:
+        aggregate["container"] = value
+
+    assert any("trusted execution context" in problem for problem in weakened(workflow))
+
+
+def test_a_gate_step_condition_cannot_skip_its_work() -> None:
+    workflow = enforcing("lint")
+    workflow["jobs"]["lint"]["steps"] = [
+        {"run": "python -m pytest", "if": "${{ false }}"}
+    ]
+
+    assert any("step condition" in problem for problem in weakened(workflow))

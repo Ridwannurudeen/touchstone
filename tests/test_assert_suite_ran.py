@@ -288,7 +288,45 @@ def test_a_case_outside_any_suite_is_refused(tmp_path: Path) -> None:
     body = PASSED_TWO.replace(
         "</testsuite>", '</testsuite>\n  <testcase classname="t" name="stray"/>'
     )
-    with pytest.raises(NotAReport, match="outside any"):
+    with pytest.raises(NotAReport, match="direct child"):
+        read_report(_report(tmp_path, body))
+    assert main([str(_report(tmp_path, body)), *BOTH]) == 1
+
+
+def test_a_suite_buried_under_a_foreign_element_is_refused(tmp_path: Path) -> None:
+    body = PASSED_TWO.replace(
+        "<testsuites>", "<testsuites><properties>"
+    ).replace("</testsuites>", "</properties></testsuites>")
+
+    with pytest.raises(NotAReport, match="no <testsuite>"):
+        read_report(_report(tmp_path, body))
+    assert main([str(_report(tmp_path, body)), *BOTH]) == 1
+
+
+def test_a_case_buried_under_a_foreign_element_is_refused(tmp_path: Path) -> None:
+    body = PASSED_TWO.replace(
+        '<testcase classname="t" name="one" time="0.1"/>',
+        '<properties><testcase classname="t" name="one" time="0.1"/></properties>',
+    )
+
+    with pytest.raises(NotAReport, match="direct child"):
+        read_report(_report(tmp_path, body))
+    assert main([str(_report(tmp_path, body)), *BOTH]) == 1
+
+
+def test_outcomes_outside_a_testcase_direct_child_are_refused(tmp_path: Path) -> None:
+    body = PASSED_TWO.replace(
+        '<testcase classname="t" name="one" time="0.1"/>',
+        '<failure message="outside every case"/>'
+        '<testcase classname="t" name="one" time="0.1"/>',
+    ).replace(
+        '<testcase classname="t" name="two" time="0.1"/>',
+        '<testcase classname="t" name="two" time="0.1">'
+        '<properties><error message="nested under properties"/></properties>'
+        "</testcase>",
+    )
+
+    with pytest.raises(NotAReport, match="direct child"):
         read_report(_report(tmp_path, body))
     assert main([str(_report(tmp_path, body)), *BOTH]) == 1
 

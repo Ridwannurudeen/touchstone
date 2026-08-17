@@ -29,12 +29,14 @@ AGGREGATE = "required"
 # because `always() && false` contains it and never runs.
 ALWAYS = "always()"
 
-# The script that actually judges the results. Kept separate so its behaviour is proved by
+# The script that actually judges the results is kept separate so its behaviour is proved by
 # its own tests instead of being asserted about inline shell, which cannot be checked.
-ENFORCER = "scripts/assert_gates_passed.py"
 ENFORCER_COMMAND = (
     'python scripts/assert_gates_passed.py "${{ join(needs.*.result, \' \') }}"'
 )
+CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+SETUP_PYTHON_ACTION = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+SAFE_WORKFLOW_ENV = {"PYTHONUTF8": "1"}
 
 
 class WorkflowError(Exception):
@@ -97,6 +99,24 @@ def _runs_the_enforcer(step: Mapping[str, object]) -> bool:
     return isinstance(body, str) and body.strip() == ENFORCER_COMMAND
 
 
+def _trusted_aggregate_steps(job: Mapping[str, object]) -> bool:
+    """Does the aggregate reach the enforcer through only the pinned setup steps?"""
+    return job.get("steps") == [
+        {
+            "uses": CHECKOUT_ACTION,
+            "with": {"persist-credentials": False},
+        },
+        {
+            "uses": SETUP_PYTHON_ACTION,
+            "with": {"python-version": "3.12"},
+        },
+        {
+            "name": "Every gate must have succeeded",
+            "run": ENFORCER_COMMAND,
+        },
+    ]
+
+
 def weakened(workflow: object) -> list[str]:
     """Return the ways the aggregate could be present and still enforce nothing.
 
@@ -113,6 +133,10 @@ def weakened(workflow: object) -> list[str]:
     * an aggregate that reads only one result, ignores failure, or merely echoes the command
       enforces nothing. That is why the decision lives in `scripts/assert_gates_passed.py`,
       which is tested directly; the workflow must run its one canonical invocation exactly.
+    * an exact command still means nothing under a shell that ignores its status, from a
+      forged working directory or interpreter, after another step replaces the script, or
+      on a step condition that skips it. The aggregate therefore has one pinned runner,
+      environment and three-step execution recipe.
     """
     jobs = _jobs(workflow)
     if AGGREGATE not in jobs:
@@ -135,6 +159,15 @@ def weakened(workflow: object) -> list[str]:
                     f"step {position} of job {name!r} sets continue-on-error, so its "
                     "failure is reported as success"
                 )
+            step_condition = step.get("if")
+            if step_condition is not None and not (
+                isinstance(step_condition, str)
+                and step_condition.strip() == ALWAYS
+            ):
+                problems.append(
+                    f"step {position} of job {name!r} has a step condition that can "
+                    "skip its work"
+                )
 
     condition = aggregate.get("if")
     if not (isinstance(condition, str) and condition.strip() == ALWAYS):
@@ -147,6 +180,27 @@ def weakened(workflow: object) -> list[str]:
         problems.append(
             f"no step of {AGGREGATE!r} runs the canonical command {ENFORCER_COMMAND!r}, "
             "so the results are collected without being judged"
+        )
+    workflow_environment = workflow.get("env", {})
+    environment = (
+        dict(workflow_environment)
+        if isinstance(workflow_environment, Mapping)
+        else None
+    )
+    if (
+        aggregate.get("runs-on") != "ubuntu-24.04"
+        or "defaults" in workflow
+        or environment not in ({}, SAFE_WORKFLOW_ENV)
+        or any(
+            key in aggregate for key in ("defaults", "env", "container", "strategy")
+        )
+    ):
+        problems.append(
+            f"{AGGREGATE!r} does not use the trusted execution context for the enforcer"
+        )
+    if not _trusted_aggregate_steps(aggregate):
+        problems.append(
+            f"{AGGREGATE!r} does not use the trusted execution recipe for the enforcer"
         )
     return problems
 

@@ -16,7 +16,7 @@ which two unrelated or duplicated cases satisfied just as well; naming them is t
 of the question that cannot be answered by accident. Run pytest with `--junitxml` and hand
 the report here.
 
-Four ways this script itself used to fail open, all now closed and all now tested:
+Five ways this script itself used to fail open, all now closed and all now tested:
 
 * It trusted `<testsuite failures="...">` while counting the cases themselves, so a report
   whose summary said zero and whose cases carried `<failure>` was accepted.
@@ -25,6 +25,9 @@ Four ways this script itself used to fail open, all now closed and all now teste
   tests passed.
 * It ignored disabled totals and testcase `status="notrun"`, so expected names counted even
   when the report said none of them ran.
+* It treated any descendant with a familiar tag as structurally valid, so suites and cases
+  buried under foreign elements counted, while failure elements outside their required
+  direct testcase position disappeared.
 """
 
 from __future__ import annotations
@@ -95,17 +98,19 @@ def read_report(path: Path) -> Report:
     # A JUnit report is either one <testsuite> or a <testsuites> wrapper around several, and
     # pytest emits the wrapper. Reading only the root's attributes therefore worked on one
     # shape and silently reported zero on the other.
-    suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
+    suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
     if not suites:
         raise NotAReport(f"<{root.tag}> contains no <testsuite>")
 
     # Cases are collected through the suites, not from the root, so that a <testcase> placed
     # outside any suite is counted as the anomaly it is rather than silently adopted. A
     # wrapper holding bare cases and no suite was accepted as a clean two-case run.
-    cases = [case for suite in suites for case in suite.iter("testcase")]
+    cases = [case for suite in suites for case in suite.findall("testcase")]
     stray = len(list(root.iter("testcase"))) - len(cases)
     if stray:
-        raise NotAReport(f"{stray} <testcase> element(s) sit outside any <testsuite>")
+        raise NotAReport(
+            f"{stray} <testcase> element(s) are not a direct child of a <testsuite>"
+        )
 
     # Both sources are read and required to agree, rather than combined. An earlier version
     # took max(), which stops a green result whenever either side reports a problem but
@@ -122,6 +127,20 @@ def read_report(path: Path) -> Report:
         "failures": sum(len(case.findall("failure")) for case in cases),
         "errors": sum(len(case.findall("error")) for case in cases),
     }
+    misplaced_outcomes = [
+        outcome
+        for outcome, tally in (
+            ("skipped", "skipped"),
+            ("failure", "failures"),
+            ("error", "errors"),
+        )
+        if len(list(root.iter(outcome))) != observed[tally]
+    ]
+    if misplaced_outcomes:
+        raise NotAReport(
+            "these outcomes are not direct children of test cases: "
+            + ", ".join(misplaced_outcomes)
+        )
     disagreements = [
         f"{tally}: the suites say {summary[tally]}, the cases show {observed[tally]}"
         for tally in TALLIES
