@@ -1104,3 +1104,43 @@ def test_serve_routes_a_clock_error_to_the_schedule_incident(tmp_path: Path) -> 
 
     assert outcome.clock_error is not None
     assert [i.kind for i in service.incidents.open_incidents()] == [SCHEDULE_UNUSABLE]
+
+
+def test_recovery_will_not_republish_a_report_whose_bundle_is_missing(
+    tmp_path: Path,
+) -> None:
+    """`resolve()` republishes stored signed bytes, so the check must live inside it.
+
+    A fresh slot builds and verifies a bundle before its report is ever returned, so
+    publication and verifiability go together there. Recovery had no such step: a pending
+    operation written before bundles existed, or one whose file was deleted, would go back on
+    chain with nothing a reader could check it against — permanently, correctable only by
+    issuing another report.
+
+    The hook is checked here rather than at the call sites because `resolve()` re-reads the
+    operation file. A guard applied to a previously loaded operation guards a different
+    object, which is the same reason the asset key is checked inside this method.
+    """
+    backend = FakeBackend()
+    service = build(tmp_path, backend)
+    service.operations.begin_operation(
+        _signed_report(1),
+        report_uri="urn:touchstone:report:1",
+        correction_of=None,
+        scheduled_for=AT,
+    )
+    seen: list[object] = []
+
+    def refuse(operation):
+        seen.append(operation)
+        raise RuntimeError("no verifying bundle for this report")
+
+    with pytest.raises(RuntimeError, match="no verifying bundle"):
+        service.operations.resolve(service.client, before_publish=refuse)
+
+    assert len(seen) == 1, "the guard was not consulted"
+    assert seen[0].signed_report == _signed_report(1), (
+        "the guard must see the operation this call loaded, not a stale one"
+    )
+    assert not backend.submissions, "an unverifiable report reached the chain"
+    assert service.operations.load_operation() is not None, "kept for review"

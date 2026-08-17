@@ -212,6 +212,7 @@ class OperationsStore:
         client: PublisherClient,
         *,
         expected_asset_key: str | None = None,
+        before_publish: Callable[[PendingOperation], None] | None = None,
     ) -> PublicationResult | None:
         """Settle any in-flight publication. Call before fetching or signing anything.
 
@@ -221,6 +222,14 @@ class OperationsStore:
         this store was never cleared, the registry reports the sequence as already
         published — and that is only *our* publication if the transparency log holds this
         exact report under it, which is what distinguishes finishing from colliding.
+
+        ``before_publish`` is called with the operation this method loaded, after the asset
+        check and immediately before publication, and may refuse by raising. It exists so a
+        caller can require something of the report that is about to be republished —
+        specifically that a verifying bundle for it exists on disk. That check has to happen
+        *here*, against the operation this call loaded, for the same reason the asset key is
+        checked here: a caller that inspects a previously loaded operation has inspected a
+        different object, because this method re-reads the file.
         """
         operation = self.load_operation()
         if operation is None:
@@ -238,6 +247,8 @@ class OperationsStore:
             if operation.correction_of is not None
             else client.publish
         )
+        if before_publish is not None:
+            before_publish(operation)
         try:
             result = publish(operation.signed_report, report_uri=operation.report_uri)
         except DuplicateSequence as error:

@@ -45,6 +45,26 @@ class Mutation:
 
 MUTATIONS = (
     Mutation(
+        name="recovery-republishes-without-a-bundle",
+        path="touchstone/operations.py",
+        old="        if before_publish is not None:",
+        new="        if False:",
+        tests=(
+            "tests/test_service.py::"
+            "test_recovery_will_not_republish_a_report_whose_bundle_is_missing",
+        ),
+    ),
+    Mutation(
+        name="recovery-accepts-a-bundle-for-another-report",
+        path="touchstone/ustb_daemon.py",
+        old="        if bundled != operation.signed_report:  # type: ignore[attr-defined]",
+        new="        if False:",
+        tests=(
+            "tests/test_ustb_daemon.py::"
+            "test_recovery_refuses_a_bundle_that_describes_a_different_report",
+        ),
+    ),
+    Mutation(
         name="each-control-re-reads-the-ledger-under-the-snapshot",
         path="touchstone/evaluate.py",
         old="        approved_control(entry, ledger=snapshot) for entry in snapshot[APPROVED_KEY]",

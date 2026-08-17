@@ -96,7 +96,15 @@ def make_producer(
     published a signed report to the registry and produced nothing a reader could verify it
     with. The dossier's whole claim is that a stranger can check the result offline, and
     there would have been no file to hand them. The bundle is verified before it is handed
-    over, so "published" and "verifiable by a stranger" cannot come apart.
+    over, so a report this producer returns is one a stranger can check.
+
+    **That covers a fresh slot, not recovery.** A publication left pending by a crash is
+    resolved by `OperationsStore.resolve()`, which republishes the stored signed bytes and
+    never consults a bundle. For an operation this producer created the bundle is already on
+    disk — it is written before the report is returned, and publication happens after — but a
+    legacy, corrupted or externally created operation has no such guarantee. An earlier
+    version of this docstring claimed publication and verifiability "cannot come apart",
+    which recovery disproves.
     """
     live = LiveTransport() if transport is None else transport
 
@@ -254,3 +262,51 @@ def report_uri(signed_report: Mapping[str, object]) -> str:
 
 def asset_key() -> str:
     return USTB_ASSET_KEY
+
+
+def require_verifying_bundle(
+    directory: str | os.PathLike[str],
+) -> Callable[[object], None]:
+    """A ``before_publish`` guard: refuse to republish a report with no verifying bundle.
+
+    A fresh slot writes and verifies its bundle before the report is returned, so publication
+    and verifiability go together. Recovery does not: `OperationsStore.resolve()` republishes
+    stored signed bytes and never consults a bundle, so a pending operation written before
+    bundles existed — or one whose bundle was deleted, truncated or edited — would publish
+    anyway. The report then sits on chain permanently with nothing a reader can check it with,
+    and the only remedy is a correction.
+
+    The bundle must both verify **and** carry the exact report being republished. A bundle
+    that verifies in isolation but describes a different report is the more dangerous of the
+    two failures, because everything about it looks correct.
+    """
+    target = Path(directory)
+
+    def guard(operation: object) -> None:
+        report = operation.signed_report["report"]  # type: ignore[attr-defined,index]
+        name = f"{_path_component(report['epoch_id'])}-{report['sequence']}.json"
+        path = target / name
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except OSError as error:
+            raise EpochProductionError(
+                f"refusing to republish sequence {report['sequence']}: no readable "
+                f"verification bundle at {path} ({error}). A report with no bundle cannot "
+                "be checked by anyone once it is on chain"
+            ) from error
+        try:
+            bundle = json.loads(raw)
+        except ValueError as error:
+            raise EpochProductionError(
+                f"refusing to republish sequence {report['sequence']}: the bundle at "
+                f"{path} is not readable JSON ({error})"
+            ) from error
+        verify_bundle(bundle)
+        bundled = bundle["signed_report"]
+        if bundled != operation.signed_report:  # type: ignore[attr-defined]
+            raise EpochProductionError(
+                f"refusing to republish sequence {report['sequence']}: the bundle at "
+                f"{path} verifies but describes a different report than the one pending"
+            )
+
+    return guard

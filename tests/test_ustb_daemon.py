@@ -13,7 +13,9 @@ the path can be exercised without it.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import date, datetime, timezone
+import json
 from pathlib import Path
 import sys
 
@@ -34,6 +36,7 @@ from touchstone.ustb_daemon import (
     epoch_id_for,
     make_producer,
     report_uri,
+    require_verifying_bundle,
     write_bundle,
 )
 from touchstone.workspace import Workspace
@@ -495,9 +498,12 @@ def test_no_bundle_is_written_when_no_sink_is_given(tmp_path: Path) -> None:
         "..",
         ".",
         "a/b",
-        # A raw string. Written "a\b" the first time, which Python reads as a
-        # backspace character and which therefore tested nothing about separators.
-        r"a",
+        # A raw string, holding one backslash byte. Written as a non-raw literal the
+        # first time, so Python read it as a backspace and the case tested nothing
+        # about separators. It then survived one attempt to fix it, because the fix
+        # was applied through another layer of escaping and inserted the control
+        # character again. Checked at the byte level this time.
+        r"a\b",
         "",
         "x" * 200,
         "with space",
@@ -577,8 +583,9 @@ def test_a_bundle_is_never_named_after_a_windows_device(
     So `CON.foo`, `NUL.` and `COM1.log` are the console, the null device and a serial port
     while passing an allowlist of letters, digits and dots perfectly. Writing a bundle to one
     discards it or blocks, and the directory afterwards is indistinguishable from a slot that
-    never produced. Validating the epoch component alone missed all of these, because it is
-    the rendered filename the operating system resolves.
+    never produced. The check is on the epoch component, which is the stem Windows resolves
+    once a dot is present; a rendered-filename check was tried first and deleted as dead,
+    because appending `-{sequence}` cannot turn a non-device into a device.
     """
     sink = write_bundle(tmp_path / "bundles")
     bundle = {"signed_report": {"report": {"epoch_id": epoch_id, "sequence": 1}}}
@@ -595,7 +602,11 @@ def test_a_bundle_sequence_must_be_a_positive_integer(
 ) -> None:
     """It is interpolated into the filename, so a string could carry a separator through."""
     sink = write_bundle(tmp_path / "bundles")
-    bundle = {"signed_report": {"report": {"epoch_id": "ustb-2026-08-14", "sequence": sequence}}}
+    bundle = {
+        "signed_report": {
+            "report": {"epoch_id": "ustb-2026-08-14", "sequence": sequence}
+        }
+    }
 
     with pytest.raises(EpochProductionError, match="positive integer"):
         sink(bundle)
@@ -614,9 +625,12 @@ def test_a_report_whose_bundle_cannot_be_verified_is_never_published(
     earlier regression here could not tell the difference, because it verified the bundle
     itself after reading it back rather than proving the daemon had.
 
-    Driven by a signer that publishes a *different* key's record than it signs with, which is
-    the shape of the failure that matters: the bundle is well-formed, internally consistent,
-    and unverifiable.
+    Driven by a signer that publishes a *different* key's record than it signs with, so
+    `create_bundle` returns happily and the verifier refuses. Precisely: it is refused because
+    the published key record's `kid` does not match the envelope's (`signing.py`), not by a
+    failed signature check — it never gets that far. So this proves the verifier is invoked
+    before the sink, which is the mutant it exists to kill. It does not prove signature
+    rejection, and it says nothing about the recovery path.
     """
     from touchstone.verify import VerificationError
 
@@ -653,4 +667,86 @@ def test_a_report_whose_bundle_cannot_be_verified_is_never_published(
         produce(RETRIEVED_AT)
 
     assert not backend.submissions, "an unverifiable report reached the chain"
-    assert not list(workspace.bundles.glob("*.json")), "an unverifiable bundle was persisted"
+    assert not list(workspace.bundles.glob("*.json")), (
+        "an unverifiable bundle was persisted"
+    )
+
+
+def _pending(signed_report: dict):
+    """The one attribute `require_verifying_bundle` reads off a pending operation."""
+
+    class Operation:
+        def __init__(self, report: dict) -> None:
+            self.signed_report = report
+
+    return Operation(signed_report)
+
+
+def test_recovery_refuses_to_republish_a_report_with_no_bundle(tmp_path: Path) -> None:
+    """A fresh slot cannot publish without a verifying bundle. Recovery could.
+
+    `OperationsStore.resolve()` republishes stored signed bytes and never consults a bundle,
+    so a pending operation written before bundles existed — or one whose file was deleted —
+    would go on chain with nothing a reader could check it against, permanently, correctable
+    only by a new report. An earlier docstring claimed publication and verifiability could not
+    come apart; this is the path that disproved it.
+    """
+    guard = require_verifying_bundle(tmp_path / "bundles")
+    operation = _pending(
+        {"report": {"epoch_id": "ustb-2026-08-14", "sequence": 1}, "signature": "x"}
+    )
+
+    with pytest.raises(EpochProductionError, match="no readable verification bundle"):
+        guard(operation)
+
+
+def test_recovery_refuses_a_bundle_that_describes_a_different_report(
+    tmp_path: Path,
+) -> None:
+    """The more dangerous failure, because everything about it looks correct.
+
+    A bundle that verifies in isolation proves only that *some* report was signed properly.
+    Republishing a different report behind it would hand a reader a valid bundle for the
+    wrong thing.
+    """
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+    service, workspace = built(tmp_path, backend)
+    _, produce = producer(
+        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+    )
+    run(service, produce)
+
+    guard = require_verifying_bundle(workspace.bundles)
+    written = next(iter(workspace.bundles.glob("*.json")))
+    genuine = json.loads(written.read_text(encoding="utf-8"))["signed_report"]
+    # Same epoch and sequence, so it resolves to the same file. Different report.
+    impostor = deepcopy(genuine)
+    impostor["report"]["state"] = "STALE"
+
+    guard(_pending(genuine))
+    with pytest.raises(EpochProductionError, match="describes a different report"):
+        guard(_pending(impostor))
+
+
+def test_recovery_refuses_a_bundle_that_no_longer_verifies(tmp_path: Path) -> None:
+    """Present is not the same as intact. A truncated or edited bundle must not pass."""
+    from touchstone.verify import VerificationError
+
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+    service, workspace = built(tmp_path, backend)
+    _, produce = producer(
+        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+    )
+    run(service, produce)
+
+    written = next(iter(workspace.bundles.glob("*.json")))
+    bundle = json.loads(written.read_text(encoding="utf-8"))
+    genuine = deepcopy(bundle["signed_report"])
+    bundle["approval_ledger"] = '{"approved": [], "declined": []}'
+    written.write_text(json.dumps(bundle), encoding="utf-8")
+
+    guard = require_verifying_bundle(workspace.bundles)
+    with pytest.raises(VerificationError):
+        guard(_pending(genuine))

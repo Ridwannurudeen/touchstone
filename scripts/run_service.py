@@ -69,8 +69,9 @@ from touchstone.ustb_daemon import (  # noqa: E402
     asset_key_bytes,
     epoch_id_for,
     make_producer,
-    write_bundle,
     report_uri,
+    require_verifying_bundle,
+    write_bundle,
 )
 from touchstone.sources import SourceUnavailable  # noqa: E402,F401
 from touchstone.signing import Ed25519Signer, frozen_snapshot  # noqa: E402
@@ -121,6 +122,7 @@ class Service:
         registry_address: str | None = None,
         backup_dir: str | Path | None = None,
         backup_key: bytes | None = None,
+        before_publish: Callable[[object], None] | None = None,
     ) -> None:
         self.client = client
         self.operations = operations
@@ -174,6 +176,10 @@ class Service:
         self.registry_address = registry_address
         self.backup_dir = Path(backup_dir) if backup_dir else None
         self.backup_key = backup_key
+        # Passed to every `resolve()` so a republication cannot outrun its bundle. Optional
+        # for the same reason as the rest of this block: the epoch machinery predates it and
+        # many tests construct a Service with no workspace paths at all.
+        self.before_publish = before_publish
         self._heartbeat_sequence = 0
         self._last_attempted_slot: str | None = None
         self._last_successful_epoch: str | None = None
@@ -324,7 +330,11 @@ class Service:
         moment = self.now()
         self._require_our_asset(operation, moment=moment)
         try:
-            self.operations.resolve(self.client, expected_asset_key=self.asset_key)
+            self.operations.resolve(
+                self.client,
+                expected_asset_key=self.asset_key,
+                before_publish=self.before_publish,
+            )
         except Exception as error:  # noqa: BLE001 - the contract is that *any* failure is recorded
             self._record_startup_failure(
                 f"sequence {operation.sequence} was in flight at startup and could not "
@@ -499,7 +509,9 @@ class Service:
             # producer instead meant submission was never retried at all.
             self._with_retry(
                 lambda: self.operations.resolve(
-                    self.client, expected_asset_key=self.asset_key
+                    self.client,
+                    expected_asset_key=self.asset_key,
+                    before_publish=self.before_publish,
                 )
             )
         except Exception as error:  # noqa: BLE001 - anything here is an incident
@@ -592,11 +604,17 @@ class Service:
                 )
             return
         if journalled is not None:
-            self.operations.resolve(self.client, expected_asset_key=self.asset_key)
+            self.operations.resolve(
+                self.client,
+                expected_asset_key=self.asset_key,
+                before_publish=self.before_publish,
+            )
         else:
             self._with_retry(
                 lambda: self.operations.resolve(
-                    self.client, expected_asset_key=self.asset_key
+                    self.client,
+                    expected_asset_key=self.asset_key,
+                    before_publish=self.before_publish,
                 )
             )
         # Closed here, with the resolution that earned it, rather than at the end of a
@@ -891,6 +909,12 @@ def build_service(manifest_path: str, workspace: str, *, asset_key: str) -> Serv
         registry_address=manifest.registry_address,
         backup_dir=os.environ.get("TOUCHSTONE_BACKUP_DIR") or None,
         backup_key=key,
+        # Recovery republishes stored signed bytes without consulting a bundle, so a pending
+        # operation whose bundle is missing, truncated or describes another report would go
+        # on chain unverifiable. A fresh slot cannot reach that state — it writes and verifies
+        # the bundle before the report is returned — but a legacy or externally written
+        # operation can.
+        before_publish=require_verifying_bundle(root.bundles),
     )
 
 
