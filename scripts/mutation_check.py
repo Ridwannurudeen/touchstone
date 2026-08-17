@@ -32,8 +32,9 @@ from xml.etree import ElementTree
 ROOT = Path(__file__).parents[1]
 
 # Generous against the slowest targeted set here (the subprocess restart tests run real
-# daemons) and still far below the runner's six-hour job default, which is what a hanging
-# mutant would otherwise consume before anyone learned anything.
+# daemons) and well inside CI's 45-minute cap on the mutation job, so a hanging mutant is
+# reported as one rather than reaching the cap and taking the whole job's result with it.
+# This bound also applies when the harness is run by hand, where no job timeout exists.
 MUTATION_TIMEOUT_SECONDS = 900.0
 
 
@@ -53,7 +54,7 @@ class Mutation:
 # job that exists to prove the tests bite would go green having run nothing. That is the same
 # failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
 # Raise this deliberately when a mutation is added; a diff that changes it is the point.
-EXPECTED_MUTATIONS = 85
+EXPECTED_MUTATIONS = 91
 
 
 MUTATIONS = (
@@ -82,6 +83,36 @@ MUTATIONS = (
         ),
     ),
     Mutation(
+        name="a-gate-may-continue-on-error-unnoticed",
+        path="scripts/assert_ci_gates.py",
+        old='        if isinstance(job, Mapping) and job.get("continue-on-error") is True:',
+        new="        if False:",
+        tests=(
+            "tests/test_assert_ci_gates.py::"
+            "test_a_job_that_continues_on_error_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-aggregate-may-be-skipped-instead-of-failed",
+        path="scripts/assert_ci_gates.py",
+        old='    if not (isinstance(condition, str) and "always()" in condition):',
+        new="    if False:",
+        tests=(
+            "tests/test_assert_ci_gates.py::"
+            "test_an_aggregate_without_always_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-aggregate-need-not-read-the-results",
+        path="scripts/assert_ci_gates.py",
+        old='    if "needs." not in body or ".result" not in body:',
+        new="    if False:",
+        tests=(
+            "tests/test_assert_ci_gates.py::"
+            "test_an_aggregate_that_never_reads_the_results_is_refused",
+        ),
+    ),
+    Mutation(
         name="the-gate-accepts-any-xml-as-a-report",
         path="scripts/assert_suite_ran.py",
         old="""    if root.tag not in ROOT_TAGS:
@@ -96,21 +127,52 @@ MUTATIONS = (
         ),
     ),
     Mutation(
-        name="the-gate-believes-a-suite-summary-over-its-own-cases",
+        name="the-gate-accepts-a-summary-contradicting-its-cases",
         path="scripts/assert_suite_ran.py",
-        old="""    failures = max(
-        sum(len(case.findall("failure")) for case in cases),
-        sum(_count(suite, "failures") for suite in suites),
-    )
-    errors = max(
-        sum(len(case.findall("error")) for case in cases),
-        sum(_count(suite, "errors") for suite in suites),
-    )""",
-        new="""    failures = sum(_count(suite, "failures") for suite in suites)
-    errors = sum(_count(suite, "errors") for suite in suites)""",
+        old="""    if disagreements:
+        raise NotAReport(
+            "the suite summary disagrees with its own cases — "
+            + "; ".join(disagreements)
+        )
+""",
+        new="",
         tests=(
             "tests/test_assert_suite_ran.py::"
+            "test_a_summary_that_disagrees_with_its_own_cases_is_refused",
+            "tests/test_assert_suite_ran.py::"
             "test_a_case_that_failed_under_a_summary_claiming_none_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-gate-accepts-a-negative-count",
+        path="scripts/assert_suite_ran.py",
+        old="""    if count < 0:
+        raise NotAReport(f"<testsuite {attribute}={raw!r}> is negative")
+""",
+        new="",
+        tests=("tests/test_assert_suite_ran.py::test_a_negative_count_is_refused",),
+    ),
+    Mutation(
+        name="the-gate-reads-a-wrapper-holding-no-suite",
+        path="scripts/assert_suite_ran.py",
+        old="""    if not suites:
+        raise NotAReport(f"<{root.tag}> contains no <testsuite>")
+""",
+        new="",
+        tests=(
+            "tests/test_assert_suite_ran.py::test_a_wrapper_holding_no_suite_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-gate-adopts-a-case-outside-every-suite",
+        path="scripts/assert_suite_ran.py",
+        old="""    stray = len(list(root.iter("testcase"))) - len(cases)
+    if stray:
+        raise NotAReport(f"{stray} <testcase> element(s) sit outside any <testsuite>")
+""",
+        new="",
+        tests=(
+            "tests/test_assert_suite_ran.py::test_a_case_outside_any_suite_is_refused",
         ),
     ),
     Mutation(
@@ -906,9 +968,10 @@ def run_tests(
     if report_path is not None:
         command.append(f"--junit-xml={report_path}")
     # Bounded, because a mutation can produce a hang rather than a failure — removing a
-    # guard on a retry count or a wait is exactly the kind of fix registered here, and the
-    # mutant that survives by never returning would otherwise sit on the runner's six-hour
-    # job default. A timeout is a `broken` verdict, which is the honest one: nothing judged.
+    # guard on a retry count or a wait is exactly the kind of fix registered here. A mutant
+    # that survives by never returning is named as `broken`, which is the honest verdict:
+    # nothing judged it. Without this the run would stop only at the job's own cap, which
+    # reports the whole job as timed out and says nothing about which mutant hung.
     return subprocess.run(
         command,
         cwd=ROOT,

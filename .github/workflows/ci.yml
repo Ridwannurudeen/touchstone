@@ -16,6 +16,10 @@ name: CI
 # compiles, tests and mutates a checkout. It is not given any secret of this project's, though
 # GitHub mints a `GITHUB_TOKEN` for every job regardless, which is why permissions are empty
 # by default and granted one job at a time.
+#
+# "Empty" is the declared scope, not the effective one: a job with `permissions: {}` is still
+# issued a token carrying `Metadata: read`, which GitHub does not allow to be dropped. The
+# claim here is least privilege, not zero privilege.
 
 on:
   pull_request:
@@ -24,8 +28,9 @@ on:
       - "**"
   workflow_dispatch:
 
-# Nothing by default. Jobs that check out the repository ask for `contents: read` and the
-# rest get nothing at all, so the aggregate that only compares strings holds no token scope.
+# Nothing by default. The six jobs that check out the repository ask for `contents: read`;
+# the aggregate, which only compares strings, asks for nothing and so is left with the
+# `Metadata: read` that GitHub always issues and never lets a workflow drop.
 permissions: {}
 
 concurrency:

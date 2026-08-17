@@ -15,7 +15,13 @@ import pytest
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
-from assert_ci_gates import AGGREGATE, WorkflowError, main, ungoverned  # noqa: E402
+from assert_ci_gates import (  # noqa: E402
+    AGGREGATE,
+    WorkflowError,
+    main,
+    ungoverned,
+    weakened,
+)
 
 WORKFLOW = Path(__file__).parents[1] / ".github" / "workflows" / "ci.yml"
 
@@ -103,6 +109,59 @@ def test_a_workflow_with_an_uncovered_job_exits_nonzero(tmp_path: Path) -> None:
     """Through `main`, because the exit code is what CI actually reads."""
     workflow = covering("lint")
     workflow["jobs"]["forgotten"] = {"runs-on": "ubuntu-24.04"}
+    path = tmp_path / "ci.yml"
+    path.write_text(yaml.safe_dump(workflow), encoding="utf-8")
+
+    assert main([str(path)]) == 1
+
+
+def enforcing(*jobs: str) -> dict:
+    """A workflow whose aggregate both covers every job and actually enforces the results."""
+    workflow = covering(*jobs)
+    workflow["jobs"][AGGREGATE]["if"] = "always()"
+    workflow["jobs"][AGGREGATE]["steps"] = [
+        {"run": 'results="${{ join(needs.*.result, \' \') }}"; echo "${results}"'}
+    ]
+    return workflow
+
+
+def test_the_real_workflow_is_not_neutralised() -> None:
+    loaded = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    assert weakened(loaded) == []
+
+
+def test_an_aggregate_without_always_is_refused() -> None:
+    """A failing gate would skip the aggregate, and a skipped check is not a failed one."""
+    workflow = enforcing("lint")
+    del workflow["jobs"][AGGREGATE]["if"]
+
+    assert any("always()" in problem for problem in weakened(workflow))
+
+
+def test_a_job_that_continues_on_error_is_refused() -> None:
+    """`needs.lint.result` reads `success` off a job that failed, so the gate reads green."""
+    workflow = enforcing("lint")
+    workflow["jobs"]["lint"]["continue-on-error"] = True
+
+    assert any("continue-on-error" in problem for problem in weakened(workflow))
+
+
+def test_an_aggregate_that_never_reads_the_results_is_refused() -> None:
+    """Every gate listed, none consulted — the membership is intact and the check is not."""
+    workflow = enforcing("lint")
+    workflow["jobs"][AGGREGATE]["steps"] = [{"run": "echo nothing to see"}]
+
+    assert any("needs.*.result" in problem for problem in weakened(workflow))
+
+
+def test_an_enforcing_aggregate_is_accepted() -> None:
+    assert weakened(enforcing("lint", "tests")) == []
+
+
+def test_a_neutralised_workflow_exits_nonzero(tmp_path: Path) -> None:
+    """Through `main`, because the exit code is what CI actually reads."""
+    workflow = enforcing("lint")
+    workflow["jobs"]["lint"]["continue-on-error"] = True
     path = tmp_path / "ci.yml"
     path.write_text(yaml.safe_dump(workflow), encoding="utf-8")
 

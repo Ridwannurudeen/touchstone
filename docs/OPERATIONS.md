@@ -232,6 +232,31 @@ Everything here needs explicit approval. One has been given and executed; the re
 
 ---
 
+## 9a. Rolling the reporting key
+
+The daemon reads its deployment manifest and its signing key **once, at startup**. There is
+no hot reload, so a rollover is a stop, an edit, and a start — in that order, and never
+overlapping:
+
+1. **Stop the daemon and confirm it is stopped.** Not "send the signal": confirm. A slot that
+   begins between the two edits below signs with one key against a manifest that expects the
+   other.
+2. **Roll the manifest** with `rolled_over(...)`, which supersedes the active reporting key
+   and keeps the outgoing one listed. Rollover is additive: every bundle the retired key
+   signed stays verifiable, and only the selection for *future* reports changes.
+3. **Install the new signing key** on the host.
+4. **Start the daemon** and confirm the first heartbeat.
+
+**Both edits or neither.** Changing the signing key without rolling the manifest does not
+roll anything over — the publisher checks each report against the manifest's *active*
+reporting key, refuses an unknown one, opens a `PUBLICATION_UNRESOLVED` incident, and
+publishes nothing. That failure is safe but silent-looking: the daemon keeps running and the
+day goes unpublished.
+
+**Never discard a retired key's public record.** It is what verifies everything it signed.
+
+---
+
 ## 10. What this document does not claim
 
 There is no HSM, no KMS, no multisig, no threshold signing. Keys are environment variables

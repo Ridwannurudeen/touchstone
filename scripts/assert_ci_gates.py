@@ -67,6 +67,64 @@ def ungoverned(workflow: object) -> tuple[list[str], list[str]]:
     return missing, unknown
 
 
+def _steps_text(job: Mapping[str, object]) -> str:
+    """Every string in the job's steps, flattened. Enough to see what it references."""
+    steps = job.get("steps", [])
+    if not isinstance(steps, list):
+        return ""
+    parts: list[str] = []
+    for step in steps:
+        if isinstance(step, Mapping):
+            parts.extend(
+                str(value) for value in step.values() if isinstance(value, str)
+            )
+    return "\n".join(parts)
+
+
+def weakened(workflow: object) -> list[str]:
+    """Return the ways the aggregate could be present and still enforce nothing.
+
+    Covering every job is necessary and not sufficient. Three shapes leave the list intact
+    while removing its effect, and a checker that missed them would protect the membership
+    of the gate but not the gate:
+
+    * `continue-on-error: true` on any job makes that job's `result` `success` even when it
+      failed, so the aggregate reads a green result off a red job.
+    * without `if: always()` the aggregate is *skipped* when a dependency fails, and a
+      skipped check is not a failed one.
+    * an aggregate whose steps never mention `needs.*.result` is not reading the results at
+      all, which is the failure mode where every gate is listed and none is consulted.
+    """
+    jobs = _jobs(workflow)
+    if AGGREGATE not in jobs:
+        raise WorkflowError(f"there is no {AGGREGATE!r} job to aggregate anything")
+    aggregate = jobs[AGGREGATE]
+    if not isinstance(aggregate, Mapping):
+        raise WorkflowError(f"the {AGGREGATE!r} job is not a mapping")
+
+    problems: list[str] = []
+    for name, job in sorted(jobs.items()):
+        if isinstance(job, Mapping) and job.get("continue-on-error") is True:
+            problems.append(
+                f"job {name!r} sets continue-on-error, so its failure is reported as success"
+            )
+
+    condition = aggregate.get("if")
+    if not (isinstance(condition, str) and "always()" in condition):
+        problems.append(
+            f"{AGGREGATE!r} has no `if: always()`, so a failing gate skips it rather than "
+            "failing it"
+        )
+
+    body = _steps_text(aggregate)
+    if "needs." not in body or ".result" not in body:
+        problems.append(
+            f"{AGGREGATE!r} never reads `needs.*.result`, so it waits for the gates without "
+            "checking them"
+        )
+    return problems
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -88,8 +146,15 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     try:
         missing, unknown = ungoverned(loaded)
+        neutralised = weakened(loaded)
     except WorkflowError as error:
         print(f"{arguments.workflow}: {error}")
+        return 1
+
+    if neutralised:
+        print(f"{arguments.workflow}:")
+        for problem in neutralised:
+            print(f"  - {problem}")
         return 1
 
     if missing or unknown:

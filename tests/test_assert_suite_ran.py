@@ -126,13 +126,13 @@ def test_a_case_in_a_different_module_is_refused(tmp_path: Path) -> None:
 def test_the_wrapper_and_bare_shapes_are_both_read(tmp_path: Path) -> None:
     """pytest emits a <testsuites> wrapper; the JUnit format also allows a bare <testsuite>.
 
-    Reading failure counts off the root's own attributes worked on the bare shape and reported
-    zero on the wrapper, which is the direction that fails open.
+    Reading counts off the root's own attributes worked on the bare shape and reported zero
+    on the wrapper, which is the direction that fails open.
     """
     bare = """<?xml version="1.0" encoding="utf-8"?>
 <testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2">
-  <testcase classname="t" name="one"/>
-  <testcase classname="t" name="two"/>
+  <testcase classname="t" name="one"><failure message="a">a</failure></testcase>
+  <testcase classname="t" name="two"><failure message="b">b</failure></testcase>
 </testsuite>
 """
     read = read_report(_report(tmp_path, bare))
@@ -145,6 +145,56 @@ def test_the_wrapper_and_bare_shapes_are_both_read(tmp_path: Path) -> None:
         0,
     )
     assert wrapped.identities == (ONE, TWO)
+
+
+@pytest.mark.parametrize("tally", ["tests", "skipped", "failures", "errors"])
+def test_a_summary_that_disagrees_with_its_own_cases_is_refused(
+    tmp_path: Path, tally: str
+) -> None:
+    """A count in the header that no case supports means something else wrote this file.
+
+    An earlier version reconciled the two sources with max(), which stops a green result
+    whenever either side reports a problem but accepts the incoherent report as coherent on
+    the way. The clearest example is a summary claiming a skip that no case carries: nothing
+    was skipped by the cases, so nothing refused it, and the run passed.
+    """
+    body = PASSED_TWO.replace(f'{tally}="0"', f'{tally}="1"').replace(
+        'tests="2"', 'tests="2"' if tally != "tests" else 'tests="3"'
+    )
+    with pytest.raises(NotAReport, match="disagrees"):
+        read_report(_report(tmp_path, body))
+    assert main([str(_report(tmp_path, body)), *BOTH]) == 1
+
+
+def test_a_negative_count_is_refused(tmp_path: Path) -> None:
+    """It is not a report about anything, and under max() it cancelled a real failure."""
+    body = PASSED_TWO.replace('failures="0"', 'failures="-1"')
+    with pytest.raises(NotAReport, match="negative"):
+        read_report(_report(tmp_path, body))
+    assert main([str(_report(tmp_path, body)), *BOTH]) == 1
+
+
+def test_a_wrapper_holding_no_suite_is_refused(tmp_path: Path) -> None:
+    """Cases directly under <testsuites> were adopted as a clean run of exactly those cases."""
+    body = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testcase classname="t" name="one"/>
+  <testcase classname="t" name="two"/>
+</testsuites>
+"""
+    with pytest.raises(NotAReport, match="no <testsuite>"):
+        read_report(_report(tmp_path, body))
+    assert main([str(_report(tmp_path, body)), *BOTH]) == 1
+
+
+def test_a_case_outside_any_suite_is_refused(tmp_path: Path) -> None:
+    """A stray case beside a well-formed suite is counted as the anomaly it is."""
+    body = PASSED_TWO.replace(
+        "</testsuite>", '</testsuite>\n  <testcase classname="t" name="stray"/>'
+    )
+    with pytest.raises(NotAReport, match="outside any"):
+        read_report(_report(tmp_path, body))
+    assert main([str(_report(tmp_path, body)), *BOTH]) == 1
 
 
 def test_a_count_that_is_not_a_number_is_refused(tmp_path: Path) -> None:

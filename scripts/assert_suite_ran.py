@@ -62,12 +62,23 @@ class Report:
         return len(self.identities)
 
 
+# The four totals a JUnit suite declares about itself, each of which the cases below it also
+# answer. They must agree, so both answers are read and compared rather than combined.
+TALLIES = ("tests", "skipped", "failures", "errors")
+
+
 def _count(suite: ElementTree.Element, attribute: str) -> int:
     raw = suite.get(attribute, "0")
     try:
-        return int(raw)
+        count = int(raw)
     except ValueError as error:
         raise NotAReport(f"<testsuite {attribute}={raw!r}> is not a count") from error
+    # A negative total is not a report about anything, and it used to cancel a real one:
+    # combining the two sources with max() meant failures="-1" beside a genuine failure
+    # still produced zero.
+    if count < 0:
+        raise NotAReport(f"<testsuite {attribute}={raw!r}> is negative")
+    return count
 
 
 def read_report(path: Path) -> Report:
@@ -82,25 +93,46 @@ def read_report(path: Path) -> Report:
     # pytest emits the wrapper. Reading only the root's attributes therefore worked on one
     # shape and silently reported zero on the other.
     suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
-    cases = list(root.iter("testcase"))
+    if not suites:
+        raise NotAReport(f"<{root.tag}> contains no <testsuite>")
 
-    # Both directions are read, and the larger wins, because the two disagree in two
-    # different real ways. A summary saying zero over cases that carry `<failure>` is the
-    # report that made this script accept a failing run; a suite-level error that produced
-    # no case element at all is a collection that died before any test existed. Trusting
-    # either source alone leaves one of those invisible.
-    failures = max(
-        sum(len(case.findall("failure")) for case in cases),
-        sum(_count(suite, "failures") for suite in suites),
-    )
-    errors = max(
-        sum(len(case.findall("error")) for case in cases),
-        sum(_count(suite, "errors") for suite in suites),
-    )
+    # Cases are collected through the suites, not from the root, so that a <testcase> placed
+    # outside any suite is counted as the anomaly it is rather than silently adopted. A
+    # wrapper holding bare cases and no suite was accepted as a clean two-case run.
+    cases = [case for suite in suites for case in suite.iter("testcase")]
+    stray = len(list(root.iter("testcase"))) - len(cases)
+    if stray:
+        raise NotAReport(f"{stray} <testcase> element(s) sit outside any <testsuite>")
+
+    # Both sources are read and required to agree, rather than combined. An earlier version
+    # took max(), which stops a green result whenever either side reports a problem but
+    # accepts an incoherent report as coherent on the way — and a summary that disagrees
+    # with its own cases is not a report this script should be interpreting at all. pytest
+    # emits internally consistent counts, so disagreement means something else wrote this.
+    summary = {
+        tally: sum(_count(suite, tally) for suite in suites) for tally in TALLIES
+    }
+    observed = {
+        "tests": len(cases),
+        "skipped": sum(len(case.findall("skipped")) for case in cases),
+        "failures": sum(len(case.findall("failure")) for case in cases),
+        "errors": sum(len(case.findall("error")) for case in cases),
+    }
+    disagreements = [
+        f"{tally}: the summary says {summary[tally]}, the cases show {observed[tally]}"
+        for tally in TALLIES
+        if summary[tally] != observed[tally]
+    ]
+    if disagreements:
+        raise NotAReport(
+            "the suite summary disagrees with its own cases — "
+            + "; ".join(disagreements)
+        )
+
     return Report(
-        skipped=sum(len(case.findall("skipped")) for case in cases),
-        failures=failures,
-        errors=errors,
+        skipped=observed["skipped"],
+        failures=observed["failures"],
+        errors=observed["errors"],
         identities=tuple(
             f"{case.get('classname', '')}::{case.get('name', '')}" for case in cases
         ),
