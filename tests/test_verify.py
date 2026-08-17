@@ -11,6 +11,7 @@ from touchstone.controls import ControlRecord
 from touchstone.epoch import FixtureTransport, run_ustb_epoch
 from touchstone.evidence import EvidenceStore
 from historical_pack import historical_controls, historical_ledger_bytes
+from touchstone.evaluate import default_ustb_controls
 from touchstone.report import (
     build_observation_report,
     control_set_root,
@@ -608,11 +609,11 @@ def test_the_production_control_set_is_derived_from_the_ledger_not_filtered_by_i
 
     An audit asked for one, on the reading that `assert_ledger_permits` runs only inside
     `verify_bundle` — so an unapproved control could be signed and published, and only an
-    offline reader would notice. Traced through, it cannot: `run_ustb_epoch` takes no control
-    set and evaluates `historical_controls()` (`epoch.py:207`), that function *builds* its
-    controls out of the ledger's approved entries rather than checking a caller's list
-    against them (`evaluate.py:184`), and `report.py:245` refuses a report whose control set
-    does not match what the epoch evaluated. There is no injection point.
+    offline reader would notice. Traced through, it cannot: `run_ustb_epoch` defaults to
+    `default_ustb_controls()` when no control set is supplied (`epoch.py:214`), that function
+    *builds* its controls out of the ledger's approved entries rather than checking a
+    caller's list against them, and `report.py` refuses a report whose control set does not
+    match what the epoch evaluated. There is no injection point in the production path.
 
     Deriving is stronger than asserting, and this test pins the derivation, because it is the
     property the absent check relies on. Widen `default_ustb_controls` to accept an override,
@@ -620,12 +621,17 @@ def test_the_production_control_set_is_derived_from_the_ledger_not_filtered_by_i
     """
     from touchstone.approval import APPROVED_KEY, load_approval_ledger
 
+    # The shipped ledger and the shipped controls, deliberately. This is the production
+    # lane: it asserts what actually ships and is meant to move when the approved set moves.
+    # A broad substitution once pointed it at the frozen pack, which made it compare the
+    # shipped ledger against a set that is not derived from it -- the assertion still passed
+    # and had stopped meaning anything.
     ledger = load_approval_ledger()
     approved = {entry["control_id"] for entry in ledger[APPROVED_KEY]}
-    produced = {control.control_id for control in historical_controls()}
+    produced = {control.control_id for control in default_ustb_controls()}
 
     assert produced == approved
-    assert all(control.approval_state == "approved" for control in historical_controls())
+    assert all(control.approval_state == "approved" for control in default_ustb_controls())
 
 
 def test_a_bundle_refuses_a_ledger_that_drifted_since_the_report_was_signed(

@@ -26,6 +26,13 @@ from pathlib import Path
 from touchstone.controls import ControlRecord
 from touchstone.evaluate import default_ustb_controls
 
+# A byte-for-byte copy of `data/compilations/APPROVALS.json` as it stood on 2026-08-17,
+# before the recompiled set was approved. Byte-for-byte matters and is not tidiness: raw
+# ledger bytes are hashed into every report, so a copy that differed only in key order or in
+# a note would produce a different digest and would not be the ledger any historical report
+# was signed under. An earlier version of this file was a reconstruction carrying its own
+# explanatory note, and hashed to 7aaa7a17… while the ledger hashed to 61837371….
+# Explanation belongs here, in the module, where it changes no bytes.
 PACK = Path(__file__).parent / "historical_pack.json"
 
 
@@ -42,10 +49,15 @@ def historical_controls() -> tuple[ControlRecord, ...]:
 def historical_ledger_bytes() -> bytes:
     """The frozen ledger as bytes, for the `approval_ledger=` boundary.
 
-    `build_observation_report` and `verify_bundle` both default to the shipped ledger and
-    both accept an explicit one. A report built from these controls has to be verified
-    against the ledger they came from — otherwise the report commits to one control set and
-    the verifier re-derives another, which is what "epoch evaluations do not match the
-    control set" was reporting.
+    `build_observation_report` and `create_bundle` each default to the shipped ledger and
+    each accept an explicit one, so a report built from these controls must be given the
+    ledger they came from — otherwise the report commits to one control set and the bundle
+    carries another, which is what "epoch evaluations do not match the control set" was
+    reporting.
+
+    `verify_bundle` takes no ledger and defaults to nothing: it reads the one embedded in
+    the bundle, which is what makes it an offline verifier. An earlier version of this
+    docstring said it behaved like the other two. It does not, and passing one raises
+    TypeError — which is how the claim was found to be wrong.
     """
     return PACK.read_bytes()
