@@ -82,6 +82,7 @@ def make_producer(
     previous_state: Callable[[date], AssetState],
     transport: Transport | None = None,
     bundle_sink: Callable[[Mapping[str, object]], None] | None = None,
+    approval_ledger: bytes | None = None,
 ) -> Callable[[datetime], Mapping[str, object] | None]:
     """Build the ``produce`` callable the service's slot runner expects.
 
@@ -105,8 +106,24 @@ def make_producer(
     legacy, corrupted or externally created operation has no such guarantee. An earlier
     version of this docstring claimed publication and verifiability "cannot come apart",
     which recovery disproves.
+
+    ``approval_ledger`` overrides the ledger the slot reads, and is **fixed for the whole
+    lifetime of the producer** — it is taken once, here, not per slot. It exists so a test or
+    a rehearsal can drive the producer under the control set some historical evidence was
+    approved under; a newly compiled control cannot evaluate evidence captured before its
+    compile date, so a suite pinned to whatever ships today breaks on every recompile. The
+    wiring in ``scripts/run_service.py`` must omit it: production reads the shipped ledger.
+
+    It takes ledger *bytes* rather than resolved controls deliberately. The bytes are the one
+    object the controls, the epoch's evaluation, the report's committed digest and the bundle
+    are all derived from — hand it a control set instead and a caller could pass one whose
+    digest is not the digest the report commits to, which is the four-reads defect below
+    wearing a different coat. Nothing here re-checks the override: `build_observation_report`
+    already verifies these exact bytes approve these exact controls and hashes them into the
+    report, and `create_bundle` refuses bytes whose digest differs from the signed report.
     """
     live = LiveTransport() if transport is None else transport
+    frozen_ledger = None if approval_ledger is None else bytes(approval_ledger)
 
     def produce(scheduled_at: datetime) -> Mapping[str, object] | None:
         moment = utc_instant(scheduled_at, "scheduled_at")
@@ -119,7 +136,7 @@ def make_producer(
         # two of those reads produced a signed report whose own verifier refused it: the
         # controls came from one ledger and the commitment named another, and every
         # individual check passed because each was consistent with the read next to it.
-        ledger = ledger_bytes()
+        ledger = ledger_bytes() if frozen_ledger is None else frozen_ledger
         controls = default_ustb_controls(ledger_from_bytes(ledger))
 
         try:
@@ -224,7 +241,10 @@ def _path_component(epoch_id: object) -> str:
     that was not thought of, and an epoch id has no legitimate reason to contain anything
     outside this set.
     """
-    if isinstance(epoch_id, str) and epoch_id.split(".", 1)[0].upper() in _WINDOWS_DEVICES:
+    if (
+        isinstance(epoch_id, str)
+        and epoch_id.split(".", 1)[0].upper() in _WINDOWS_DEVICES
+    ):
         # Windows resolves a reserved device name before the extension and case-insensitively,
         # so `CON.foo`, `NUL.` and `COM1.log` are the console, the null device and a serial
         # port while passing the allowlist below perfectly. Writing a bundle to one discards

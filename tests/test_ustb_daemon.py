@@ -31,6 +31,7 @@ from touchstone.publish import PublisherClient, TransportUnavailable
 from touchstone.signing import Ed25519Signer, verify_signed_report
 from touchstone.sources import SourceTransportError
 from touchstone.translog import TransparencyLog
+from touchstone.verify import verify_bundle
 from touchstone.ustb_daemon import (
     EpochProductionError,
     asset_key_bytes,
@@ -44,6 +45,7 @@ from touchstone.workspace import Workspace
 
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
+from historical_pack import historical_controls, historical_ledger_bytes  # noqa: E402
 from run_service import Service, serve  # noqa: E402
 from test_publish import FakeBackend, _signed_report  # noqa: E402
 from test_service import Clock  # noqa: E402
@@ -103,6 +105,11 @@ def seeded_store(tmp_path: Path) -> EvidenceStore:
     Value controls observe only a row confirmed across two captures, so an evidence store
     with nothing behind it produces an honest UNVERIFIABLE rather than a report. Seeding is
     what a real deployment does by running for a day before anyone looks.
+
+    Seeded under the frozen ledger, matching the slot that consumes it. This defaulted to
+    the shipped set, so the day of evidence behind every slot here was evaluated against one
+    control set while the slot evaluated against another — invisible while the two happened
+    to be equal, and a silent divergence on the next recompile.
     """
     from touchstone.epoch import run_ustb_epoch
 
@@ -112,6 +119,7 @@ def seeded_store(tmp_path: Path) -> EvidenceStore:
         store=store,
         now=date(2026, 8, 13),
         retrieved_at=CONFIRMED_AT,
+        controls=historical_controls(),
     )
     return store
 
@@ -153,10 +161,22 @@ def producer(
     transport=None,
     bundle_sink=None,
     signer: Ed25519Signer | None = None,
+    approval_ledger: bytes | None = historical_ledger_bytes(),
 ):
+    """The shared producer for this suite, pinned to the frozen ledger by default.
+
+    These tests drive real slots against fixtures captured on 2026-08-14, and a control
+    compiled today cannot evaluate evidence older than its own compile date — so under a
+    freshly approved set the daemon publishes nothing and fifteen tests here fail as
+    `StopIteration` and `assert 0 == 1`, none of which is about the daemon. Pinning the
+    ledger keeps them about scheduling, restarts, outages and recovery.
+
+    Pass `approval_ledger=None` for the production path, where the point *is* what ships.
+    """
     if signer is None:
         signer = Ed25519Signer.from_seed(bytes(range(32)))
     return signer, make_producer(
+        approval_ledger=approval_ledger,
         store=store,
         signer=signer,
         next_sequence=lambda: backend.latest_sequence(asset_key_bytes(ASSET)) + 1,
@@ -737,7 +757,11 @@ def test_one_slot_reads_the_approval_ledger_exactly_once(
     backend = FakeBackend()
     service, workspace = built(tmp_path, backend)
     _, produce = producer(
-        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+        store,
+        service,
+        backend,
+        bundle_sink=write_bundle(workspace.bundles),
+        approval_ledger=None,
     )
     reads.clear()
 
@@ -747,6 +771,61 @@ def test_one_slot_reads_the_approval_ledger_exactly_once(
         f"the approval ledger was read {len(reads)} times in one slot: {reads}. "
         "Every read is another chance for two of them to disagree."
     )
+
+
+def test_an_injected_ledger_replaces_the_shipped_one_rather_than_joining_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The override must be the *only* ledger in the slot, not one of two.
+
+    Reading the shipped ledger anywhere underneath an injected one would rebuild the exact
+    defect `make_producer` was written to close: controls resolved from one ledger while the
+    report commits the digest of another, each check passing because each agrees with the
+    read beside it. So the shipped file is made to raise rather than counted — a count can
+    be satisfied by reading the wrong file once.
+
+    The bundle is verified, not merely inspected, because carrying the right bytes and
+    being checkable against them are different claims.
+    """
+    import touchstone.approval as approval
+
+    real_bytes = approval.Path.read_bytes
+    real_text = approval.Path.read_text
+
+    def refuse(self, *args, **kwargs):
+        if self == approval.LEDGER:
+            raise AssertionError(
+                "the shipped ledger was read during a slot given an injected one"
+            )
+        return real_bytes(self, *args, **kwargs)
+
+    def refuse_text(self, *args, **kwargs):
+        if self == approval.LEDGER:
+            raise AssertionError(
+                "the shipped ledger was read during a slot given an injected one"
+            )
+        return real_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(approval.Path, "read_bytes", refuse)
+    monkeypatch.setattr(approval.Path, "read_text", refuse_text)
+
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+    service, workspace = built(tmp_path, backend)
+    _, produce = producer(
+        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+    )
+
+    run(service, produce)
+
+    written = sorted(workspace.bundles.glob("*.json"))
+    assert len(written) == 1, f"expected one bundle, got {written}"
+    bundle = json.loads(written[0].read_text(encoding="utf-8"))
+
+    assert bundle["approval_ledger"] == historical_ledger_bytes().decode("utf-8"), (
+        "the bundle carries a different ledger than the one injected"
+    )
+    verify_bundle(bundle)
 
 
 @pytest.mark.parametrize(

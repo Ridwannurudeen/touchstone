@@ -657,7 +657,12 @@ MUTATIONS = (
     Mutation(
         name="a-bundle-filename-may-be-a-windows-device",
         path="touchstone/ustb_daemon.py",
-        old='    if isinstance(epoch_id, str) and epoch_id.split(".", 1)[0].upper() in _WINDOWS_DEVICES:',
+        old=(
+            "    if (\n"
+            "        isinstance(epoch_id, str)\n"
+            '        and epoch_id.split(".", 1)[0].upper() in _WINDOWS_DEVICES\n'
+            "    ):"
+        ),
         new="    if False:",
         tests=(
             "tests/test_ustb_daemon.py::"
