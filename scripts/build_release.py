@@ -209,7 +209,9 @@ def _require_dir(path: Path, label: Path) -> None:
 def _commit(root: Path) -> dict[str, object]:
     sha = _git(root, "rev-parse", "HEAD").strip()
     if _COMMIT.fullmatch(sha) is None:
-        raise ReleaseError(f"git rev-parse HEAD did not return a 40-hex commit: {sha!r}")
+        raise ReleaseError(
+            f"git rev-parse HEAD did not return a 40-hex commit: {sha!r}"
+        )
     # Non-empty porcelain is the whole signal. A dirty tree still gets a document —
     # refusing would hide the fact that the release does not correspond to a commit,
     # and pretending it is clean would be worse.
@@ -234,8 +236,10 @@ def _git(root: Path, *arguments: str) -> str:
         env=environment,
     )
     if finished.returncode != 0:
-        detail = finished.stderr.strip() or finished.stdout.strip() or (
-            f"exit {finished.returncode}"
+        detail = (
+            finished.stderr.strip()
+            or finished.stdout.strip()
+            or (f"exit {finished.returncode}")
         )
         raise ReleaseError(f"git {' '.join(arguments)} failed: {detail}")
     return finished.stdout
@@ -293,8 +297,54 @@ def _contracts(root: Path) -> dict[str, object]:
     return settings
 
 
+def _strip_js_comments(text: str) -> str:
+    """Blank out `//` and `/* */` comments, preserving length and line structure.
+
+    The scanner below matches the *first* occurrence of each key, and a commented-out
+    setting is an earlier occurrence. A config carrying `// runs: 1` above the real
+    `runs: 200` recorded 1 — and a commented `version: "0.4.0"` above the real version
+    recorded 0.4.0. A release document exists to say what a release was built with, so
+    reading a setting the compiler never enacted is the one thing it must not do.
+
+    Replaced with spaces rather than removed so every later offset still refers to the
+    same place in the file.
+    """
+    out = list(text)
+    index, length = 0, len(text)
+    in_string: str | None = None
+    while index < length:
+        char = text[index]
+        if in_string is not None:
+            if char == "\\":
+                index += 2
+                continue
+            if char == in_string:
+                in_string = None
+            index += 1
+            continue
+        if char in "\"'`":
+            in_string = char
+            index += 1
+            continue
+        if char == "/" and index + 1 < length and text[index + 1] == "/":
+            while index < length and text[index] != "\n":
+                out[index] = " "
+                index += 1
+            continue
+        if char == "/" and index + 1 < length and text[index + 1] == "*":
+            end = text.find("*/", index + 2)
+            end = length if end == -1 else end + 2
+            for position in range(index, end):
+                if out[position] != "\n":
+                    out[position] = " "
+            index = end
+            continue
+        index += 1
+    return "".join(out)
+
+
 def _hardhat_solidity(path: Path) -> dict[str, object]:
-    text = path.read_bytes().decode("utf-8")
+    text = _strip_js_comments(path.read_bytes().decode("utf-8"))
     solidity = _js_object(text, "solidity")
     version = _js_quoted(solidity, "version")
     optimizer = _js_object(solidity, "optimizer")
@@ -352,7 +402,17 @@ def _js_int(text: str, key: str) -> int | None:
 
 def _deployments(root: Path) -> dict[str, object]:
     records: dict[str, object] = {}
-    for path in sorted((root / DEPLOYMENTS).glob("*.json")):
+    # `glob("*.json")` is case-insensitive on Windows and case-sensitive on Linux, so the
+    # same tree produced different documents on different platforms — and a template named
+    # `X.TEMPLATE.json` was matched by the glob on Windows while `_is_real_manifest`'s
+    # case-sensitive `.template.` filter let it through, shipping its placeholder address.
+    # Iterating the directory and comparing the suffix here makes the set identical
+    # everywhere, which a reproducibility claim requires.
+    for path in sorted(
+        entry
+        for entry in (root / DEPLOYMENTS).iterdir()
+        if entry.is_file() and entry.name.endswith(".json")
+    ):
         if not _is_real_manifest(path):
             continue
         relative = path.relative_to(root).as_posix()

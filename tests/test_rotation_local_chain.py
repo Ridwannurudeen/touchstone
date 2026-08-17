@@ -185,6 +185,12 @@ def test_a_rotation_on_a_real_registry_moves_authority_and_keeps_lineage(
     )
     # Passes today, and the same object is used again after the rotation to show that what
     # changed is the chain's answer rather than the file.
+    #
+    # This assertion does not prove the lineage check by itself, and it would be easy to
+    # read as though it did: `_manifest` reads `publisher_identity_address` back from the
+    # registry, so a manifest built this way can never disagree with the registry it was
+    # built from. What it establishes is that every other preflight input is good. The
+    # lineage check is proved by the second test, which changes that one field by hand.
     assert _backend(before, outgoing.key.hex()).preflight().publisher_authorized
 
     _confirm(
@@ -254,6 +260,14 @@ def test_a_successor_manifest_claiming_its_own_identity_is_refused(chain: str) -
         deployer=owner,
         operations=operations,
     )
+    # The positive control, and it is the whole reason this test means anything. Without it a
+    # bare `raises(PreflightFailed)` passes when preflight refuses for a reason that has
+    # nothing to do with lineage — a bytecode digest that does not match, an RPC that answers
+    # for another chain — so the test would report lineage coverage while proving only that
+    # something, somewhere, was wrong. Proving the honest manifest passes first pins every
+    # other input as good, which leaves the identity field as the only thing that changed.
+    assert _backend(honest, incoming.key.hex()).preflight().publisher_authorized
+
     claimed_own_identity = DeploymentManifest.from_mapping(
         {
             **honest.to_mapping(),
@@ -261,5 +275,6 @@ def test_a_successor_manifest_claiming_its_own_identity_is_refused(chain: str) -
         }
     )
 
-    with pytest.raises(PreflightFailed):
+    # Matched, not merely raised: the refusal has to be the lineage one.
+    with pytest.raises(PreflightFailed, match="lineage"):
         _backend(claimed_own_identity, incoming.key.hex()).preflight()

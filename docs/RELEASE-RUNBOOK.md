@@ -71,10 +71,23 @@ Zero is a real count. An omitted flag stays `null` and is explained in
 fill them with zero. Supplying none of the four writes the note that the
 builder does not run the suite and will not invent the counts.
 
-On success the script prints `wrote <path>` and exits 0. On a missing required
-input, an unreadable tree, or a git failure it prints `RELEASE FAIL: …` to
-stderr and exits 1. It does not leave a half-written destination: the
-temporary file is replaced only after the bytes are complete.
+On success the script prints `wrote <path>` and exits 0.
+
+Failures split by kind, and the exit codes differ:
+
+| What is wrong | Output | Exit |
+|---|---|---|
+| A required flag is absent (`--out`, `--built-at`) | argparse usage error naming the flag | **2** |
+| An input file is missing, the tree is unreadable, git fails, or `--built-at` is malformed | `RELEASE FAIL: …` on stderr | **1** |
+
+An earlier version of this paragraph said "a missing required input … exits 1", which
+readers would apply to a forgotten `--out`. That case never reaches the script's own error
+handling — argparse rejects it first and exits 2. Both are refusals and neither writes a
+file, but a runbook that names the wrong code sends whoever is reading it looking in the
+wrong place.
+
+It does not leave a half-written destination: the temporary file is replaced only after the
+bytes are complete.
 
 Two runs over the same tree with the same arguments produce byte-identical
 output: keys sorted, indent 2, UTF-8, `\n` separators, trailing newline.

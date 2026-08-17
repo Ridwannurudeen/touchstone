@@ -25,6 +25,7 @@ from build_release import encode_release, main, sha256_file  # noqa: E402
 
 
 REPO = Path(__file__).parents[1]
+SCRIPT = REPO / "scripts" / "build_release.py"
 BUILT_AT = "2026-08-17T00:00:00Z"
 
 PYPROJECT = """\
@@ -169,6 +170,13 @@ def _document(path: Path) -> dict:
 
 
 def test_two_runs_over_one_tree_produce_identical_bytes(tmp_path: Path) -> None:
+    """Two runs in one process, which is the weaker half of the claim.
+
+    Kept because it is the cheap check, and labelled because it cannot fail for the reason
+    its name suggests: both calls share one interpreter, so dict insertion order and
+    directory enumeration are identical by construction. Removing every `sorted()` in the
+    builder leaves this passing. The cross-process case below is the one that bites.
+    """
     root = _tree(tmp_path)
     first = tmp_path / "r1.json"
     second = tmp_path / "r2.json"
@@ -177,6 +185,44 @@ def test_two_runs_over_one_tree_produce_identical_bytes(tmp_path: Path) -> None:
     assert _build(root, first, counts) == 0
     assert _build(root, second, counts) == 0
     assert first.read_bytes() == second.read_bytes()
+
+
+def test_separate_processes_with_different_hash_seeds_agree(tmp_path: Path) -> None:
+    """The reproducibility claim, tested where it can actually break.
+
+    `PYTHONHASHSEED` changes the iteration order of sets and of anything built from them, and
+    it is fixed for the life of an interpreter — so no in-process test can vary it. Two
+    subprocesses with different seeds are the only way to find out whether the output depends
+    on ordering the builder was never entitled to rely on.
+    """
+    root = _tree(tmp_path)
+    outputs = []
+    for seed in ("0", "1", "12345"):
+        destination = tmp_path / f"seed-{seed}.json"
+        environment = {**os.environ, "PYTHONHASHSEED": seed}
+        finished = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--root",
+                str(root),
+                "--out",
+                str(destination),
+                "--built-at",
+                BUILT_AT,
+                "--tests-passed",
+                "1600",
+            ],
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        assert finished.returncode == 0, finished.stderr
+        outputs.append(destination.read_bytes())
+
+    assert outputs[0] == outputs[1] == outputs[2], (
+        "the document changed with the hash seed, so it depends on iteration order"
+    )
 
 
 def test_an_omitted_test_summary_is_recorded_as_absent_not_as_zero(
@@ -538,3 +584,58 @@ def _assert_no_absolute_paths(value: object) -> None:
     if isinstance(value, str):
         assert not Path(value).is_absolute(), value
         assert "\\" not in value
+
+
+def test_a_commented_out_compiler_setting_is_not_recorded(tmp_path: Path) -> None:
+    """A release document must name what the compiler enacted, not what was disabled.
+
+    The scanner matches the first occurrence of each key, and a commented-out setting is an
+    earlier occurrence. Before comments were stripped, `// runs: 1` above the real `runs: 200`
+    was recorded as 1, and a commented `version: "0.4.0"` was recorded as the solidity
+    version — a manifest naming a compiler configuration that never existed.
+    """
+    root = _tree(tmp_path)
+    poisoned = b"""module.exports = {
+  solidity: {
+    // version: "0.4.0",
+    version: "0.8.24",
+    settings: {
+      optimizer: {
+        /* enabled: false, */
+        // runs: 1,
+        enabled: true,
+        runs: 200,
+      },
+    },
+  },
+};
+"""
+    _write(root / "contracts" / "hardhat.config.js", poisoned)
+    destination = tmp_path / "release.json"
+
+    assert _build(root, destination, ["--tests-passed", "1"]) == 0
+    contracts = json.loads(destination.read_text(encoding="utf-8"))["contracts"]
+    assert contracts["solidity"] == "0.8.24"
+    assert contracts["optimizer"] == {"enabled": True, "runs": 200}
+
+
+def test_a_template_named_in_upper_case_is_still_excluded(tmp_path: Path) -> None:
+    """The exclusion cannot depend on the platform's idea of a filename.
+
+    `Path.glob("*.json")` is case-insensitive on Windows and case-sensitive on Linux, so the
+    same tree produced different documents on different platforms. Worse, the `.template.`
+    filter compared case-sensitively, so on Windows a `.TEMPLATE.json` was globbed in and not
+    filtered out — shipping its placeholder address as though it were a deployment.
+    """
+    root = _tree(tmp_path)
+    _write(
+        root / "deployments" / "xlayer-mainnet.TEMPLATE.json",
+        json.dumps(TEMPLATE).encode("utf-8"),
+    )
+    destination = tmp_path / "release.json"
+
+    assert _build(root, destination, ["--tests-passed", "1"]) == 0
+    deployments = json.loads(destination.read_text(encoding="utf-8"))["deployments"]
+    assert not any("TEMPLATE" in path.upper() for path in deployments), (
+        f"a template was recorded as a deployment: {sorted(deployments)}"
+    )

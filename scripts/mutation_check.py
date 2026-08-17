@@ -54,7 +54,7 @@ class Mutation:
 # job that exists to prove the tests bite would go green having run nothing. That is the same
 # failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
 # Raise this deliberately when a mutation is added; a diff that changes it is the point.
-EXPECTED_MUTATIONS = 112
+EXPECTED_MUTATIONS = 114
 
 
 MUTATIONS = (
@@ -66,6 +66,30 @@ MUTATIONS = (
         tests=(
             "tests/test_rotation_local_chain.py::"
             "test_a_successor_manifest_claiming_its_own_identity_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-release-document-reads-commented-out-compiler-settings",
+        path="scripts/build_release.py",
+        old='    text = _strip_js_comments(path.read_bytes().decode("utf-8"))',
+        new='    text = path.read_bytes().decode("utf-8")',
+        tests=(
+            "tests/test_build_release.py::"
+            "test_a_commented_out_compiler_setting_is_not_recorded",
+        ),
+    ),
+    Mutation(
+        name="the-release-document-lists-deployments-by-platform-glob",
+        path="scripts/build_release.py",
+        old="""    for path in sorted(
+        entry
+        for entry in (root / DEPLOYMENTS).iterdir()
+        if entry.is_file() and entry.name.endswith(".json")
+    ):""",
+        new='    for path in sorted((root / DEPLOYMENTS).glob("*.json")):',
+        tests=(
+            "tests/test_build_release.py::"
+            "test_a_template_named_in_upper_case_is_still_excluded",
         ),
     ),
     Mutation(
