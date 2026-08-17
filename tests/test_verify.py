@@ -591,3 +591,93 @@ def test_a_control_absent_from_the_ledger_is_refused(tmp_path: Path) -> None:
         assert_ledger_permits(controls, __import__(
             "touchstone.approval", fromlist=["load_approval_ledger"]
         ).load_approval_ledger())
+
+
+def test_the_production_control_set_is_derived_from_the_ledger_not_filtered_by_it() -> None:
+    """Why `build_observation_report` needs no ledger check of its own.
+
+    An audit asked for one, on the reading that `assert_ledger_permits` runs only inside
+    `verify_bundle` — so an unapproved control could be signed and published, and only an
+    offline reader would notice. Traced through, it cannot: `run_ustb_epoch` takes no control
+    set and evaluates `default_ustb_controls()` (`epoch.py:207`), that function *builds* its
+    controls out of the ledger's approved entries rather than checking a caller's list
+    against them (`evaluate.py:184`), and `report.py:245` refuses a report whose control set
+    does not match what the epoch evaluated. There is no injection point.
+
+    Deriving is stronger than asserting, and this test pins the derivation, because it is the
+    property the absent check relies on. Widen `default_ustb_controls` to accept an override,
+    or let it return anything the ledger has not approved, and this fails.
+    """
+    from touchstone.approval import APPROVED_KEY, load_approval_ledger
+
+    ledger = load_approval_ledger()
+    approved = {entry["control_id"] for entry in ledger[APPROVED_KEY]}
+    produced = {control.control_id for control in default_ustb_controls()}
+
+    assert produced == approved
+    assert all(control.approval_state == "approved" for control in default_ustb_controls())
+
+
+def test_a_bundle_refuses_a_ledger_that_drifted_since_the_report_was_signed(
+    tmp_path: Path,
+) -> None:
+    """The report commits to the ledger when signed; the bundle was built later.
+
+    `create_bundle` re-read the ledger off disk, so approving one more control between
+    signing and bundling — which the pending NAV recompilation will do — produced a bundle
+    that no longer hashed to its own report's commitment. `_verify_approval_ledger` refuses
+    exactly that, so the bundle for an already-published report became unbuildable.
+    """
+    from touchstone.approval import ApprovalError
+
+    epoch = _epoch(tmp_path)
+    signer = Ed25519Signer.from_seed(bytes(range(32)))
+    report = build_observation_report(
+        epoch,
+        default_ustb_controls(),
+        epoch_id="ustb-2026-08-14",
+        sequence=1,
+        publisher_kid=signer.kid,
+    )
+    drifted = b'{"approved": [], "declined": []}'
+
+    with pytest.raises(ApprovalError, match="does not hash to"):
+        create_bundle(
+            signer.sign_report(report),
+            signer.public_key_record(),
+            default_ustb_controls(),
+            evidence_references(epoch),
+            approval_ledger=drifted,
+        )
+
+
+def test_a_bundle_accepts_the_exact_ledger_its_report_was_signed_under(
+    tmp_path: Path,
+) -> None:
+    """The other half: passing the signed-under ledger explicitly must work.
+
+    Otherwise the fix above would make a historical bundle unbuildable rather than buildable,
+    which is the failure it exists to prevent.
+    """
+    from touchstone.approval import ledger_bytes
+
+    epoch = _epoch(tmp_path)
+    signer = Ed25519Signer.from_seed(bytes(range(32)))
+    report = build_observation_report(
+        epoch,
+        default_ustb_controls(),
+        epoch_id="ustb-2026-08-14",
+        sequence=1,
+        publisher_kid=signer.kid,
+    )
+    bundle = create_bundle(
+        signer.sign_report(report),
+        signer.public_key_record(),
+        default_ustb_controls(),
+        evidence_references(epoch),
+        approval_ledger=ledger_bytes(),
+    )
+
+    assert verify_bundle(bundle)["approval_ledger_sha256"] == hashlib.sha256(
+        bundle["approval_ledger"].encode("utf-8")
+    ).hexdigest()

@@ -101,6 +101,7 @@ def create_bundle(
     evidence_digests: Sequence[Mapping[str, object]],
     *,
     compilations: Mapping[str, bytes] | None = None,
+    approval_ledger: bytes | None = None,
 ) -> dict[str, object]:
     """Create the exact self-contained bundle mapping at ``BUNDLE_VERSION``.
 
@@ -109,6 +110,18 @@ def create_bundle(
     still holding it could produce a bundle whose `report_canonical` describes one report
     and whose `signed_report` contains another. `verify_bundle` then rejects it, which
     means this function returned, successfully, a bundle its own paired verifier refuses.
+
+    The approval ledger was a second instance of that same bug. The report commits to the
+    ledger's digest when it is *signed* (`report.py`), and this function used to re-read the
+    ledger from disk when the bundle was *built*. Those are different moments. Approving one
+    more control between them — which the pending NAV recompilation will do — left the bundle
+    carrying a ledger that no longer hashed to the report's commitment, and
+    `_verify_approval_ledger` refuses exactly that. The bundle for an already-published report
+    would have become unbuildable, with nothing to point at but a digest mismatch.
+
+    So the ledger bytes are checked against the report's commitment here, whether the caller
+    supplied them or they came off disk. Pass ``approval_ledger`` to bundle a report whose
+    ledger is no longer the current one; omit it only when building a bundle immediately.
     """
     if not isinstance(signed_report, Mapping):
         raise ValueError("signed_report.report must be a mapping")
@@ -137,8 +150,18 @@ def create_bundle(
         if compilations is None
         else dict(compilations)
     )
+    ledger = ledger_bytes() if approval_ledger is None else bytes(approval_ledger)
+    committed = dict(frozen_report["report"]).get("approval_ledger_sha256")
+    actual = hashlib.sha256(ledger).hexdigest()
+    if actual != committed:
+        raise ApprovalError(
+            "the approval ledger does not hash to the digest this report commits to: "
+            f"report says {committed}, these bytes are {actual}. The ledger has changed "
+            "since the report was signed, so pass the ledger it was signed under as "
+            "`approval_ledger` rather than bundling the current one"
+        )
     return {
-        "approval_ledger": ledger_bytes().decode("utf-8"),
+        "approval_ledger": ledger.decode("utf-8"),
         "compilations": {
             digest: raw.decode("utf-8") for digest, raw in sorted(artifacts.items())
         },
@@ -313,7 +336,9 @@ def _verify_compilations(
             assert_binding(control, resolve=resolve)
         derived = provenance_digests(controls, resolve=resolve)
     except ApprovalError as error:
-        raise VerificationError(f"control provenance does not verify: {error}") from error
+        raise VerificationError(
+            f"control provenance does not verify: {error}"
+        ) from error
     if sorted(cited) != derived:
         raise VerificationError(
             "the report's provenance is not the set its controls name"

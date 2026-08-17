@@ -24,14 +24,18 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import date, datetime
+import json
+import os
+from pathlib import Path
 
+from touchstone.approval import ledger_bytes
 from touchstone.controls import AssetState, OperationalEvent
 from touchstone.epoch import run_ustb_epoch
 from touchstone.evaluate import USTB_ASSET_KEY, default_ustb_controls
 from touchstone.evidence import EvidenceStore
 from touchstone.publish import asset_key_bytes  # noqa: F401 - re-exported for the CLI
 from touchstone.quantities import utc_instant
-from touchstone.report import build_observation_report
+from touchstone.report import build_observation_report, evidence_references
 from touchstone.signing import Ed25519Signer
 from touchstone.sources import (
     LiveTransport,
@@ -39,6 +43,7 @@ from touchstone.sources import (
     SourceUnavailable,
     Transport,
 )
+from touchstone.verify import create_bundle
 
 
 class EpochProductionError(RuntimeError):
@@ -64,6 +69,7 @@ def make_producer(
     next_sequence: Callable[[], int],
     previous_state: Callable[[date], AssetState],
     transport: Transport | None = None,
+    bundle_sink: Callable[[Mapping[str, object]], None] | None = None,
 ) -> Callable[[datetime], Mapping[str, object] | None]:
     """Build the ``produce`` callable the service's slot runner expects.
 
@@ -71,6 +77,13 @@ def make_producer(
     driven end to end in a test with a fixture transport and a fake chain — the alternative
     is a producer that can only be exercised against the live internet, which is a producer
     nobody exercises.
+
+    ``bundle_sink`` receives the offline verification bundle for each report, before that
+    report is returned for publication. Until it existed, `create_bundle` had exactly one
+    caller — the local-chain rehearsal in `scripts/e2e_local.py` — so an unattended run
+    published a signed report to the registry and produced nothing a reader could verify it
+    with. The dossier's whole claim is that a stranger can check the result offline, and
+    there would have been no file to hand them.
     """
     live = LiveTransport() if transport is None else transport
 
@@ -95,6 +108,11 @@ def make_producer(
             ) from error
 
         controls = default_ustb_controls()
+        # Captured before the report is built, because the report commits to this ledger's
+        # digest as it stands at that moment. Reading it again after signing would be a
+        # second read of a file that is allowed to change in between, and `create_bundle`
+        # refuses a ledger that does not match the report's commitment.
+        ledger = ledger_bytes()
         report = build_observation_report(
             epoch,
             controls,
@@ -104,9 +122,50 @@ def make_producer(
             previous_state=previous_state(observed_on),
             event=OperationalEvent.RECONFIRMED,
         )
-        return signer.sign_report(report)
+        signed = signer.sign_report(report)
+        if bundle_sink is not None:
+            # Deliberately before the return, so the report the service is about to publish
+            # is one that could be bundled. A bundle failure after publication would leave
+            # an unverifiable report permanently on chain, correctable only by a new one.
+            bundle_sink(
+                create_bundle(
+                    signed,
+                    signer.public_key_record(),
+                    controls,
+                    evidence_references(epoch),
+                    approval_ledger=ledger,
+                )
+            )
+        return signed
 
     return produce
+
+
+def write_bundle(
+    directory: str | os.PathLike[str],
+) -> Callable[[Mapping[str, object]], None]:
+    """A ``bundle_sink`` that persists each bundle under ``directory``.
+
+    Named from the report it describes rather than the wall clock, so the same report always
+    lands on the same path and a retried slot overwrites its own file instead of accumulating
+    near-duplicates nobody can tell apart. Written to a temporary name and replaced, because
+    a bundle truncated by a crash mid-write is a file that looks present and fails
+    verification — worse than an absent one, which at least reads as absent.
+    """
+    target = Path(directory)
+
+    def sink(bundle: Mapping[str, object]) -> None:
+        report = bundle["signed_report"]["report"]  # type: ignore[index]
+        name = f"{report['epoch_id']}-{report['sequence']}.json"
+        target.mkdir(parents=True, exist_ok=True)
+        destination = target / name
+        staging = destination.with_suffix(".json.partial")
+        staging.write_text(
+            json.dumps(bundle, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        os.replace(staging, destination)
+
+    return sink
 
 
 def report_uri(signed_report: Mapping[str, object]) -> str:

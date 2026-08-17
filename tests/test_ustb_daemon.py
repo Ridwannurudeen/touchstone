@@ -34,6 +34,7 @@ from touchstone.ustb_daemon import (
     epoch_id_for,
     make_producer,
     report_uri,
+    write_bundle,
 )
 from touchstone.workspace import Workspace
 
@@ -115,6 +116,7 @@ def producer(
     *,
     capture: date = date(2026, 8, 14),
     transport=None,
+    bundle_sink=None,
 ):
     signer = Ed25519Signer.from_seed(bytes(range(32)))
     return signer, make_producer(
@@ -129,6 +131,7 @@ def producer(
         transport=FixtureTransport(FIXTURES, capture)
         if transport is None
         else transport,
+        bundle_sink=bundle_sink,
     )
 
 
@@ -433,3 +436,53 @@ def test_a_suppressed_slot_does_not_retire_an_unrelated_incident(
     assert "SOURCE_UNAVAILABLE" in still_open, (
         "a slot that looked at nothing reported the source recovered"
     )
+
+
+def test_an_unattended_run_writes_a_bundle_that_verifies(tmp_path: Path) -> None:
+    """The claim the whole project rests on, checked against what the service leaves behind.
+
+    `create_bundle` had one caller before this: the local-chain rehearsal in
+    `scripts/e2e_local.py`. So the unattended path signed a report, published it to the
+    registry, and wrote nothing a stranger could verify it with — while the dossier's central
+    promise is that they can. The report was on chain and the evidence for it was not
+    exportable.
+    """
+    from touchstone.verify import verify_bundle
+
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+    service, workspace = built(tmp_path, backend)
+    _, produce = producer(
+        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+    )
+
+    run(service, produce)
+
+    written = sorted(workspace.bundles.glob("*.json"))
+    assert len(written) == 1, f"expected exactly one bundle, got {written}"
+    assert written[0].name == "ustb-2026-08-14-1.json"
+    # Partial files must never survive a completed write.
+    assert not list(workspace.bundles.glob("*.partial"))
+
+    import json as _json
+
+    bundle = _json.loads(written[0].read_text(encoding="utf-8"))
+    report = verify_bundle(bundle)
+    assert report["epoch_id"] == "ustb-2026-08-14"
+    assert report["sequence"] == 1
+
+
+def test_no_bundle_is_written_when_no_sink_is_given(tmp_path: Path) -> None:
+    """The parameter is optional, and every pre-existing caller passes nothing.
+
+    Making it mandatory would have broken the service's own construction and every test that
+    predates it, which is how an optional dependency becomes a silent one.
+    """
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+    service, workspace = built(tmp_path, backend)
+    _, produce = producer(store, service, backend)
+
+    run(service, produce)
+
+    assert not workspace.bundles.exists()

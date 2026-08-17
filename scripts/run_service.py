@@ -69,6 +69,7 @@ from touchstone.ustb_daemon import (  # noqa: E402
     asset_key_bytes,
     epoch_id_for,
     make_producer,
+    write_bundle,
     report_uri,
 )
 from touchstone.sources import SourceUnavailable  # noqa: E402,F401
@@ -932,7 +933,8 @@ def _serve_ustb(service: Service, arguments) -> int:
         )
         return 1
 
-    store = EvidenceStore(Workspace(arguments.workspace).evidence)
+    workspace = Workspace(arguments.workspace)
+    store = EvidenceStore(workspace.evidence)
     key_bytes = asset_key_bytes(arguments.asset_key)
 
     def next_sequence() -> int:
@@ -953,6 +955,10 @@ def _serve_ustb(service: Service, arguments) -> int:
             next_sequence=next_sequence,
             previous_state=previous_state,
             transport=transport,
+            # Every published report gets an offline verification bundle written beside the
+            # workspace's other durable state. Without this the service published reports a
+            # reader had no way to check, which is the one claim the project rests on.
+            bundle_sink=write_bundle(workspace.bundles),
         ),
         report_uri=report_uri,
         interval_seconds=arguments.interval_seconds,

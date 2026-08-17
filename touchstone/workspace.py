@@ -67,6 +67,19 @@ class Workspace:
         return self.root / "evidence"
 
     @property
+    def bundles(self) -> Path:
+        """Where each published report's offline verification bundle is written.
+
+        Inside the workspace, so a backup that captures operational state captures the
+        bundles too. They are recreatable in principle — but only from the evidence store
+        *and* the approval ledger as it stood when the report was signed, and the ledger
+        moves whenever a control is approved. Recreating a bundle for last month's report
+        after a recompilation is therefore not a rebuild, it is an archaeology exercise. So
+        the bundle is kept, not reconstructed.
+        """
+        return self.root / "bundles"
+
+    @property
     def heartbeat(self) -> Path:
         """What the daemon writes to say it is alive, and when that stops being true.
 
