@@ -14,7 +14,12 @@ from datetime import datetime, time, timezone
 import hashlib
 import re
 
-from touchstone.approval import ledger_digest, provenance_digests
+from touchstone.approval import (
+    assert_ledger_permits,
+    ledger_bytes,
+    ledger_from_bytes,
+    provenance_digests,
+)
 from touchstone.controls import (
     AssetState,
     ControlRecord,
@@ -205,6 +210,7 @@ def build_observation_report(
     event: OperationalEvent = OperationalEvent.RECONFIRMED,
     limitations: Iterable[str] = USTB_LIMITATIONS,
     correction_of: int | None = None,
+    approval_ledger: bytes | None = None,
 ) -> dict[str, object]:
     """Build a strict report from a completed epoch.
 
@@ -213,6 +219,22 @@ def build_observation_report(
     control checked against the candidate it accepted. Evaluation is deliberately left a
     pure function of controls and observations — the only route from a control to a
     published claim runs through here, so the check belongs here rather than everywhere.
+
+    **Ledger approval is checked here too, against the same bytes the report commits to.**
+    It was not, on the argument that no production path could reach here with an unapproved
+    control: the epoch derives its own controls and refuses a set that does not match them.
+    That argument was wrong in a way an audit demonstrated with a running counterexample.
+    Approval state lives in the ledger, the ledger is a file, and the file was read four
+    separate times on the way to one report — by the epoch, by the caller, for the bundle,
+    and here. Decline a control between two of those reads and every individual check still
+    passed: the controls matched the epoch, the report committed to the new ledger, the
+    bundle's bytes matched that commitment, and only the offline verifier noticed the
+    control had been declined. The report was signed and publishable.
+
+    So the fix is not another check in another place, it is one snapshot: pass the exact
+    ledger bytes the controls were derived from, and both the commitment and the approval
+    check come from them. Omitting ``approval_ledger`` reads the ledger once, here, which is
+    correct for a caller that derived nothing earlier.
     """
     # One reading of the epoch for the whole report. `sources` and `evaluations` were each
     # read three times — once to check they were non-empty, once for the derived values,
@@ -246,6 +268,12 @@ def build_observation_report(
     if any(record.asset_key != epoch.asset_key for record in records):
         raise ValueError("each control must identify the report asset")
 
+    # One read, used for both the approval check below and the digest committed at the end,
+    # so the two can never describe different ledgers.
+    ledger_snapshot = (
+        ledger_bytes() if approval_ledger is None else bytes(approval_ledger)
+    )
+
     expected_state = transition_state(
         previous_state,
         event,
@@ -272,6 +300,10 @@ def build_observation_report(
         _digest(value, "compiler provenance digest")
         for value in provenance_digests(records)
     )
+    # After the binding check above, deliberately. Both refuse an unapproved control, but
+    # binding says *how* it is wrong — names no compilation, edited since approval — while
+    # this says only that the ledger does not approve it. The precise diagnosis should win.
+    assert_ledger_permits(records, ledger_from_bytes(ledger_snapshot))
     caveats = tuple(_nonempty_text(value, "limitation") for value in limitations)
     if not caveats:
         raise ValueError("limitations must not be empty")
@@ -306,7 +338,7 @@ def build_observation_report(
         # confirm a control is exactly what a compilation accepted and still not know
         # whether a human declined it — both declined candidates remain in their artifacts,
         # because an artifact records what the compiler did, not what a person decided.
-        "approval_ledger_sha256": ledger_digest(),
+        "approval_ledger_sha256": hashlib.sha256(ledger_snapshot).hexdigest(),
         "asset_key": epoch.asset_key,
         "compiler_provenance_digests": list(provenance),
         "control_set_root": control_set_root(records),

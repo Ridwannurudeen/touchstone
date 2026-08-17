@@ -167,7 +167,9 @@ def business_day_deadline(observed_on: date, grace_business_days: int) -> date:
     return deadline
 
 
-def default_ustb_controls() -> tuple[ControlRecord, ...]:
+def default_ustb_controls(
+    ledger: Mapping[str, list] | None = None,
+) -> tuple[ControlRecord, ...]:
     """The approved USTB control set, resolved from the compilations that produced it.
 
     These were not written here. Each one is a candidate a model proposed from the issuer's
@@ -180,10 +182,15 @@ def default_ustb_controls() -> tuple[ControlRecord, ...]:
     so a report claiming they came from a compiler was claiming something untrue. They are
     retired rather than retrofitted: feeding an already-approved control back through a
     canned provider to manufacture an artifact is self-attestation, not provenance.
+
+    ``ledger`` derives the set from an already-read snapshot instead of reading the file
+    again. The ledger was read four times on the way to one report, and a control declined
+    between two of those reads produced a signed, publishable report that the offline
+    verifier refused. Callers that will also commit a ledger digest must pass the same
+    snapshot here.
     """
-    return tuple(
-        approved_control(entry) for entry in load_approval_ledger()[APPROVED_KEY]
-    )
+    snapshot = load_approval_ledger() if ledger is None else ledger
+    return tuple(approved_control(entry) for entry in snapshot[APPROVED_KEY])
 
 
 def evaluate_ustb(

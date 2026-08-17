@@ -27,8 +27,9 @@ from datetime import date, datetime
 import json
 import os
 from pathlib import Path
+import re
 
-from touchstone.approval import ledger_bytes
+from touchstone.approval import ledger_bytes, ledger_from_bytes
 from touchstone.controls import AssetState, OperationalEvent
 from touchstone.epoch import run_ustb_epoch
 from touchstone.evaluate import USTB_ASSET_KEY, default_ustb_controls
@@ -44,6 +45,11 @@ from touchstone.sources import (
     Transport,
 )
 from touchstone.verify import create_bundle
+
+
+# One path segment: no separators, no traversal, no empty name. `.` and `..` match the
+# character class, so they are excluded explicitly.
+_EPOCH_ID = re.compile(r"(?!\.{1,2}$)[A-Za-z0-9._-]{1,128}")
 
 
 class EpochProductionError(RuntimeError):
@@ -92,12 +98,22 @@ def make_producer(
         observed_on = moment.date()
         epoch_id = epoch_id_for(moment)
 
+        # The approval ledger is read exactly once per slot, here, and the same bytes reach
+        # the controls, the epoch's evaluation, the report's committed digest and the
+        # bundle. It used to be read four separate times, and a control declined between
+        # two of those reads produced a signed report whose own verifier refused it: the
+        # controls came from one ledger and the commitment named another, and every
+        # individual check passed because each was consistent with the read next to it.
+        ledger = ledger_bytes()
+        controls = default_ustb_controls(ledger_from_bytes(ledger))
+
         try:
             epoch = run_ustb_epoch(
                 transport=live,
                 store=store,
                 now=observed_on,
                 retrieved_at=moment,
+                controls=controls,
             )
         except SourceFetchError as error:
             # The one failure that is emphatically *not* a statement about the asset. It is
@@ -107,12 +123,6 @@ def make_producer(
                 f"USTB evidence could not be retrieved: {error}"
             ) from error
 
-        controls = default_ustb_controls()
-        # Captured before the report is built, because the report commits to this ledger's
-        # digest as it stands at that moment. Reading it again after signing would be a
-        # second read of a file that is allowed to change in between, and `create_bundle`
-        # refuses a ledger that does not match the report's commitment.
-        ledger = ledger_bytes()
         report = build_observation_report(
             epoch,
             controls,
@@ -121,6 +131,7 @@ def make_producer(
             publisher_kid=signer.kid,
             previous_state=previous_state(observed_on),
             event=OperationalEvent.RECONFIRMED,
+            approval_ledger=ledger,
         )
         signed = signer.sign_report(report)
         if bundle_sink is not None:
@@ -151,12 +162,24 @@ def write_bundle(
     near-duplicates nobody can tell apart. Written to a temporary name and replaced, because
     a bundle truncated by a crash mid-write is a file that looks present and fails
     verification — worse than an absent one, which at least reads as absent.
+
+    **The epoch id is validated before it becomes a path.** It arrives from the report, and
+    the report builder checks only that it is non-empty text — so `epoch_id="../escaped"`
+    wrote outside the bundle directory entirely. The wired service derives its epoch ids from
+    `epoch_id_for`, which cannot produce one, but this sink is a reusable public function and
+    a caller is not obliged to be that careful.
+
+    Not a power-loss guarantee: neither the file nor the directory is fsynced, and a crash
+    between the write and the replace can leave a `.partial` behind. Both are acceptable for
+    an artifact rebuildable from the evidence store and the ledger it was signed under; the
+    thing that must not happen is a *present* bundle that fails verification, and `os.replace`
+    is what prevents that.
     """
     target = Path(directory)
 
     def sink(bundle: Mapping[str, object]) -> None:
         report = bundle["signed_report"]["report"]  # type: ignore[index]
-        name = f"{report['epoch_id']}-{report['sequence']}.json"
+        name = f"{_path_component(report['epoch_id'])}-{report['sequence']}.json"
         target.mkdir(parents=True, exist_ok=True)
         destination = target / name
         staging = destination.with_suffix(".json.partial")
@@ -166,6 +189,21 @@ def write_bundle(
         os.replace(staging, destination)
 
     return sink
+
+
+def _path_component(epoch_id: object) -> str:
+    """One path segment, or a refusal. Never a traversal.
+
+    Deliberately an allowlist. A denylist of `..` and separators invites the next encoding
+    that was not thought of, and an epoch id has no legitimate reason to contain anything
+    outside this set.
+    """
+    if not isinstance(epoch_id, str) or not _EPOCH_ID.fullmatch(epoch_id):
+        raise EpochProductionError(
+            f"epoch_id is not usable as a filename: {epoch_id!r}. It must be "
+            "letters, digits, dots, dashes or underscores, and cannot be '.' or '..'"
+        )
+    return epoch_id
 
 
 def report_uri(signed_report: Mapping[str, object]) -> str:

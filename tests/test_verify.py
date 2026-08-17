@@ -681,3 +681,55 @@ def test_a_bundle_accepts_the_exact_ledger_its_report_was_signed_under(
     assert verify_bundle(bundle)["approval_ledger_sha256"] == hashlib.sha256(
         bundle["approval_ledger"].encode("utf-8")
     ).hexdigest()
+
+
+def test_a_ledger_change_between_deriving_controls_and_signing_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The four-read race, and why detecting drift in `create_bundle` was not enough.
+
+    Production read ledger-dependent state four separate times: the epoch derived controls,
+    `produce` derived them again, it captured the raw bytes, and `build_observation_report`
+    re-read the ledger for its digest. `create_bundle`'s guard compares the third read against
+    the fourth, so it catches drift between *those* — and misses drift before them.
+
+    Decline an evaluated control in that earlier window and every check passed: the epoch and
+    the supplied controls still agreed, the report committed to the new ledger, the bundle
+    carried bytes matching that commitment, and only the offline verifier discovered the
+    control had been declined. `create_bundle` returned a bundle its own verifier refuses,
+    which is exactly what its docstring claims is impossible.
+
+    The fix is one snapshot: read the ledger once, derive the controls from it, and check
+    approval against the same bytes the report commits to.
+    """
+    from touchstone.approval import (
+        APPROVED_KEY,
+        DECLINED_KEY,
+        ApprovalError,
+        ledger_bytes,
+    )
+
+    epoch = _epoch(tmp_path)
+    controls = default_ustb_controls()
+    victim = controls[0].control_id
+
+    later = json.loads(ledger_bytes().decode("utf-8"))
+    moved = next(e for e in later[APPROVED_KEY] if e["control_id"] == victim)
+    later[APPROVED_KEY] = [
+        e for e in later[APPROVED_KEY] if e["control_id"] != victim
+    ]
+    later[DECLINED_KEY].append({**moved, "reason": "declined during the race window"})
+    drifted = json.dumps(later, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+    signer = Ed25519Signer.from_seed(bytes(range(32)))
+    # The report must refuse here: the controls it was handed came from a ledger that
+    # approved this one, and the ledger it is committing to declines it.
+    with pytest.raises(ApprovalError):
+        build_observation_report(
+            epoch,
+            controls,
+            epoch_id="ustb-2026-08-14",
+            sequence=1,
+            publisher_kid=signer.kid,
+            approval_ledger=drifted,
+        )

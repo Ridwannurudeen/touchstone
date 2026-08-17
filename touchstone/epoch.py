@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import json
 from pathlib import Path
 import tempfile
 
-from touchstone.controls import AssetState, EvaluationResult
+from touchstone.controls import AssetState, ControlRecord, EvaluationResult
 from touchstone.evidence import read_object, CaptureRecord, EvidenceStore
 from touchstone.evaluate import USTB_ASSET_KEY, default_ustb_controls, evaluate_ustb
 from touchstone.normalize.ustb import (
@@ -168,11 +169,17 @@ def run_ustb_epoch(
     store: EvidenceStore,
     now: date,
     retrieved_at: datetime,
+    controls: Sequence[ControlRecord] | None = None,
 ) -> USTBEpochReport:
     """Fetch, store, isolate-normalize, evaluate, and transition one USTB epoch.
 
     The NAV predecessor is resolved before this epoch's own capture is appended, so the
     current fetch can never confirm itself.
+
+    ``controls`` exists so a caller that has already read the approval ledger can evaluate
+    that exact snapshot rather than making this function read it again. Two reads of one
+    file are two answers, and the report built from them committed to one ledger while its
+    controls came from another.
     """
     nav_manifest = USTB_SOURCE_BY_ID[USTB_NAV_SOURCE_ID]
     confirmation = store.confirmation_capture(USTB_NAV_SOURCE_ID, before=retrieved_at)
@@ -204,7 +211,7 @@ def run_ustb_epoch(
         )
 
     evaluation = evaluate_ustb(
-        default_ustb_controls(),
+        default_ustb_controls() if controls is None else controls,
         observations,
         prior_observations=prior_observations,
         now=now,

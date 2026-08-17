@@ -486,3 +486,24 @@ def test_no_bundle_is_written_when_no_sink_is_given(tmp_path: Path) -> None:
     run(service, produce)
 
     assert not workspace.bundles.exists()
+
+
+@pytest.mark.parametrize(
+    "epoch_id", ["../escaped", "..", ".", "a/b", "a\b", "", "x" * 200, "with space"]
+)
+def test_a_bundle_filename_cannot_escape_its_directory(
+    tmp_path: Path, epoch_id: str
+) -> None:
+    """`epoch_id` reaches a path, and the report builder only checks it is non-empty text.
+
+    So `../escaped` wrote outside the bundle directory. `epoch_id_for` cannot produce one,
+    but `write_bundle` is a public reusable sink and its safety should not depend on which
+    caller happens to be wired to it today.
+    """
+    sink = write_bundle(tmp_path / "bundles")
+    bundle = {"signed_report": {"report": {"epoch_id": epoch_id, "sequence": 1}}}
+
+    with pytest.raises(EpochProductionError, match="not usable as a filename"):
+        sink(bundle)
+
+    assert not list(tmp_path.rglob("*.json")), "a file escaped the bundle directory"

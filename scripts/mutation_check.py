@@ -45,6 +45,26 @@ class Mutation:
 
 MUTATIONS = (
     Mutation(
+        name="the-report-never-checks-the-ledger-it-commits-to",
+        path="touchstone/report.py",
+        old="    assert_ledger_permits(records, ledger_from_bytes(ledger_snapshot))",
+        new="    pass",
+        tests=(
+            "tests/test_verify.py::"
+            "test_a_ledger_change_between_deriving_controls_and_signing_is_refused",
+        ),
+    ),
+    Mutation(
+        name="a-bundle-filename-is-taken-on-trust",
+        path="touchstone/ustb_daemon.py",
+        old="    if not isinstance(epoch_id, str) or not _EPOCH_ID.fullmatch(epoch_id):",
+        new="    if False:",
+        tests=(
+            "tests/test_ustb_daemon.py::"
+            "test_a_bundle_filename_cannot_escape_its_directory",
+        ),
+    ),
+    Mutation(
         name="bundle-reads-the-ledger-a-second-time",
         path="touchstone/verify.py",
         old="    if bundled_ledger_digest != committed:",

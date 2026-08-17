@@ -100,7 +100,7 @@ threat identifiers `T1`–`T27` used in this section.
 | ID | Threat | Disposition |
 |---|---|---|
 | T13 | **Mutable evidence** — the source revises a value after it was observed | **Partially implemented.** Value controls observe only a row whose whole record is identical in two retained captures at least 24h apart; a row revised between them is skipped. This compares two instants only (`touchstone/evaluate.py:361`), so a row revised and restored between captures is indistinguishable from one never touched. Documented in `docs/CONTROL-LANGUAGE.md` and `SOURCE_AUDIT.md` |
-| T14 | **Retrieval failure mistaken for issuer failure** | **Rule implemented; runtime path still not, after PLAN-T7 closed.** The transition rule is correct and tested: `SOURCE_ERROR` preserves the previous state while its evidence deadline holds and only becomes `STALE` after expiry (`touchstone/controls.py:282`) — **except** that a contradicted result is checked first (`touchstone/controls.py:280`), so a source error arriving alongside a genuine contradiction still yields `INCONSISTENT`. But **no runtime caller ever produces that event** — a fetch or normalisation failure propagates out of the epoch (`touchstone/epoch.py:187`) and terminates the run instead of being recorded — though the failed slot now opens an incident and the schedule continues (T22, T23). **No open plan item owns the missing producer.** |
+| T14 | **Retrieval failure mistaken for issuer failure** | **Rule implemented; runtime path still not, after PLAN-T7 closed.** The transition rule is correct and tested: `SOURCE_ERROR` preserves the previous state while its evidence deadline holds and only becomes `STALE` after expiry (`touchstone/controls.py:308`) — **except** that a contradicted result is checked first (`touchstone/controls.py:306`), so a source error arriving alongside a genuine contradiction still yields `INCONSISTENT`. But **no runtime caller ever produces that event** — a fetch or normalisation failure propagates out of `run_ustb_epoch` and terminates the run instead of being recorded — though the failed slot now opens an incident and the schedule continues (T22, T23). **No open plan item owns the missing producer.** |
 | T15 | **Missing or conflicting observations** | **Implemented within an epoch that completes.** Absent or unusable evidence yields `UNEVALUABLE`, which drives `UNVERIFIABLE` rather than a confident result; only a genuine predicate conflict yields `INCONSISTENT` (`touchstone/controls.py:262`). This covers evidence that is retrieved but unusable, not an epoch that fails to complete — see T14 |
 | T16 | **Evidence-store tampering** | **Implemented for detection.** The index is a hash chain and every append re-verifies the full chain and re-hashes every referenced object (`touchstone/evidence.py:78`, `:88`). A privileged actor able to rewrite objects *and* recompute the whole chain is not defended against — **R-4** |
 
@@ -154,7 +154,7 @@ These distinctions are load-bearing and must not be collapsed:
 | MIME limits | **Implemented (PLAN-T5)** — enforced against the manifest before storage |
 | Magic-byte limits | Implemented for JSON. PDF/ZIP magic checks are unbuilt and unneeded after the **PLAN-T10** cut |
 | Size limits | Implemented (`touchstone/sources.py:192`) |
-| Decompression limits | **Implemented for the JSON path (PLAN-T5)** — a non-identity Content-Encoding is refused. Archive/document expansion limits are unbuilt and unneeded after the **PLAN-T10** cut |
+| Decompression limits | **Implemented for the JSON path (PLAN-T5)** — a non-identity Content-Encoding is refused. Archive/document expansion limits are unbuilt, and unneeded while no portfolio source is an archive or document after the **PLAN-T10** cut |
 | Page limits | Not applicable — no PDF source remains in Phase 1 after the PLAN-T10 cut. **No open item owns this**; it returns with the first document source |
 | Time limits | Implemented and **proved (PLAN-T5)** — a worker that never returns is terminated by the wall-clock limit and raises a typed failure |
 | Isolated parsing worker | Implemented, with **R-3** stated |
@@ -235,14 +235,17 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   report signed by a retired key. **PLAN-T7 and PLAN-T8 have both closed without building it**, so
   no open item owns it; it is a standing residual. See
   `docs/KEY-MANAGEMENT.md`.
-- **R-6 — Verification bundles carry digests, not artifacts, and no chain state.** A bundle
-  holds the signed report, its canonical bytes, the control records, the evidence
-  references and the published key (`touchstone/verify.py:38`). An offline verifier can
+- **R-6 — Verification bundles carry no *evidence* artifacts and no chain state.** Narrowed
+  2026-08-17: bundle v4 carries the compilation artifacts each control cites **and** the
+  approval ledger, so provenance and the human approval decision are both checkable offline.
+  What a bundle still holds is the signed report, its canonical bytes, the control records,
+  the evidence **references** and the published key. An offline verifier can
   therefore confirm the signature, recompute the control-set and evidence roots, and check
   internal consistency — and nothing more. It contains no registry state, no transparency
   log and no evidence-store index, so it cannot confirm the report was published onchain,
   cannot verify the log's hash chain, and cannot replay normalisation or prove that a
-  reported row occurs inside an artifact it does not carry.
+  reported row occurs inside an artifact it does not carry. **Evidence remains digest-only**
+  — that is the part v4 did not change, and the limitation the report's own caveats state.
 - **R-7 — TLS is trusted without pinning.** Evidence integrity in transit rests on the
   platform certificate store.
 - **R-9 — Control approval is unattributed.** Approval is a field on the control record set
