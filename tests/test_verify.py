@@ -10,7 +10,7 @@ import pytest
 from touchstone.controls import ControlRecord
 from touchstone.epoch import FixtureTransport, run_ustb_epoch
 from touchstone.evidence import EvidenceStore
-from touchstone.evaluate import default_ustb_controls
+from historical_pack import historical_controls, historical_ledger_bytes
 from touchstone.report import (
     build_observation_report,
     control_set_root,
@@ -34,12 +34,14 @@ def _epoch(tmp_path: Path, *, confirmed: bool = True):
             store=store,
             now=date(2026, 8, 13),
             retrieved_at=CONFIRMED_AT,
+            controls=historical_controls(),
         )
     return run_ustb_epoch(
         transport=FixtureTransport(FIXTURES, date(2026, 8, 14)),
         store=store,
         now=date(2026, 8, 14),
         retrieved_at=RETRIEVED_AT,
+        controls=historical_controls(),
     )
 
 
@@ -48,16 +50,18 @@ def _bundle(tmp_path: Path, *, confirmed: bool = True):
     signer = Ed25519Signer.from_seed(bytes(range(32)))
     report = build_observation_report(
         epoch,
-        default_ustb_controls(),
+        historical_controls(),
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid=signer.kid,
+        approval_ledger=historical_ledger_bytes(),
     )
     return create_bundle(
         signer.sign_report(report),
         signer.public_key_record(),
-        default_ustb_controls(),
+        historical_controls(),
         evidence_references(epoch),
+        approval_ledger=historical_ledger_bytes(),
     )
 
 
@@ -335,10 +339,11 @@ def test_a_bundle_describes_one_report_even_if_the_caller_changes_it(
     signer = Ed25519Signer.from_seed(bytes(range(32)))
     report = build_observation_report(
         epoch,
-        default_ustb_controls(),
+        historical_controls(),
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid=signer.kid,
+        approval_ledger=historical_ledger_bytes(),
     )
     envelope = dict(signer.sign_report(report))
     shifting = _ShiftingReport(envelope["report"])
@@ -347,8 +352,9 @@ def test_a_bundle_describes_one_report_even_if_the_caller_changes_it(
     bundle = create_bundle(
         envelope,
         signer.public_key_record(),
-        default_ustb_controls(),
+        historical_controls(),
         evidence_references(epoch),
+        approval_ledger=historical_ledger_bytes(),
     )
 
     assert shifting.reads == 1, "the caller's report was read exactly once"
@@ -368,10 +374,11 @@ def test_a_bundle_keeps_the_key_and_digests_it_was_given(tmp_path: Path) -> None
     signer = Ed25519Signer.from_seed(bytes(range(32)))
     report = build_observation_report(
         epoch,
-        default_ustb_controls(),
+        historical_controls(),
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid=signer.kid,
+        approval_ledger=historical_ledger_bytes(),
     )
     key = dict(signer.public_key_record())
     key["provenance"] = {"issued_by": "the operator"}
@@ -379,7 +386,8 @@ def test_a_bundle_keeps_the_key_and_digests_it_was_given(tmp_path: Path) -> None
     digests[0]["provenance"] = {"fetched_by": "the daemon"}
 
     bundle = create_bundle(
-        signer.sign_report(report), key, default_ustb_controls(), digests
+        signer.sign_report(report), key, historical_controls(), digests,
+        approval_ledger=historical_ledger_bytes(),
     )
     key["provenance"]["issued_by"] = "someone else"
     digests[0]["provenance"]["fetched_by"] = "someone else"
@@ -401,12 +409,13 @@ def test_a_bundle_holds_every_control_of_a_single_pass_sequence(
     signer = Ed25519Signer.from_seed(bytes(range(32)))
     report = build_observation_report(
         epoch,
-        default_ustb_controls(),
+        historical_controls(),
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid=signer.kid,
+        approval_ledger=historical_ledger_bytes(),
     )
-    controls = default_ustb_controls()
+    controls = historical_controls()
     digests = evidence_references(epoch)
 
     bundle = create_bundle(
@@ -414,6 +423,7 @@ def test_a_bundle_holds_every_control_of_a_single_pass_sequence(
         signer.public_key_record(),
         (record for record in controls),
         (record for record in digests),
+        approval_ledger=historical_ledger_bytes(),
     )
 
     assert len(bundle["control_records"]) == len(controls)
@@ -582,7 +592,7 @@ def test_a_control_absent_from_the_ledger_is_refused(tmp_path: Path) -> None:
     """Being what a compilation accepted is not the same as having been approved."""
     from touchstone.approval import ApprovalError, assert_ledger_permits
 
-    controls = list(default_ustb_controls())
+    controls = list(historical_controls())
     renamed = controls[0].to_mapping()
     renamed["control_id"] = "a-control-nobody-approved"
     controls[0] = ControlRecord.from_mapping(renamed)
@@ -599,7 +609,7 @@ def test_the_production_control_set_is_derived_from_the_ledger_not_filtered_by_i
     An audit asked for one, on the reading that `assert_ledger_permits` runs only inside
     `verify_bundle` — so an unapproved control could be signed and published, and only an
     offline reader would notice. Traced through, it cannot: `run_ustb_epoch` takes no control
-    set and evaluates `default_ustb_controls()` (`epoch.py:207`), that function *builds* its
+    set and evaluates `historical_controls()` (`epoch.py:207`), that function *builds* its
     controls out of the ledger's approved entries rather than checking a caller's list
     against them (`evaluate.py:184`), and `report.py:245` refuses a report whose control set
     does not match what the epoch evaluated. There is no injection point.
@@ -612,10 +622,10 @@ def test_the_production_control_set_is_derived_from_the_ledger_not_filtered_by_i
 
     ledger = load_approval_ledger()
     approved = {entry["control_id"] for entry in ledger[APPROVED_KEY]}
-    produced = {control.control_id for control in default_ustb_controls()}
+    produced = {control.control_id for control in historical_controls()}
 
     assert produced == approved
-    assert all(control.approval_state == "approved" for control in default_ustb_controls())
+    assert all(control.approval_state == "approved" for control in historical_controls())
 
 
 def test_a_bundle_refuses_a_ledger_that_drifted_since_the_report_was_signed(
@@ -634,10 +644,11 @@ def test_a_bundle_refuses_a_ledger_that_drifted_since_the_report_was_signed(
     signer = Ed25519Signer.from_seed(bytes(range(32)))
     report = build_observation_report(
         epoch,
-        default_ustb_controls(),
+        historical_controls(),
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid=signer.kid,
+        approval_ledger=historical_ledger_bytes(),
     )
     drifted = b'{"approved": [], "declined": []}'
 
@@ -645,7 +656,7 @@ def test_a_bundle_refuses_a_ledger_that_drifted_since_the_report_was_signed(
         create_bundle(
             signer.sign_report(report),
             signer.public_key_record(),
-            default_ustb_controls(),
+            historical_controls(),
             evidence_references(epoch),
             approval_ledger=drifted,
         )
@@ -659,23 +670,22 @@ def test_a_bundle_accepts_the_exact_ledger_its_report_was_signed_under(
     Otherwise the fix above would make a historical bundle unbuildable rather than buildable,
     which is the failure it exists to prevent.
     """
-    from touchstone.approval import ledger_bytes
-
     epoch = _epoch(tmp_path)
     signer = Ed25519Signer.from_seed(bytes(range(32)))
     report = build_observation_report(
         epoch,
-        default_ustb_controls(),
+        historical_controls(),
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid=signer.kid,
+        approval_ledger=historical_ledger_bytes(),
     )
     bundle = create_bundle(
         signer.sign_report(report),
         signer.public_key_record(),
-        default_ustb_controls(),
+        historical_controls(),
         evidence_references(epoch),
-        approval_ledger=ledger_bytes(),
+        approval_ledger=historical_ledger_bytes(),
     )
 
     assert verify_bundle(bundle)["approval_ledger_sha256"] == hashlib.sha256(
@@ -710,7 +720,7 @@ def test_a_ledger_change_between_deriving_controls_and_signing_is_refused(
     )
 
     epoch = _epoch(tmp_path)
-    controls = default_ustb_controls()
+    controls = historical_controls()
     victim = controls[0].control_id
 
     later = json.loads(ledger_bytes().decode("utf-8"))

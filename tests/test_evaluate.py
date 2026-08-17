@@ -15,10 +15,10 @@ from touchstone.controls import (
 from touchstone.evaluate import (
     business_day_deadline,
     business_days_elapsed,
-    default_ustb_controls,
     evaluate_ustb,
     supports,
 )
+from historical_pack import historical_controls
 from touchstone.normalize.ustb import (
     USTB_HOLDINGS_SOURCE_ID,
     USTB_NAV_SOURCE_ID,
@@ -98,7 +98,7 @@ def synthetic(**changes: object) -> ControlRecord:
 def aum_control() -> ControlRecord:
     return next(
         control
-        for control in default_ustb_controls()
+        for control in historical_controls()
         if control.control_id == "ustb-aum-published"
     )
 
@@ -164,7 +164,7 @@ def test_business_day_deadline_extends_across_weekends(
 
 def test_golden_ustb_evaluation_is_confirmed() -> None:
     report = evaluate_ustb(
-        default_ustb_controls(),
+        historical_controls(),
         observations(),
         prior_observations=prior(),
         now=date(2026, 8, 14),
@@ -188,7 +188,7 @@ def test_golden_ustb_evaluation_is_confirmed() -> None:
 def test_value_controls_observe_the_newest_row_confirmed_across_both_captures() -> None:
     """08/12 and 08/13 were revised between captures, so 08/11 is the newest confirmed."""
     report = evaluate_ustb(
-        default_ustb_controls(),
+        historical_controls(),
         observations(),
         prior_observations=prior(),
         now=date(2026, 8, 14),
@@ -213,7 +213,7 @@ def test_value_controls_observe_the_newest_row_confirmed_across_both_captures() 
 
 def test_missing_prior_capture_makes_every_value_control_unevaluable() -> None:
     report = evaluate_ustb(
-        default_ustb_controls(),
+        historical_controls(),
         observations(),
         prior_observations={},
         now=date(2026, 8, 14),
@@ -324,7 +324,7 @@ def test_row_selection_is_independent_of_payload_order() -> None:
     }
 
     report = evaluate_ustb(
-        default_ustb_controls(),
+        historical_controls(),
         reversed_current,
         prior_observations=reversed_prior,
         now=date(2026, 8, 14),
@@ -354,7 +354,7 @@ def test_staleness_boundaries_are_inclusive(
     now: date, expected_state: AssetState, stale_controls: set[str]
 ) -> None:
     report = evaluate_ustb(
-        default_ustb_controls(), observations(), prior_observations=prior(), now=now
+        historical_controls(), observations(), prior_observations=prior(), now=now
     )
 
     assert report.state is expected_state
@@ -433,7 +433,7 @@ def test_value_mismatch_is_contradicted_and_drives_inconsistent_state() -> None:
 
 
 def test_only_approved_controls_are_evaluated() -> None:
-    proposed = replace_control(default_ustb_controls()[0], approval_state="proposed")
+    proposed = replace_control(historical_controls()[0], approval_state="proposed")
 
     with pytest.raises(ValueError, match="approved"):
         evaluate_ustb(
@@ -474,7 +474,7 @@ def test_cross_wired_approved_control_is_rejected() -> None:
 def test_prior_observations_must_be_a_mapping() -> None:
     with pytest.raises(TypeError, match="prior_observations"):
         evaluate_ustb(
-            default_ustb_controls(),
+            historical_controls(),
             observations(),
             prior_observations=[],
             now=date(2026, 8, 14),
@@ -521,7 +521,7 @@ def test_one_report_describes_one_set_of_observations() -> None:
     shifting = _ShiftingObservations(observations(), observations(nav="ustb-nav.json"))
 
     report = evaluate_ustb(
-        default_ustb_controls(),
+        historical_controls(),
         shifting,
         prior_observations=prior(),
         now=date(2026, 8, 14),
@@ -529,7 +529,7 @@ def test_one_report_describes_one_set_of_observations() -> None:
 
     assert shifting.nav_reads == 1, "the NAV source was read exactly once"
     assert report == evaluate_ustb(
-        default_ustb_controls(),
+        historical_controls(),
         observations(),
         prior_observations=prior(),
         now=date(2026, 8, 14),
@@ -546,7 +546,7 @@ def test_one_report_describes_one_set_of_prior_observations() -> None:
     shifting = _ShiftingObservations(prior(), prior("ustb-nav-20260814.json"))
 
     report = evaluate_ustb(
-        default_ustb_controls(),
+        historical_controls(),
         observations(),
         prior_observations=shifting,
         now=date(2026, 8, 14),
@@ -554,7 +554,7 @@ def test_one_report_describes_one_set_of_prior_observations() -> None:
 
     assert shifting.nav_reads == 1, "the prior capture was read exactly once"
     assert report == evaluate_ustb(
-        default_ustb_controls(),
+        historical_controls(),
         observations(),
         prior_observations=prior(),
         now=date(2026, 8, 14),

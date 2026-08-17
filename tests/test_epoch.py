@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from touchstone.controls import AssetState, EvaluationResult
+from historical_pack import historical_controls
 from touchstone.epoch import FixtureTransport, run_ustb_epoch
 from touchstone.evidence import EvidenceIntegrityError, EvidenceStore
 from touchstone.sources import USTB_SOURCES
@@ -66,6 +67,7 @@ def test_golden_fixture_epoch_runs_the_complete_offline_vertical(
         store=store,
         now=date(2026, 8, 14),
         retrieved_at=RETRIEVED_AT,
+        controls=historical_controls(),
     )
 
     assert report.asset_key == "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"

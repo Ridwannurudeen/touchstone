@@ -12,7 +12,7 @@ from touchstone.epoch import (
     run_ustb_epoch,
 )
 from touchstone.evidence import EvidenceStore
-from touchstone.evaluate import default_ustb_controls
+from historical_pack import historical_controls, historical_ledger_bytes
 from touchstone.report import (
     USTB_LIMITATIONS,
     build_observation_report,
@@ -35,22 +35,25 @@ def _epoch(tmp_path: Path, *, confirmed: bool = True):
             store=store,
             now=date(2026, 8, 13),
             retrieved_at=CONFIRMED_AT,
+            controls=historical_controls(),
         )
     return run_ustb_epoch(
         transport=FixtureTransport(FIXTURES, date(2026, 8, 14)),
         store=store,
         now=date(2026, 8, 14),
         retrieved_at=RETRIEVED_AT,
+        controls=historical_controls(),
     )
 
 
 def _report(tmp_path: Path):
     return build_observation_report(
         _epoch(tmp_path),
-        default_ustb_controls(),
+        historical_controls(),
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
+        approval_ledger=historical_ledger_bytes(),
     )
 
 
@@ -60,18 +63,19 @@ def test_report_contains_recomputable_roots_and_honest_limitations(
     epoch = _epoch(tmp_path)
     report = build_observation_report(
         epoch,
-        default_ustb_controls(),
+        historical_controls(),
         epoch_id="ustb-2026-08-13",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
+        approval_ledger=historical_ledger_bytes(),
     )
 
-    assert report["control_set_root"] == control_set_root(default_ustb_controls())
+    assert report["control_set_root"] == control_set_root(historical_controls())
     assert report["evidence_root"] == evidence_root(evidence_references(epoch))
     assert report["state"] == "CONFIRMED"
     assert report["limitations"] == list(USTB_LIMITATIONS)
     assert [item["control_id"] for item in report["controls"]] == sorted(
-        control.control_id for control in default_ustb_controls()
+        control.control_id for control in historical_controls()
     )
 
 
@@ -79,7 +83,7 @@ def test_root_construction_is_order_independent_but_content_sensitive(
     tmp_path: Path,
 ) -> None:
     epoch = _epoch(tmp_path)
-    controls = default_ustb_controls()
+    controls = historical_controls()
     digests = evidence_references(epoch)
 
     assert control_set_root(controls) == control_set_root(reversed(controls))
@@ -108,7 +112,7 @@ def test_report_rejects_inconsistent_state(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="transition rules"):
         build_observation_report(
             inconsistent,
-            default_ustb_controls(),
+            historical_controls(),
             epoch_id="ustb-2026-08-13",
             sequence=1,
             publisher_kid="ed25519:" + "11" * 32,
@@ -119,7 +123,7 @@ def test_report_rejects_invalid_correction_reference(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="earlier positive sequence"):
         build_observation_report(
             _epoch(tmp_path),
-            default_ustb_controls(),
+            historical_controls(),
             epoch_id="ustb-2026-08-13",
             sequence=2,
             correction_of=2,
@@ -128,7 +132,7 @@ def test_report_rejects_invalid_correction_reference(tmp_path: Path) -> None:
 
 
 def test_report_rejects_controls_for_another_asset(tmp_path: Path) -> None:
-    controls = list(default_ustb_controls())
+    controls = list(historical_controls())
     changed = controls[0].to_mapping()
     changed["asset_key"] = "eip155:1:0x" + "22" * 20
     controls[0] = ControlRecord.from_mapping(changed)
@@ -168,10 +172,11 @@ def test_report_builds_stale_epoch_with_contract_valid_timestamps(
     )
     report = build_observation_report(
         epoch,
-        default_ustb_controls(),
+        historical_controls(),
         epoch_id="ustb-2026-08-20",
         sequence=2,
         publisher_kid="ed25519:" + "11" * 32,
+        approval_ledger=historical_ledger_bytes(),
     )
 
     assert report["state"] == "STALE"
@@ -183,7 +188,7 @@ def test_report_requires_explicit_limitations(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="limitations must not be empty"):
         build_observation_report(
             _epoch(tmp_path),
-            default_ustb_controls(),
+            historical_controls(),
             epoch_id="ustb-2026-08-13",
             sequence=1,
             publisher_kid="ed25519:" + "11" * 32,
@@ -200,13 +205,14 @@ def test_report_provenance_comes_from_the_controls_not_the_caller(
     and the offline verifier — so a report could carry provenance with no relationship to
     the controls it reported. They are now derived from the approved controls themselves.
     """
-    controls = default_ustb_controls()
+    controls = historical_controls()
     report = build_observation_report(
         _epoch(tmp_path),
         controls,
         epoch_id="ustb-2026-08-13",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
+        approval_ledger=historical_ledger_bytes(),
     )
 
     assert report["compiler_provenance_digests"] == sorted(
@@ -218,7 +224,7 @@ def test_a_control_bound_to_no_compilation_cannot_be_reported(tmp_path: Path) ->
     """An approved control naming no artifact is exactly what the binding exists to stop."""
     from touchstone.approval import ApprovalError
 
-    controls = list(default_ustb_controls())
+    controls = list(historical_controls())
     unbound = controls[0].to_mapping()
     unbound["compilation_sha256"] = None
     controls[0] = ControlRecord.from_mapping(unbound)
@@ -237,7 +243,7 @@ def test_a_control_edited_after_approval_cannot_be_reported(tmp_path: Path) -> N
     """Approval may change two fields. Anything else is a control no compiler proposed."""
     from touchstone.approval import ApprovalError
 
-    controls = list(default_ustb_controls())
+    controls = list(historical_controls())
     edited = controls[0].to_mapping()
     edited["grace_period"] = edited["grace_period"] + 7
     controls[0] = ControlRecord.from_mapping(edited)
@@ -311,10 +317,11 @@ def test_a_report_describes_one_epoch(tmp_path: Path) -> None:
 
     report = build_observation_report(
         counting,
-        default_ustb_controls(),
+        historical_controls(),
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
+        approval_ledger=historical_ledger_bytes(),
     )
 
     assert counting._reads == {"sources": 1, "evaluations": 1}
@@ -377,10 +384,11 @@ def test_a_report_describes_one_reading_of_each_evaluation(tmp_path: Path) -> No
 
     report = build_observation_report(
         drifted,
-        default_ustb_controls(),
+        historical_controls(),
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
+        approval_ledger=historical_ledger_bytes(),
     )
 
     assert report["state"] == "CONFIRMED"
@@ -421,10 +429,11 @@ def test_a_report_resolves_each_instant_once(tmp_path: Path) -> None:
 
     report = build_observation_report(
         shifted,
-        default_ustb_controls(),
+        historical_controls(),
         epoch_id="ustb-2026-08-14",
         sequence=1,
         publisher_kid="ed25519:" + "11" * 32,
+        approval_ledger=historical_ledger_bytes(),
     )
 
     assert zone.reads == 1, "the instant was resolved exactly once"

@@ -1,0 +1,60 @@
+{
+  "approved": [
+    {
+      "approved_on": "2026-08-16",
+      "compilation_sha256": "0e2939d158466c8940d1683c54e6d9780e38ee62dd35a6efdb89b467bf05c4e6",
+      "control_id": "holdings-as-of-date-present"
+    },
+    {
+      "approved_on": "2026-08-16",
+      "compilation_sha256": "42d006639640866595094417ddd5d916260dd8b74bb66207b5d5b9b958fd6b32",
+      "control_id": "ustb-aum-published"
+    },
+    {
+      "approved_on": "2026-08-16",
+      "compilation_sha256": "42d006639640866595094417ddd5d916260dd8b74bb66207b5d5b9b958fd6b32",
+      "control_id": "ustb-nav-date-freshness"
+    },
+    {
+      "approved_on": "2026-08-16",
+      "compilation_sha256": "42d006639640866595094417ddd5d916260dd8b74bb66207b5d5b9b958fd6b32",
+      "control_id": "ustb-nav-per-share-published"
+    },
+    {
+      "approved_on": "2026-08-16",
+      "compilation_sha256": "8724e9338d92f60055720f6a1fe3b7307c22a9c4b57e8e52b76c62dc1fba6b5e",
+      "control_id": "ustb-one-day-yield-present"
+    },
+    {
+      "approved_on": "2026-08-16",
+      "compilation_sha256": "42d006639640866595094417ddd5d916260dd8b74bb66207b5d5b9b958fd6b32",
+      "control_id": "ustb-outstanding-shares-published"
+    },
+    {
+      "approved_on": "2026-08-16",
+      "compilation_sha256": "8724e9338d92f60055720f6a1fe3b7307c22a9c4b57e8e52b76c62dc1fba6b5e",
+      "control_id": "ustb-seven-day-yield-present"
+    },
+    {
+      "approved_on": "2026-08-16",
+      "compilation_sha256": "8724e9338d92f60055720f6a1fe3b7307c22a9c4b57e8e52b76c62dc1fba6b5e",
+      "control_id": "ustb-thirty-day-yield-present"
+    }
+  ],
+  "declined": [
+    {
+      "compilation_sha256": "0e2939d158466c8940d1683c54e6d9780e38ee62dd35a6efdb89b467bf05c4e6",
+      "control_id": "holdings-line-items-present",
+      "declined_on": "2026-08-16",
+      "reason": "holdings is a collection, and whether exists means 'present' or 'non-empty' is undefined in the control language. Deciding that here would smuggle in a semantics change as an approval."
+    },
+    {
+      "compilation_sha256": "42d006639640866595094417ddd5d916260dd8b74bb66207b5d5b9b958fd6b32",
+      "control_id": "ustb-fund-identifier-stable",
+      "declined_on": "2026-08-16",
+      "reason": "The expected_value is a literal fund identifier, but eq compares decimals: the evaluator resolves expected_value['value'] to a Decimal and returns UNEVALUABLE when it cannot. Approval may change only approval_state and compilation_sha256, so this cannot be repaired by approving it."
+    }
+  ],
+  "note": "FROZEN TEST PACK, not the shipped control set. These are the eight controls the committed 2026-08-13/08-14 fixtures were approved under, effective 2026-08-14, copied here on 2026-08-17 so the tests that exercise canonicalisation, signing, roots, tampering, provenance and transition rules stop moving whenever business policy does. A newly compiled control is effective from its compile date and can never evaluate an older fixture, so a suite pinned to whatever ships today breaks on every recompile -- eighty tests did. The artifacts referenced here stay committed for exactly this reason.",
+  "version": "touchstone.approval-ledger.v1"
+}
