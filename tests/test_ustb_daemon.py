@@ -601,3 +601,56 @@ def test_a_bundle_sequence_must_be_a_positive_integer(
         sink(bundle)
 
     assert not list(tmp_path.rglob("*.json"))
+
+
+def test_a_report_whose_bundle_cannot_be_verified_is_never_published(
+    tmp_path: Path,
+) -> None:
+    """Building a bundle is not the same claim as a reader being able to verify it.
+
+    `create_bundle` snapshots the envelope and checks the fields it derives; signature
+    verification lives in `verify_bundle`. So it will happily return a bundle whose signature
+    does not check out against the key it carries — and the mutation harness caught that the
+    earlier regression here could not tell the difference, because it verified the bundle
+    itself after reading it back rather than proving the daemon had.
+
+    Driven by a signer that publishes a *different* key's record than it signs with, which is
+    the shape of the failure that matters: the bundle is well-formed, internally consistent,
+    and unverifiable.
+    """
+    from touchstone.verify import VerificationError
+
+    class MismatchedKeySigner:
+        """Signs with one key, publishes another. Otherwise a real signer."""
+
+        def __init__(self) -> None:
+            self._signing = Ed25519Signer.from_seed(bytes(range(32)))
+            self._published = Ed25519Signer.from_seed(bytes(range(32, 64)))
+
+        @property
+        def kid(self) -> str:
+            return self._signing.kid
+
+        def sign_report(self, report: object) -> dict:
+            return self._signing.sign_report(report)
+
+        def public_key_record(self) -> dict:
+            return self._published.public_key_record()
+
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+    service, workspace = built(tmp_path, backend)
+    produce = make_producer(
+        store=store,
+        signer=MismatchedKeySigner(),
+        next_sequence=lambda: backend.latest_sequence(asset_key_bytes(ASSET)) + 1,
+        previous_state=lambda on: AssetState.UNVERIFIABLE,
+        transport=FixtureTransport(FIXTURES, date(2026, 8, 14)),
+        bundle_sink=write_bundle(workspace.bundles),
+    )
+
+    with pytest.raises(VerificationError):
+        produce(RETRIEVED_AT)
+
+    assert not backend.submissions, "an unverifiable report reached the chain"
+    assert not list(workspace.bundles.glob("*.json")), "an unverifiable bundle was persisted"

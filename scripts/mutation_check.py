@@ -61,17 +61,7 @@ MUTATIONS = (
         new="            pass",
         tests=(
             "tests/test_ustb_daemon.py::"
-            "test_an_unattended_run_writes_a_bundle_that_verifies",
-        ),
-    ),
-    Mutation(
-        name="a-bundle-filename-may-be-a-windows-device",
-        path="touchstone/ustb_daemon.py",
-        old='    stem = name.split(".", 1)[0].upper()',
-        new='    stem = ""',
-        tests=(
-            "tests/test_ustb_daemon.py::"
-            "test_a_bundle_is_never_named_after_a_windows_device",
+            "test_a_report_whose_bundle_cannot_be_verified_is_never_published",
         ),
     ),
     Mutation(
@@ -92,6 +82,16 @@ MUTATIONS = (
         tests=(
             "tests/test_ustb_daemon.py::"
             "test_a_bundle_filename_cannot_escape_its_directory",
+        ),
+    ),
+    Mutation(
+        name="a-bundle-filename-may-be-a-windows-device",
+        path="touchstone/ustb_daemon.py",
+        old='    if isinstance(epoch_id, str) and epoch_id.split(".", 1)[0].upper() in _WINDOWS_DEVICES:',
+        new="    if False:",
+        tests=(
+            "tests/test_ustb_daemon.py::"
+            "test_a_bundle_is_never_named_after_a_windows_device",
         ),
     ),
     Mutation(

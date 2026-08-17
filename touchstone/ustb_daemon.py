@@ -197,7 +197,7 @@ def write_bundle(
             raise EpochProductionError(
                 f"sequence must be a positive integer to name a bundle: {sequence!r}"
             )
-        name = _safe_filename(f"{_path_component(report['epoch_id'])}-{sequence}.json")
+        name = f"{_path_component(report['epoch_id'])}-{sequence}.json"
         target.mkdir(parents=True, exist_ok=True)
         destination = target / name
         staging = destination.with_suffix(".json.partial")
@@ -209,27 +209,6 @@ def write_bundle(
     return sink
 
 
-def _safe_filename(name: str) -> str:
-    """The rendered filename, checked as a whole against Windows device names.
-
-    Validating only the epoch component was not enough. Windows resolves reserved device
-    names *before* the extension, and case-insensitively, so `CON.foo` and `NUL.` and
-    `COM1.log` are all still the console, the null device and a serial port — every one of
-    which passes an allowlist of letters, digits and dots. Writing to one silently discards
-    the bundle or blocks on a device, and the directory afterwards looks like a slot that
-    simply never produced.
-
-    Checked here on the final name rather than on the component, because it is the final
-    name the operating system resolves.
-    """
-    stem = name.split(".", 1)[0].upper()
-    if stem in _WINDOWS_DEVICES:
-        raise EpochProductionError(
-            f"{name!r} resolves to the Windows device {stem!r} rather than a file"
-        )
-    return name
-
-
 def _path_component(epoch_id: object) -> str:
     """One path segment, or a refusal. Never a traversal.
 
@@ -238,11 +217,17 @@ def _path_component(epoch_id: object) -> str:
     outside this set.
     """
     if isinstance(epoch_id, str) and epoch_id.split(".", 1)[0].upper() in _WINDOWS_DEVICES:
-        # Refused here as well as on the rendered name. Today the `-{sequence}` suffix means
-        # a bare `CON` renders as `CON-1.json`, which Windows does not treat as the console —
-        # so the rendered-name check alone would let it through, and the only thing making
-        # that safe is the shape of a filename this function does not own. An epoch id has no
-        # business being a device name either way.
+        # Windows resolves a reserved device name before the extension and case-insensitively,
+        # so `CON.foo`, `NUL.` and `COM1.log` are the console, the null device and a serial
+        # port while passing the allowlist below perfectly. Writing a bundle to one discards
+        # it or blocks, and the directory afterwards looks like a slot that never produced.
+        #
+        # Checked on the epoch id rather than on the rendered filename. A rendered-name check
+        # was written first and the mutation harness proved it dead: the name is
+        # `{epoch_id}-{sequence}.json`, and appending `-1` can never turn a non-device into a
+        # device, so it caught nothing this does not. Checking here also refuses a bare `CON`,
+        # which the rendered form would allow only because of a suffix this function does not
+        # own.
         raise EpochProductionError(
             f"epoch_id names the Windows device {epoch_id.split('.', 1)[0].upper()!r}: "
             f"{epoch_id!r}"
