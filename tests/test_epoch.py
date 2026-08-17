@@ -17,11 +17,18 @@ RETRIEVED_AT = datetime(2026, 8, 14, 17, 8, 12, tzinfo=timezone.utc)
 
 
 def seed_confirmation(store: EvidenceStore) -> None:
+    """Seeded under the frozen pack, matching the epochs that consume it.
+
+    Left on the shipped set this evaluates the seeding day against one control set while the
+    test evaluates the day after against another — equal today, silently divergent on the
+    next recompile.
+    """
     run_ustb_epoch(
         transport=FixtureTransport(FIXTURES, date(2026, 8, 13)),
         store=store,
         now=date(2026, 8, 13),
         retrieved_at=CONFIRMED_AT,
+        controls=historical_controls(),
     )
 
 
@@ -38,6 +45,7 @@ def test_first_epoch_abstains_on_values_with_no_predecessor(tmp_path: Path) -> N
         store=EvidenceStore(tmp_path),
         now=date(2026, 8, 14),
         retrieved_at=RETRIEVED_AT,
+        controls=historical_controls(),
     )
     results = {item.control_id: item for item in report.evaluations}
 
@@ -99,6 +107,7 @@ def test_epoch_binds_the_confirmation_capture_it_evaluated_against(
         store=store,
         now=date(2026, 8, 14),
         retrieved_at=RETRIEVED_AT,
+        controls=historical_controls(),
     )
     values = {
         item.control_id: item
@@ -124,6 +133,7 @@ def test_epoch_report_mapping_is_stable_json_data(tmp_path: Path) -> None:
         store=store,
         now=date(2026, 8, 20),
         retrieved_at=RETRIEVED_AT,
+        controls=historical_controls(),
     )
 
     mapping = report.to_mapping()

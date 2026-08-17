@@ -45,7 +45,7 @@ missed rows.
 
 | Metric | Target | Actual |
 |---|---|---|
-| Accepted controls | ≥6 | **8 — met.** Each is a candidate a model proposed from issuer bytes, bound by digest to the compilation that accepted it. Listed in `data/compilations/APPROVALS.json`. Two further candidates were declined, with reasons, and cannot be relabelled approved. |
+| Accepted controls | ≥6 | **5 — missed.** The 0.3.0 recompile (2026-08-17, live retrieval) proposed ten candidates that passed the deterministic gates. Five were approved and five declined, with reasons, in `data/compilations/APPROVALS.json`. The five declines were not forced: three are duplicate presence checks on a document another approved control already reads, and one clears the 0.80 confidence gate with zero margin. Approving any of them would have met this target and would have counted duplication as breadth, so the number stands at five and the row reads missed. Each approved control is bound by digest to the compilation that accepted it, and a declined candidate cannot be relabelled approved. |
 | Assets documented | 3 | **3 — met.** USTB, USDY and FOBXX source manifests, with golden fixtures where retrieval was bounded. |
 | Fully autonomous live adapters | ≥2 | **0 proven live — missed.** One adapter (USTB) is built, wired and tested end to end. It has never run against live sources, so the count of *live* adapters is zero. Counting it as one while saying it has never run live would be self-contradictory. USDY is blocked on unbounded retrieval (a single 260,431,605-byte archive). FOBXX is retained as a documented monthly contrast asset; no adapter ships. OUSG was cut rather than rushed into the second slot (`manifests/sources/ousg.json`, `phase_1_status.state: cut`). Phase 1 deliberately ships one vertical rather than two hurried ones. |
 | Live consumer contract gating on state | 1 | **0 — missed.** `AssetGate` is written and tested. It is deployed only ephemerally inside the local end-to-end run (`scripts/e2e_local.py`). It has never existed on a persistent chain. Address: `not_deployed`. |
@@ -138,11 +138,16 @@ honest result, not a defect. The canary packet accepts it.
 
 The confirmation window is empirical, not proven (residual **R-2**). A
 row revised and restored between the two captures is indistinguishable
-from one never touched. No approved USTB control currently declares
-`minimum_row_age_business_days`. The retired hand-written set used two
-business days; the compiler did not propose that field, and approval may
-change only `approval_state` and `compilation_sha256`, so it cannot be
-added to an approved control.
+from one never touched. One approved USTB control now declares
+`minimum_row_age_business_days`: `ustb-nav-per-share-present`, at two
+business days. Earlier sets carried none — the compiler did not propose
+the field, and approval may change only `approval_state` and
+`compilation_sha256`, so it could not be added afterwards. The 0.3.0
+compiler prompt requests it and the evaluator accepts it only on the NAV
+source and never for `fresh_within`. Note the deterministic gate
+validates a non-negative integer, not the constant two: this candidate
+declares two because the model proposed two, not because the compiler
+could produce nothing else.
 
 Presence controls on the yield and holdings sources do not use this
 window. They prove only that the issuer returned a named scalar in these

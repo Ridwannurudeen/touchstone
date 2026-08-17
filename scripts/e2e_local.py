@@ -24,7 +24,7 @@ ROOT = Path(__file__).parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from touchstone.approval import ledger_bytes, ledger_from_bytes  # noqa: E402
+from touchstone.approval import ledger_from_bytes  # noqa: E402
 from touchstone.controls import AssetState, OperationalEvent  # noqa: E402
 from touchstone.deployment import (  # noqa: E402
     DeploymentManifest,
@@ -93,7 +93,13 @@ def run_e2e(*, rpc_url: str = RPC_URL) -> dict[str, object]:
         # needed, matching what the unattended service does. This script read it 31 times
         # across a full run, and two of those reads disagreeing is precisely the defect the
         # rehearsal exists to catch rather than to demonstrate.
-        ledger = ledger_bytes()
+        #
+        # The frozen ledger, not the shipped one. The captures below are pinned to 08-13 and
+        # 08-14 and the run asserts `AssetGate` allows the report — but a control cannot
+        # evaluate evidence predating its own compile date, so under a freshly approved set
+        # this rehearsal fails on the calendar rather than on anything it means to exercise.
+        # Frozen dates need the ledger those dates were approved under.
+        ledger = (ROOT / "tests" / "historical_pack.json").read_bytes()
         controls = default_ustb_controls(ledger_from_bytes(ledger))
         run_ustb_epoch(
             transport=FixtureTransport(ROOT / "fixtures", date(2026, 8, 13)),

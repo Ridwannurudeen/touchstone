@@ -917,6 +917,7 @@ def test_a_report_whose_bundle_cannot_be_verified_is_never_published(
         previous_state=lambda on: AssetState.UNVERIFIABLE,
         transport=FixtureTransport(FIXTURES, date(2026, 8, 14)),
         bundle_sink=write_bundle(workspace.bundles),
+        approval_ledger=historical_ledger_bytes(),
     )
 
     with pytest.raises(VerificationError):

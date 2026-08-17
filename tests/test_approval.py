@@ -26,12 +26,13 @@ from touchstone.approval import (
     load_approval_ledger,
     provenance_digests,
 )
+from historical_pack import historical_controls
 from touchstone.controls import ControlRecord
 from touchstone.evaluate import default_ustb_controls
 
 
 COMPILATIONS = Path(__file__).parents[1] / "data" / "compilations"
-DECLINED = "holdings-line-items-present"
+DECLINED = "ustb-outstanding-shares-present"
 
 
 def artifacts() -> dict[str, bytes]:
@@ -52,7 +53,9 @@ def test_the_committed_control_set_is_bound_to_its_compilations() -> None:
     """The whole claim, checked against what is actually on disk."""
     controls = default_ustb_controls()
 
-    assert len(controls) == 8
+    # Five, deliberately hardcoded: this is the production lane, and a count that must be
+    # edited by hand is what forces someone to look at a control set before it ships.
+    assert len(controls) == 5
     for control in controls:
         assert control.approval_state == "approved"
         assert control.compilation_sha256 is not None
@@ -108,7 +111,12 @@ def test_an_edit_beyond_approval_is_named_field_by_field() -> None:
 
 
 def test_a_control_pointed_at_a_compilation_that_never_proposed_it() -> None:
-    controls = {control.control_id: control for control in default_ustb_controls()}
+    """Generic binding, not shipped policy — so it takes the frozen set.
+
+    Two named control ids and two artifacts that really did not propose each other are all
+    this needs, and the shipped set supplies neither once it is recompiled.
+    """
+    controls = {control.control_id: control for control in historical_controls()}
     yield_control = controls["ustb-one-day-yield-present"]
     other = controls["ustb-aum-published"].compilation_sha256
 
@@ -161,7 +169,7 @@ def test_the_ledger_records_why_each_declined_candidate_was_refused() -> None:
     """A control set that silently omits a rejected candidate cannot be audited for why."""
     ledger = load_approval_ledger()
 
-    assert len(ledger[DECLINED_KEY]) == 2
+    assert len(ledger[DECLINED_KEY]) == 5
     for entry in ledger[DECLINED_KEY]:
         assert entry["reason"].strip()
         assert entry["compilation_sha256"] in artifacts()

@@ -39,15 +39,19 @@ actually verified.
 
 ## 2. What was built
 
-A single USTB vertical, local and on a testnet registry that has not
-yet been published to.
+A single USTB vertical, local and on a testnet registry carrying one
+published report: sequence 1, state `UNVERIFIABLE`, 2026-08-17.
 
 **Evidence and controls.** Source manifests for USTB, USDY and FOBXX.
-Golden fixtures where retrieval was bounded. Eight accepted controls,
+Golden fixtures where retrieval was bounded. Five approved controls,
 each a candidate a model proposed from Superstate's own bytes and bound
 by digest to the compilation artifact that accepted it
-(`data/compilations/APPROVALS.json`). Two further candidates were
-declined, with reasons. The compiler has no tool surface. Approval
+(`data/compilations/APPROVALS.json`). Five further candidates passed the
+deterministic gates and were declined anyway, with reasons — three as
+duplicate presence checks on a document an approved control already
+reads, one at zero confidence margin. That is below the ≥6 target in
+`ROADMAP.md`, and `LIMITATIONS.md` records it as missed rather than
+padding the set to meet it. The compiler has no tool surface. Approval
 changes only `approval_state` and `compilation_sha256`.
 
 **Evaluation.** Deterministic evaluator. Asset states `CONFIRMED`,

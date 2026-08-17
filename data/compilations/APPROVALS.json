@@ -3,58 +3,61 @@
   "note": "Every control this project evaluates is here, and nothing else. Each entry names a candidate a model proposed from the issuer's own bytes and the compilation artifact it was accepted in; the control itself is read from that artifact, so this file can only point at a control, never restate one. Approval changes exactly two fields: approval_state and compilation_sha256. Declined entries are candidates that passed every deterministic gate and a human still did not approve \u2014 recorded because a control set that silently omits them cannot be audited for why.",
   "approved": [
     {
-      "control_id": "holdings-as-of-date-present",
-      "compilation_sha256": "0e2939d158466c8940d1683c54e6d9780e38ee62dd35a6efdb89b467bf05c4e6",
-      "approved_on": "2026-08-16"
+      "control_id": "ustb-holdings-as-of-date-present",
+      "compilation_sha256": "fad12109e3ec919ec87d923ee628392f3b64c91269711b5626a5b8239843afc3",
+      "approved_on": "2026-08-18"
     },
     {
-      "control_id": "ustb-aum-published",
-      "compilation_sha256": "42d006639640866595094417ddd5d916260dd8b74bb66207b5d5b9b958fd6b32",
-      "approved_on": "2026-08-16"
+      "control_id": "ustb-nav-daily-freshness",
+      "compilation_sha256": "db4eebc0e7a795eec7d835dfc4ccd939b87dd3a86d4c4e30a8b1c028bebb4bba",
+      "approved_on": "2026-08-18"
     },
     {
-      "control_id": "ustb-nav-date-freshness",
-      "compilation_sha256": "42d006639640866595094417ddd5d916260dd8b74bb66207b5d5b9b958fd6b32",
-      "approved_on": "2026-08-16"
+      "control_id": "ustb-nav-per-share-present",
+      "compilation_sha256": "db4eebc0e7a795eec7d835dfc4ccd939b87dd3a86d4c4e30a8b1c028bebb4bba",
+      "approved_on": "2026-08-18"
     },
     {
-      "control_id": "ustb-nav-per-share-published",
-      "compilation_sha256": "42d006639640866595094417ddd5d916260dd8b74bb66207b5d5b9b958fd6b32",
-      "approved_on": "2026-08-16"
+      "control_id": "ustb-yield-as-of-date-fresh",
+      "compilation_sha256": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
+      "approved_on": "2026-08-18"
     },
     {
-      "control_id": "ustb-one-day-yield-present",
-      "compilation_sha256": "8724e9338d92f60055720f6a1fe3b7307c22a9c4b57e8e52b76c62dc1fba6b5e",
-      "approved_on": "2026-08-16"
-    },
-    {
-      "control_id": "ustb-outstanding-shares-published",
-      "compilation_sha256": "42d006639640866595094417ddd5d916260dd8b74bb66207b5d5b9b958fd6b32",
-      "approved_on": "2026-08-16"
-    },
-    {
-      "control_id": "ustb-seven-day-yield-present",
-      "compilation_sha256": "8724e9338d92f60055720f6a1fe3b7307c22a9c4b57e8e52b76c62dc1fba6b5e",
-      "approved_on": "2026-08-16"
-    },
-    {
-      "control_id": "ustb-thirty-day-yield-present",
-      "compilation_sha256": "8724e9338d92f60055720f6a1fe3b7307c22a9c4b57e8e52b76c62dc1fba6b5e",
-      "approved_on": "2026-08-16"
+      "control_id": "ustb-yield-one-day-present",
+      "compilation_sha256": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
+      "approved_on": "2026-08-18"
     }
   ],
   "declined": [
     {
-      "control_id": "holdings-line-items-present",
-      "compilation_sha256": "0e2939d158466c8940d1683c54e6d9780e38ee62dd35a6efdb89b467bf05c4e6",
-      "declined_on": "2026-08-16",
-      "reason": "holdings is a collection, and whether exists means 'present' or 'non-empty' is undefined in the control language. Deciding that here would smuggle in a semantics change as an approval."
+      "control_id": "ustb-holdings-recently-published",
+      "compilation_sha256": "fad12109e3ec919ec87d923ee628392f3b64c91269711b5626a5b8239843afc3",
+      "declined_on": "2026-08-18",
+      "reason": "Redundant with ustb-holdings-as-of-date-present: both read the same as_of_date, and a 40-calendar-day window on a monthly holdings file adds no claim the presence control does not already make."
     },
     {
-      "control_id": "ustb-fund-identifier-stable",
-      "compilation_sha256": "42d006639640866595094417ddd5d916260dd8b74bb66207b5d5b9b958fd6b32",
-      "declined_on": "2026-08-16",
-      "reason": "The expected_value is a literal fund identifier, but eq compares decimals: the evaluator resolves expected_value['value'] to a Decimal and returns UNEVALUABLE when it cannot. Approval may change only approval_state and compilation_sha256, so this cannot be repaired by approving it."
+      "control_id": "ustb-outstanding-shares-present",
+      "compilation_sha256": "db4eebc0e7a795eec7d835dfc4ccd939b87dd3a86d4c4e30a8b1c028bebb4bba",
+      "declined_on": "2026-08-18",
+      "reason": "Compiler confidence is 0.80 against a gate of < 0.80, so it clears by zero margin. That is not a deterministic invalidity and the candidate is well formed, but zero margin is not the evidence quality a first approved set should rest on when ustb-nav-per-share-present already covers the NAV value claim."
+    },
+    {
+      "control_id": "ustb-yield-as-of-date-present",
+      "compilation_sha256": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
+      "declined_on": "2026-08-18",
+      "reason": "Redundant with ustb-yield-as-of-date-fresh, which reads the same field and also checks it against the source's declared two-business-day policy."
+    },
+    {
+      "control_id": "ustb-yield-seven-day-present",
+      "compilation_sha256": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
+      "declined_on": "2026-08-18",
+      "reason": "Valid, but a third presence check on the same yield document is additional scalar coverage rather than breadth. ustb-yield-one-day-present is the representative field; approving all three would present duplication as product scope."
+    },
+    {
+      "control_id": "ustb-yield-thirty-day-present",
+      "compilation_sha256": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
+      "declined_on": "2026-08-18",
+      "reason": "Valid, but a third presence check on the same yield document is additional scalar coverage rather than breadth. ustb-yield-one-day-present is the representative field; approving all three would present duplication as product scope."
     }
   ]
 }

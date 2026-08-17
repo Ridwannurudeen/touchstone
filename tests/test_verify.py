@@ -387,7 +387,10 @@ def test_a_bundle_keeps_the_key_and_digests_it_was_given(tmp_path: Path) -> None
     digests[0]["provenance"] = {"fetched_by": "the daemon"}
 
     bundle = create_bundle(
-        signer.sign_report(report), key, historical_controls(), digests,
+        signer.sign_report(report),
+        key,
+        historical_controls(),
+        digests,
         approval_ledger=historical_ledger_bytes(),
     )
     key["provenance"]["issued_by"] = "someone else"
@@ -599,12 +602,17 @@ def test_a_control_absent_from_the_ledger_is_refused(tmp_path: Path) -> None:
     controls[0] = ControlRecord.from_mapping(renamed)
 
     with pytest.raises(ApprovalError, match="appears 0 times"):
-        assert_ledger_permits(controls, __import__(
-            "touchstone.approval", fromlist=["load_approval_ledger"]
-        ).load_approval_ledger())
+        assert_ledger_permits(
+            controls,
+            __import__(
+                "touchstone.approval", fromlist=["load_approval_ledger"]
+            ).load_approval_ledger(),
+        )
 
 
-def test_the_production_control_set_is_derived_from_the_ledger_not_filtered_by_it() -> None:
+def test_the_production_control_set_is_derived_from_the_ledger_not_filtered_by_it() -> (
+    None
+):
     """Why `build_observation_report` needs no ledger check of its own.
 
     An audit asked for one, on the reading that `assert_ledger_permits` runs only inside
@@ -631,7 +639,9 @@ def test_the_production_control_set_is_derived_from_the_ledger_not_filtered_by_i
     produced = {control.control_id for control in default_ustb_controls()}
 
     assert produced == approved
-    assert all(control.approval_state == "approved" for control in default_ustb_controls())
+    assert all(
+        control.approval_state == "approved" for control in default_ustb_controls()
+    )
 
 
 def test_a_bundle_refuses_a_ledger_that_drifted_since_the_report_was_signed(
@@ -694,9 +704,10 @@ def test_a_bundle_accepts_the_exact_ledger_its_report_was_signed_under(
         approval_ledger=historical_ledger_bytes(),
     )
 
-    assert verify_bundle(bundle)["approval_ledger_sha256"] == hashlib.sha256(
-        bundle["approval_ledger"].encode("utf-8")
-    ).hexdigest()
+    assert (
+        verify_bundle(bundle)["approval_ledger_sha256"]
+        == hashlib.sha256(bundle["approval_ledger"].encode("utf-8")).hexdigest()
+    )
 
 
 def test_a_ledger_change_between_deriving_controls_and_signing_is_refused(
@@ -722,18 +733,18 @@ def test_a_ledger_change_between_deriving_controls_and_signing_is_refused(
         APPROVED_KEY,
         DECLINED_KEY,
         ApprovalError,
-        ledger_bytes,
     )
 
     epoch = _epoch(tmp_path)
     controls = historical_controls()
     victim = controls[0].control_id
 
-    later = json.loads(ledger_bytes().decode("utf-8"))
+    # The frozen ledger, not the shipped one: the victim is taken from the frozen controls,
+    # and a control the shipped ledger no longer lists cannot be moved from approved to
+    # declined within it — the race this pins would go untested as a `StopIteration`.
+    later = json.loads(historical_ledger_bytes().decode("utf-8"))
     moved = next(e for e in later[APPROVED_KEY] if e["control_id"] == victim)
-    later[APPROVED_KEY] = [
-        e for e in later[APPROVED_KEY] if e["control_id"] != victim
-    ]
+    later[APPROVED_KEY] = [e for e in later[APPROVED_KEY] if e["control_id"] != victim]
     later[DECLINED_KEY].append({**moved, "reason": "declined during the race window"})
     drifted = json.dumps(later, separators=(",", ":"), sort_keys=True).encode("utf-8")
 

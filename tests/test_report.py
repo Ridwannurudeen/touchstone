@@ -162,6 +162,7 @@ def test_report_builds_stale_epoch_with_contract_valid_timestamps(
         store=store,
         now=date(2026, 8, 13),
         retrieved_at=CONFIRMED_AT,
+        controls=historical_controls(),
     )
     retrieved_at = datetime(2026, 8, 20, 14, 16, 17, tzinfo=timezone.utc)
     epoch = run_ustb_epoch(
@@ -169,6 +170,7 @@ def test_report_builds_stale_epoch_with_contract_valid_timestamps(
         store=store,
         now=date(2026, 8, 20),
         retrieved_at=retrieved_at,
+        controls=historical_controls(),
     )
     report = build_observation_report(
         epoch,
@@ -193,6 +195,7 @@ def test_report_requires_explicit_limitations(tmp_path: Path) -> None:
             sequence=1,
             publisher_kid="ed25519:" + "11" * 32,
             limitations=[],
+            approval_ledger=historical_ledger_bytes(),
         )
 
 

@@ -459,6 +459,43 @@ key-compromise procedure; quorum and disagreement semantics; suspension rules; a
 independent methodology governance; no token or slashing until real adversarial and
 legal requirements justify them.
 
+### Adopted from the incumbents (design audit, 2026-08-17/18)
+
+Two rounds against Chainlink and RedStone. Round 1 audited their price-feed surface, which
+was the wrong opponent; round 2 found the products in this category. Ordered by what each
+closes, not by how large it sounds.
+
+1. **Root / derivative publisher hierarchy.** From RedStone's TSSO, which co-signs
+   single-source NAV with a cold root key for material change and a bounded hot key for
+   routine updates. Closes routine-key compromise without giving the hot key authority over
+   the control set. `touchstone/publish.py`, `touchstone/keyring.py`,
+   `TouchstoneRegistry.sol`.
+2. **Chained publication.** A report must commit to its predecessor's digest. Today
+   `report.py` carries `sequence` and `correction_of` but no parent, and the registry
+   enforces sequence monotonicity only — so an authorized publisher can place an unrelated
+   report at the next sequence and nothing detects the splice. Sequence binds position; it
+   does not bind content. Requires a registry struct change, so it lands in the next
+   deployed version rather than being bolted onto the current one.
+3. **Explicit `SOURCE_ERROR` publication.** The state exists in the transition model and has
+   no runtime producer: a fetch failure ends the epoch instead. `touchstone/epoch.py`,
+   `touchstone/schedule.py`, `touchstone/controls.py`.
+4. **Scheduled republication of unchanged state.** TSSO re-signs a static value to keep it
+   from reading as stale. Adopt the shape, not the numeric deviation threshold — a 0.1%
+   band is meaningless over `CONFIRMED` / `UNVERIFIABLE` / `STALE` / `INCONSISTENT`.
+5. **Bind the evidence span to the adapter field it justifies** (residual R-1). The span is
+   presence-only today.
+
+**Deferred, deliberately:** threshold co-signing. RedStone ship a quorum product with
+`getUniqueSignersThreshold` and an onchain median, and still concluded that a valuation with
+one authoritative source cannot be established by aggregation. Three signers reading the same
+issuer API agree on the same wrong answer. Quorum earns its place when there are publishers
+whose disagreement carries information, not before.
+
+**Watched, not adoptable:** zkTLS (Chainlink DECO) is a public sandbox with no production
+product. It would prove transport — that these bytes came from that server — which is
+strictly stronger than the unauthenticated fetch this project records today. It would not
+prove typed interpretation, predicate evaluation, approval binding, or abstention.
+
 ## Public-backing milestone arc (every item drafted, owner approves)
 
 The owner's personal account carries the convictions; the project account carries
