@@ -157,7 +157,11 @@ jobs:
       # does not fail a job that only lists it.
       - name: Every gate must have succeeded
         run: |
-          results='${{ join(needs.*.result, " ") }}'
+          # Single quotes inside the expression, double outside. GitHub Actions expressions
+          # accept only single-quoted string literals, and `join(..., " ")` is a parse error
+          # that rejects the entire workflow file before any job starts — which reads as
+          # "this run likely failed because of a workflow file issue" and nothing else.
+          results="${{ join(needs.*.result, ' ') }}"
           echo "gate results: ${results}"
           for result in ${results}; do
             if [ "${result}" != "success" ]; then
