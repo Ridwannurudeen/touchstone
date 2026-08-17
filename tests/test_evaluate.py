@@ -17,6 +17,7 @@ from touchstone.evaluate import (
     business_days_elapsed,
     default_ustb_controls,
     evaluate_ustb,
+    supports,
 )
 from touchstone.normalize.ustb import (
     USTB_HOLDINGS_SOURCE_ID,
@@ -553,3 +554,54 @@ def test_one_report_describes_one_set_of_prior_observations() -> None:
         prior_observations=prior(),
         now=date(2026, 8, 14),
     )
+
+
+@pytest.mark.parametrize(
+    ("expected", "decidable", "why"),
+    [
+        ({"field": "net_asset_value", "minimum_row_age_business_days": 2}, True, "the window the retired hand-written controls used"),
+        ({"field": "net_asset_value", "minimum_row_age_business_days": 0}, True, "zero is a real window: it admits any row not future-dated"),
+        ({"field": "net_asset_value"}, True, "absent is allowed and means zero"),
+        ({"field": "net_asset_value", "minimum_row_age_business_days": -1}, False, "negative"),
+        ({"field": "net_asset_value", "minimum_row_age_business_days": "2"}, False, "a string, not an integer"),
+        ({"field": "net_asset_value", "minimum_row_age_business_days": 2.0}, False, "a float, not an integer"),
+        ({"field": "net_asset_value", "minimum_row_age_business_days": True}, False, "a bool is not an integer window"),
+    ],
+)
+def test_a_minimum_row_age_must_be_usable_to_be_accepted(
+    expected: dict, decidable: bool, why: str
+) -> None:
+    """A malformed window abstains from every row for ever, saying nothing about why.
+
+    `_minimum_row_age_business_days` returns None for anything that is not a non-negative
+    integer, and the row selector then returns None, so the control reports UNEVALUABLE
+    permanently. That is exactly the outcome `supports` exists to keep out of the approved
+    set, and it did not check this key at all.
+    """
+    assert (
+        supports(USTB_NAV_SOURCE_ID, ComparisonOperator.EXISTS, expected) is decidable
+    ), why
+
+
+@pytest.mark.parametrize(
+    ("source", "operator"),
+    [
+        ("superstate-ustb-yield", ComparisonOperator.EXISTS),
+        ("superstate-ustb-holdings", ComparisonOperator.EXISTS),
+        (USTB_NAV_SOURCE_ID, ComparisonOperator.FRESH_WITHIN),
+    ],
+)
+def test_a_minimum_row_age_where_nothing_reads_a_row_is_refused(
+    source: str, operator: ComparisonOperator
+) -> None:
+    """Only the NAV source selects a row, and freshness does not select one either.
+
+    Accepting the key elsewhere would put a setting in the control that a reader could
+    reasonably believe was in force while nothing ever consulted it — a control claiming
+    more than it does, which is the same defect as a vacuous test.
+    """
+    expected = {"field": "as_of_date", "minimum_row_age_business_days": 2}
+    if operator is ComparisonOperator.FRESH_WITHIN:
+        expected = {"business_days": 1, "minimum_row_age_business_days": 2}
+
+    assert supports(source, operator, expected) is False

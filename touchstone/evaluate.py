@@ -89,6 +89,24 @@ def supports(
     window was a string — every one of which the compiler would then accept and the
     evaluator would then answer UNEVALUABLE for ever.
     """
+    # `minimum_row_age_business_days` is optional, and where it appears it has to be usable.
+    # A malformed window made `_minimum_row_age_business_days` return None, which abstains
+    # from every row for ever — the control reports UNEVALUABLE and nothing says why. That
+    # is precisely the outcome this gate exists to keep out of the set. A window declared
+    # where the evaluator never reads it is refused too: only the NAV source selects a row,
+    # and only then for operators other than freshness, so anywhere else the key would be a
+    # setting a reader could believe was in force while nothing consulted it.
+    if isinstance(expected_value, Mapping) and "minimum_row_age_business_days" in (
+        expected_value
+    ):
+        declared = expected_value["minimum_row_age_business_days"]
+        if type(declared) is not int or declared < 0:
+            return False
+        if source_id != USTB_NAV_SOURCE_ID:
+            return False
+        if operator is ComparisonOperator.FRESH_WITHIN:
+            return False
+
     if operator is ComparisonOperator.FRESH_WITHIN:
         if not isinstance(expected_value, Mapping):
             return False

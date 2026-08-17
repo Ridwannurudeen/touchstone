@@ -54,10 +54,24 @@ class Mutation:
 # job that exists to prove the tests bite would go green having run nothing. That is the same
 # failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
 # Raise this deliberately when a mutation is added; a diff that changes it is the point.
-EXPECTED_MUTATIONS = 116
+EXPECTED_MUTATIONS = 117
 
 
 MUTATIONS = (
+    Mutation(
+        name="an-unusable-row-age-window-is-accepted-into-the-set",
+        path="touchstone/evaluate.py",
+        old="""    if isinstance(expected_value, Mapping) and "minimum_row_age_business_days" in (
+        expected_value
+    ):""",
+        new="    if False:",
+        tests=(
+            "tests/test_evaluate.py::"
+            "test_a_minimum_row_age_must_be_usable_to_be_accepted",
+            "tests/test_evaluate.py::"
+            "test_a_minimum_row_age_where_nothing_reads_a_row_is_refused",
+        ),
+    ),
     Mutation(
         name="preflight-takes-authorization-as-proof-of-lineage",
         path="touchstone/publish.py",

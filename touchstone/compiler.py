@@ -88,6 +88,22 @@ can reach; a candidate outside them is rejected however well it cites its eviden
 `eq`, `within_tolerance` and `non_decreasing` compare decimals, so their `value` must be a \
 number or a numeric string. A non-numeric expected value cannot be evaluated at all.
 
+On superstate-ustb-nav-daily only, and for any operator except fresh_within, \
+`expected_value` may additionally carry:
+
+  minimum_row_age_business_days   int >= 0, optional
+
+It is the number of business days a NAV row must have been published for before this \
+control will read it. Propose 2 for any control that reads a value from a NAV row. The \
+issuer's most recent row is provisional and is revised in place, so a control that reads it \
+attributes a number to a day the issuer may still change; two business days is the window \
+in which a revision would have appeared. Omitting the key means zero, which admits a row \
+published moments ago.
+
+Do not put it on the yield or holdings sources, and not on fresh_within: those read no row, \
+so the key would be a setting nothing consults. A negative or non-integer window is \
+rejected rather than ignored.
+
 Which operators are available depends on the source, because confirmation across captures \
 is a source policy rather than a property of an operator:
 
