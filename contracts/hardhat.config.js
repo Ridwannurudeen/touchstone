@@ -19,16 +19,20 @@ const deployerKey = process.env.TOUCHSTONE_DEPLOYER_PRIVATE_KEY;
 // reproducing a day after the fixtures were captured.
 const FIXTURE_EPOCH_RETRIEVED_AT = "2026-08-14T17:08:12Z";
 
+// Read from `solidity.json` rather than written here, so the compiler settings have one
+// source that both Hardhat and `scripts/build_release.py` consume. The release builder used
+// to recover them by regex over this file, which selected the first object that *looked*
+// like a solidity block — an unused one earlier in the file, or a commented-out line, was
+// reported as the configuration the contracts were built with. A release document that names
+// a compiler setting the compiler never used is worse than one that omits it, and no amount
+// of pattern-matching JavaScript makes that safe. Data belongs in a data file.
+//
+// `evmVersion` is stated explicitly. Leaving it to the toolchain's default meant the release
+// document recorded nothing while the build recorded `paris`.
+const solidity = require("./solidity.json");
+
 module.exports = {
-  solidity: {
-    version: "0.8.24",
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 200,
-      },
-    },
-  },
+  solidity,
   networks: {
     hardhat: {
       initialDate: FIXTURE_EPOCH_RETRIEVED_AT,

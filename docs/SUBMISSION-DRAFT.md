@@ -104,7 +104,7 @@ Stated as misses, not as near-misses.
 |---|---|
 | ≥2 fully autonomous **live** adapters | **Missed.** One adapter built (USTB), zero proven live. USDY blocked on a 260 MB archive. FOBXX cut as an adapter. OUSG cut. |
 | One live consumer contract gating on state | **Missed.** `AssetGate` is `not_deployed` on any persistent chain. |
-| One production canary epoch | **Missed.** Nothing has been published to any registry. |
+| One production canary epoch | **Met on testnet**, 2026-08-17: USTB sequence 1, block 38526525, state `UNVERIFIABLE`. Unmet for mainnet, which is unscheduled. |
 | Living dossier and developer surface | **Unbuilt.** PLAN-T9. |
 | Public demo | **`not_deployed`.** The two-act script in `ROADMAP.md` cannot be walked as written. See `docs/DEMO-RUNBOOK.md`. |
 
@@ -124,7 +124,7 @@ metrics were not retargeted.
 | Mainnet publisher | `not_deployed` |
 | Mainnet `AssetGate` | `not_deployed` |
 | Hero asset (off-chain identity) | USTB `eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e` |
-| Published report / explorer tx | `not_deployed` — no report has been published |
+| Published report / explorer tx | USTB sequence 1, block 38526525, tx `0x5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869`, state `UNVERIFIABLE`. X Layer testnet |
 | Verification API | `not_deployed` |
 | Status page | `not_deployed` |
 
@@ -180,7 +180,7 @@ evidence or the refusal.
 
 | Claim one might want | Honest substitute | Evidence |
 |---|---|---|
-| "Live on X Layer" | A testnet registry is deployed; nothing has been published to it. | `docs/OPERATIONS.md`, `docs/DEPLOYMENT-G1-EXECUTED.md` |
+| "Live on X Layer" | A testnet registry is deployed and holds one published report. Testnet only; mainnet is unscheduled. | `docs/OPERATIONS.md`, `docs/DEPLOYMENT-G1-EXECUTED.md` |
 | "Two live adapters" | One adapter built, zero proven live. | `ROADMAP.md` completion table |
 | "Consumer contract in production" | `AssetGate` is `not_deployed` on a persistent chain. | `scripts/e2e_local.py`; no address in `deployments/` |
 | "Autonomous canary" | Prepared, not executed. | `docs/CANARY-G1B.md` |

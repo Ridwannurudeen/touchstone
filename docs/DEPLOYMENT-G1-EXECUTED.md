@@ -67,7 +67,10 @@ against `deployments/manifest.schema.json`, loads through `DeploymentManifest`, 
 `prepared → broadcast → deploying → deployed → broadcast → authorizing → authorized`.
 
 `publish_epoch.py --preflight` returns `published: false` against the new registry with the
-publisher authorized and the runtime digest matching. Nothing has been published to it.
+publisher authorized and the runtime digest matching. Nothing had been published to it at
+the time of that deployment. The first publication came later, on 2026-08-17 at 16:49 UTC
+under its own separate owner authorisation: USTB sequence 1, state `UNVERIFIABLE`, block
+38526525. This document records the deployment, not that run; see `docs/CANARY-G1B.md` §9.
 
 The superseded registry `0xc9d58e…D30d` was not touched and its manifest still reads
 `deployment_state: superseded`. A full scan of every 100-block range from its deployment block

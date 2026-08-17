@@ -30,7 +30,15 @@ at a run for.
 
 It also does not execute `contracts/hardhat.config.js`. That file reads the
 deployer private key from the environment; evaluating it would be a secret
-read. The Solidity settings are already sitting in the source as literals.
+read. The compiler settings live in `contracts/solidity.json`, which the Hardhat
+config requires and the builder parses as data.
+
+They used to be recovered by regex over the config, which took the first object
+that *looked* like a solidity block — so a commented-out line, or an unused
+config declared earlier in the file, was reported as what the contracts were
+built with. Pattern-matching a program to find out how it was configured is
+unsound however carefully it is done; the settings are data and now live in a
+data file.
 
 The document is unsigned JSON. `docs/THREAT-MODEL.md` still lists signed
 release manifests as PLAN-T13 work. This builder does not sign.
@@ -112,9 +120,10 @@ Every field is either read from the tree or taken as an explicit argument.
 | `built_at` | `--built-at` |
 | `python.requires_python` | `pyproject.toml` `[project].requires-python` |
 | `python.runtime` / `python.dev` | Pinned `==` dependencies from `[project].dependencies` and `[project.optional-dependencies].dev` |
-| `contracts.solidity` | `contracts/hardhat.config.js` `solidity.version` |
+| `contracts.solidity` | `contracts/solidity.json` `version` |
 | `contracts.optimizer` | `enabled` and `runs` from the same file |
-| `contracts.evm_version` | `evmVersion` if the file names it; otherwise `null`. Hardhat's default is not written: reading a default out of a different program's memory is how a release would claim a target the config never named. The committed `hardhat.config.js` does not declare `evmVersion`. |
+| `contracts.evm_version` | `settings.evmVersion` if named; otherwise `null`. Hardhat's default is not written: reading a default out of another program's memory is how a release claims a target nobody set. The committed file declares `paris`, and `hardhat compile` reports `evm target: paris`, so the document and the build agree. |
+| `contracts.solidity_config_sha256` | SHA-256 of the bytes of `contracts/solidity.json` |
 | `contracts.package_lock_sha256` | SHA-256 of the bytes of `contracts/package-lock.json` |
 | `deployments` | Each real `deployments/*.json` manifest: `network`, `chain_id`, `registry_address`, `deployment_state`, `registry_runtime_bytecode_sha256` |
 | `schemas` | SHA-256 of `deployments/manifest.schema.json` |
@@ -211,7 +220,7 @@ Current chain facts, recorded in `docs/OPERATIONS.md` and
 | Active registry | `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`, block 38489602 |
 | Publisher | `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710`, authorised, identity mapped to itself |
 | `deployment_state` | `active` |
-| Reports on this registry | **none**. `latestSequence` is zero for every asset key |
+| Reports on this registry | **one.** USTB `latestSequence` is 1 — sequence 1, epoch `ustb-2026-08-17`, state `UNVERIFIABLE`, block 38526525, tx `0x5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869`. Every other asset key is still zero |
 | Predecessor | `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, block 38369203, `deployment_state: superseded`. It predates `epochKey` and must not be published to. It published nothing. |
 
 **Do not redeploy because a release document was cut.** A second deploy to

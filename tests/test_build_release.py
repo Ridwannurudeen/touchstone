@@ -41,34 +41,28 @@ dev = [
 ]
 """
 
-HARDHAT = """\
-module.exports = {
-  solidity: {
-    version: "0.8.24",
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 200,
-      },
-    },
-  },
-};
+HARDHAT = """const solidity = require("./solidity.json");
+module.exports = { solidity, networks: { hardhat: {} } };
 """
 
-HARDHAT_WITH_EVM = """\
-module.exports = {
-  solidity: {
-    version: "0.8.24",
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 200,
-      },
-      evmVersion: "paris",
-    },
-  },
-};
-"""
+# The compiler settings live in a data file that Hardhat requires and the builder reads.
+# They used to be recovered by regex over the config, which selected the first object that
+# looked like a solidity block -- so an unused config earlier in the file, or a commented-out
+# line, was reported as what the contracts were actually built with.
+SOLIDITY = json.dumps(
+    {"version": "0.8.24", "settings": {"optimizer": {"enabled": True, "runs": 200}}}
+).encode("utf-8")
+
+SOLIDITY_WITH_EVM = json.dumps(
+    {
+        "version": "0.8.24",
+        "settings": {
+            "optimizer": {"enabled": True, "runs": 200},
+            "evmVersion": "paris",
+        },
+    }
+).encode("utf-8")
+
 
 LOCKFILE = b'{"lockfileVersion": 3}\n'
 SCHEMA = b'{"title": "deployment"}\n'
@@ -126,8 +120,8 @@ def _tree(tmp_path: Path, *, evm: bool = False) -> Path:
     """A complete tree the builder can describe, committed so HEAD exists."""
     root = tmp_path / "repo"
     _write(root / "pyproject.toml", PYPROJECT)
-    config = HARDHAT_WITH_EVM if evm else HARDHAT
-    _write(root / "contracts" / "hardhat.config.js", config)
+    _write(root / "contracts" / "hardhat.config.js", HARDHAT)
+    _write(root / "contracts" / "solidity.json", SOLIDITY_WITH_EVM if evm else SOLIDITY)
     _write(root / "contracts" / "package-lock.json", LOCKFILE)
     _write(root / "deployments" / "manifest.schema.json", SCHEMA)
     _write(
@@ -554,7 +548,11 @@ def test_the_repository_itself_builds_a_manifest(tmp_path: Path) -> None:
     assert "pytest" in document["python"]["dev"]
     assert document["contracts"]["solidity"] == "0.8.24"
     assert document["contracts"]["optimizer"] == {"enabled": True, "runs": 200}
-    assert document["contracts"]["evm_version"] is None
+    # `paris`, not None. This asserted None while the build actually targeted paris, so the
+    # release document omitted the effective EVM target and this test agreed with it. The
+    # setting is declared explicitly in `contracts/solidity.json` now, and `hardhat compile`
+    # reports "evm target: paris", so the document and the build finally say the same thing.
+    assert document["contracts"]["evm_version"] == "paris"
     deployments = document["deployments"]
     assert "deployments/xlayer-mainnet.template.json" not in deployments
     assert "deployments/xlayer-testnet.template.json" not in deployments
@@ -586,37 +584,65 @@ def _assert_no_absolute_paths(value: object) -> None:
         assert "\\" not in value
 
 
-def test_a_commented_out_compiler_setting_is_not_recorded(tmp_path: Path) -> None:
-    """A release document must name what the compiler enacted, not what was disabled.
+def test_the_compiler_settings_come_from_the_data_file_hardhat_reads(
+    tmp_path: Path,
+) -> None:
+    """One source for the settings, so there is nothing left to misread.
 
-    The scanner matches the first occurrence of each key, and a commented-out setting is an
-    earlier occurrence. Before comments were stripped, `// runs: 1` above the real `runs: 200`
-    was recorded as 1, and a commented `version: "0.4.0"` was recorded as the solidity
-    version — a manifest naming a compiler configuration that never existed.
+    They used to be recovered by regex over `hardhat.config.js`, which took the first object
+    that looked like a solidity block. A commented-out line, or an unused config declared
+    earlier in the file, was reported as the configuration the contracts were built with —
+    a release document naming a compiler setting the compiler never used. Editing the config
+    around the require must not change what is recorded.
     """
     root = _tree(tmp_path)
-    poisoned = b"""module.exports = {
-  solidity: {
-    // version: "0.4.0",
-    version: "0.8.24",
-    settings: {
-      optimizer: {
-        /* enabled: false, */
-        // runs: 1,
-        enabled: true,
-        runs: 200,
-      },
-    },
-  },
-};
-"""
-    _write(root / "contracts" / "hardhat.config.js", poisoned)
+    _write(
+        root / "contracts" / "hardhat.config.js",
+        b"""// solidity: { version: "0.4.0" }
+const legacy = { solidity: { version: "0.1.0", settings: { optimizer: { enabled: false, runs: 1 } } } };
+const solidity = require("./solidity.json");
+module.exports = { solidity, networks: { hardhat: {} } };
+""",
+    )
     destination = tmp_path / "release.json"
 
     assert _build(root, destination, ["--tests-passed", "1"]) == 0
-    contracts = json.loads(destination.read_text(encoding="utf-8"))["contracts"]
+    contracts = _document(destination)["contracts"]
     assert contracts["solidity"] == "0.8.24"
     assert contracts["optimizer"] == {"enabled": True, "runs": 200}
+
+
+def test_a_document_written_into_the_tree_it_describes_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Writing the document into the tree changes the answer the document records.
+
+    `tree_clean` is read before the file is written, so the first build recorded `true` and
+    dirtied the tree, and an identical second build recorded `false`. Two different documents
+    from one tree is exactly the reproducibility this exists to provide, so the destination
+    is refused rather than the contradiction being hidden.
+    """
+    root = _tree(tmp_path)
+
+    assert _build(root, root / "release.json", ["--tests-passed", "1"]) == 1
+    assert not (root / "release.json").exists()
+
+
+@pytest.mark.parametrize(
+    "stamp", ["2026-99-99T99:99:99Z", "2026-02-30T00:00:00Z", "2026-13-01T00:00:00Z"]
+)
+def test_a_timestamp_of_the_right_shape_but_no_such_instant_is_refused(
+    tmp_path: Path, stamp: str
+) -> None:
+    """The shape is not the value. `2026-99-99T99:99:99Z` matched the pattern and was
+    recorded as the moment a release was built, which is a date that does not exist."""
+    root = _tree(tmp_path)
+    destination = tmp_path / "release.json"
+
+    assert (
+        main(["--root", str(root), "--built-at", stamp, "--out", str(destination)]) == 1
+    )
+    assert not destination.exists()
 
 
 def test_a_template_named_in_upper_case_is_still_excluded(tmp_path: Path) -> None:

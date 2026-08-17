@@ -27,7 +27,7 @@ honest state, and a runbook that invented them would be worse than one that admi
 
 | Network | State |
 |---|---|
-| X Layer **testnet** (chain 1952) | **ACTIVE** — registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` (block 38489602), deployed 2026-08-17 under a recorded owner approval. Manifest `deployments/xlayer-testnet-2.json`, `deployment_state: active`, publisher authorized. **Holds zero reports** |
+| X Layer **testnet** (chain 1952) | **ACTIVE** — registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` (block 38489602), deployed 2026-08-17 under a recorded owner approval. Manifest `deployments/xlayer-testnet-2.json`, `deployment_state: active`, publisher authorized. **Holds one report**: USTB sequence 1 |
 | X Layer testnet — **predecessor** | **SUPERSEDED** — registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` (block 38369203) predates the `epochKey` change and cannot enforce one report per epoch. Its manifest declares `deployment_state: superseded` and the service refuses it before reading any key. It published nothing, verified by a full log scan from its deployment block to head |
 | X Layer **mainnet** (chain 196) | `not_deployed` — owner-gated, and additionally blocked until the deployer and publisher keys sit on separate hosts (`docs/DEPLOYMENT-G1-EXECUTED.md`) |
 
@@ -39,9 +39,16 @@ of the deployment and authorization transaction hashes. **Keep the journal.** Th
 registry's manifest `deployments/xlayer-testnet.json` is retained; its note distinguishes the
 fields read from the chain from the ones that are reconstructed configuration.
 
-**No report has ever been published to any registry.** The active registry holds zero reports;
-`latestSequence` is zero for every asset key. The next publication is a single USTB canary
-epoch under its own owner gate. The deployment approval explicitly did not cover it.
+**The canary ran on 2026-08-17 at 16:49 UTC, under its own owner authorisation, and it is the
+first report Touchstone has ever published.** USTB `latestSequence` is **1**: sequence 1, epoch
+`ustb-2026-08-17`, block 38526525, tx `0x5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869`, 256,988 gas. Every other asset key is still zero.
+
+**Its state is `UNVERIFIABLE`, and that is the correct answer rather than a failure.** A value
+control observes only a row confirmed by a capture at least 24 hours older, and on a first run
+there is no such capture. The system declined to claim more than its evidence supported. A
+second epoch after 2026-08-18 16:49 UTC, against the same workspace, is what can produce a
+confirmed state — and it must be the same workspace, because that is where the earlier capture
+lives.
 
 The superseded predecessor is refused before any key is read, because its manifest declares
 `deployment_state: superseded`. That refusal is what stops a publication reaching it; its

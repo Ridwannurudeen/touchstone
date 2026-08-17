@@ -54,26 +54,58 @@ class Mutation:
 # job that exists to prove the tests bite would go green having run nothing. That is the same
 # failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
 # Raise this deliberately when a mutation is added; a diff that changes it is the point.
-EXPECTED_MUTATIONS = 113
+EXPECTED_MUTATIONS = 116
 
 
-# Deliberately absent: a mutation of preflight's lineage check
-# (`touchstone/publish.py`, `identity != manifest.publisher_identity_address`). The only
-# tests that reach it are in `tests/test_rotation_local_chain.py`, which deploy a registry on
-# a Hardhat node — and this harness runs in a CI job with Python and no Node, so its baseline
-# run of those tests fails and the whole harness refuses rather than reporting a false score.
-# That refusal is correct behaviour and it cost a red build to learn. The check is covered by
-# the managed local-chain job instead, whose identity gate names both rotation cases, so it
-# cannot silently stop running either.
 MUTATIONS = (
     Mutation(
-        name="the-release-document-reads-commented-out-compiler-settings",
+        name="preflight-takes-authorization-as-proof-of-lineage",
+        path="touchstone/publish.py",
+        old="        if identity != manifest.publisher_identity_address:",
+        new="        if False:",
+        # A pure-Python test, deliberately. An earlier version of this file claimed the only
+        # tests reaching this branch were the managed-chain ones and dropped the mutation on
+        # that basis -- which was false, and the claim sat in the repository until an audit
+        # read it. `test_publish_signed` drives a stub JSON-RPC node and needs no Hardhat, so
+        # the branch is mutation-covered in a job that has Python and nothing else.
+        tests=(
+            "tests/test_publish_signed.py::"
+            "test_a_publisher_from_another_lineage_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-release-document-reads-a-config-hardhat-may-not-use",
         path="scripts/build_release.py",
-        old='    text = _strip_js_comments(path.read_bytes().decode("utf-8"))',
-        new='    text = path.read_bytes().decode("utf-8")',
+        old="    declared = json.loads((root / SOLIDITY).read_bytes())",
+        new='    declared = json.loads((root / Path("contracts") / "legacy.json").read_bytes())',
         tests=(
             "tests/test_build_release.py::"
-            "test_a_commented_out_compiler_setting_is_not_recorded",
+            "test_the_compiler_settings_come_from_the_data_file_hardhat_reads",
+        ),
+    ),
+    Mutation(
+        name="the-release-document-may-be-written-into-its-own-tree",
+        path="scripts/build_release.py",
+        old="""        _refuse_output_inside(arguments.root, arguments.out)
+""",
+        new="",
+        tests=(
+            "tests/test_build_release.py::"
+            "test_a_document_written_into_the_tree_it_describes_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-release-document-accepts-an-instant-that-never-happened",
+        path="scripts/build_release.py",
+        old="""    try:
+        datetime.fromisoformat(built_at.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ReleaseError(f"--built-at is not a real instant: {built_at!r}") from error
+""",
+        new="",
+        tests=(
+            "tests/test_build_release.py::"
+            "test_a_timestamp_of_the_right_shape_but_no_such_instant_is_refused",
         ),
     ),
     Mutation(

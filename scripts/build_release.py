@@ -20,6 +20,7 @@ and the solidity settings are already sitting in the source as literals.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import hashlib
 import json
 import os
@@ -37,6 +38,8 @@ RELEASE_VERSION = "1"
 # did not look".
 PYPROJECT = Path("pyproject.toml")
 HARDHAT = Path("contracts") / "hardhat.config.js"
+# The compiler settings as data, required by the Hardhat config above and read directly here.
+SOLIDITY = Path("contracts") / "solidity.json"
 PACKAGE_LOCK = Path("contracts") / "package-lock.json"
 DEPLOYMENTS = Path("deployments")
 SCHEMA = DEPLOYMENTS / "manifest.schema.json"
@@ -78,8 +81,15 @@ def build_release(
         raise ReleaseError(
             f"--built-at must be an ISO-8601 UTC instant ending in Z, not {built_at!r}"
         )
+    # The shape is not the value. `2026-99-99T99:99:99Z` matched the pattern and was recorded
+    # as the moment a release was built, which is a date that does not exist.
+    try:
+        datetime.fromisoformat(built_at.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ReleaseError(f"--built-at is not a real instant: {built_at!r}") from error
     _require_file(root / PYPROJECT, PYPROJECT)
     _require_file(root / HARDHAT, HARDHAT)
+    _require_file(root / SOLIDITY, SOLIDITY)
     _require_file(root / PACKAGE_LOCK, PACKAGE_LOCK)
     _require_file(root / SCHEMA, SCHEMA)
     _require_dir(root / FIXTURES, FIXTURES)
@@ -169,6 +179,13 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
 
     try:
+        # The document records whether the tree matched HEAD when it was read. Writing the
+        # document *into* that tree changes the answer, so the first build recorded
+        # `tree_clean: true` and dirtied the tree, and an identical second build recorded
+        # `false` — two different documents from one tree, which is precisely the
+        # reproducibility this exists to provide. Refused rather than papered over: a release
+        # artifact belongs outside the tree it describes.
+        _refuse_output_inside(arguments.root, arguments.out)
         document = build_release(
             arguments.root,
             built_at=arguments.built_at,
@@ -194,6 +211,21 @@ def _non_negative(value: str) -> int:
     if number < 0:
         raise argparse.ArgumentTypeError("must be >= 0")
     return number
+
+
+def _refuse_output_inside(root: Path, out: Path) -> None:
+    """Refuse to write the release document into the tree it describes.
+
+    Compared as resolved paths, because `--out release.json` from inside the repository and
+    an absolute path to the same place are the same file and only one of them looks like it.
+    """
+    resolved_root = root.resolve()
+    resolved_out = out.resolve()
+    if resolved_root == resolved_out or resolved_root in resolved_out.parents:
+        raise ReleaseError(
+            f"{out} is inside {root}; writing the document into the tree it describes "
+            "changes that tree's cleanliness and makes two identical builds disagree"
+        )
 
 
 def _require_file(path: Path, label: Path) -> None:
@@ -292,112 +324,37 @@ def _pins(specifiers: list[object], *, where: str) -> dict[str, str]:
 
 
 def _contracts(root: Path) -> dict[str, object]:
-    settings = _hardhat_solidity(root / HARDHAT)
-    settings["package_lock_sha256"] = sha256_file(root / PACKAGE_LOCK)
-    return settings
+    """The compiler settings, read from the data file Hardhat itself consumes.
 
-
-def _strip_js_comments(text: str) -> str:
-    """Blank out `//` and `/* */` comments, preserving length and line structure.
-
-    The scanner below matches the *first* occurrence of each key, and a commented-out
-    setting is an earlier occurrence. A config carrying `// runs: 1` above the real
-    `runs: 200` recorded 1 — and a commented `version: "0.4.0"` above the real version
-    recorded 0.4.0. A release document exists to say what a release was built with, so
-    reading a setting the compiler never enacted is the one thing it must not do.
-
-    Replaced with spaces rather than removed so every later offset still refers to the
-    same place in the file.
+    These used to be recovered by regex over `hardhat.config.js`, and that was unsound in a
+    way comment-stripping only partly hid: the scanner took the *first* object that looked
+    like a solidity block, so an unused config earlier in the file was reported as the one
+    the contracts were built with. A release document naming a compiler setting the compiler
+    never used is worse than one that omits it. `contracts/solidity.json` is now the single
+    source, required by the Hardhat config and parsed here, so there is nothing left to
+    misread.
     """
-    out = list(text)
-    index, length = 0, len(text)
-    in_string: str | None = None
-    while index < length:
-        char = text[index]
-        if in_string is not None:
-            if char == "\\":
-                index += 2
-                continue
-            if char == in_string:
-                in_string = None
-            index += 1
-            continue
-        if char in "\"'`":
-            in_string = char
-            index += 1
-            continue
-        if char == "/" and index + 1 < length and text[index + 1] == "/":
-            while index < length and text[index] != "\n":
-                out[index] = " "
-                index += 1
-            continue
-        if char == "/" and index + 1 < length and text[index + 1] == "*":
-            end = text.find("*/", index + 2)
-            end = length if end == -1 else end + 2
-            for position in range(index, end):
-                if out[position] != "\n":
-                    out[position] = " "
-            index = end
-            continue
-        index += 1
-    return "".join(out)
-
-
-def _hardhat_solidity(path: Path) -> dict[str, object]:
-    text = _strip_js_comments(path.read_bytes().decode("utf-8"))
-    solidity = _js_object(text, "solidity")
-    version = _js_quoted(solidity, "version")
-    optimizer = _js_object(solidity, "optimizer")
-    enabled = _js_bool(optimizer, "enabled")
-    runs = _js_int(optimizer, "runs")
-    if version is None or enabled is None or runs is None:
+    declared = json.loads((root / SOLIDITY).read_bytes())
+    settings = declared.get("settings", {})
+    optimizer = settings.get("optimizer", {})
+    version = declared.get("version")
+    if not isinstance(version, str) or not isinstance(optimizer.get("runs"), int):
         raise ReleaseError(
-            f"{HARDHAT.as_posix()} does not declare solidity version and optimizer"
+            f"{SOLIDITY.as_posix()} does not declare version and optimizer"
         )
     return {
         "solidity": version,
-        "optimizer": {"enabled": enabled, "runs": runs},
-        # Absent from the file is recorded as absent. Hardhat's default (paris, as
-        # of the 0.8.24 toolchain this repo documents) is not written here: reading
-        # a default out of a different program's memory is how a release would claim
-        # a target the config never named.
-        "evm_version": _js_quoted(solidity, "evmVersion"),
+        "optimizer": {
+            "enabled": bool(optimizer.get("enabled")),
+            "runs": optimizer["runs"],
+        },
+        # Absent is recorded as absent rather than filled from the toolchain's default:
+        # reading a default out of another program's memory is how a release claims a target
+        # nobody set. It is declared explicitly in the data file, so this is not None.
+        "evm_version": settings.get("evmVersion"),
+        "solidity_config_sha256": sha256_file(root / SOLIDITY),
+        "package_lock_sha256": sha256_file(root / PACKAGE_LOCK),
     }
-
-
-def _js_object(text: str, key: str) -> str:
-    matched = re.search(rf"\b{re.escape(key)}\s*:\s*\{{", text)
-    if matched is None:
-        raise ReleaseError(f"{HARDHAT.as_posix()} has no {key} object")
-    start = matched.end() - 1
-    depth = 0
-    for index, char in enumerate(text[start:], start=start):
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-            if depth == 0:
-                return text[start : index + 1]
-    raise ReleaseError(f"{HARDHAT.as_posix()} has an unclosed {key} object")
-
-
-def _js_quoted(text: str, key: str) -> str | None:
-    matched = re.search(rf'\b{re.escape(key)}\s*:\s*"([^"]*)"', text)
-    return None if matched is None else matched.group(1)
-
-
-def _js_bool(text: str, key: str) -> bool | None:
-    matched = re.search(rf"\b{re.escape(key)}\s*:\s*(true|false)\b", text)
-    if matched is None:
-        return None
-    return matched.group(1) == "true"
-
-
-def _js_int(text: str, key: str) -> int | None:
-    matched = re.search(rf"\b{re.escape(key)}\s*:\s*(\d+)\b", text)
-    if matched is None:
-        return None
-    return int(matched.group(1))
 
 
 def _deployments(root: Path) -> dict[str, object]:

@@ -1,8 +1,15 @@
 # Canary: one live USTB epoch on X Layer testnet
 
-**Prepared, not executed.** This is critical-path item 6 and an owner gate. Everything below
-was verified against the live chain and the committed source on 2026-08-17; nothing here has
-been run. The command in §5 is the whole action, and it is the owner's to authorise.
+**EXECUTED 2026-08-17 16:49 UTC.** This was critical-path item 6 and an owner gate; the owner
+authorised it and the run below was performed once. Everything was verified against the live
+chain and the committed source before it ran.
+
+**Outcome:** USTB sequence 1, epoch `ustb-2026-08-17`, state **`UNVERIFIABLE`**, block
+38526525, tx `0x5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869`, 256,988 gas at 20000001 wei. Publisher nonce 0 → 1. The bundle verifies
+offline, the transparency chain is intact at one entry, and the evidence store holds three
+captures. See §9.
+
+`UNVERIFIABLE` is what §4 predicted and is correct: nothing had been observed twice.
 
 The plan's instruction for this item is explicit: **publish whatever emerges, including
 `UNVERIFIABLE`.** That is what makes it a canary rather than a demo, and §4 is the reason it
@@ -134,9 +141,39 @@ names the epoch it corrects. A canary that publishes `UNVERIFIABLE` needs no rol
 The registry is not upgradeable. Replacing it again would mean another deployment and another
 owner gate.
 
-## 9. After the run
+## 9. After the run — the record
 
-- `deployments/`-recorded registry, the transparency log entry, and the bundle should all
-  agree; verify the bundle offline with the committed verifier.
-- Record the transaction hash, block, epoch id and resulting state here.
-- The dossier (PLAN-T9) is meant to be built from this run's real data rather than fixtures.
+Performed 2026-08-17, immediately after the single run.
+
+| Check | Result |
+|---|---|
+| `latestSequence` for USTB | **1** (was 0), read from the registry |
+| Block / receipt status | 38526525 / `1` |
+| Gas used × effective price | 256,988 × 20000001 wei ≈ 0.0000051 OKB |
+| Publisher nonce | 0 → 1 |
+| Balance | 0.05 → 0.049994860239743012 OKB |
+| Epoch / sequence / state | `ustb-2026-08-17` / 1 / `UNVERIFIABLE` |
+| Signing key | `ed25519:394ee022…b9a581fd`, the manifest's active reporting key |
+| **Bundle verified offline** | **yes**, `bundles/ustb-2026-08-17-1.json` |
+| **Transparency log** | **verifies**, 1 entry, chain intact |
+| **Evidence store** | **verifies**, 3 captures |
+| Incidents opened | none |
+
+The abort criteria in §7 were not triggered: preflight passed, no incident opened, the receipt
+confirmed, and the report verifies from its own bundle.
+
+**Workspace: `touchstone-workspace/ustb` under the operator's home directory** — deliberately
+outside the repository and durable. Its three captures, retrieved 16:49 UTC, are what a later
+epoch confirms against; deleting it would throw away the only thing that can turn the next
+run's `UNVERIFIABLE` into a confirmed state.
+
+**The next epoch must run after 2026-08-18 16:49 UTC and against that same workspace.** Sooner
+and the 24-hour rule in §4 abstains again; elsewhere and there is no predecessor to confirm.
+
+One operational note worth keeping. The runner that invoked this parsed `.env.testnet` with a
+multiline regex, and `\s*` matches newlines — so an empty `TOUCHSTONE_BACKUP_DIR=` swallowed
+the following comment as its value, and the daemon created a directory named after it. The
+daemon behaved correctly on the input it was handed. Parse dotenv line by line.
+
+- The dossier (PLAN-T9) is meant to be built from this run's real data rather than fixtures,
+  and now can be.

@@ -49,7 +49,7 @@ missed rows.
 | Assets documented | 3 | **3 — met.** USTB, USDY and FOBXX source manifests, with golden fixtures where retrieval was bounded. |
 | Fully autonomous live adapters | ≥2 | **0 proven live — missed.** One adapter (USTB) is built, wired and tested end to end. It has never run against live sources, so the count of *live* adapters is zero. Counting it as one while saying it has never run live would be self-contradictory. USDY is blocked on unbounded retrieval (a single 260,431,605-byte archive). FOBXX is retained as a documented monthly contrast asset; no adapter ships. OUSG was cut rather than rushed into the second slot (`manifests/sources/ousg.json`, `phase_1_status.state: cut`). Phase 1 deliberately ships one vertical rather than two hurried ones. |
 | Live consumer contract gating on state | 1 | **0 — missed.** `AssetGate` is written and tested. It is deployed only ephemerally inside the local end-to-end run (`scripts/e2e_local.py`). It has never existed on a persistent chain. Address: `not_deployed`. |
-| Production canary epoch | 1 | **0 — missed.** Nothing has been published to any registry. The active testnet registry holds zero reports. The canary is prepared in `docs/CANARY-G1B.md` and is an owner gate that has not been run. |
+| Production canary epoch | 1 | **1 — met on testnet, 2026-08-17.** USTB sequence 1 published at block 38526525, state `UNVERIFIABLE`. The target said *production*; this is testnet, so read it as met for testnet and unmet for mainnet, which remains unscheduled. |
 | Claims span-cited and hash-bound | 100% | Met for every accepted control. |
 
 The living dossier (PLAN-T9) is unbuilt. There is no public page, no
