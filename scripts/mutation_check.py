@@ -53,10 +53,20 @@ class Mutation:
 # job that exists to prove the tests bite would go green having run nothing. That is the same
 # failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
 # Raise this deliberately when a mutation is added; a diff that changes it is the point.
-EXPECTED_MUTATIONS = 84
+EXPECTED_MUTATIONS = 85
 
 
 MUTATIONS = (
+    Mutation(
+        name="a-recovery-never-retires-its-outage",
+        path="scripts/run_service.py",
+        old='        self._close_open_incidents("evidence was retrieved and published again")\n',
+        new="",
+        tests=(
+            "tests/test_ustb_daemon.py::"
+            "test_an_outage_is_retired_by_the_publication_that_follows_it",
+        ),
+    ),
     Mutation(
         name="the-workflow-gate-check-covers-nothing",
         path="scripts/assert_ci_gates.py",

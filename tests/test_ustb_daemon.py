@@ -14,7 +14,7 @@ the path can be exercised without it.
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sys
@@ -25,6 +25,7 @@ from touchstone.controls import AssetState
 from touchstone.epoch import FixtureTransport
 from touchstone.evidence import EvidenceStore
 from touchstone.incidents import IncidentLog
+from touchstone.keyring import rolled_over, verification_keys
 from touchstone.operations import OperationsStore
 from touchstone.publish import PublisherClient, TransportUnavailable
 from touchstone.signing import Ed25519Signer, verify_signed_report
@@ -65,6 +66,30 @@ class Dead:
         raise SourceTransportError(self.detail)
 
 
+class Recovering:
+    """A transport that is down for a while and then is not.
+
+    An outage is only half an event. The other half is the issuer coming back, and until
+    something drives both halves in one run nothing proves the incident is ever retired —
+    only that opening one works. It counts refusals rather than taking a signal, because the
+    slots inside one `serve` call cannot be reached from outside it.
+    """
+
+    def __init__(self, fixtures: Path, capture: date, *, refusals: int = 1) -> None:
+        self._live = FixtureTransport(fixtures, capture)
+        self._remaining = refusals
+        self.calls: list[str] = []
+        self.refused: list[str] = []
+
+    def get(self, url, *, timeout, max_bytes):
+        self.calls.append(url)
+        if self._remaining > 0:
+            self._remaining -= 1
+            self.refused.append(url)
+            raise SourceTransportError("the issuer endpoint did not answer")
+        return self._live.get(url, timeout=timeout, max_bytes=max_bytes)
+
+
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 ASSET = "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
 REGISTRY = "0x" + "ab" * 20
@@ -91,7 +116,14 @@ def seeded_store(tmp_path: Path) -> EvidenceStore:
     return store
 
 
-def built(tmp_path: Path, backend: FakeBackend) -> tuple[Service, Workspace]:
+def built(
+    tmp_path: Path, backend: FakeBackend, *, now: datetime = RETRIEVED_AT
+) -> tuple[Service, Workspace]:
+    """Wire a service over ``tmp_path/asset``.
+
+    ``now`` is a parameter so a second daemon can be built over the *same* workspace on a
+    later day, which is what a restart across a key rollover or a rotation actually is.
+    """
     workspace = Workspace(tmp_path / "asset")
     workspace.root.mkdir(parents=True, exist_ok=True)
     service = Service(
@@ -100,12 +132,12 @@ def built(tmp_path: Path, backend: FakeBackend) -> tuple[Service, Workspace]:
             TransparencyLog(workspace.transparency_log),
             workspace.pending_journal,
         ),
-        OperationsStore(workspace.operations, now=lambda: RETRIEVED_AT),
+        OperationsStore(workspace.operations, now=lambda: now),
         IncidentLog(workspace.incidents),
         asset_key=ASSET,
         lock_path=workspace.lock,
         sleep=lambda seconds: None,
-        now=lambda: RETRIEVED_AT,
+        now=lambda: now,
         heartbeat_path=workspace.heartbeat,
         registry_address=REGISTRY,
     )
@@ -120,8 +152,10 @@ def producer(
     capture: date = date(2026, 8, 14),
     transport=None,
     bundle_sink=None,
+    signer: Ed25519Signer | None = None,
 ):
-    signer = Ed25519Signer.from_seed(bytes(range(32)))
+    if signer is None:
+        signer = Ed25519Signer.from_seed(bytes(range(32)))
     return signer, make_producer(
         store=store,
         signer=signer,
@@ -139,7 +173,12 @@ def producer(
 
 
 def run(
-    service: Service, produce, *, runs: int = 1, interval_seconds: float = 86_400.0
+    service: Service,
+    produce,
+    *,
+    runs: int = 1,
+    interval_seconds: float = 86_400.0,
+    now: datetime = RETRIEVED_AT,
 ):
     """Drive the real scheduler on an injected clock.
 
@@ -158,7 +197,7 @@ def run(
         epoch_of=epoch_id_for,
         monotonic=clock.monotonic,
         sleep=clock.sleep,
-        now=lambda: RETRIEVED_AT,
+        now=lambda: now,
     )
 
 
@@ -239,6 +278,116 @@ def test_the_source_outage_is_not_recorded_as_an_epoch_failure(tmp_path: Path) -
     kinds = {entry["kind"] for entry in IncidentLog(workspace.incidents).verify()}
     assert kinds == {"SOURCE_UNAVAILABLE"}
     assert "EPOCH_FAILED" not in kinds
+
+
+def test_an_outage_is_retired_by_the_publication_that_follows_it(
+    tmp_path: Path,
+) -> None:
+    """The whole arc, in one run: down, back, published, incident closed.
+
+    Opening an incident was proved and closing one was proved, but never across a single
+    unattended run driven by the scheduler — so nothing established that a daemon left alone
+    through an outage recovers by itself rather than staying in a permanently open incident.
+    That is the failure an operator would actually meet, and it is the one an alert would be
+    firing about all night.
+
+    Closure is an append, never an edit: the log keeps the opening entry and adds one that
+    names it, so the history of the outage survives its resolution.
+    """
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+    service, workspace = built(tmp_path, backend)
+    transport = Recovering(FIXTURES, date(2026, 8, 14))
+    _, produce = producer(store, service, backend, transport=transport)
+
+    outcome = run(service, produce, runs=2)
+
+    assert outcome.completed == 2
+    assert not outcome.failed, "an outage that recovers is not a failed schedule"
+    assert transport.refused, "the outage never happened, so nothing was recovered from"
+
+    log = IncidentLog(workspace.incidents)
+    entries = log.verify()
+    opened = [entry for entry in entries if entry["closes"] is None]
+    closed = [entry for entry in entries if entry["closes"] is not None]
+    assert len(opened) == 1, "exactly one outage was opened"
+    assert opened[0]["kind"] == "SOURCE_UNAVAILABLE"
+    assert len(closed) == 1, "the outage was never retired"
+    assert closed[0]["closes"] == opened[0]["entry_hash"], (
+        "the closure does not name the incident it retires"
+    )
+    assert closed[0]["kind"] == "SOURCE_UNAVAILABLE", (
+        "a closure keeps its incident's kind"
+    )
+    assert log.open_incidents() == [], "an incident is still open after recovery"
+
+    # The recovery is what the second slot published, not merely something it logged.
+    assert len(backend.submissions) == 1, "the recovered slot did not reach the chain"
+    assert len(TransparencyLog(workspace.transparency_log).verify()) == 1
+
+
+def test_a_reporting_key_rollover_leaves_both_days_verifiable(tmp_path: Path) -> None:
+    """A key is retired between two days, and neither day stops verifying.
+
+    The keyring tests roll a key over in isolation, with no report in the log on either side
+    of it. What an operator does is different: a daemon serves one day, the reporting key is
+    rotated, and another daemon serves the next day over the same workspace. The risk that
+    creates is that yesterday's report becomes unverifiable — the retired key is exactly the
+    one nobody keeps by accident — so what this asserts is that the log needs *both* keys and
+    that each entry names the key that actually signed it.
+    """
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+    retiring = Ed25519Signer.from_seed(bytes(range(32)))
+    succeeding = Ed25519Signer.from_seed(bytes(range(32, 64)))
+    assert retiring.kid != succeeding.kid
+
+    service, workspace = built(tmp_path, backend)
+    _, produce = producer(store, service, backend, signer=retiring)
+    run(service, produce)
+
+    # The rollover itself, which is a change to the deployment and not merely to whichever
+    # key the producer happens to hold. Swapping only the signer does not roll anything
+    # over: the publisher checks the report against the deployment's *active* reporting key
+    # and refuses an unknown one, so that path opens a PUBLICATION_UNRESOLVED incident and
+    # publishes nothing. Rolling the manifest is what actually retires a key.
+    tomorrow = RETRIEVED_AT + timedelta(days=1)
+    backend.manifest = rolled_over(
+        backend.manifest,
+        new_public_key=bytes.fromhex(succeeding.public_key_record()["public_key"]),
+        at=tomorrow,
+    )
+    assert backend.manifest.active_key.kid == succeeding.kid
+    assert backend.manifest.key(retiring.kid).state == "superseded"
+
+    # A second daemon, the next day, over the same workspace and with the new key.
+    later, _ = built(tmp_path, backend, now=tomorrow)
+    _, produce_later = producer(store, later, backend, signer=succeeding)
+    second = run(later, produce_later, now=tomorrow)
+    assert second.completed == 1 and not second.failed, f"second daemon: {second}"
+    assert IncidentLog(workspace.incidents).open_incidents() == [], (
+        "the rollover left an incident open"
+    )
+
+    entries = TransparencyLog(workspace.transparency_log).verify()
+    assert len(entries) == 2, "the rollover cost a day's report"
+    assert [entry["signed_report"]["kid"] for entry in entries] == [
+        retiring.kid,
+        succeeding.kid,
+    ], "the entries do not name the keys that signed them"
+
+    # The manifest's own key set is what a reader is handed, and it verifies both days.
+    trusted = verification_keys(backend.manifest)
+    assert set(trusted) == {retiring.kid, succeeding.kid}
+    for entry in entries:
+        verify_signed_report(entry["signed_report"], trusted)
+
+    # And the retired key is genuinely required: dropping it costs the earlier day.
+    with pytest.raises(ValueError, match="unknown signing key"):
+        verify_signed_report(
+            entries[0]["signed_report"],
+            {succeeding.kid: succeeding.public_key_record()},
+        )
 
 
 def test_the_sequence_comes_from_the_chain_not_a_local_counter(
