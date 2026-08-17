@@ -30,8 +30,12 @@ class SourceManifest:
     authority_class: str
     cadence: str
     max_bytes: int
-    # The freshness the issuer's own published policy allows, and the unit it is counted in.
-    # `manifests/sources/*.json` declares these and nothing read them, so a candidate could
+    # The freshness this project declares for the source, and the unit it is counted in.
+    # Project-declared, not issuer-published: the holdings manifest says its 40 days is
+    # provisional and not derived from an observed cadence, and calling that the issuer's
+    # own policy would claim a basis the evidence does not have.
+    #
+    # `manifests/sources/*.json` declared these and nothing read them, so a candidate could
     # name any grace period it liked -- a NAV freshness control with a 999-business-day
     # window was accepted while the manifest declared zero. The manifest is the authority;
     # `test_sources` asserts these stay equal to it.

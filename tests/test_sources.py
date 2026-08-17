@@ -3,6 +3,8 @@ from collections.abc import Mapping
 from dataclasses import replace
 from types import MappingProxyType
 import json
+
+from touchstone.compiler import _PROMPT_TEMPLATE, _manifest_mapping
 import math
 from datetime import datetime, timezone
 from pathlib import Path
@@ -605,15 +607,18 @@ def test_conflicting_duplicate_headers_are_refused(
 
 
 def test_the_code_carries_the_grace_policy_its_manifest_declares() -> None:
-    """`manifests/sources/ustb.json` is the authority, and the code has to agree with it.
+    """`manifests/sources/ustb.json` is the authority, and every copy has to agree with it.
 
     The manifest declared a freshness policy per source and nothing read it: `SourceManifest`
     had no field for it, so the compiler validated a candidate's grace period against itself
-    and never against the issuer policy this project undertook to enforce. A NAV freshness
-    control with a 999-business-day window was accepted while the manifest declared zero.
+    and never against the policy this project undertook to enforce. A NAV freshness control
+    with a 999-business-day window was accepted while the manifest declared zero.
 
-    Copying the numbers into Python fixes that and creates somewhere new for them to drift,
-    which is what this asserts against.
+    Copying the numbers into Python fixed that and created somewhere new for them to drift.
+    This asserts the value *and* the unit, because a 40 that changed from calendar days to
+    business days would pass a value-only check while meaning something else entirely — and
+    it asserts what the provider is actually told, since the prompt used to carry a third
+    hardcoded copy that the prompt hash committed to instead of the manifest.
     """
     declared = json.loads(
         (Path(__file__).parents[1] / "manifests" / "sources" / "ustb.json").read_bytes()
@@ -622,11 +627,42 @@ def test_the_code_carries_the_grace_policy_its_manifest_declares() -> None:
 
     for source in USTB_SOURCES:
         entry = by_id[source.source_id]
-        if source.grace_unit == "business_days":
-            expected = entry["grace_period_business_days"]
-        else:
-            expected = entry["grace_period_calendar_days"]
-        assert source.grace_period == expected, (
-            f"{source.source_id} carries {source.grace_period} {source.grace_unit} "
-            f"while its manifest declares {expected}"
+        business = entry.get("grace_period_business_days")
+        calendar = entry.get("grace_period_calendar_days")
+        assert (business is None) != (calendar is None), (
+            f"{source.source_id} declares neither or both grace units"
         )
+        if business is not None:
+            expected, unit = business, "business_days"
+        else:
+            expected, unit = calendar, "calendar_days"
+
+        assert source.grace_period == expected, (
+            f"{source.source_id} carries {source.grace_period} while its manifest "
+            f"declares {expected}"
+        )
+        assert source.grace_unit == unit, (
+            f"{source.source_id} counts in {source.grace_unit} while its manifest "
+            f"declares {unit}"
+        )
+
+        # And the provider is told the same thing, so the prompt hash commits to the policy
+        # the run used rather than to a copy written beside it.
+        sent = _manifest_mapping(source)
+        assert sent["grace_period"] == expected
+        assert sent["grace_unit"] == unit
+
+
+def test_the_prompt_does_not_hardcode_a_grace_policy() -> None:
+    """A number written in two places is a number that can disagree with itself.
+
+    The prompt listed the three windows as a literal table. That made a third copy of values
+    already in the JSON and in `SourceManifest`, and the prompt hash then committed to the
+    table rather than to the manifest the run actually used — so the two could diverge
+    without the digest moving.
+    """
+    for literal in ("0 business_days", "2 business_days", "40 calendar_days"):
+        assert literal not in _PROMPT_TEMPLATE, (
+            f"the prompt hardcodes {literal!r}; it should read the supplied source_manifest"
+        )
+    assert "source_manifest" in _PROMPT_TEMPLATE

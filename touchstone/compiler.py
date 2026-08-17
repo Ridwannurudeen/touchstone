@@ -25,7 +25,15 @@ from touchstone.sources import SourceManifest
 # provider boundary returns what the service actually answered rather than only its text,
 # provenance records the returned model identity beside the requested one, and the prompt
 # carries the Control Language schema instead of naming it.
-COMPILER_VERSION = "0.2.0"
+#
+# 0.3.0 changed what the deterministic gates accept, which is a different thing from what the
+# prompt asks for and is not distinguished by the prompt hash. Candidates may now carry
+# `minimum_row_age_business_days`; an `expected_value` may not carry keys its operator does
+# not define; a freshness window must equal `grace_period` and both must equal the source
+# manifest's declared policy in its declared unit; and `grace_period` must be 0 for every
+# non-freshness operator. Artifacts compiled under 0.2.0 were accepted under weaker rules,
+# and two versions sharing a number would have hidden that.
+COMPILER_VERSION = "0.3.0"
 DEFAULT_EXCERPT_LIMIT = 8_192
 MAX_PROVIDER_OUTPUT_BYTES = 1_048_576
 MAX_PROVIDER_OUTPUT_DEPTH = 32
@@ -111,16 +119,12 @@ grace_period is read only for fresh_within. For every other operator it must be 
 nothing reads it and an inert number in an approved control reads as a policy in force.
 
 For fresh_within, the window in expected_value must equal grace_period exactly, and both \
-must equal the freshness the source's own manifest declares. The evaluator computes its \
-deadline from grace_period and does not read expected_value, so two different numbers \
-advertise a window that is not the one enforced. The declared policies are:
-
-  superstate-ustb-nav-daily   0 business_days
-  superstate-ustb-yield       2 business_days
-  superstate-ustb-holdings    40 calendar_days
-
-Use exactly those. They are the issuer freshness this project undertook to enforce, and a \
-candidate naming any other window is rejected however well it cites its evidence.
+must equal `grace_period` in the supplied source_manifest, expressed in its `grace_unit`. \
+The evaluator computes its deadline from grace_period and does not read expected_value, so \
+two different numbers advertise a window that is not the one enforced. Read both values from \
+the source_manifest in this request; they are not repeated here, because a number written in \
+two places is a number that can disagree with itself. A candidate naming any other window is \
+rejected however well it cites its evidence.
 
 Which operators are available depends on the source, because confirmation across captures \
 is a source policy rather than a property of an operator:
@@ -833,10 +837,19 @@ def _provider_label(provider: object, attribute: str) -> str:
 
 
 def _manifest_mapping(manifest: SourceManifest) -> dict[str, object]:
+    """What the provider is told about the source, and what the prompt hash commits to.
+
+    The grace policy is sent rather than written into the prompt. It was listed there as a
+    literal table, which made a third copy of numbers that already live in the JSON manifest
+    and in `SourceManifest` — and the prompt hash then committed to the table rather than to
+    the manifest the run actually used, so the two could diverge without the digest moving.
+    """
     return {
         "authority_class": manifest.authority_class,
         "cadence": manifest.cadence,
         "expected_mime": manifest.expected_mime,
+        "grace_period": manifest.grace_period,
+        "grace_unit": manifest.grace_unit,
         "max_bytes": manifest.max_bytes,
         "source_id": manifest.source_id,
         "url": manifest.url,
