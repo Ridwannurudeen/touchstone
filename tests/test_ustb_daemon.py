@@ -750,3 +750,34 @@ def test_recovery_refuses_a_bundle_that_no_longer_verifies(tmp_path: Path) -> No
     guard = require_verifying_bundle(workspace.bundles)
     with pytest.raises(VerificationError):
         guard(_pending(genuine))
+
+
+def test_recovery_reads_a_bundle_the_way_a_reader_would(tmp_path: Path) -> None:
+    """A duplicate key is invisible to `json.loads` and fatal to the real verifier.
+
+    Ordinary decoding keeps the last value, so a bundle edited to carry a duplicate top-level
+    key parsed into a perfectly valid mapping and passed the guard — while an offline reader
+    handed the same *file* refused it, because the project's own parser rejects duplicate
+    keys, non-finite numbers, and inputs past its size and depth limits. The guard exists to
+    answer whether a reader can verify this file, so reading it more permissively than the
+    reader does defeats the point.
+    """
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+    service, workspace = built(tmp_path, backend)
+    _, produce = producer(
+        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+    )
+    run(service, produce)
+
+    written = next(iter(workspace.bundles.glob("*.json")))
+    text = written.read_text(encoding="utf-8")
+    genuine = json.loads(text)["signed_report"]
+    # A duplicate "version" key. Plain json.loads keeps the last one and sees a valid bundle.
+    duplicated = text.replace("{\n", '{\n  "version": "touchstone.verification-bundle.v4",\n', 1)
+    assert duplicated.count('"version"') > text.count('"version"')
+    written.write_text(duplicated, encoding="utf-8")
+
+    guard = require_verifying_bundle(workspace.bundles)
+    with pytest.raises(EpochProductionError, match="not strictly readable JSON"):
+        guard(_pending(genuine))

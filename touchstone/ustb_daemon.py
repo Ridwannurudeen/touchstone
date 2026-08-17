@@ -37,7 +37,7 @@ from touchstone.evidence import EvidenceStore
 from touchstone.publish import asset_key_bytes  # noqa: F401 - re-exported for the CLI
 from touchstone.quantities import utc_instant
 from touchstone.report import build_observation_report, evidence_references
-from touchstone.signing import Ed25519Signer
+from touchstone.signing import Ed25519Signer, strict_json_loads
 from touchstone.sources import (
     LiveTransport,
     SourceFetchError,
@@ -295,12 +295,23 @@ def require_verifying_bundle(
                 "be checked by anyone once it is on chain"
             ) from error
         try:
-            bundle = json.loads(raw)
-        except ValueError as error:
+            # The strict parser, not `json.loads`. Ordinary decoding collapses a duplicate
+            # key to its last value, accepts NaN and Infinity, and enforces no size or depth
+            # limit — so a bundle edited to carry a duplicate key passed this guard while the
+            # offline verifier, handed the same *file*, refused it. The guard's whole purpose
+            # is to answer "can a reader verify this file", so it has to read it the way a
+            # reader does.
+            bundle = strict_json_loads(raw)
+        except (ValueError, TypeError) as error:
             raise EpochProductionError(
                 f"refusing to republish sequence {report['sequence']}: the bundle at "
-                f"{path} is not readable JSON ({error})"
+                f"{path} is not strictly readable JSON ({error})"
             ) from error
+        if not isinstance(bundle, Mapping):
+            raise EpochProductionError(
+                f"refusing to republish sequence {report['sequence']}: the bundle at "
+                f"{path} is not a JSON object"
+            )
         verify_bundle(bundle)
         bundled = bundle["signed_report"]
         if bundled != operation.signed_report:  # type: ignore[attr-defined]

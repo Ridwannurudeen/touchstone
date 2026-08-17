@@ -45,6 +45,16 @@ class Mutation:
 
 MUTATIONS = (
     Mutation(
+        name="recovery-parses-a-bundle-permissively",
+        path="touchstone/ustb_daemon.py",
+        old="            bundle = strict_json_loads(raw)",
+        new="            bundle = json.loads(raw)",
+        tests=(
+            "tests/test_ustb_daemon.py::"
+            "test_recovery_reads_a_bundle_the_way_a_reader_would",
+        ),
+    ),
+    Mutation(
         name="recovery-republishes-without-a-bundle",
         path="touchstone/operations.py",
         old="        if before_publish is not None:",
