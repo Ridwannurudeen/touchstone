@@ -18,6 +18,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 from mutation_check import (  # noqa: E402
+    EXPECTED_MUTATIONS,
     MUTATIONS,
     ROOT,
     classify,
@@ -164,3 +165,14 @@ def test_a_malformed_report_is_not_read_as_evidence(tmp_path: Path) -> None:
 
     with pytest.raises(ElementTree.ParseError):
         reported_outcomes(path, WANTED)
+
+
+def test_the_registered_inventory_matches_what_is_expected() -> None:
+    """The harness grades itself against its own list, so the list needs a witness.
+
+    `killed/len(MUTATIONS)` is a ratio of the inventory to itself: empty it and the run
+    prints "0/0 mutants killed" and exits 0. The job that proves the tests bite would then
+    go green having proved nothing, which is precisely the fail-open `assert_suite_ran.py`
+    exists to close one job over. Updating this number is a deliberate line in a diff.
+    """
+    assert len(MUTATIONS) == EXPECTED_MUTATIONS

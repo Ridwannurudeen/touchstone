@@ -12,6 +12,15 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 dependencies = [
     "cryptography==49.0.0",
+    # A runtime dependency, not a test one, and the distinction is the whole point.
+    # `process_identity` reads `/proc/<pid>/stat` and falls back to psutil; with neither it
+    # degrades to `<pid>:unknown`, and `verify` turns that into "the process identity could
+    # not be established on this platform" -- a reason, so `daemon_alive` is False forever.
+    # Declaring psutil dev-only therefore made the tests healthy while leaving liveness
+    # permanently broken on every shipped install without procfs. The heartbeat would report
+    # a dead daemon on a machine whose daemon was fine, which is the exact failure the
+    # heartbeat exists to detect and so the worst possible place to be wrong.
+    "psutil==7.2.2",
     "web3==7.16.0",
 ]
 
@@ -22,14 +31,11 @@ dev = [
     # it -- web3 does not. A clean install would have failed at import, which is the kind of
     # thing the repository had no CI to notice.
     "jsonschema==4.26.0",
-    # Also a test dependency only. `process_identity` reads `/proc/<pid>/stat` and falls back
-    # to psutil, degrading to `<pid>:unknown` when it has neither -- which the runtime is
-    # deliberately allowed to do and `verify` reports honestly. But on a platform without
-    # procfs, that degraded identity fails 18 heartbeat and watchdog tests, and they passed
-    # here only because unrelated software had installed psutil system-wide. The runtime pins
-    # stay psutil-free; the test environment should not depend on luck.
-    "psutil==7.2.2",
     "pytest==8.3.3",
+    # Read by `scripts/assert_ci_gates.py`, which checks the CI workflow covers every job.
+    # It was importable on this machine only because a dozen unrelated packages had pulled
+    # it in -- the same accident that hid `jsonschema` and `psutil`, found the same way.
+    "pyyaml==6.0.3",
     "ruff==0.15.22",
 ]
 

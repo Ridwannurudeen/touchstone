@@ -31,6 +31,11 @@ from xml.etree import ElementTree
 
 ROOT = Path(__file__).parents[1]
 
+# Generous against the slowest targeted set here (the subprocess restart tests run real
+# daemons) and still far below the runner's six-hour job default, which is what a hanging
+# mutant would otherwise consume before anyone learned anything.
+MUTATION_TIMEOUT_SECONDS = 900.0
+
 
 @dataclass(frozen=True)
 class Mutation:
@@ -43,7 +48,73 @@ class Mutation:
     tests: tuple[str, ...]
 
 
+# The inventory is asserted, not counted. `killed/len(MUTATIONS)` is a ratio of the list to
+# itself: an empty or truncated MUTATIONS reports "0/0 mutants killed" and exits 0, so the
+# job that exists to prove the tests bite would go green having run nothing. That is the same
+# failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
+# Raise this deliberately when a mutation is added; a diff that changes it is the point.
+EXPECTED_MUTATIONS = 84
+
+
 MUTATIONS = (
+    Mutation(
+        name="the-workflow-gate-check-covers-nothing",
+        path="scripts/assert_ci_gates.py",
+        old="    missing = sorted(set(jobs) - {AGGREGATE} - set(needs))",
+        new="    missing = []",
+        tests=(
+            "tests/test_assert_ci_gates.py::"
+            "test_a_job_missing_from_the_aggregate_is_refused",
+            "tests/test_assert_ci_gates.py::"
+            "test_an_aggregate_that_waits_for_nothing_is_refused",
+            "tests/test_assert_ci_gates.py::"
+            "test_a_workflow_with_an_uncovered_job_exits_nonzero",
+        ),
+    ),
+    Mutation(
+        name="the-gate-accepts-any-xml-as-a-report",
+        path="scripts/assert_suite_ran.py",
+        old="""    if root.tag not in ROOT_TAGS:
+        raise NotAReport(
+            f"root element is <{root.tag}>, not one of "
+            f"{' or '.join(f'<{tag}>' for tag in sorted(ROOT_TAGS))}"
+        )
+""",
+        new="",
+        tests=(
+            "tests/test_assert_suite_ran.py::test_xml_that_is_not_a_report_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-gate-believes-a-suite-summary-over-its-own-cases",
+        path="scripts/assert_suite_ran.py",
+        old="""    failures = max(
+        sum(len(case.findall("failure")) for case in cases),
+        sum(_count(suite, "failures") for suite in suites),
+    )
+    errors = max(
+        sum(len(case.findall("error")) for case in cases),
+        sum(_count(suite, "errors") for suite in suites),
+    )""",
+        new="""    failures = sum(_count(suite, "failures") for suite in suites)
+    errors = sum(_count(suite, "errors") for suite in suites)""",
+        tests=(
+            "tests/test_assert_suite_ran.py::"
+            "test_a_case_that_failed_under_a_summary_claiming_none_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-gate-counts-cases-instead-of-naming-them",
+        path="scripts/assert_suite_ran.py",
+        old="    if found != expected:",
+        new="    if len(found) != len(expected):",
+        tests=(
+            "tests/test_assert_suite_ran.py::"
+            "test_the_right_number_of_the_wrong_tests_is_refused",
+            "tests/test_assert_suite_ran.py::test_a_case_in_a_different_module_is_refused",
+            "tests/test_assert_suite_ran.py::test_one_case_reported_twice_is_refused",
+        ),
+    ),
     Mutation(
         name="recovery-parses-a-bundle-permissively",
         path="touchstone/ustb_daemon.py",
@@ -824,7 +895,17 @@ def run_tests(
     ]
     if report_path is not None:
         command.append(f"--junit-xml={report_path}")
-    return subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+    # Bounded, because a mutation can produce a hang rather than a failure — removing a
+    # guard on a retry count or a wait is exactly the kind of fix registered here, and the
+    # mutant that survives by never returning would otherwise sit on the runner's six-hour
+    # job default. A timeout is a `broken` verdict, which is the honest one: nothing judged.
+    return subprocess.run(
+        command,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=MUTATION_TIMEOUT_SECONDS,
+    )
 
 
 def wanted_nodes(tests: tuple[str, ...]) -> set[tuple[str, str]]:
@@ -915,6 +996,12 @@ def run_mutation(mutation: Mutation) -> tuple[str, str]:
         try:
             write_exactly(target, original.replace(old, new))
             finished = run_tests(mutation.tests, report_path)
+        except subprocess.TimeoutExpired:
+            return (
+                "broken",
+                f"the targeted tests did not finish within {MUTATION_TIMEOUT_SECONDS}s — "
+                "a mutant that hangs has judged nothing",
+            )
         finally:
             write_exactly(target, original)
         outcomes = reported_outcomes(report_path, mutation.tests)
@@ -957,6 +1044,15 @@ def _diagnostic(finished: subprocess.CompletedProcess[str]) -> str:
 
 
 def main() -> int:
+    if len(MUTATIONS) != EXPECTED_MUTATIONS:
+        print(
+            f"refusing to run: {len(MUTATIONS)} mutations are registered and "
+            f"{EXPECTED_MUTATIONS} are expected. A harness that grades itself against its "
+            "own list reports a perfect score for an empty one.",
+            file=sys.stderr,
+        )
+        return 2
+
     clean, detail = tree_is_clean()
     if not clean:
         print(

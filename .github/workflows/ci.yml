@@ -2,12 +2,20 @@ name: CI
 
 # The repository's first CI. Everything below already ran on one developer machine; the point
 # of running it here is that a clean checkout on a machine nobody has configured is the only
-# honest test of whether the gates are real. It found one defect before it ever ran green:
-# `jsonschema` was imported by a test and declared nowhere, present locally only because an
-# unrelated package had installed it.
+# honest test of whether the gates are real.
 #
-# Nothing in this workflow reaches a public chain, signs anything, publishes anything, or is
-# given a secret. It compiles, tests and mutates a checkout, and that is all it may ever do.
+# Simulating that clean install found five defects before this workflow ever ran, none of
+# which any existing test could see: the package had never been installable at all,
+# `jsonschema` and `psutil` were imported but declared nowhere, a lock test was genuinely
+# flaky, and a schedule test asserted an overflow that only Windows produces. The first real
+# run then found a sixth, in this file: `join(needs.*.result, " ")` is a parse error, because
+# GitHub expressions accept only single-quoted literals, and it rejects the whole workflow
+# before any job starts.
+#
+# Nothing in this workflow reaches a public chain, signs anything, or publishes anything. It
+# compiles, tests and mutates a checkout. It is not given any secret of this project's, though
+# GitHub mints a `GITHUB_TOKEN` for every job regardless, which is why permissions are empty
+# by default and granted one job at a time.
 
 on:
   pull_request:
@@ -16,8 +24,9 @@ on:
       - "**"
   workflow_dispatch:
 
-permissions:
-  contents: read
+# Nothing by default. Jobs that check out the repository ask for `contents: read` and the
+# rest get nothing at all, so the aggregate that only compares strings holds no token scope.
+permissions: {}
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -30,20 +39,47 @@ jobs:
   lint:
     name: ruff
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e ".[dev]"
       - run: python -m ruff check .
 
+  workflow_gates:
+    name: workflow covers every job
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      # This file used to claim that adding a job "cannot silently leave it unguarded". That
+      # was false — `needs` is hand-written, so a new job is simply not waited for. The claim
+      # is now checked instead of asserted, which is why this job exists and why it is itself
+      # in the aggregate's `needs`.
+      - run: python scripts/assert_ci_gates.py .github/workflows/ci.yml
+
   python_tests:
     name: pytest (py${{ matrix.python }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -53,10 +89,10 @@ jobs:
         # either way the answer is not to quietly drop the version.
         python: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install --upgrade pip
@@ -64,36 +100,60 @@ jobs:
       # The local-chain E2E is excluded here and required on its own, because it needs Node
       # and a compiled contract set. Excluding it from this job keeps the matrix honest
       # rather than letting it skip inside a green run.
+      #
+      # This job cannot pass having collected nothing: pytest exits 5 on total deselection
+      # and 4 on a missing path, both of which fail the step. That is checked behaviour of
+      # the pinned pytest, not an assumption.
       - run: python -m pytest -q --strict-markers --ignore=tests/test_e2e_local.py
 
   contracts:
     name: hardhat
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: contracts/package-lock.json
       - run: npm ci
         working-directory: contracts
-      - run: npm test
+      # Counted, not merely exited. Hardhat returns 0 having run nothing — verified against
+      # the pinned Hardhat by deselecting every test with an unmatched `--grep`, which
+      # printed "0 passing" and exited 0. A contract suite that quietly stopped matching
+      # would otherwise be indistinguishable from one that passed.
+      - name: Run the contract suite and prove it ran
         working-directory: contracts
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee hardhat.log
+          passing=$(grep -oE '[0-9]+ passing' hardhat.log | head -1 | grep -oE '[0-9]+')
+          echo "hardhat reported ${passing:-0} passing"
+          if [ "${passing:-0}" -ne 76 ]; then
+            echo "expected exactly 76 passing contract tests, got ${passing:-0}"
+            echo "if this change is intended, update the number here in the same commit"
+            exit 1
+          fi
 
   local_e2e:
     name: managed local-chain E2E
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -110,20 +170,26 @@ jobs:
           python -m pytest --strict-markers
           --junitxml="${RUNNER_TEMP}/local-e2e.xml"
           tests/test_e2e_local.py
-      # A green check must mean the loop ran, not that pytest found nothing to do. A future
-      # `pytest.skip`, a lost marker or an accidental deselection would otherwise pass here
-      # silently, and this is the only job that proves the whole publish path works.
-      - name: Prove the E2E did not skip
-        run: python scripts/assert_suite_ran.py "${RUNNER_TEMP}/local-e2e.xml" --expect 2
+      # A green check must mean these two ran, not that pytest found two things to do. The
+      # cases are named rather than counted: an earlier version asserted only how many ran,
+      # which any two cases satisfied, including two copies of the cheap one.
+      - name: Prove the E2E ran the cases it claims to
+        run: >-
+          python scripts/assert_suite_ran.py "${RUNNER_TEMP}/local-e2e.xml"
+          --expect-name "tests.test_e2e_local::test_complete_loop_against_a_managed_local_hardhat_node"
+          --expect-name "tests.test_e2e_local::test_startup_refuses_a_port_held_by_another_json_rpc_server"
 
   mutation:
     name: mutation harness
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
@@ -132,6 +198,10 @@ jobs:
       # sharing a working directory with any other job would let a test read a mutated
       # source. GitHub jobs never share one, which is what makes this safe rather than
       # careful.
+      #
+      # The harness asserts its own inventory size before running: `killed/len(MUTATIONS)`
+      # is a ratio of the list to itself, so an emptied list reported "0/0 mutants killed"
+      # and exited 0.
       - run: python scripts/mutation_check.py
       # The harness restores each mutation in a `finally` and checks the tree itself. This
       # runs even when it fails, because a crash mid-restore is the one outcome its own
@@ -149,12 +219,19 @@ jobs:
   required:
     name: required
     runs-on: ubuntu-24.04
-    needs: [lint, python_tests, contracts, local_e2e, mutation]
+    timeout-minutes: 5
+    needs: [lint, workflow_gates, python_tests, contracts, local_e2e, mutation]
     if: always()
     steps:
-      # One check for branch protection to require, so adding a job above cannot silently
-      # leave it unguarded. `needs` alone would not do it: a skipped or cancelled dependency
-      # does not fail a job that only lists it.
+      # One check for branch protection to require. `needs` alone would not do it: a skipped
+      # or cancelled dependency does not fail a job that only lists it.
+      #
+      # That this job covers every other job is not taken on trust — `workflow_gates` reads
+      # this file and fails if any job is missing from the list above.
+      #
+      # What this cannot do is make itself mandatory. Requiring it is a branch-protection
+      # setting, and on a private repository without GitHub Pro the protection and ruleset
+      # APIs both refuse. Until that is enabled, this job reports honestly and blocks nothing.
       - name: Every gate must have succeeded
         run: |
           # Single quotes inside the expression, double outside. GitHub Actions expressions

@@ -225,10 +225,17 @@ def test_a_restored_workspace_still_verifies_its_own_chains(tmp_path: Path) -> N
     assert EvidenceStore(restored.evidence).verified_entries()
 
 
-def test_a_pending_operation_survives_for_startup_reconciliation(
+def test_a_restore_preserves_a_pending_operation_rather_than_resolving_it(
     tmp_path: Path,
 ) -> None:
-    """Restoring must not quietly resolve work the service still owes."""
+    """Restoring must not quietly resolve work the service still owes.
+
+    Named for what it proves. It was called `..._survives_for_startup_reconciliation`, which
+    claims the restored operation goes on to be reconciled — this starts no service and
+    reconciles nothing. That reconciliation is real and is proved by the subprocess restart
+    tests in `test_service_restart.py`; what happens here is only that the archive carries
+    the obligation across intact, which is the half a backup is responsible for.
+    """
     from touchstone.operations import OperationsStore
 
     workspace = populated(tmp_path)
@@ -248,8 +255,17 @@ def test_a_pending_operation_survives_for_startup_reconciliation(
         registry_address=REGISTRY,
     )
 
-    reopened = OperationsStore(Workspace(tmp_path / "restored").operations)
-    assert reopened.load_operation() is not None
+    reopened = OperationsStore(
+        Workspace(tmp_path / "restored").operations
+    ).load_operation()
+    # Not merely that *an* operation is there. A restore that carried across a different
+    # publication would satisfy `is not None` while owing the chain something else entirely.
+    assert reopened is not None, "the pending operation did not survive the restore"
+    assert reopened.report_uri == "urn:touchstone:report:1"
+    assert reopened.sequence == 1
+    assert reopened.correction_of is None
+    # Stored as the ISO string the dataclass declares, not as the datetime it was begun with.
+    assert reopened.scheduled_for == "2026-08-15T09:00:00Z"
 
 
 @pytest.mark.parametrize(

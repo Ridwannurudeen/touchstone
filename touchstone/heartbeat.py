@@ -99,8 +99,11 @@ def process_identity(process_id: int | None = None) -> str:
         # OS is the same idea by another route; where neither is available the identity
         # degrades to the PID alone, and `verify` says so rather than pretending.
         try:
-            import psutil  # noqa: PLC0415 - optional, and absent in this project's pins
+            import psutil  # noqa: PLC0415 - a runtime pin; imported here only when needed
         except ImportError:
+            # Reached only by an install that dropped a declared dependency. The degradation
+            # is kept because `verify` names it, and a heartbeat that says "I could not
+            # establish this" is worth more than one that quietly claims a PID is enough.
             return f"{pid}:unknown"
         try:
             return f"{pid}:{psutil.Process(pid).create_time()}"

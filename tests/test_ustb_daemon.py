@@ -138,13 +138,22 @@ def producer(
     )
 
 
-def run(service: Service, produce, *, runs: int = 1):
+def run(
+    service: Service, produce, *, runs: int = 1, interval_seconds: float = 86_400.0
+):
+    """Drive the real scheduler on an injected clock.
+
+    ``interval_seconds`` is a parameter because the schedule reads the wall clock exactly
+    once and derives every later slot by adding the interval to it. At the daily default,
+    two slots are two different days no matter what ``now`` returns — so a test that means
+    to run two slots *within one day* has to say so here.
+    """
     clock = Clock()
     return serve(
         service,
         produce,
         report_uri=report_uri,
-        interval_seconds=86_400.0,
+        interval_seconds=interval_seconds,
         max_runs=runs,
         epoch_of=epoch_id_for,
         monotonic=clock.monotonic,
@@ -307,19 +316,39 @@ def test_the_producer_refuses_a_naive_instant(tmp_path: Path) -> None:
 
 
 def test_a_second_slot_does_not_republish_the_same_day(tmp_path: Path) -> None:
-    """Two slots, two sequences — never one report twice under different numbers."""
+    """One day, one report, however many slots fall inside it.
+
+    Two things were wrong here, and the second hid the first.
+
+    The assertion was `sequences == sorted(set(sequences))`, which the defect it is named for
+    satisfies perfectly: two reports about one day carry sequences 1 and 2, unique and
+    ascending. It passed whether or not the day was republished, proving only that the
+    registry hands out increasing numbers.
+
+    And the scenario could not have republished a day in any case. `run_schedule` reads the
+    wall clock once and derives later slots by adding the interval, so at the daily default
+    these two slots were two different days — two publications, correctly. Fixing only the
+    assertion would have produced a test that failed on correct behaviour.
+
+    So the slots are put an hour apart, inside the day the fixture capture is about, and what
+    is counted is that the chain was written once. The suppression is `_epoch_already_published`
+    asking the registry, which is why this asserts on submissions rather than on the log
+    alone: the point is that nothing was sent, not merely that nothing was recorded.
+    """
     store = seeded_store(tmp_path)
     backend = FakeBackend()
     service, workspace = built(tmp_path, backend)
     _, produce = producer(store, service, backend)
 
-    run(service, produce, runs=2)
+    outcome = run(service, produce, runs=2, interval_seconds=3600.0)
 
-    entries = TransparencyLog(workspace.transparency_log).verify()
-    sequences = [entry["signed_report"]["report"]["sequence"] for entry in entries]
-    assert sequences == sorted(set(sequences)), (
-        "a sequence was reused or went backwards"
+    assert outcome.completed == 2, "both slots must run; suppression is not skipping"
+    assert not outcome.failed, "a suppressed republication is not a failure"
+    assert len(backend.submissions) == 1, (
+        f"the same day reached the chain {len(backend.submissions)} times"
     )
+    entries = TransparencyLog(workspace.transparency_log).verify()
+    assert len(entries) == 1, f"{len(entries)} reports were logged for one day"
 
 
 def test_a_restart_on_a_served_day_publishes_nothing_and_reports_no_fault(
@@ -774,7 +803,9 @@ def test_recovery_reads_a_bundle_the_way_a_reader_would(tmp_path: Path) -> None:
     text = written.read_text(encoding="utf-8")
     genuine = json.loads(text)["signed_report"]
     # A duplicate "version" key. Plain json.loads keeps the last one and sees a valid bundle.
-    duplicated = text.replace("{\n", '{\n  "version": "touchstone.verification-bundle.v4",\n', 1)
+    duplicated = text.replace(
+        "{\n", '{\n  "version": "touchstone.verification-bundle.v4",\n', 1
+    )
     assert duplicated.count('"version"') > text.count('"version"')
     written.write_text(duplicated, encoding="utf-8")
 
