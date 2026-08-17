@@ -54,10 +54,20 @@ class Mutation:
 # job that exists to prove the tests bite would go green having run nothing. That is the same
 # failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
 # Raise this deliberately when a mutation is added; a diff that changes it is the point.
-EXPECTED_MUTATIONS = 111
+EXPECTED_MUTATIONS = 112
 
 
 MUTATIONS = (
+    Mutation(
+        name="preflight-takes-authorization-as-proof-of-lineage",
+        path="touchstone/publish.py",
+        old="        if identity != manifest.publisher_identity_address:",
+        new="        if False:",
+        tests=(
+            "tests/test_rotation_local_chain.py::"
+            "test_a_successor_manifest_claiming_its_own_identity_is_refused",
+        ),
+    ),
     Mutation(
         name="the-release-document-is-not-reproducible",
         path="scripts/build_release.py",

@@ -109,7 +109,10 @@ jobs:
       # This job cannot pass having collected nothing: pytest exits 5 on total deselection
       # and 4 on a missing path, both of which fail the step. That is checked behaviour of
       # the pinned pytest, not an assumption.
-      - run: python -m pytest -q --strict-markers --ignore=tests/test_e2e_local.py
+      - run: >-
+          python -m pytest -q --strict-markers
+          --ignore=tests/test_e2e_local.py
+          --ignore=tests/test_rotation_local_chain.py
 
   contracts:
     name: hardhat
@@ -174,15 +177,17 @@ jobs:
         run: >-
           python -m pytest --strict-markers
           --junitxml="${RUNNER_TEMP}/local-e2e.xml"
-          tests/test_e2e_local.py
-      # A green check must mean these two ran, not that pytest found two things to do. The
+          tests/test_e2e_local.py tests/test_rotation_local_chain.py
+      # A green check must mean these four ran, not that pytest found four things to do. The
       # cases are named rather than counted: an earlier version asserted only how many ran,
-      # which any two cases satisfied, including two copies of the cheap one.
+      # which any four cases satisfied, including copies of the cheap one.
       - name: Prove the E2E ran the cases it claims to
         run: >-
           python scripts/assert_suite_ran.py "${RUNNER_TEMP}/local-e2e.xml"
           --expect-name "tests.test_e2e_local::test_complete_loop_against_a_managed_local_hardhat_node"
           --expect-name "tests.test_e2e_local::test_startup_refuses_a_port_held_by_another_json_rpc_server"
+          --expect-name "tests.test_rotation_local_chain::test_a_rotation_on_a_real_registry_moves_authority_and_keeps_lineage"
+          --expect-name "tests.test_rotation_local_chain::test_a_successor_manifest_claiming_its_own_identity_is_refused"
 
   mutation:
     name: mutation harness
