@@ -45,6 +45,26 @@ class Mutation:
 
 MUTATIONS = (
     Mutation(
+        name="bundle-reads-the-ledger-a-second-time",
+        path="touchstone/verify.py",
+        old="    if actual != committed:",
+        new="    if False:",
+        tests=(
+            "tests/test_verify.py::"
+            "test_a_bundle_refuses_a_ledger_that_drifted_since_the_report_was_signed",
+        ),
+    ),
+    Mutation(
+        name="a-report-is-published-without-being-bundled",
+        path="touchstone/ustb_daemon.py",
+        old="        if bundle_sink is not None:",
+        new="        if False:",
+        tests=(
+            "tests/test_ustb_daemon.py::"
+            "test_an_unattended_run_writes_a_bundle_that_verifies",
+        ),
+    ),
+    Mutation(
         name="bundle-controls-read-twice",
         path="touchstone/verify.py",
         old="    records = tuple(control_records)",
