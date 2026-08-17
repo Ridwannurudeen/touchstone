@@ -26,7 +26,7 @@ from touchstone.approval import (
     load_approval_ledger,
     provenance_digests,
 )
-from historical_pack import historical_controls
+from historical_pack import historical_controls, historical_ledger_bytes
 from touchstone.controls import ControlRecord
 from touchstone.evaluate import default_ustb_controls
 
@@ -204,3 +204,30 @@ def test_an_unsupported_ledger_version_is_refused(tmp_path: Path) -> None:
 def test_a_missing_ledger_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ApprovalError, match="no approval ledger"):
         load_approval_ledger(tmp_path / "absent.json")
+
+
+def test_the_frozen_pack_is_the_ledger_the_published_report_was_signed_under() -> None:
+    """The digest, pinned as a literal, because every other check compares it to itself.
+
+    `tests/historical_pack.json` is a copy of the approval ledger that the live USTB
+    sequence-1 report committed to on X Layer testnet on 2026-08-17. Its digest is that
+    report's `approval_ledger_sha256`, so this is not a fixture asserting its own shape — it
+    is a fixture asserting it is still the object a published report is bound to.
+
+    It needs a literal because the failure mode is invisible to any relative comparison. This
+    file was checked out with LF while the ledger the daemon read held CRLF: identical text,
+    zero diff lines, 60 bytes shorter, different digest. The whole suite stayed green, because
+    each test threaded the pack into a boundary and compared it against the pack. Only the
+    published report disagreed, and nothing was reading that.
+
+    If this fails after a fresh clone, the `-text` rule for this path in `.gitattributes` was
+    lost, not the ledger.
+    """
+    digest = hashlib.sha256(historical_ledger_bytes()).hexdigest()
+
+    assert digest == (
+        "14857c704b878bf3c5715673752d2a3d464a3340626c9da708ad696e905918c4"
+    ), (
+        "the frozen pack is no longer the ledger USTB sequence 1 was signed under; "
+        "line-ending translation is the usual cause"
+    )

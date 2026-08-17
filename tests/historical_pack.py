@@ -26,13 +26,25 @@ from pathlib import Path
 from touchstone.controls import ControlRecord
 from touchstone.evaluate import default_ustb_controls
 
-# A byte-for-byte copy of `data/compilations/APPROVALS.json` as it stood on 2026-08-17,
-# before the recompiled set was approved. Byte-for-byte matters and is not tidiness: raw
-# ledger bytes are hashed into every report, so a copy that differed only in key order or in
-# a note would produce a different digest and would not be the ledger any historical report
-# was signed under. An earlier version of this file was a reconstruction carrying its own
-# explanatory note, and hashed to 7aaa7a17… while the ledger hashed to 61837371….
-# Explanation belongs here, in the module, where it changes no bytes.
+# A byte-for-byte copy of the approval ledger the live USTB sequence-1 report was signed
+# under, taken from that report's own bundle. It hashes to
+# 14857c704b878bf3c5715673752d2a3d464a3340626c9da708ad696e905918c4, which is exactly the
+# `approval_ledger_sha256` committed in the report published to X Layer testnet on
+# 2026-08-17. That equality is the point: this is not a plausible reconstruction of the old
+# set, it is the object a published report is bound to.
+#
+# Byte-for-byte matters and is not tidiness, and it took two attempts to get right. Raw ledger
+# bytes are hashed into every report, so a copy differing only in key order or a note has a
+# different digest and is not the ledger anything was signed under — the first version was a
+# reconstruction carrying its own explanatory note and hashed to 7aaa7a17…. The second was a
+# copy of the file on disk, hashing to 61837371…, and looked correct: same eight decisions,
+# zero diff lines against the published ledger. It was still wrong. `core.autocrlf` is true
+# here and this path had no `-text` rule, so the copy held LF where the ledger the daemon
+# actually read held CRLF. Identical text, 60 bytes shorter, different digest. Every test
+# passed throughout, because each compared the pack against itself.
+#
+# `.gitattributes` now marks this path `-text`. Explanation belongs here, in the module, where
+# it changes no bytes.
 PACK = Path(__file__).parent / "historical_pack.json"
 
 

@@ -12,3 +12,10 @@ fixtures/README.md text eol=lf
 # convert — the rule is here because the next artifact format may, and content whose digest
 # is load-bearing should never be subject to translation in the first place.
 data/compilations/** -text
+
+# The frozen approval ledger beside the tests is the same kind of object, and was not covered
+# here until it disagreed with reality. `core.autocrlf` is true on the authoring machine, so
+# this file was checked out with LF while the ledger the live sequence-1 report was signed
+# under held CRLF — identical text, different bytes, different digest. Tests threading it into
+# a digest-checked boundary passed only because they compared it against itself.
+tests/historical_pack.json -text
