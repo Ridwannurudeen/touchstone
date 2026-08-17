@@ -107,12 +107,20 @@ the confirmed-row selector this window filters — fresh_within reads the newest
 directly — so the key would be a setting nothing consults. A negative or non-integer window \
 is rejected rather than ignored.
 
-For fresh_within, the window in expected_value must equal grace_period exactly. The \
-evaluator computes its deadline from grace_period and does not read expected_value, so a \
-candidate declaring two business days beside a grace_period of one advertises a window twice \
-the length of the one that would be enforced. Both numbers must be the same, and the unit \
-must be the one the source's deadline is computed in: business_days for nav-daily and yield, \
-calendar_days for holdings.
+grace_period is read only for fresh_within. For every other operator it must be 0, because \
+nothing reads it and an inert number in an approved control reads as a policy in force.
+
+For fresh_within, the window in expected_value must equal grace_period exactly, and both \
+must equal the freshness the source's own manifest declares. The evaluator computes its \
+deadline from grace_period and does not read expected_value, so two different numbers \
+advertise a window that is not the one enforced. The declared policies are:
+
+  superstate-ustb-nav-daily   0 business_days
+  superstate-ustb-yield       2 business_days
+  superstate-ustb-holdings    40 calendar_days
+
+Use exactly those. They are the issuer freshness this project undertook to enforce, and a \
+candidate naming any other window is rejected however well it cites its evidence.
 
 Which operators are available depends on the source, because confirmation across captures \
 is a source policy rather than a property of an operator:
@@ -633,6 +641,26 @@ def _validate_candidate_policy(
                 "the freshness window declared in expected_value is not the window the "
                 "evaluator applies, which is grace_period"
             )
+        # And both must be the freshness the source's own manifest allows. Checking the two
+        # numbers against each other only made them agree with one another: a NAV control
+        # claiming a 999-business-day window was internally consistent and accepted, while
+        # `manifests/sources/ustb.json` declares zero. The manifest is the issuer policy this
+        # project undertook to enforce, so it is the number that decides.
+        if (
+            control.grace_period != source_manifest.grace_period
+            or source_manifest.grace_unit not in control.expected_value
+        ):
+            raise ValueError(
+                f"freshness must be {source_manifest.grace_period} "
+                f"{source_manifest.grace_unit} for {source_manifest.source_id}, as its "
+                "source manifest declares"
+            )
+    elif control.grace_period != 0:
+        # Grace is only ever read for freshness. Carried anywhere else it is inert, and an
+        # inert number in an approved control reads as a policy that is in force.
+        raise ValueError(
+            "grace_period is only read for fresh_within and must be 0 for other operators"
+        )
 
     if not supports(
         control.source_id, control.comparison_operator, control.expected_value

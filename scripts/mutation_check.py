@@ -54,10 +54,40 @@ class Mutation:
 # job that exists to prove the tests bite would go green having run nothing. That is the same
 # failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
 # Raise this deliberately when a mutation is added; a diff that changes it is the point.
-EXPECTED_MUTATIONS = 121
+EXPECTED_MUTATIONS = 124
 
 
 MUTATIONS = (
+    Mutation(
+        name="a-freshness-window-need-not-match-the-source-manifest",
+        path="touchstone/compiler.py",
+        old="""        if (
+            control.grace_period != source_manifest.grace_period
+            or source_manifest.grace_unit not in control.expected_value
+        ):""",
+        new="        if False:",
+        tests=(
+            "tests/test_compiler.py::"
+            "test_a_freshness_window_must_be_the_one_the_source_manifest_declares",
+        ),
+    ),
+    Mutation(
+        name="an-inert-grace-period-may-ride-along-in-a-control",
+        path="touchstone/compiler.py",
+        old="    elif control.grace_period != 0:",
+        new="    elif False:",
+        tests=("tests/test_compiler.py::test_a_grace_period_nothing_reads_is_refused",),
+    ),
+    Mutation(
+        name="the-code-may-drift-from-the-manifests-grace-policy",
+        path="touchstone/sources.py",
+        old='        grace_period=0,\n        grace_unit="business_days",',
+        new='        grace_period=7,\n        grace_unit="business_days",',
+        tests=(
+            "tests/test_sources.py::"
+            "test_the_code_carries_the_grace_policy_its_manifest_declares",
+        ),
+    ),
     Mutation(
         name="a-freshness-control-may-advertise-a-window-it-does-not-enforce",
         path="touchstone/compiler.py",

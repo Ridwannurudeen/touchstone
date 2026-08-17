@@ -602,3 +602,31 @@ def test_conflicting_duplicate_headers_are_refused(
             transport=transport,
             retrieved_at=RETRIEVED_AT,
         )
+
+
+def test_the_code_carries_the_grace_policy_its_manifest_declares() -> None:
+    """`manifests/sources/ustb.json` is the authority, and the code has to agree with it.
+
+    The manifest declared a freshness policy per source and nothing read it: `SourceManifest`
+    had no field for it, so the compiler validated a candidate's grace period against itself
+    and never against the issuer policy this project undertook to enforce. A NAV freshness
+    control with a 999-business-day window was accepted while the manifest declared zero.
+
+    Copying the numbers into Python fixes that and creates somewhere new for them to drift,
+    which is what this asserts against.
+    """
+    declared = json.loads(
+        (Path(__file__).parents[1] / "manifests" / "sources" / "ustb.json").read_bytes()
+    )
+    by_id = {source["source_id"]: source for source in declared["sources"]}
+
+    for source in USTB_SOURCES:
+        entry = by_id[source.source_id]
+        if source.grace_unit == "business_days":
+            expected = entry["grace_period_business_days"]
+        else:
+            expected = entry["grace_period_calendar_days"]
+        assert source.grace_period == expected, (
+            f"{source.source_id} carries {source.grace_period} {source.grace_unit} "
+            f"while its manifest declares {expected}"
+        )

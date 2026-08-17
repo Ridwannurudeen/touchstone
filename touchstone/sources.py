@@ -30,6 +30,13 @@ class SourceManifest:
     authority_class: str
     cadence: str
     max_bytes: int
+    # The freshness the issuer's own published policy allows, and the unit it is counted in.
+    # `manifests/sources/*.json` declares these and nothing read them, so a candidate could
+    # name any grace period it liked -- a NAV freshness control with a 999-business-day
+    # window was accepted while the manifest declared zero. The manifest is the authority;
+    # `test_sources` asserts these stay equal to it.
+    grace_period: int
+    grace_unit: str
     redirect_aliases: tuple[str, ...] = ()
 
 
@@ -41,6 +48,8 @@ USTB_SOURCES = (
         authority_class="issuer-api",
         cadence="business-daily",
         max_bytes=262_144,
+        grace_period=0,
+        grace_unit="business_days",
     ),
     SourceManifest(
         source_id="superstate-ustb-yield",
@@ -49,6 +58,8 @@ USTB_SOURCES = (
         authority_class="issuer-api",
         cadence="business-daily",
         max_bytes=4_096,
+        grace_period=2,
+        grace_unit="business_days",
     ),
     SourceManifest(
         source_id="superstate-ustb-holdings",
@@ -57,6 +68,10 @@ USTB_SOURCES = (
         authority_class="issuer-api",
         cadence="periodic",
         max_bytes=16_384,
+        # Provisional, per the manifest: the true cadence has not been observed long enough
+        # to derive one.
+        grace_period=40,
+        grace_unit="calendar_days",
     ),
 )
 USTB_SOURCE_BY_ID: Mapping[str, SourceManifest] = MappingProxyType(

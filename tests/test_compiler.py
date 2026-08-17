@@ -35,7 +35,10 @@ def candidate(**changes: object) -> dict[str, object]:
         "source_authority_class": "issuer-api",
         "evidence_span": SPAN,
         "cadence": "business-daily",
-        "grace_period": 1,
+        # Zero, because the default operator here is `eq` and grace is read only for
+        # freshness. It was 1, which the compiler now refuses: an inert number in an
+        # approved control reads as a tolerance that is applied, and none is.
+        "grace_period": 0,
         "observation_adapter": "ustb-nav-daily",
         "comparison_operator": "eq",
         "expected_value": {
@@ -664,10 +667,13 @@ def test_a_retrieval_instant_must_be_timezone_aware(
 @pytest.mark.parametrize(
     ("window", "grace", "accepted"),
     [
-        (1, 1, True),
-        (2, 2, True),
+        # Zero is the freshness NAV's manifest declares, so it is the only pair that can be
+        # accepted at all. The rest differ from each other and are refused by this rule
+        # before the manifest rule is reached.
+        (0, 0, True),
         (2, 1, False),
         (1, 2, False),
+        (0, 1, False),
     ],
 )
 def test_a_freshness_window_must_equal_the_window_that_is_enforced(
@@ -709,3 +715,52 @@ def test_the_prompt_asks_for_the_row_age_window() -> None:
     # And the restrictions, so the paragraph cannot be reduced to the bare key.
     assert "must equal grace_period" in _PROMPT_TEMPLATE
     assert "not proof of settlement" in _PROMPT_TEMPLATE
+
+
+@pytest.mark.parametrize(
+    ("window", "accepted"),
+    [(0, True), (1, False), (2, False), (999, False)],
+)
+def test_a_freshness_window_must_be_the_one_the_source_manifest_declares(
+    tmp_path: Path, window: int, accepted: bool
+) -> None:
+    """Agreeing with itself is not agreeing with the issuer policy.
+
+    The previous check made `expected_value` and `grace_period` equal each other, which a
+    candidate claiming a 999-business-day NAV window satisfied perfectly while
+    `manifests/sources/ustb.json` declares zero. The manifest is the freshness this project
+    undertook to enforce, so it is the number that decides.
+    """
+    proposal = candidate(
+        control_id="nav-freshness",
+        comparison_operator="fresh_within",
+        expected_value={"business_days": window},
+        grace_period=window,
+    )
+    _, _, _, result = compile_raw(tmp_path, raw_output(proposal))
+
+    outcome = result.outcomes[0]
+    if accepted:
+        assert outcome.status is CompilationStatus.ACCEPTED, outcome.reason
+    else:
+        assert outcome.status is CompilationStatus.REJECTED
+        assert "source manifest declares" in outcome.reason
+
+
+@pytest.mark.parametrize("grace", [1, 5, 999])
+def test_a_grace_period_nothing_reads_is_refused(tmp_path: Path, grace: int) -> None:
+    """Grace is read only for freshness, and an inert number reads as a policy in force.
+
+    Every NAV presence control in the live compilation carried a grace of 1 that evaluation
+    never consults, so the approved set would have advertised a tolerance it does not apply.
+    """
+    proposal = candidate(
+        control_id="nav-per-share-present",
+        comparison_operator="exists",
+        expected_value={"field": "net_asset_value"},
+        grace_period=grace,
+    )
+    _, _, _, result = compile_raw(tmp_path, raw_output(proposal))
+
+    assert result.outcomes[0].status is CompilationStatus.REJECTED
+    assert "must be 0" in result.outcomes[0].reason
