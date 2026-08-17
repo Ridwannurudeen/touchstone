@@ -54,7 +54,7 @@ class Mutation:
 # job that exists to prove the tests bite would go green having run nothing. That is the same
 # failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
 # Raise this deliberately when a mutation is added; a diff that changes it is the point.
-EXPECTED_MUTATIONS = 91
+EXPECTED_MUTATIONS = 96
 
 
 MUTATIONS = (
@@ -83,9 +83,72 @@ MUTATIONS = (
         ),
     ),
     Mutation(
+        name="the-aggregate-may-merely-echo-the-results",
+        path="scripts/assert_ci_gates.py",
+        old="    if not any(_runs_the_enforcer(step) for step in _steps(aggregate)):",
+        new="    if False:",
+        tests=(
+            "tests/test_assert_ci_gates.py::"
+            "test_an_aggregate_that_only_echoes_the_results_is_refused",
+            "tests/test_assert_ci_gates.py::"
+            "test_an_aggregate_that_never_reads_the_results_is_refused",
+        ),
+    ),
+    Mutation(
+        name="a-single-step-may-continue-on-error-unnoticed",
+        path="scripts/assert_ci_gates.py",
+        old='            if step.get("continue-on-error") is True:',
+        new="            if False:",
+        tests=(
+            "tests/test_assert_ci_gates.py::"
+            "test_a_step_that_continues_on_error_is_refused",
+            "tests/test_assert_ci_gates.py::"
+            "test_a_gates_own_step_continuing_on_error_is_refused",
+        ),
+    ),
+    Mutation(
+        name="a-condition-containing-always-is-good-enough",
+        path="scripts/assert_ci_gates.py",
+        old="    if not (isinstance(condition, str) and condition.strip() == ALWAYS):",
+        new="    if not (isinstance(condition, str) and ALWAYS in condition):",
+        tests=(
+            "tests/test_assert_ci_gates.py::"
+            "test_a_condition_that_merely_contains_always_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-enforcer-accepts-a-gate-that-did-not-run",
+        path="scripts/assert_gates_passed.py",
+        old="        if result != PASSING",
+        new='        if result not in (PASSING, "skipped", "cancelled")',
+        tests=(
+            "tests/test_assert_gates_passed.py::"
+            "test_anything_other_than_success_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-enforcer-accepts-having-judged-nothing",
+        path="scripts/assert_gates_passed.py",
+        old='        return ["no gate results were given, so nothing was checked"]',
+        new="        return []",
+        tests=("tests/test_assert_gates_passed.py::test_no_results_at_all_is_refused",),
+    ),
+    Mutation(
+        name="the-gate-ignores-a-wrapper-that-declares-totals",
+        path="scripts/assert_suite_ran.py",
+        old="""    if root.tag == "testsuites":
+        disagreements.extend(""",
+        new="""    if False:
+        disagreements.extend(""",
+        tests=(
+            "tests/test_assert_suite_ran.py::"
+            "test_a_wrapper_declaring_totals_that_contradict_the_cases_is_refused",
+        ),
+    ),
+    Mutation(
         name="a-gate-may-continue-on-error-unnoticed",
         path="scripts/assert_ci_gates.py",
-        old='        if isinstance(job, Mapping) and job.get("continue-on-error") is True:',
+        old='        if job.get("continue-on-error") is True:',
         new="        if False:",
         tests=(
             "tests/test_assert_ci_gates.py::"
@@ -95,21 +158,11 @@ MUTATIONS = (
     Mutation(
         name="the-aggregate-may-be-skipped-instead-of-failed",
         path="scripts/assert_ci_gates.py",
-        old='    if not (isinstance(condition, str) and "always()" in condition):',
+        old="    if not (isinstance(condition, str) and condition.strip() == ALWAYS):",
         new="    if False:",
         tests=(
             "tests/test_assert_ci_gates.py::"
             "test_an_aggregate_without_always_is_refused",
-        ),
-    ),
-    Mutation(
-        name="the-aggregate-need-not-read-the-results",
-        path="scripts/assert_ci_gates.py",
-        old='    if "needs." not in body or ".result" not in body:',
-        new="    if False:",
-        tests=(
-            "tests/test_assert_ci_gates.py::"
-            "test_an_aggregate_that_never_reads_the_results_is_refused",
         ),
     ),
     Mutation(

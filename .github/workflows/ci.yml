@@ -224,9 +224,11 @@ jobs:
   required:
     name: required
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     needs: [lint, workflow_gates, python_tests, contracts, local_e2e, mutation]
     if: always()
+    permissions:
+      contents: read
     steps:
       # One check for branch protection to require. `needs` alone would not do it: a skipped
       # or cancelled dependency does not fail a job that only lists it.
@@ -237,17 +239,20 @@ jobs:
       # What this cannot do is make itself mandatory. Requiring it is a branch-protection
       # setting, and on a private repository without GitHub Pro the protection and ruleset
       # APIs both refuse. Until that is enabled, this job reports honestly and blocks nothing.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      # The decision is not made in this file. Inline shell is precisely what the workflow
+      # checker cannot verify — it could confirm a step *mentioned* the results and not that
+      # it did anything with them, so a step that read them and echoed them passed the check
+      # while enforcing nothing. `assert_gates_passed.py` is tested directly, and the checker
+      # only has to establish that it is what runs here.
       - name: Every gate must have succeeded
-        run: |
-          # Single quotes inside the expression, double outside. GitHub Actions expressions
-          # accept only single-quoted string literals, and `join(..., " ")` is a parse error
-          # that rejects the entire workflow file before any job starts — which reads as
-          # "this run likely failed because of a workflow file issue" and nothing else.
-          results="${{ join(needs.*.result, ' ') }}"
-          echo "gate results: ${results}"
-          for result in ${results}; do
-            if [ "${result}" != "success" ]; then
-              echo "a gate did not succeed"
-              exit 1
-            fi
-          done
+        # Single quotes inside the expression, double outside. GitHub Actions expressions
+        # accept only single-quoted string literals, and `join(..., " ")` is a parse error
+        # that rejects the entire workflow file before any job starts — which reads as
+        # "this run likely failed because of a workflow file issue" and nothing else.
+        run: python scripts/assert_gates_passed.py "${{ join(needs.*.result, ' ') }}"

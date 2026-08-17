@@ -119,10 +119,22 @@ def read_report(path: Path) -> Report:
         "errors": sum(len(case.findall("error")) for case in cases),
     }
     disagreements = [
-        f"{tally}: the summary says {summary[tally]}, the cases show {observed[tally]}"
+        f"{tally}: the suites say {summary[tally]}, the cases show {observed[tally]}"
         for tally in TALLIES
         if summary[tally] != observed[tally]
     ]
+    # The wrapper may declare its own totals, and reading only the children ignored them —
+    # so a <testsuites> claiming a failure over child suites and cases that claim none was
+    # accepted. pytest writes an *uncounted* wrapper, so this adds nothing on its output and
+    # closes the gap on anything else's. These are totals across the suites, not further
+    # counts to add, so they are compared rather than summed.
+    if root.tag == "testsuites":
+        disagreements.extend(
+            f"{tally}: the <testsuites> wrapper says {_count(root, tally)}, "
+            f"the cases show {observed[tally]}"
+            for tally in TALLIES
+            if root.get(tally) is not None and _count(root, tally) != observed[tally]
+        )
     if disagreements:
         raise NotAReport(
             "the suite summary disagrees with its own cases — "

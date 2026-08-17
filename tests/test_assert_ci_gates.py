@@ -116,11 +116,19 @@ def test_a_workflow_with_an_uncovered_job_exits_nonzero(tmp_path: Path) -> None:
 
 
 def enforcing(*jobs: str) -> dict:
-    """A workflow whose aggregate both covers every job and actually enforces the results."""
+    """A workflow whose aggregate both covers every job and actually enforces the results.
+
+    This fixture was itself a finding. It used to end in `echo "${results}"` — it read the
+    results and did nothing with them — and the checker accepted it, which is precisely the
+    bypass being closed. A fixture that demonstrates the hole while being named for its
+    absence is worse than no fixture, so it now runs the enforcer.
+    """
     workflow = covering(*jobs)
     workflow["jobs"][AGGREGATE]["if"] = "always()"
     workflow["jobs"][AGGREGATE]["steps"] = [
-        {"run": 'results="${{ join(needs.*.result, \' \') }}"; echo "${results}"'}
+        {
+            "run": "python scripts/assert_gates_passed.py \"${{ join(needs.*.result, ' ') }}\""
+        }
     ]
     return workflow
 
@@ -166,3 +174,51 @@ def test_a_neutralised_workflow_exits_nonzero(tmp_path: Path) -> None:
     path.write_text(yaml.safe_dump(workflow), encoding="utf-8")
 
     assert main([str(path)]) == 1
+
+
+def test_an_aggregate_that_only_echoes_the_results_is_refused() -> None:
+    """The bypass that survived the first widening, and that this fixture used to contain.
+
+    Reading `needs.*.result` and printing it satisfies every textual test while enforcing
+    nothing, which is why the decision moved into a script the checker can name.
+    """
+    workflow = enforcing("lint")
+    workflow["jobs"][AGGREGATE]["steps"] = [
+        {"run": 'echo "${{ join(needs.*.result, \' \') }}"'}
+    ]
+
+    assert any("without being judged" in problem for problem in weakened(workflow))
+
+
+def test_an_enforcer_given_no_results_is_refused() -> None:
+    """Naming the script is half of it; a call with no results judges an empty list."""
+    workflow = enforcing("lint")
+    workflow["jobs"][AGGREGATE]["steps"] = [
+        {"run": "python scripts/assert_gates_passed.py"}
+    ]
+
+    assert any("without being judged" in problem for problem in weakened(workflow))
+
+
+def test_a_step_that_continues_on_error_is_refused() -> None:
+    """Step-level continue-on-error lets the job pass when that step fails."""
+    workflow = enforcing("lint")
+    workflow["jobs"][AGGREGATE]["steps"][-1]["continue-on-error"] = True
+
+    assert any("step 1 of job" in problem for problem in weakened(workflow))
+
+
+def test_a_gates_own_step_continuing_on_error_is_refused() -> None:
+    """Not only the aggregate's steps: a gate whose failing step is excused reads green."""
+    workflow = enforcing("lint")
+    workflow["jobs"]["lint"]["steps"] = [{"run": "false", "continue-on-error": True}]
+
+    assert any("job 'lint'" in problem for problem in weakened(workflow))
+
+
+def test_a_condition_that_merely_contains_always_is_refused() -> None:
+    """`always() && false` contains the substring and never runs the job."""
+    workflow = enforcing("lint")
+    workflow["jobs"][AGGREGATE]["if"] = "${{ always() && false }}"
+
+    assert any("not exactly" in problem for problem in weakened(workflow))

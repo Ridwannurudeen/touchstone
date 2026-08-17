@@ -189,6 +189,37 @@ def test_a_summary_that_disagrees_with_its_own_cases_is_refused(
     assert main([str(_report(tmp_path, body)), *BOTH]) == 1
 
 
+def test_a_wrapper_declaring_totals_that_contradict_the_cases_is_refused(
+    tmp_path: Path,
+) -> None:
+    """The counters on `<testsuites>` itself were read by nobody.
+
+    Requiring the child suites and the cases to agree left the wrapper out of the comparison
+    entirely, so a report whose wrapper declared a failure over child suites and cases that
+    declared none was accepted. pytest writes an uncounted wrapper, which is why this went
+    unnoticed: there was nothing there to disagree with on the only producer being used.
+    """
+    body = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites tests="2" skipped="0" failures="1" errors="0">
+  <testsuite name="pytest" errors="0" failures="0" skipped="0" tests="2">
+    <testcase classname="t" name="one"/>
+    <testcase classname="t" name="two"/>
+  </testsuite>
+</testsuites>
+"""
+    with pytest.raises(NotAReport, match="wrapper"):
+        read_report(_report(tmp_path, body))
+    assert main([str(_report(tmp_path, body)), *BOTH]) == 1
+
+
+def test_an_uncounted_wrapper_is_what_pytest_writes_and_is_accepted(
+    tmp_path: Path,
+) -> None:
+    """The rule above must not refuse the only producer this project actually uses."""
+    assert "<testsuites>" in PASSED_TWO
+    assert main([str(_report(tmp_path, PASSED_TWO)), *BOTH]) == 0
+
+
 def test_a_negative_count_is_refused(tmp_path: Path) -> None:
     """It is not a report about anything, and under max() it cancelled a real failure."""
     body = PASSED_TWO.replace('failures="0"', 'failures="-1"')

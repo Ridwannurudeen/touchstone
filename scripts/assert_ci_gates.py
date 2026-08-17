@@ -25,6 +25,14 @@ import yaml
 # The single job branch protection is meant to require. Every other job must reach it.
 AGGREGATE = "required"
 
+# The only condition that makes the aggregate run when a gate has failed. Compared exactly,
+# because `always() && false` contains it and never runs.
+ALWAYS = "always()"
+
+# The script that actually judges the results. Kept separate so its behaviour is proved by
+# its own tests instead of being asserted about inline shell, which cannot be checked.
+ENFORCER = "scripts/assert_gates_passed.py"
+
 
 class WorkflowError(Exception):
     """The workflow is not shaped the way this check needs to read it."""
@@ -67,33 +75,42 @@ def ungoverned(workflow: object) -> tuple[list[str], list[str]]:
     return missing, unknown
 
 
-def _steps_text(job: Mapping[str, object]) -> str:
-    """Every string in the job's steps, flattened. Enough to see what it references."""
+def _steps(job: Mapping[str, object]) -> list[Mapping[str, object]]:
     steps = job.get("steps", [])
     if not isinstance(steps, list):
-        return ""
-    parts: list[str] = []
-    for step in steps:
-        if isinstance(step, Mapping):
-            parts.extend(
-                str(value) for value in step.values() if isinstance(value, str)
-            )
-    return "\n".join(parts)
+        return []
+    return [step for step in steps if isinstance(step, Mapping)]
+
+
+def _runs_the_enforcer(step: Mapping[str, object]) -> bool:
+    """Does this step hand the gate results to the script that judges them?
+
+    Both halves are required. A step naming the script without the results judges an empty
+    list, and a step expanding the results without the script is the echo that passed the
+    previous version of this checker.
+    """
+    body = step.get("run")
+    if not isinstance(body, str):
+        return False
+    return ENFORCER in body and "needs." in body and ".result" in body
 
 
 def weakened(workflow: object) -> list[str]:
     """Return the ways the aggregate could be present and still enforce nothing.
 
-    Covering every job is necessary and not sufficient. Three shapes leave the list intact
-    while removing its effect, and a checker that missed them would protect the membership
-    of the gate but not the gate:
+    Covering every job is necessary and nowhere near sufficient. Each shape below leaves the
+    `needs` list perfectly intact while removing its effect, and the first version of this
+    function missed four of them because it looked for text rather than for enforcement:
 
-    * `continue-on-error: true` on any job makes that job's `result` `success` even when it
-      failed, so the aggregate reads a green result off a red job.
-    * without `if: always()` the aggregate is *skipped* when a dependency fails, and a
-      skipped check is not a failed one.
-    * an aggregate whose steps never mention `needs.*.result` is not reading the results at
-      all, which is the failure mode where every gate is listed and none is consulted.
+    * `continue-on-error: true` on a job — or on any single step — reports a failure as
+      success, so the aggregate reads green off red.
+    * without `if: always()` the aggregate is *skipped* when a gate fails, and a skipped
+      check is not a failed one. The condition must be exactly `always()`: a substring test
+      accepts `always() && false`, which never runs it at all.
+    * an aggregate that reads `needs.*.result` and merely echoes it enforces nothing. That
+      is why the decision lives in `scripts/assert_gates_passed.py`, which is tested
+      directly; all this has to establish is that the script is what runs, with the results
+      passed to it.
     """
     jobs = _jobs(workflow)
     if AGGREGATE not in jobs:
@@ -104,23 +121,30 @@ def weakened(workflow: object) -> list[str]:
 
     problems: list[str] = []
     for name, job in sorted(jobs.items()):
-        if isinstance(job, Mapping) and job.get("continue-on-error") is True:
+        if not isinstance(job, Mapping):
+            continue
+        if job.get("continue-on-error") is True:
             problems.append(
                 f"job {name!r} sets continue-on-error, so its failure is reported as success"
             )
+        for position, step in enumerate(_steps(job), start=1):
+            if step.get("continue-on-error") is True:
+                problems.append(
+                    f"step {position} of job {name!r} sets continue-on-error, so its "
+                    "failure is reported as success"
+                )
 
     condition = aggregate.get("if")
-    if not (isinstance(condition, str) and "always()" in condition):
+    if not (isinstance(condition, str) and condition.strip() == ALWAYS):
         problems.append(
-            f"{AGGREGATE!r} has no `if: always()`, so a failing gate skips it rather than "
-            "failing it"
+            f"{AGGREGATE!r} has `if: {condition!r}`, not exactly {ALWAYS!r}; anything else "
+            "can leave it skipped rather than failed when a gate fails"
         )
 
-    body = _steps_text(aggregate)
-    if "needs." not in body or ".result" not in body:
+    if not any(_runs_the_enforcer(step) for step in _steps(aggregate)):
         problems.append(
-            f"{AGGREGATE!r} never reads `needs.*.result`, so it waits for the gates without "
-            "checking them"
+            f"no step of {AGGREGATE!r} runs {ENFORCER} with `needs.*.result`, so the "
+            "results are collected without being judged"
         )
     return problems
 

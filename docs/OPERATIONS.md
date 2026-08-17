@@ -247,11 +247,25 @@ overlapping:
 3. **Install the new signing key** on the host.
 4. **Start the daemon** and confirm the first heartbeat.
 
-**Both edits or neither.** Changing the signing key without rolling the manifest does not
-roll anything over — the publisher checks each report against the manifest's *active*
-reporting key, refuses an unknown one, opens a `PUBLICATION_UNRESOLVED` incident, and
-publishes nothing. That failure is safe but silent-looking: the daemon keeps running and the
-day goes unpublished.
+**Both edits or neither**, and what a mismatch actually does depends on which half is wrong:
+
+- **Restarted with a signing key the manifest does not name:** the daemon **refuses to
+  start.** `scripts/run_service.py` derives the kid from the seed, compares it with the
+  manifest's active reporting key, prints `SERVICE FAIL: the signing seed derives … but the
+  manifest's active reporting key is …` and exits 1 **before serving anything**. No daemon is
+  left running, no incident is opened, and no slot is attempted. It is loud, and it is the
+  outcome to want.
+- **A running daemon whose key file changes underneath it:** nothing happens. The signer is
+  read once at startup and there is no hot reload, so it keeps signing with the key it
+  already holds. This is why step 1 is stop-and-confirm rather than edit-in-place.
+
+An earlier version of this section claimed the mismatch left the daemon running and opened a
+`PUBLICATION_UNRESOLVED` incident. That is what happens to a `Service` driven directly by a
+caller that skipped the startup check — it is the behaviour the rollover test exercises — but
+it is **not** what the configured daemon does, and describing an operational failure by its
+library-level path rather than its CLI path is how a runbook misleads the person following it.
+`PUBLICATION_UNRESOLVED` is recorded only when an already-signed report reaches publication
+and publication then fails.
 
 **Never discard a retired key's public record.** It is what verifies everything it signed.
 
