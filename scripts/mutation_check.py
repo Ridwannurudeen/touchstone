@@ -54,10 +54,42 @@ class Mutation:
 # job that exists to prove the tests bite would go green having run nothing. That is the same
 # failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
 # Raise this deliberately when a mutation is added; a diff that changes it is the point.
-EXPECTED_MUTATIONS = 108
+EXPECTED_MUTATIONS = 111
 
 
 MUTATIONS = (
+    Mutation(
+        name="the-release-document-is-not-reproducible",
+        path="scripts/build_release.py",
+        old='        json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\\n"',
+        new='        json.dumps(document, indent=2, sort_keys=False, allow_nan=False) + "\\n"',
+        tests=(
+            "tests/test_build_release.py::"
+            "test_encoded_keys_are_sorted_and_end_in_a_newline",
+        ),
+    ),
+    Mutation(
+        name="the-release-document-invents-the-counts-it-was-not-given",
+        path="scripts/build_release.py",
+        old="    missing = [name for name, value in supplied.items() if value is None]",
+        new="    missing = []",
+        tests=(
+            "tests/test_build_release.py::"
+            "test_an_omitted_test_summary_is_recorded_as_absent_not_as_zero",
+            "tests/test_build_release.py::"
+            "test_a_partial_test_summary_does_not_fill_the_missing_counts_with_zero",
+        ),
+    ),
+    Mutation(
+        name="the-release-document-calls-every-tree-clean",
+        path="scripts/build_release.py",
+        old='    return {"sha": sha, "tree_clean": porcelain.strip() == ""}',
+        new='    return {"sha": sha, "tree_clean": True}',
+        tests=(
+            "tests/test_build_release.py::"
+            "test_a_dirty_tree_is_recorded_as_not_clean_and_still_emits_a_manifest",
+        ),
+    ),
     Mutation(
         name="a-recovery-never-retires-its-outage",
         path="scripts/run_service.py",
