@@ -27,18 +27,27 @@ honest state, and a runbook that invented them would be worse than one that admi
 
 | Network | State |
 |---|---|
-| X Layer **testnet** (chain 1952) | **SUPERSEDED** — registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` (block 38369203) predates the `epochKey` change and cannot enforce one report per epoch. Its manifest declares `deployment_state: superseded` and the service refuses it before reading any key. It published nothing. A replacement deployment is owner-gated and has not been requested |
-| X Layer **mainnet** (chain 196) | `not_deployed` — owner-gated |
+| X Layer **testnet** (chain 1952) | **ACTIVE** — registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` (block 38489602), deployed 2026-08-17 under a recorded owner approval. Manifest `deployments/xlayer-testnet-2.json`, `deployment_state: active`, publisher authorized. **Holds zero reports** |
+| X Layer testnet — **predecessor** | **SUPERSEDED** — registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` (block 38369203) predates the `epochKey` change and cannot enforce one report per epoch. Its manifest declares `deployment_state: superseded` and the service refuses it before reading any key. It published nothing, verified by a full log scan from its deployment block to head |
+| X Layer **mainnet** (chain 196) | `not_deployed` — owner-gated, and additionally blocked until the deployer and publisher keys sit on separate hosts (`docs/DEPLOYMENT-G1-EXECUTED.md`) |
 
-Testnet publisher `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710`, authorized with its lineage
-recorded. The manifest is `deployments/xlayer-testnet.json`; its note distinguishes the
+Testnet publisher `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710`, authorized on the active
+registry with its identity mapped to itself. The live manifest is
+`deployments/xlayer-testnet-2.json`, written by the deploy script and accompanied by
+`xlayer-testnet-2.json.attempt.json` — the append-only journal, which is the only local record
+of the deployment and authorization transaction hashes. **Keep the journal.** The superseded
+registry's manifest `deployments/xlayer-testnet.json` is retained; its note distinguishes the
 fields read from the chain from the ones that are reconstructed configuration.
 
-**Nothing has ever published to this registry, and nothing may.** The service no longer
-refuses every mode — `scripts/run_service.py` runs the unattended USTB loop — but this
-deployment is marked `superseded` and is refused before any key is read, because it predates
-the `epochKey` change that makes one report per epoch enforceable on chain. The next item is
-the replacement deployment, which is owner-gated.
+**No report has ever been published to any registry.** The active registry holds zero reports;
+`latestSequence` is zero for every asset key. The next publication is a single USTB canary
+epoch, which the owner approved separately from the deployment — the deployment approval
+explicitly did not cover it.
+
+The superseded predecessor is refused before any key is read, because its manifest declares
+`deployment_state: superseded`. That refusal is what stops a publication reaching it; its
+recorded runtime digest matches its own deployed code, so a preflight bytecode comparison
+would *agree* with it rather than reject it.
 
 ---
 

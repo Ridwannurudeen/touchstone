@@ -41,15 +41,26 @@ can become the latest report and hide the earlier duplicate. So `Report` gained
 refuses a non-zero entry with `EpochAlreadyPublished`, and a correction must carry the
 epoch it corrects.
 
-**Authorization, stated precisely, because an earlier version of this line overstated it.**
-The owner approved the ABI change on 2026-08-16, and approved the replacement registry **in
-principle** — the approval that was given explicitly kept redeployment as a separate decision
-to be returned for. **Execution authorization has not been granted**, no replacement has been
-deployed, and no gas has been spent on one.
+**Authorization, and how it was finally obtained.** The owner approved the ABI change on
+2026-08-16 and the replacement registry **in principle**, keeping execution as a separate
+decision. Execution authorization was granted on **2026-08-17**, naming the packet commit
+`16ca3bd`, the packet blob sha256 `046ab170…70c1` and the ceiling `1000000000000000` wei.
+**The replacement is deployed** at `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`, block
+38489602; see `docs/DEPLOYMENT-G1-EXECUTED.md`.
 
-The registry already deployed to X Layer testnet is therefore **superseded and must not be
-published to** — it has no `epochSequence`. It published nothing, so no history is lost.
-Deploying the replacement is an owner gate that has not yet been requested.
+Worth recording how close that went wrong. A revision of the deployment packet declared the
+digest-bound approval rule **waived**, on the strength of a general "approval for the
+everything downstream work". Audit rejected it in one line — recording that a control was
+bypassed does not discharge the control, and the executing agent is the one party who cannot
+waive a rule that exists to constrain it. The packet then took **eight audit rounds**, each
+finding exactly one substantive misstatement about what the code does; two of those were
+introduced by the fixes for earlier rounds. The lesson is not that the process was slow: it is
+that a document describing a deployment drifts from the deployment at roughly one defect per
+revision, and only line-by-line reading against the script catches it.
+
+The predecessor registry is **superseded and must not be published to** — it has no
+`epochSequence`. A full log scan of every 100-block range from its deployment block to head
+found one event, its own `PublisherAuthorized`, so no history was lost.
 
 An earlier version of this paragraph claimed preflight would refuse it on the runtime
 bytecode digest. **That was false**, and the audit caught it: preflight compares the

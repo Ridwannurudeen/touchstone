@@ -1,6 +1,9 @@
 # Touchstone Threat Model — Phase 1
 
-**Status:** Phase 1 (hackathon build). Written 2026-08-14 against `main`.
+**Status:** Phase 1 (hackathon build). Written 2026-08-14; **revised 2026-08-17** after
+PLAN-T7 and PLAN-T8 closed and PLAN-T10/T11 were cut. That revision existed to remove
+deferrals pointing at items that had since closed *without* doing the work — a backlog label
+naming a finished item reads as covered when it is not.
 
 This document states what Touchstone defends against today, what it does not, and where
 each roadmap security requirement actually stands. It is deliberately narrow: the formal
@@ -40,7 +43,7 @@ assumptions are the product, so they are enumerated rather than minimised.
 | B6 | **Ed25519 reporting key** | Authenticity of a report's content | A compromised key can sign false reports. A bundle verifies against the key it carries, so a consumer must decide which key it trusts out of band. Rollover is built (`touchstone/keyring.py`) and is additive: a superseded key stays published and trusted, and only the active key may sign or publish anew. Note the limit this creates — because a bundle carries its own key, a bundle signed by a **revoked** key still passes `verify_bundle` (`touchstone/verify.py:133`). Revocation is a manifest-level withdrawal of trust, not a cryptographic one, so a consumer who cares must consult the manifest. Custody is the open part — R-5 |
 | B7 | **EVM publisher key** | Authority to write to the registry | A compromised key can publish authentic-looking state; the owner can revoke it onchain |
 | B8 | **Deployer / owner key** | Contract deployment and publisher authorisation | Full control of the registry's publisher set |
-| B9 | **Operations / backup identity** | Service continuity and archive integrity | Backup loss or forgery. Its address is a required manifest field as of PLAN-T6, so the publisher can be shown not to be running as it; that is an *address* separation only. Nothing yet verifies who actually funds the publisher or holds the archive, and archive integrity is PLAN-T8 |
+| B9 | **Operations / backup identity** | Service continuity and archive integrity | Backup loss or forgery. Its address is a required manifest field as of PLAN-T6, so the publisher can be shown not to be running as it; that is an *address* separation only. Nothing yet verifies who actually funds the publisher or holds the archive, and archive integrity is now built (PLAN-T8: `touchstone/backup.py`), though nothing verifies **who** holds the archive |
 | B10 | **Registry contract** (X Layer) | Immutable, ordered, append-only history | Chain reorganisation or a wrong-chain deployment; guarded by an immutable expected chain id compared on every report publication, including corrections (`contracts/contracts/TouchstoneRegistry.sol:239`); publisher-authorisation writes are not chain-checked |
 | B11 | **Consumer contract** (`AssetGate`) | Enforcing its own freshness policy | A permissive policy admits stale state; the gate reacts to verification freshness, never to asset safety |
 | B12 | **Public projection** (dossier, heartbeat) | Displaying only signed, verified data | Claim inflation in the UI — see T26 |
@@ -80,7 +83,7 @@ threat identifiers `T1`–`T27` used in this section.
 | T4 | **Content-encoding confusion / decompression bomb** | **Implemented for the JSON path (PLAN-T5).** `Accept-Encoding: identity` is requested, every response is capped on the wire, and a non-identity `Content-Encoding` is now refused, so a compressed body cannot smuggle more expanded data than the cap allows. Archive and document expansion limits remain **PLAN-T10** |
 | T5 | **Oversized input** — memory exhaustion via a large response | **Implemented.** Per-source `max_bytes` enforced at read time and again after transport (`touchstone/sources.py:192`, `touchstone/sources.py:235`) |
 | T6 | **Hostile JSON** — deep nesting, duplicate keys, float coercion, unexpected shape | **Implemented.** Depth cap (`touchstone/normalize/ustb.py:17`), magic-byte root check, exact-object field sets, decimal-as-text parsing, and duplicate row-date rejection. Numbers never round-trip through binary floats |
-| T7 | **Hostile PDF** | **Backlog: PLAN-T10.** No PDF path exists yet; page, expanded-text and timeout limits are required before USDY lands |
+| T7 | **Hostile PDF** | **Not applicable in Phase 1.** No PDF path exists, and none is needed: **PLAN-T10's USDY adapter was cut on 2026-08-16** and PLAN-T11's FOBXX adapter was dropped, so no portfolio source is a PDF or archive. Page, expanded-text and timeout limits become required again the moment one is added |
 | T8 | **Parser escape** — parsing code executes attacker-influenced logic in the main process | **Partially mitigated.** Normalisation runs in a spawned worker with a hard wall-clock timeout (`touchstone/normalize/ustb.py:265`, default 2.0s at `:18`), which bounds runaway parsing. It does **not** contain a genuinely compromised worker: the worker's result crosses back over a `multiprocessing` connection (`touchstone/normalize/ustb.py:295`), and the parent deserialises whatever arrives. See **R-3** |
 
 ### Compilation
@@ -97,7 +100,7 @@ threat identifiers `T1`–`T27` used in this section.
 | ID | Threat | Disposition |
 |---|---|---|
 | T13 | **Mutable evidence** — the source revises a value after it was observed | **Partially implemented.** Value controls observe only a row whose whole record is identical in two retained captures at least 24h apart; a row revised between them is skipped. This compares two instants only (`touchstone/evaluate.py:361`), so a row revised and restored between captures is indistinguishable from one never touched. Documented in `docs/CONTROL-LANGUAGE.md` and `SOURCE_AUDIT.md` |
-| T14 | **Retrieval failure mistaken for issuer failure** | **Rule implemented; runtime path not.** The transition rule is correct and tested: `SOURCE_ERROR` preserves the previous state while its evidence deadline holds and only becomes `STALE` after expiry (`touchstone/controls.py:282`) — **except** that a contradicted result is checked first (`touchstone/controls.py:280`), so a source error arriving alongside a genuine contradiction still yields `INCONSISTENT`. But **no runtime caller ever produces that event** — a fetch or normalisation failure propagates out of the epoch (`touchstone/epoch.py:187`) and terminates the run instead of being recorded. Backlog: **PLAN-T7** |
+| T14 | **Retrieval failure mistaken for issuer failure** | **Rule implemented; runtime path still not, after PLAN-T7 closed.** The transition rule is correct and tested: `SOURCE_ERROR` preserves the previous state while its evidence deadline holds and only becomes `STALE` after expiry (`touchstone/controls.py:282`) — **except** that a contradicted result is checked first (`touchstone/controls.py:280`), so a source error arriving alongside a genuine contradiction still yields `INCONSISTENT`. But **no runtime caller ever produces that event** — a fetch or normalisation failure propagates out of the epoch (`touchstone/epoch.py:187`) and terminates the run instead of being recorded — though the failed slot now opens an incident and the schedule continues (T22, T23). **No open plan item owns the missing producer.** |
 | T15 | **Missing or conflicting observations** | **Implemented within an epoch that completes.** Absent or unusable evidence yields `UNEVALUABLE`, which drives `UNVERIFIABLE` rather than a confident result; only a genuine predicate conflict yields `INCONSISTENT` (`touchstone/controls.py:262`). This covers evidence that is retrieved but unusable, not an epoch that fails to complete — see T14 |
 | T16 | **Evidence-store tampering** | **Implemented for detection.** The index is a hash chain and every append re-verifies the full chain and re-hashes every referenced object (`touchstone/evidence.py:78`, `:88`). A privileged actor able to rewrite objects *and* recompute the whole chain is not defended against — **R-4** |
 
@@ -116,10 +119,10 @@ threat identifiers `T1`–`T27` used in this section.
 
 | ID | Threat | Disposition |
 |---|---|---|
-| T22 | **Source outage** | **Backlog: PLAN-T7.** The semantics exist (`SOURCE_ERROR`); the service that records an incident and keeps scheduling does not |
-| T23 | **Scheduler stops on the first failure** | **Backlog: PLAN-T7.** The scheduler is recurring and does not overlap invocations (`touchstone/schedule.py:37`). Its real limitation is that an exception from the job propagates and ends the loop, so one failed epoch stops all future ones |
-| T24 | **Backup loss** | **Backlog: PLAN-T8.** No backup or restore path exists |
-| T25 | **Incident deletion** — an embarrassing failure quietly disappears | **Backlog: PLAN-T7.** Incident history must be append-only and hash-chained; recovery closes an incident with a new event rather than removing it. Not built |
+| T22 | **Source outage** | **Partially implemented (PLAN-T7 closed 2026-08-15).** A failed slot is recorded as an incident and the schedule continues (`touchstone/schedule.py:153`, `touchstone/incidents.py:164`). **The `SOURCE_ERROR` transition itself still has no runtime producer** — `grep` finds it only in `touchstone/controls.py`, so a fetch failure ends the epoch and opens an incident rather than yielding the `SOURCE_ERROR` result whose semantics T14 describes. That residual is **not owned by any open plan item**; it was left behind when T7 closed |
+| T23 | **Scheduler stops on the first failure** | **Implemented (PLAN-T7).** A failed slot is caught and reported rather than swallowed, and the schedule continues (`touchstone/schedule.py:153`, with the reasoning recorded at `:342`). The recurring scheduler still does not overlap invocations |
+| T24 | **Backup loss** | **Implemented (PLAN-T8).** Encrypted backup and restore exist as `touchstone/backup.py` with `scripts/backup_workspace.py` and `scripts/restore_workspace.py`. Restore is exercised, not merely written |
+| T25 | **Incident deletion** — an embarrassing failure quietly disappears | **Implemented (PLAN-T7).** `touchstone/incidents.py` is a hash-chained JSON-lines log whose head **and entry count** are persisted separately, because truncation alone leaves a shorter chain that verifies (`:99`, `:222`). Recovery closes an incident with a new event (`:185`) rather than removing one, and hardlinked logs are refused (`:131`) |
 | T26 | **UI claim inflation** — the public surface implies more than the evidence proves | **Backlog: PLAN-T9.** No public surface exists yet. Requirements: "verified" and "not verified" visually separated, deterministic explanations drawn only from accepted graph data, explorer links absent rather than fabricated when undeployed, and no ordinary NAV movement described as a risk event |
 
 ## 4. State semantics that this model depends on
@@ -149,10 +152,10 @@ These distinctions are load-bearing and must not be collapsed:
 | Allowlisted URLs | **Implemented (PLAN-T5)** — the initial URL must match the manifest, and a redirect may only land on that source's own URL or a `redirect_alias` it declares (T1, T2) |
 | Blocked redirects | **Implemented (PLAN-T5)** — at most one hop, same host, HTTPS, and the target must be the source's own URL or a `redirect_alias` it declares; a redirect to a *different* approved source is refused |
 | MIME limits | **Implemented (PLAN-T5)** — enforced against the manifest before storage |
-| Magic-byte limits | Implemented for JSON; PDF/ZIP with **PLAN-T10** |
+| Magic-byte limits | Implemented for JSON. PDF/ZIP magic checks are unbuilt and unneeded after the **PLAN-T10** cut |
 | Size limits | Implemented (`touchstone/sources.py:192`) |
-| Decompression limits | **Implemented for the JSON path (PLAN-T5)** — a non-identity Content-Encoding is refused. Archive/document expansion limits remain **PLAN-T10** |
-| Page limits | Not applicable until PDFs land. Backlog: **PLAN-T10** |
+| Decompression limits | **Implemented for the JSON path (PLAN-T5)** — a non-identity Content-Encoding is refused. Archive/document expansion limits are unbuilt and unneeded after the **PLAN-T10** cut |
+| Page limits | Not applicable — no PDF source remains in Phase 1 after the PLAN-T10 cut. **No open item owns this**; it returns with the first document source |
 | Time limits | Implemented and **proved (PLAN-T5)** — a worker that never returns is terminated by the wall-clock limit and raises a typed failure |
 | Isolated parsing worker | Implemented, with **R-3** stated |
 | Model id, prompt hash, compiler version, input hash, raw output recorded | Yes — prompt hash, compiler version, input hash, raw output and the full response body are recorded, with the provider's **returned** model identity beside the requested one and a mismatch refused (T11 closed) |
@@ -170,8 +173,8 @@ These distinctions are load-bearing and must not be collapsed:
 | Prompt-injection tests | **Implemented (PLAN-T5)** — five cases: self-approval, fabricated citation, adapter redirection, the absence of any tool surface, and the honest limit that a well-formed injected candidate is accepted as a proposal |
 | Full model/prompt version recording | Partially — see the row above and T11/R-11 |
 | Signed release manifests | Backlog: **PLAN-T13** |
-| Daily backups + tested restore | Backlog: **PLAN-T8** |
-| Public status and incident history | Backlog: **PLAN-T7/PLAN-T8/PLAN-T9** |
+| Daily backups + tested restore | **Implemented (PLAN-T8)** — `touchstone/backup.py`, `scripts/backup_workspace.py`, `scripts/restore_workspace.py` |
+| Public status and incident history | Incident history **implemented** (PLAN-T7, `touchstone/incidents.py`); the **public** surface that exposes it is **PLAN-T9**, still open |
 
 ## 6. Residual limitations
 
@@ -229,7 +232,8 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   `rotatePublisher`. The deployer key itself is a single key whose loss or theft is
   unrecoverable, because the registry has no owner-rotation path. Compromise *detection*
   does not exist: nothing watches for a publication from an unexpected publisher or a
-  report signed by a retired key. PLAN-T7 and PLAN-T8 own that. See
+  report signed by a retired key. **PLAN-T7 and PLAN-T8 have both closed without building it**, so
+  no open item owns it; it is a standing residual. See
   `docs/KEY-MANAGEMENT.md`.
 - **R-6 — Verification bundles carry digests, not artifacts, and no chain state.** A bundle
   holds the signed report, its canonical bytes, the control records, the evidence
