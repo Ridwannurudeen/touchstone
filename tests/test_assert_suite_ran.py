@@ -103,6 +103,29 @@ def test_xml_that_is_not_a_report_is_refused(tmp_path: Path) -> None:
     assert main([str(_report(tmp_path, body)), *BOTH]) == 1
 
 
+def test_a_valid_report_buried_in_a_foreign_root_is_refused(tmp_path: Path) -> None:
+    """The root check earns its place here, and only here.
+
+    The mutation harness caught this: with the structural checks added, removing the
+    root-element check no longer changed the verdict on arbitrary XML, because a foreign root
+    holding loose cases is refused for containing no `<testsuite>`. A registered fix that no
+    longer decides anything is a finding, so this is the input that isolates it — a perfectly
+    well-formed suite, internally consistent, wrapped in a root that is not a JUnit report.
+    Every other check passes it; only the root check refuses it.
+    """
+    body = """<?xml version="1.0" encoding="utf-8"?>
+<arbitrary>
+  <testsuite name="pytest" errors="0" failures="0" skipped="0" tests="2">
+    <testcase classname="t" name="one"/>
+    <testcase classname="t" name="two"/>
+  </testsuite>
+</arbitrary>
+"""
+    with pytest.raises(NotAReport, match="root element"):
+        read_report(_report(tmp_path, body))
+    assert main([str(_report(tmp_path, body)), *BOTH]) == 1
+
+
 def test_the_right_number_of_the_wrong_tests_is_refused(tmp_path: Path) -> None:
     """Counting two cases was satisfied by any two cases, which is what naming them fixes."""
     body = PASSED_TWO.replace('name="two"', 'name="something_else_entirely"')

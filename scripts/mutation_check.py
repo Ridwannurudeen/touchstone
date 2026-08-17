@@ -122,8 +122,14 @@ MUTATIONS = (
         )
 """,
         new="",
+        # Not `test_xml_that_is_not_a_report_is_refused`. That input is a foreign root
+        # holding loose cases, which the structural checks refuse on their own, so this
+        # mutation survived it — the harness caught a registered fix that had stopped
+        # deciding anything. The named test wraps a *valid, consistent* suite in a foreign
+        # root, which nothing but this check refuses.
         tests=(
-            "tests/test_assert_suite_ran.py::test_xml_that_is_not_a_report_is_refused",
+            "tests/test_assert_suite_ran.py::"
+            "test_a_valid_report_buried_in_a_foreign_root_is_refused",
         ),
     ),
     Mutation(
