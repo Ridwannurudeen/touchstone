@@ -620,16 +620,21 @@ def test_a_commented_out_compiler_setting_is_not_recorded(tmp_path: Path) -> Non
 
 
 def test_a_template_named_in_upper_case_is_still_excluded(tmp_path: Path) -> None:
-    """The exclusion cannot depend on the platform's idea of a filename.
+    """The exclusion cannot depend on how a file happens to be capitalised.
 
-    `Path.glob("*.json")` is case-insensitive on Windows and case-sensitive on Linux, so the
-    same tree produced different documents on different platforms. Worse, the `.template.`
-    filter compared case-sensitively, so on Windows a `.TEMPLATE.json` was globbed in and not
-    filtered out — shipping its placeholder address as though it were a deployment.
+    The `.template.` filter compared case-sensitively, so a `.TEMPLATE.json` passed every
+    filter and shipped its placeholder address as though it were a deployment.
+
+    The name deliberately differs from `xlayer-mainnet.template.json` by more than case. An
+    earlier version of this test wrote `xlayer-mainnet.TEMPLATE.json`, which on a
+    case-insensitive filesystem simply overwrote the existing lowercase file — so the case
+    variant never reached the builder, the test passed for the wrong reason, and the mutation
+    harness caught it by surviving. A case test that a case-insensitive filesystem can
+    silently collapse is not a case test.
     """
     root = _tree(tmp_path)
     _write(
-        root / "deployments" / "xlayer-mainnet.TEMPLATE.json",
+        root / "deployments" / "OTHERNET.TEMPLATE.json",
         json.dumps(TEMPLATE).encode("utf-8"),
     )
     destination = tmp_path / "release.json"

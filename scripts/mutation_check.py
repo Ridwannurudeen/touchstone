@@ -79,14 +79,10 @@ MUTATIONS = (
         ),
     ),
     Mutation(
-        name="the-release-document-lists-deployments-by-platform-glob",
+        name="the-release-document-excludes-templates-by-exact-case",
         path="scripts/build_release.py",
-        old="""    for path in sorted(
-        entry
-        for entry in (root / DEPLOYMENTS).iterdir()
-        if entry.is_file() and entry.name.endswith(".json")
-    ):""",
-        new='    for path in sorted((root / DEPLOYMENTS).glob("*.json")):',
+        old="    name = path.name.lower()",
+        new="    name = path.name",
         tests=(
             "tests/test_build_release.py::"
             "test_a_template_named_in_upper_case_is_still_excluded",

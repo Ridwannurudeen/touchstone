@@ -421,11 +421,14 @@ def _deployments(root: Path) -> dict[str, object]:
 
 
 def _is_real_manifest(path: Path) -> bool:
-    name = path.name
+    # Case-folded, because the exclusions must not depend on how a file happens to be named
+    # or on which filesystem it sits. A `.TEMPLATE.json` compared case-sensitively passed
+    # every filter and shipped its placeholder address as a deployment.
+    name = path.name.lower()
     # Templates carry placeholder addresses (including the 0x1111… marker in
     # xlayer-mainnet.template.json). Attempts are a journal, not a deployment.
     # The schema describes manifests; it is not one.
-    if name == SCHEMA.name:
+    if name == SCHEMA.name.lower():
         return False
     if ".template." in name:
         return False
