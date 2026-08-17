@@ -17,9 +17,30 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    # Imported directly by tests/test_deployment_manifests.py. It was undeclared and only
+    # ever present because unrelated packages on one developer machine happened to install
+    # it -- web3 does not. A clean install would have failed at import, which is the kind of
+    # thing the repository had no CI to notice.
+    "jsonschema==4.26.0",
+    # Also a test dependency only. `process_identity` reads `/proc/<pid>/stat` and falls back
+    # to psutil, degrading to `<pid>:unknown` when it has neither -- which the runtime is
+    # deliberately allowed to do and `verify` reports honestly. But on a platform without
+    # procfs, that degraded identity fails 18 heartbeat and watchdog tests, and they passed
+    # here only because unrelated software had installed psutil system-wide. The runtime pins
+    # stay psutil-free; the test environment should not depend on luck.
+    "psutil==7.2.2",
     "pytest==8.3.3",
     "ruff==0.15.22",
 ]
+
+[tool.setuptools]
+# Declared, not discovered. Setuptools' flat-layout auto-discovery found `data`, `fixtures`,
+# `contracts`, `manifests` and `deployments` sitting beside `touchstone` and refused to build
+# at all -- so `pip install -e .` had never once succeeded. Nothing noticed, because every
+# test run so far started in the repository root, where `touchstone` imports from the working
+# directory whether it is installed or not. The first clean install was the first honest test
+# of that, and this is what it found.
+packages = ["touchstone", "touchstone.normalize"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

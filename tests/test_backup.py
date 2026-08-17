@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import secrets
+import time
 
 import pytest
 
@@ -552,9 +553,34 @@ def test_a_genuinely_separate_process_cannot_back_up_a_live_workspace(
 
     # And once that process is gone, the same call succeeds — so the refusal was the lock
     # and not some unrelated failure that happened to raise the right type.
-    archive = take_offline(
-        workspace.root, now=AT, key=KEY, asset_key=ASSET, registry_address=REGISTRY
-    )
+    #
+    # Retried, briefly, because `child.wait()` returning means the process is gone and *not*
+    # that the kernel has reclaimed its lock. On Windows an `msvcrt.locking` hold is released
+    # asynchronously after the holder dies, so this asserted immediately and failed 3 runs in
+    # 5 on one machine while passing 5 in 5 on another — the flakiest possible shape, since
+    # whichever machine you were on told you the test was fine. The bound still carries the
+    # meaning: if the lock does not free promptly once the holder is dead, that is a real
+    # failure and the loop reports it as one.
+    archive = None
+    for attempt in range(50):
+        try:
+            archive = take_offline(
+                workspace.root,
+                now=AT,
+                key=KEY,
+                asset_key=ASSET,
+                registry_address=REGISTRY,
+            )
+            break
+        except BackupError as error:
+            if "in use by a running service" not in str(error):
+                raise
+            if attempt == 49:
+                raise AssertionError(
+                    "the lock was still held five seconds after its holder died"
+                ) from error
+            time.sleep(0.1)
+    assert archive is not None
     assert (
         open_archive(archive, key=KEY, asset_key=ASSET, registry_address=REGISTRY)[
             "version"

@@ -1,0 +1,167 @@
+name: CI
+
+# The repository's first CI. Everything below already ran on one developer machine; the point
+# of running it here is that a clean checkout on a machine nobody has configured is the only
+# honest test of whether the gates are real. It found one defect before it ever ran green:
+# `jsonschema` was imported by a test and declared nowhere, present locally only because an
+# unrelated package had installed it.
+#
+# Nothing in this workflow reaches a public chain, signs anything, publishes anything, or is
+# given a secret. It compiles, tests and mutates a checkout, and that is all it may ever do.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m ruff check .
+
+  python_tests:
+    name: pytest (py${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is required, not advisory. `requires-python = ">=3.11"` and Ruff's
+        # `target-version = "py311"` both advertise it, while every test to date has run on
+        # 3.12 only. If 3.11 fails, either the code or the advertised floor is wrong, and
+        # either way the answer is not to quietly drop the version.
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      # The local-chain E2E is excluded here and required on its own, because it needs Node
+      # and a compiled contract set. Excluding it from this job keeps the matrix honest
+      # rather than letting it skip inside a green run.
+      - run: python -m pytest -q --strict-markers --ignore=tests/test_e2e_local.py
+
+  contracts:
+    name: hardhat
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: contracts/package-lock.json
+      - run: npm ci
+        working-directory: contracts
+      - run: npm test
+        working-directory: contracts
+
+  local_e2e:
+    name: managed local-chain E2E
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: contracts/package-lock.json
+      - run: npm ci
+        working-directory: contracts
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      # No background node is started here on purpose. The test starts and stops its own
+      # Hardhat node on an ephemeral loopback port, so a node this workflow launched would be
+      # a second one, and the test would either bind elsewhere or race it.
+      - name: Run the E2E
+        run: >-
+          python -m pytest --strict-markers
+          --junitxml="${RUNNER_TEMP}/local-e2e.xml"
+          tests/test_e2e_local.py
+      # A green check must mean the loop ran, not that pytest found nothing to do. A future
+      # `pytest.skip`, a lost marker or an accidental deselection would otherwise pass here
+      # silently, and this is the only job that proves the whole publish path works.
+      - name: Prove the E2E did not skip
+        run: python scripts/assert_suite_ran.py "${RUNNER_TEMP}/local-e2e.xml" --expect 2
+
+  mutation:
+    name: mutation harness
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      # Its own job and its own checkout. The harness edits tracked files in place, so
+      # sharing a working directory with any other job would let a test read a mutated
+      # source. GitHub jobs never share one, which is what makes this safe rather than
+      # careful.
+      - run: python scripts/mutation_check.py
+      # The harness restores each mutation in a `finally` and checks the tree itself. This
+      # runs even when it fails, because a crash mid-restore is the one outcome its own
+      # check cannot report.
+      - name: Prove nothing was left mutated
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+            echo "the mutation harness left the tree dirty:"
+            git status --porcelain --untracked-files=all
+            git diff
+            exit 1
+          fi
+
+  required:
+    name: required
+    runs-on: ubuntu-24.04
+    needs: [lint, python_tests, contracts, local_e2e, mutation]
+    if: always()
+    steps:
+      # One check for branch protection to require, so adding a job above cannot silently
+      # leave it unguarded. `needs` alone would not do it: a skipped or cancelled dependency
+      # does not fail a job that only lists it.
+      - name: Every gate must have succeeded
+        run: |
+          results='${{ join(needs.*.result, " ") }}'
+          echo "gate results: ${results}"
+          for result in ${results}; do
+            if [ "${result}" != "success" ]; then
+              echo "a gate did not succeed"
+              exit 1
+            fi
+          done
