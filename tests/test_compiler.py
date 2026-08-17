@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from touchstone.compiler import (
+    _PROMPT_TEMPLATE,
     CompilationStatus,
     DeterministicFixtureProvider,
     HTTPProvider,
@@ -658,3 +659,53 @@ def test_a_retrieval_instant_must_be_timezone_aware(
                 store=store,
                 retrieved_at=naive,
             )
+
+
+@pytest.mark.parametrize(
+    ("window", "grace", "accepted"),
+    [
+        (1, 1, True),
+        (2, 2, True),
+        (2, 1, False),
+        (1, 2, False),
+    ],
+)
+def test_a_freshness_window_must_equal_the_window_that_is_enforced(
+    tmp_path: Path, window: int, grace: int, accepted: bool
+) -> None:
+    """The declared window and the executed one are two numbers, and they must agree.
+
+    `_evaluate_freshness` computes its deadline from `grace_period` and never reads
+    `expected_value`, so a candidate declaring two business days beside a grace period of one
+    advertised a window twice the length of the one it would enforce. Two such candidates were
+    accepted by a real compilation before this existed. `supports` cannot catch it — it is
+    handed the expected value and not the control, so only one of the two numbers is in scope.
+    """
+    proposal = candidate(
+        control_id="ustb-nav-freshness",
+        comparison_operator="fresh_within",
+        expected_value={"business_days": window},
+        grace_period=grace,
+    )
+    _, _, _, result = compile_raw(tmp_path, raw_output(proposal))
+
+    outcome = result.outcomes[0]
+    if accepted:
+        assert outcome.status is CompilationStatus.ACCEPTED, outcome.reason
+    else:
+        assert outcome.status is CompilationStatus.REJECTED
+        assert "window" in outcome.reason.lower()
+
+
+def test_the_prompt_asks_for_the_row_age_window() -> None:
+    """The prompt is half the change and nothing else asserts it.
+
+    The `supports` tests and the mutation prove the validator bites; removing the prompt
+    paragraph would leave every one of them green while the compiler quietly stopped asking
+    for the window that PLAN-T13 gate 7 exists to obtain.
+    """
+    assert "minimum_row_age_business_days" in _PROMPT_TEMPLATE
+    assert "Propose 2" in _PROMPT_TEMPLATE
+    # And the restrictions, so the paragraph cannot be reduced to the bare key.
+    assert "must equal grace_period" in _PROMPT_TEMPLATE
+    assert "not proof of settlement" in _PROMPT_TEMPLATE

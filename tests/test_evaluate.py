@@ -196,7 +196,12 @@ def test_value_controls_observe_the_newest_row_confirmed_across_both_captures() 
     values = {
         item.control_id: item
         for item in report.evaluations
-        if item.control_id in {"ustb-aum-published", "ustb-nav-per-share-published", "ustb-outstanding-shares-published"}
+        if item.control_id
+        in {
+            "ustb-aum-published",
+            "ustb-nav-per-share-published",
+            "ustb-outstanding-shares-published",
+        }
     }
 
     assert {item.observed_on for item in values.values()} == {CONFIRMED_ON}
@@ -559,13 +564,37 @@ def test_one_report_describes_one_set_of_prior_observations() -> None:
 @pytest.mark.parametrize(
     ("expected", "decidable", "why"),
     [
-        ({"field": "net_asset_value", "minimum_row_age_business_days": 2}, True, "the window the retired hand-written controls used"),
-        ({"field": "net_asset_value", "minimum_row_age_business_days": 0}, True, "zero is a real window: it admits any row not future-dated"),
+        (
+            {"field": "net_asset_value", "minimum_row_age_business_days": 2},
+            True,
+            "the window the retired hand-written controls used",
+        ),
+        (
+            {"field": "net_asset_value", "minimum_row_age_business_days": 0},
+            True,
+            "zero is a real window: it admits any row not future-dated",
+        ),
         ({"field": "net_asset_value"}, True, "absent is allowed and means zero"),
-        ({"field": "net_asset_value", "minimum_row_age_business_days": -1}, False, "negative"),
-        ({"field": "net_asset_value", "minimum_row_age_business_days": "2"}, False, "a string, not an integer"),
-        ({"field": "net_asset_value", "minimum_row_age_business_days": 2.0}, False, "a float, not an integer"),
-        ({"field": "net_asset_value", "minimum_row_age_business_days": True}, False, "a bool is not an integer window"),
+        (
+            {"field": "net_asset_value", "minimum_row_age_business_days": -1},
+            False,
+            "negative",
+        ),
+        (
+            {"field": "net_asset_value", "minimum_row_age_business_days": "2"},
+            False,
+            "a string, not an integer",
+        ),
+        (
+            {"field": "net_asset_value", "minimum_row_age_business_days": 2.0},
+            False,
+            "a float, not an integer",
+        ),
+        (
+            {"field": "net_asset_value", "minimum_row_age_business_days": True},
+            False,
+            "a bool is not an integer window",
+        ),
     ],
 )
 def test_a_minimum_row_age_must_be_usable_to_be_accepted(
@@ -605,3 +634,45 @@ def test_a_minimum_row_age_where_nothing_reads_a_row_is_refused(
         expected = {"business_days": 1, "minimum_row_age_business_days": 2}
 
     assert supports(source, operator, expected) is False
+
+
+@pytest.mark.parametrize(
+    ("operator", "expected"),
+    [
+        (ComparisonOperator.FRESH_WITHIN, {"business_days": 2, "ignored": True}),
+        (ComparisonOperator.EXISTS, {"field": "net_asset_value", "ignored": True}),
+    ],
+)
+def test_a_key_the_operator_does_not_define_is_refused(
+    operator: ComparisonOperator, expected: dict
+) -> None:
+    """An unrecognised key rode along into the approved set meaning nothing.
+
+    `supports` judged an expected value by the keys the operator needed and ignored the rest,
+    so a control could carry a setting a reader would reasonably believe governed something
+    while the evaluator never consulted it. That is the same defect as a vacuous test: it
+    reports a property it does not have.
+    """
+    assert supports(USTB_NAV_SOURCE_ID, operator, expected) is False
+
+
+@pytest.mark.parametrize(
+    ("source", "expected", "decidable"),
+    [
+        (USTB_NAV_SOURCE_ID, {"business_days": 1}, True),
+        (USTB_NAV_SOURCE_ID, {"calendar_days": 1}, False),
+        (USTB_YIELD_SOURCE_ID, {"business_days": 1}, True),
+        (USTB_YIELD_SOURCE_ID, {"calendar_days": 1}, False),
+        (USTB_HOLDINGS_SOURCE_ID, {"calendar_days": 5}, True),
+        (USTB_HOLDINGS_SOURCE_ID, {"business_days": 5}, False),
+    ],
+)
+def test_a_freshness_window_must_name_the_unit_its_deadline_is_computed_in(
+    source: str, expected: dict, decidable: bool
+) -> None:
+    """NAV and yield deadlines are business days; holdings is calendar days.
+
+    A control naming the other unit was accepted and then evaluated on arithmetic it did not
+    name, so the window it declared and the window it got were different lengths.
+    """
+    assert supports(source, ComparisonOperator.FRESH_WITHIN, expected) is decidable

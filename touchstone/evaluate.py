@@ -73,6 +73,33 @@ PRESENCE_FIELDS: Mapping[str, frozenset[str]] = {
     USTB_HOLDINGS_SOURCE_ID: frozenset({"as_of_date"}),
 }
 
+# Every key each operator can carry, and nothing else. An `expected_value` was previously
+# judged only by the keys it needed, so `{"field": "net_asset_value", "ignored": true}` was
+# accepted and the extra key sat in the approved set meaning nothing — a control that reads
+# as though it declares something the evaluator never consults.
+_EXPECTED_KEYS: Mapping[ComparisonOperator, frozenset[str]] = {
+    ComparisonOperator.FRESH_WITHIN: frozenset({"business_days", "calendar_days"}),
+    ComparisonOperator.EXISTS: frozenset({"field", "minimum_row_age_business_days"}),
+    ComparisonOperator.EQ: frozenset(
+        {"field", "value", "minimum_row_age_business_days"}
+    ),
+    ComparisonOperator.NON_DECREASING: frozenset(
+        {"field", "value", "minimum_row_age_business_days"}
+    ),
+    ComparisonOperator.WITHIN_TOLERANCE: frozenset(
+        {"field", "value", "tolerance", "minimum_row_age_business_days"}
+    ),
+}
+
+# The unit each source's freshness deadline is actually computed in. NAV and yield use
+# `business_day_deadline`; holdings adds calendar days. A control declaring the other unit
+# was accepted and then evaluated on arithmetic it did not name.
+_FRESHNESS_UNIT: Mapping[str, str] = {
+    USTB_NAV_SOURCE_ID: "business_days",
+    USTB_YIELD_SOURCE_ID: "business_days",
+    USTB_HOLDINGS_SOURCE_ID: "calendar_days",
+}
+
 
 def supports(
     source_id: str, operator: ComparisonOperator, expected_value: FrozenJSONValue
@@ -107,15 +134,31 @@ def supports(
         if operator is ComparisonOperator.FRESH_WITHIN:
             return False
 
+    # No key the operator does not define. Judging only the keys an operator needed let an
+    # unrecognised one ride along into the approved set, where a reader has no way to tell a
+    # setting that governs something from one that governs nothing.
+    if isinstance(expected_value, Mapping):
+        permitted = _EXPECTED_KEYS.get(operator)
+        if permitted is None or not set(expected_value) <= permitted:
+            return False
+
     if operator is ComparisonOperator.FRESH_WITHIN:
         if not isinstance(expected_value, Mapping):
             return False
+        # The unit has to be the one this source's deadline is computed in. `calendar_days`
+        # on NAV was accepted and then evaluated with business-day arithmetic, so the window
+        # the control named and the window it got were different lengths.
+        unit = _FRESHNESS_UNIT.get(source_id)
+        if unit is None:
+            return False
         windows = [
-            expected_value[unit]
-            for unit in ("business_days", "calendar_days")
-            if unit in expected_value
+            expected_value[declared]
+            for declared in ("business_days", "calendar_days")
+            if declared in expected_value
         ]
-        return len(windows) == 1 and type(windows[0]) is int and windows[0] >= 0
+        if len(windows) != 1 or unit not in expected_value:
+            return False
+        return type(windows[0]) is int and windows[0] >= 0
 
     field = _expected_field(expected_value)
     if field is None:

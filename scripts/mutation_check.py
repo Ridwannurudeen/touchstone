@@ -54,10 +54,49 @@ class Mutation:
 # job that exists to prove the tests bite would go green having run nothing. That is the same
 # failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
 # Raise this deliberately when a mutation is added; a diff that changes it is the point.
-EXPECTED_MUTATIONS = 117
+EXPECTED_MUTATIONS = 121
 
 
 MUTATIONS = (
+    Mutation(
+        name="a-freshness-control-may-advertise-a-window-it-does-not-enforce",
+        path="touchstone/compiler.py",
+        old="        if len(declared) != 1 or declared[0] != control.grace_period:",
+        new="        if False:",
+        tests=(
+            "tests/test_compiler.py::"
+            "test_a_freshness_window_must_equal_the_window_that_is_enforced",
+        ),
+    ),
+    Mutation(
+        name="an-expected-value-may-carry-keys-the-operator-does-not-define",
+        path="touchstone/evaluate.py",
+        old="""        permitted = _EXPECTED_KEYS.get(operator)
+        if permitted is None or not set(expected_value) <= permitted:
+            return False""",
+        new="        pass",
+        tests=(
+            "tests/test_evaluate.py::"
+            "test_a_key_the_operator_does_not_define_is_refused",
+        ),
+    ),
+    Mutation(
+        name="a-freshness-window-may-name-the-wrong-time-unit",
+        path="touchstone/evaluate.py",
+        old="        if len(windows) != 1 or unit not in expected_value:",
+        new="        if len(windows) != 1:",
+        tests=(
+            "tests/test_evaluate.py::"
+            "test_a_freshness_window_must_name_the_unit_its_deadline_is_computed_in",
+        ),
+    ),
+    Mutation(
+        name="the-prompt-stops-asking-for-a-row-age-window",
+        path="touchstone/compiler.py",
+        old="  minimum_row_age_business_days   int >= 0, optional",
+        new="  (removed)",
+        tests=("tests/test_compiler.py::test_the_prompt_asks_for_the_row_age_window",),
+    ),
     Mutation(
         name="an-unusable-row-age-window-is-accepted-into-the-set",
         path="touchstone/evaluate.py",

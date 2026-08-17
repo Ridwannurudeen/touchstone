@@ -14,7 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from touchstone.controls import ControlRecord
+from touchstone.controls import ComparisonOperator, ControlRecord
 from touchstone.evaluate import supports
 from touchstone.evidence import EvidenceStore
 from touchstone.quantities import finite_positive, utc_instant
@@ -93,16 +93,26 @@ On superstate-ustb-nav-daily only, and for any operator except fresh_within, \
 
   minimum_row_age_business_days   int >= 0, optional
 
-It is the number of business days a NAV row must have been published for before this \
-control will read it. Propose 2 for any control that reads a value from a NAV row. The \
-issuer's most recent row is provisional and is revised in place, so a control that reads it \
-attributes a number to a day the issuer may still change; two business days is the window \
-in which a revision would have appeared. Omitting the key means zero, which admits a row \
-published moments ago.
+It is the number of weekdays that must have elapsed since the date a NAV row is *for*, \
+counted from that date and not from when the issuer published or last revised it. Propose 2 \
+for any control that reads a value from a NAV row. The issuer's most recent rows are \
+provisional and revised in place, so a control reading them attributes a number to a day the \
+issuer may still change; two weekdays is a cheap empirical pre-filter against that, chosen \
+because no record changed between the retained captures at that distance. It is not proof of \
+settlement, and a row dated long ago but revised moments ago is old by this measure. \
+Omitting the key means zero, which admits a row dated today.
 
-Do not put it on the yield or holdings sources, and not on fresh_within: those read no row, \
-so the key would be a setting nothing consults. A negative or non-integer window is \
-rejected rather than ignored.
+Do not put it on the yield or holdings sources, and not on fresh_within. Those do not use \
+the confirmed-row selector this window filters — fresh_within reads the newest row's date \
+directly — so the key would be a setting nothing consults. A negative or non-integer window \
+is rejected rather than ignored.
+
+For fresh_within, the window in expected_value must equal grace_period exactly. The \
+evaluator computes its deadline from grace_period and does not read expected_value, so a \
+candidate declaring two business days beside a grace_period of one advertises a window twice \
+the length of the one that would be enforced. Both numbers must be the same, and the unit \
+must be the one the source's deadline is computed in: business_days for nav-daily and yield, \
+calendar_days for holdings.
 
 Which operators are available depends on the source, because confirmation across captures \
 is a source policy rather than a property of an operator:
@@ -603,6 +613,27 @@ def _validate_candidate_policy(
         raise ValueError("observation_adapter does not match source manifest")
     if control.cadence != source_manifest.cadence:
         raise ValueError("control cadence does not match source manifest")
+    # The declared freshness window and the one the evaluator actually applies must be the
+    # same number. `_evaluate_freshness` computes its deadline from `grace_period` and never
+    # reads `expected_value`, so a candidate declaring two business days beside a grace period
+    # of one advertised a window twice the length of the one it would enforce — and the
+    # compilation that produced this check proposed exactly that, twice. `supports()` cannot
+    # catch it: it is handed the expected value and not the control, so it can see one of the
+    # two numbers. This is the only place both are in scope.
+    if control.comparison_operator is ComparisonOperator.FRESH_WITHIN and isinstance(
+        control.expected_value, Mapping
+    ):
+        declared = [
+            control.expected_value[unit]
+            for unit in ("business_days", "calendar_days")
+            if unit in control.expected_value
+        ]
+        if len(declared) != 1 or declared[0] != control.grace_period:
+            raise ValueError(
+                "the freshness window declared in expected_value is not the window the "
+                "evaluator applies, which is grace_period"
+            )
+
     if not supports(
         control.source_id, control.comparison_operator, control.expected_value
     ):
