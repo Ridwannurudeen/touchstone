@@ -346,16 +346,10 @@ def test_a_reporting_key_rollover_leaves_both_days_verifiable(tmp_path: Path) ->
     _, produce = producer(store, service, backend, signer=retiring)
     run(service, produce)
 
-    # The rollover itself, which is a change to the deployment and not merely to whichever
-    # key the producer happens to hold. Swapping only the signer does not roll anything
-    # over: the publisher checks the report against the deployment's *active* reporting key
-    # and refuses an unknown one, so this path opens a PUBLICATION_UNRESOLVED incident and
-    # publishes nothing. Rolling the manifest is what actually retires a key.
-    #
-    # That is the library path, which is what this test drives. The CLI never reaches it:
-    # `run_service.main` compares the seed's kid against the manifest at startup and exits 1
-    # before serving, so a real daemon started with a mismatched key refuses to run at all.
-    # `docs/OPERATIONS.md` describes the operator-facing behaviour, which is that one.
+    # This is the coordinated rollover path, not a mismatched-key incident. The manifest is
+    # rolled to the succeeding public key before the second service is constructed; it keeps
+    # the retiring key for historical verification while selecting the succeeding key for
+    # the next day's successful publication.
     tomorrow = RETRIEVED_AT + timedelta(days=1)
     backend.manifest = rolled_over(
         backend.manifest,

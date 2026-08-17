@@ -54,7 +54,7 @@ class Mutation:
 # job that exists to prove the tests bite would go green having run nothing. That is the same
 # failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
 # Raise this deliberately when a mutation is added; a diff that changes it is the point.
-EXPECTED_MUTATIONS = 96
+EXPECTED_MUTATIONS = 102
 
 
 MUTATIONS = (
@@ -95,15 +95,42 @@ MUTATIONS = (
         ),
     ),
     Mutation(
+        name="the-enforcer-command-is-recognised-by-substrings",
+        path="scripts/assert_ci_gates.py",
+        old="    return isinstance(body, str) and body.strip() == ENFORCER_COMMAND",
+        new=(
+            "    return isinstance(body, str) and ENFORCER in body and "
+            '"needs." in body and ".result" in body'
+        ),
+        tests=(
+            "tests/test_assert_ci_gates.py::"
+            "test_an_enforcer_receiving_only_one_gate_result_is_refused",
+            "tests/test_assert_ci_gates.py::"
+            "test_an_enforcer_whose_failure_is_ignored_is_refused",
+            "tests/test_assert_ci_gates.py::"
+            "test_an_enforcer_command_that_is_only_echoed_is_refused",
+        ),
+    ),
+    Mutation(
         name="a-single-step-may-continue-on-error-unnoticed",
         path="scripts/assert_ci_gates.py",
-        old='            if step.get("continue-on-error") is True:',
+        old='            if step.get("continue-on-error", False) is not False:',
         new="            if False:",
         tests=(
             "tests/test_assert_ci_gates.py::"
             "test_a_step_that_continues_on_error_is_refused",
             "tests/test_assert_ci_gates.py::"
             "test_a_gates_own_step_continuing_on_error_is_refused",
+        ),
+    ),
+    Mutation(
+        name="a-step-continue-on-error-expression-is-trusted",
+        path="scripts/assert_ci_gates.py",
+        old='            if step.get("continue-on-error", False) is not False:',
+        new='            if step.get("continue-on-error") is True:',
+        tests=(
+            "tests/test_assert_ci_gates.py::"
+            "test_an_expression_cannot_make_continue_on_error_safe",
         ),
     ),
     Mutation(
@@ -148,11 +175,21 @@ MUTATIONS = (
     Mutation(
         name="a-gate-may-continue-on-error-unnoticed",
         path="scripts/assert_ci_gates.py",
-        old='        if job.get("continue-on-error") is True:',
+        old='        if job.get("continue-on-error", False) is not False:',
         new="        if False:",
         tests=(
             "tests/test_assert_ci_gates.py::"
             "test_a_job_that_continues_on_error_is_refused",
+        ),
+    ),
+    Mutation(
+        name="a-job-continue-on-error-expression-is-trusted",
+        path="scripts/assert_ci_gates.py",
+        old='        if job.get("continue-on-error", False) is not False:',
+        new='        if job.get("continue-on-error") is True:',
+        tests=(
+            "tests/test_assert_ci_gates.py::"
+            "test_an_expression_cannot_make_continue_on_error_safe",
         ),
     ),
     Mutation(
@@ -210,6 +247,36 @@ MUTATIONS = (
 """,
         new="",
         tests=("tests/test_assert_suite_ran.py::test_a_negative_count_is_refused",),
+    ),
+    Mutation(
+        name="the-gate-ignores-disabled-suite-totals",
+        path="scripts/assert_suite_ran.py",
+        old='TALLIES = ("tests", "disabled", "skipped", "failures", "errors")',
+        new='TALLIES = ("tests", "skipped", "failures", "errors")',
+        tests=(
+            "tests/test_assert_suite_ran.py::"
+            "test_a_report_declaring_disabled_cases_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-gate-counts-a-notrun-case-as-executed",
+        path="scripts/assert_suite_ran.py",
+        old='        "disabled": sum(case.get("status") == "notrun" for case in cases),',
+        new='        "disabled": 0,',
+        tests=(
+            "tests/test_assert_suite_ran.py::"
+            "test_a_notrun_status_without_a_disabled_total_is_refused",
+        ),
+    ),
+    Mutation(
+        name="the-gate-accepts-a-coherent-disabled-report",
+        path="scripts/assert_suite_ran.py",
+        old="    if report.disabled:",
+        new="    if False:",
+        tests=(
+            "tests/test_assert_suite_ran.py::"
+            "test_disabled_cases_with_matching_notrun_statuses_are_refused",
+        ),
     ),
     Mutation(
         name="the-gate-reads-a-wrapper-holding-no-suite",

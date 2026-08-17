@@ -108,7 +108,7 @@ repr, or any durable record.
 | `HEARTBEAT_STALE` | CRITICAL | No heartbeat inside its expiry | Check the process; restart |
 | `RESTART_FAILED` | CRITICAL | Replacement did not become healthy in 15 min | Manual intervention |
 | `EPOCH_MISSED` | CRITICAL | A scheduled slot passed with no epoch and no incident | Open an incident; never backfill |
-| `PUBLICATION_UNRESOLVED` | CRITICAL | A journalled transaction with no operation behind it | **Do not restart blindly** — see §6 |
+| `PUBLICATION_UNRESOLVED` | CRITICAL | Publication state cannot be established safely | **Do not restart blindly** — see §6 |
 | `VERIFICATION_FAILED` | CRITICAL | A log, chain or signature does not verify | Stop publishing; investigate before any write |
 | `PUBLISHER_STATE_UNEXPECTED` | CRITICAL | Wrong publisher lineage, or a retired key signed | Stop; treat as possible compromise |
 | `GAS_RUNWAY_SHORT` | WARNING | Funding does not reach Sept 3, **or is UNKNOWN** | Top up manually |
@@ -155,7 +155,7 @@ deleted — the value of the record is precisely that it cannot be tidied afterw
 | `SOURCE_UNAVAILABLE` | The source would not answer, or answered unusably |
 | `EPOCH_FAILED` | The epoch ran and could not produce a report |
 | `SLOT_MISSED` | A scheduled slot passed unrun |
-| `PUBLICATION_UNRESOLVED` | A publication's outcome cannot be established |
+| `PUBLICATION_UNRESOLVED` | Publication state cannot be established safely |
 | `SCHEDULE_UNUSABLE` | The schedule can no longer name its next slot |
 
 **A source outage is not asset inconsistency.** If the feed is down, the asset's state ages
@@ -260,12 +260,18 @@ overlapping:
   already holds. This is why step 1 is stop-and-confirm rather than edit-in-place.
 
 An earlier version of this section claimed the mismatch left the daemon running and opened a
-`PUBLICATION_UNRESOLVED` incident. That is what happens to a `Service` driven directly by a
-caller that skipped the startup check — it is the behaviour the rollover test exercises — but
-it is **not** what the configured daemon does, and describing an operational failure by its
-library-level path rather than its CLI path is how a runbook misleads the person following it.
-`PUBLICATION_UNRESOLVED` is recorded only when an already-signed report reaches publication
-and publication then fails.
+`PUBLICATION_UNRESOLVED` incident. That is **not** what the configured daemon does. The
+rollover regression test does not exercise a mismatch either: it rolls the manifest to the
+succeeding public key before constructing the next day's service, publishes successfully,
+and proves that the manifest's retained key records verify both days.
+
+`PUBLICATION_UNRESOLVED` means the service cannot safely establish publication state. It is
+recorded when durable startup state is unreadable or cannot be reconciled, when a prior
+operation or journal remains unresolved, when the registry cannot say whether an epoch is
+already published before `produce()` runs, and when an already-signed report reaches
+publication but publication cannot be completed. The incident does not by itself prove that
+a report was signed or a transaction was journalled; its detail identifies which boundary
+failed.
 
 **Never discard a retired key's public record.** It is what verifies everything it signed.
 

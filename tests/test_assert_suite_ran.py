@@ -68,6 +68,48 @@ def test_a_skipped_case_is_refused(tmp_path: Path) -> None:
     assert main([str(_report(tmp_path, skipped)), *BOTH]) == 1
 
 
+def test_a_report_declaring_disabled_cases_is_refused(tmp_path: Path) -> None:
+    """A disabled total is part of whether the named cases actually ran."""
+    disabled = PASSED_TWO.replace(
+        'skipped="0" tests="2"', 'skipped="0" disabled="2" tests="2"'
+    )
+
+    with pytest.raises(NotAReport, match="disabled"):
+        read_report(_report(tmp_path, disabled))
+    assert main([str(_report(tmp_path, disabled)), *BOTH]) == 1
+
+
+def test_a_notrun_status_without_a_disabled_total_is_refused(tmp_path: Path) -> None:
+    """A case marked not run cannot count merely because it has the expected name."""
+    not_run = PASSED_TWO.replace(
+        'name="two" time="0.1"', 'name="two" status="notrun" time="0.1"'
+    )
+
+    with pytest.raises(NotAReport, match="disabled"):
+        read_report(_report(tmp_path, not_run))
+    assert main([str(_report(tmp_path, not_run)), *BOTH]) == 1
+
+
+def test_disabled_cases_with_matching_notrun_statuses_are_refused(
+    tmp_path: Path,
+) -> None:
+    """A coherent not-run report is still evidence that no named case executed.
+
+    The separate mismatch tests prove both sources are read. This is the fail-open report
+    from the audit: its disabled totals and testcase statuses agree, so only the final gate
+    decision can refuse it.
+    """
+    not_run = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites tests="2" disabled="2" skipped="0" failures="0" errors="0">
+  <testsuite tests="2" disabled="2" skipped="0" failures="0" errors="0">
+    <testcase classname="t" name="one" status="notrun"/>
+    <testcase classname="t" name="two" status="notrun"/>
+  </testsuite>
+</testsuites>
+"""
+    assert main([str(_report(tmp_path, not_run)), *BOTH]) == 1
+
+
 @pytest.mark.parametrize("attribute", ["failures", "errors"])
 def test_a_failing_report_is_refused(tmp_path: Path, attribute: str) -> None:
     body = PASSED_TWO.replace(f'{attribute}="0"', f'{attribute}="1"')

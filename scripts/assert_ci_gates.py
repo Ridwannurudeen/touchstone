@@ -32,6 +32,9 @@ ALWAYS = "always()"
 # The script that actually judges the results. Kept separate so its behaviour is proved by
 # its own tests instead of being asserted about inline shell, which cannot be checked.
 ENFORCER = "scripts/assert_gates_passed.py"
+ENFORCER_COMMAND = (
+    'python scripts/assert_gates_passed.py "${{ join(needs.*.result, \' \') }}"'
+)
 
 
 class WorkflowError(Exception):
@@ -83,16 +86,15 @@ def _steps(job: Mapping[str, object]) -> list[Mapping[str, object]]:
 
 
 def _runs_the_enforcer(step: Mapping[str, object]) -> bool:
-    """Does this step hand the gate results to the script that judges them?
+    """Does this step run exactly the one command that judges every gate result?
 
-    Both halves are required. A step naming the script without the results judges an empty
-    list, and a step expanding the results without the script is the echo that passed the
-    previous version of this checker.
+    Anything looser proves text, not execution. A command that names one result, appends
+    `|| true`, or merely echoes the canonical command contains every interesting substring
+    while enforcing nothing. Only surrounding whitespace is immaterial; the shell body is
+    otherwise exact so no unverified operator or extra command can change its result.
     """
     body = step.get("run")
-    if not isinstance(body, str):
-        return False
-    return ENFORCER in body and "needs." in body and ".result" in body
+    return isinstance(body, str) and body.strip() == ENFORCER_COMMAND
 
 
 def weakened(workflow: object) -> list[str]:
@@ -102,15 +104,15 @@ def weakened(workflow: object) -> list[str]:
     `needs` list perfectly intact while removing its effect, and the first version of this
     function missed four of them because it looked for text rather than for enforcement:
 
-    * `continue-on-error: true` on a job — or on any single step — reports a failure as
-      success, so the aggregate reads green off red.
+    * any `continue-on-error` value other than absent or literal `false` on a job — or on
+      any single step — may report a failure as success, so the aggregate reads green off
+      red. Expressions are rejected because their runtime value is not statically false.
     * without `if: always()` the aggregate is *skipped* when a gate fails, and a skipped
       check is not a failed one. The condition must be exactly `always()`: a substring test
       accepts `always() && false`, which never runs it at all.
-    * an aggregate that reads `needs.*.result` and merely echoes it enforces nothing. That
-      is why the decision lives in `scripts/assert_gates_passed.py`, which is tested
-      directly; all this has to establish is that the script is what runs, with the results
-      passed to it.
+    * an aggregate that reads only one result, ignores failure, or merely echoes the command
+      enforces nothing. That is why the decision lives in `scripts/assert_gates_passed.py`,
+      which is tested directly; the workflow must run its one canonical invocation exactly.
     """
     jobs = _jobs(workflow)
     if AGGREGATE not in jobs:
@@ -123,12 +125,12 @@ def weakened(workflow: object) -> list[str]:
     for name, job in sorted(jobs.items()):
         if not isinstance(job, Mapping):
             continue
-        if job.get("continue-on-error") is True:
+        if job.get("continue-on-error", False) is not False:
             problems.append(
                 f"job {name!r} sets continue-on-error, so its failure is reported as success"
             )
         for position, step in enumerate(_steps(job), start=1):
-            if step.get("continue-on-error") is True:
+            if step.get("continue-on-error", False) is not False:
                 problems.append(
                     f"step {position} of job {name!r} sets continue-on-error, so its "
                     "failure is reported as success"
@@ -143,8 +145,8 @@ def weakened(workflow: object) -> list[str]:
 
     if not any(_runs_the_enforcer(step) for step in _steps(aggregate)):
         problems.append(
-            f"no step of {AGGREGATE!r} runs {ENFORCER} with `needs.*.result`, so the "
-            "results are collected without being judged"
+            f"no step of {AGGREGATE!r} runs the canonical command {ENFORCER_COMMAND!r}, "
+            "so the results are collected without being judged"
         )
     return problems
 

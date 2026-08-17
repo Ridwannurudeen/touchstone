@@ -16,13 +16,15 @@ which two unrelated or duplicated cases satisfied just as well; naming them is t
 of the question that cannot be answered by accident. Run pytest with `--junitxml` and hand
 the report here.
 
-Three ways this script itself used to fail open, all now closed and all now tested:
+Four ways this script itself used to fail open, all now closed and all now tested:
 
 * It trusted `<testsuite failures="...">` while counting the cases themselves, so a report
   whose summary said zero and whose cases carried `<failure>` was accepted.
 * It never checked the root element, so any XML at all containing `<testcase>` tags counted.
 * It asserted a number of cases rather than which cases, so the right count of the wrong
   tests passed.
+* It ignored disabled totals and testcase `status="notrun"`, so expected names counted even
+  when the report said none of them ran.
 """
 
 from __future__ import annotations
@@ -52,6 +54,7 @@ class Report:
     finding in its own modules.
     """
 
+    disabled: int
     skipped: int
     failures: int
     errors: int
@@ -62,9 +65,9 @@ class Report:
         return len(self.identities)
 
 
-# The four totals a JUnit suite declares about itself, each of which the cases below it also
+# The five totals a JUnit suite declares about itself, each of which the cases below it also
 # answer. They must agree, so both answers are read and compared rather than combined.
-TALLIES = ("tests", "skipped", "failures", "errors")
+TALLIES = ("tests", "disabled", "skipped", "failures", "errors")
 
 
 def _count(suite: ElementTree.Element, attribute: str) -> int:
@@ -114,6 +117,7 @@ def read_report(path: Path) -> Report:
     }
     observed = {
         "tests": len(cases),
+        "disabled": sum(case.get("status") == "notrun" for case in cases),
         "skipped": sum(len(case.findall("skipped")) for case in cases),
         "failures": sum(len(case.findall("failure")) for case in cases),
         "errors": sum(len(case.findall("error")) for case in cases),
@@ -142,6 +146,7 @@ def read_report(path: Path) -> Report:
         )
 
     return Report(
+        disabled=observed["disabled"],
         skipped=observed["skipped"],
         failures=observed["failures"],
         errors=observed["errors"],
@@ -194,6 +199,8 @@ def main(argv: list[str] | None = None) -> int:
             # Same names, different multiplicity: a case reported twice still means the run
             # was not the one that was asked for.
             problems.append(f"expected {len(expected)} cases, {len(found)} ran")
+    if report.disabled:
+        problems.append(f"{report.disabled} test case(s) were disabled or not run")
     if report.skipped:
         problems.append(f"{report.skipped} test case(s) were skipped")
     if report.failures or report.errors:

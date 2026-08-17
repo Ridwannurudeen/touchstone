@@ -200,6 +200,35 @@ def test_an_enforcer_given_no_results_is_refused() -> None:
     assert any("without being judged" in problem for problem in weakened(workflow))
 
 
+def test_an_enforcer_receiving_only_one_gate_result_is_refused() -> None:
+    """Judging one named dependency leaves every other gate outside the decision."""
+    workflow = enforcing("lint", "tests")
+    workflow["jobs"][AGGREGATE]["steps"] = [
+        {
+            "run": 'python scripts/assert_gates_passed.py "${{ needs.lint.result }}"'
+        }
+    ]
+
+    assert any("canonical command" in problem for problem in weakened(workflow))
+
+
+def test_an_enforcer_whose_failure_is_ignored_is_refused() -> None:
+    """The right command followed by `|| true` reports success when the enforcer refuses."""
+    workflow = enforcing("lint")
+    workflow["jobs"][AGGREGATE]["steps"][-1]["run"] += " || true"
+
+    assert any("canonical command" in problem for problem in weakened(workflow))
+
+
+def test_an_enforcer_command_that_is_only_echoed_is_refused() -> None:
+    """Mentioning the whole command is still not executing it."""
+    workflow = enforcing("lint")
+    command = workflow["jobs"][AGGREGATE]["steps"][-1]["run"]
+    workflow["jobs"][AGGREGATE]["steps"][-1]["run"] = f"echo {command}"
+
+    assert any("canonical command" in problem for problem in weakened(workflow))
+
+
 def test_a_step_that_continues_on_error_is_refused() -> None:
     """Step-level continue-on-error lets the job pass when that step fails."""
     workflow = enforcing("lint")
@@ -214,6 +243,20 @@ def test_a_gates_own_step_continuing_on_error_is_refused() -> None:
     workflow["jobs"]["lint"]["steps"] = [{"run": "false", "continue-on-error": True}]
 
     assert any("job 'lint'" in problem for problem in weakened(workflow))
+
+
+@pytest.mark.parametrize("level", ["job", "step"])
+def test_an_expression_cannot_make_continue_on_error_safe(level: str) -> None:
+    """Only absent or literal false is safe; expressions can resolve to true at runtime."""
+    workflow = enforcing("lint")
+    target = (
+        workflow["jobs"]["lint"]
+        if level == "job"
+        else workflow["jobs"][AGGREGATE]["steps"][-1]
+    )
+    target["continue-on-error"] = "${{ true }}"
+
+    assert any("continue-on-error" in problem for problem in weakened(workflow))
 
 
 def test_a_condition_that_merely_contains_always_is_refused() -> None:
