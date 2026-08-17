@@ -449,12 +449,19 @@ def test_a_span_that_the_clock_cannot_reach_is_refused_up_front() -> None:
 
     An interval that survives the first step and overflows a later one ran every requested
     slot and *then* failed, with all the work already done.
+
+    The interval has to be unrepresentable on *every* platform, which is not the same as
+    unrepresentable here. This asserted with 1e11 and passed on Windows, where
+    `datetime.fromtimestamp` raises `OSError: Invalid argument` well before `datetime`'s own
+    range runs out — while Linux reaches the year 5197 without complaint and the test failed
+    the moment it ran anywhere else. `datetime.max` is 253402300800 seconds after the epoch,
+    so a span past that overflows `datetime` itself rather than some libc's opinion of it.
     """
     clock = FakeTime()
     ran = []
 
     with pytest.raises(ValueError, match="cannot be added to the clock"):
-        schedule(lambda at: ran.append(at), clock, interval_seconds=1e11, max_runs=2)
+        schedule(lambda at: ran.append(at), clock, interval_seconds=1e12, max_runs=2)
 
     assert ran == [], "no slot ran"
 
