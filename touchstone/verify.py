@@ -152,11 +152,12 @@ def create_bundle(
     )
     ledger = ledger_bytes() if approval_ledger is None else bytes(approval_ledger)
     committed = dict(frozen_report["report"]).get("approval_ledger_sha256")
-    actual = hashlib.sha256(ledger).hexdigest()
-    if actual != committed:
+    bundled_ledger_digest = hashlib.sha256(ledger).hexdigest()
+    if bundled_ledger_digest != committed:
         raise ApprovalError(
             "the approval ledger does not hash to the digest this report commits to: "
-            f"report says {committed}, these bytes are {actual}. The ledger has changed "
+            f"report says {committed}, these bytes are {bundled_ledger_digest}. The "
+            "ledger has changed "
             "since the report was signed, so pass the ledger it was signed under as "
             "`approval_ledger` rather than bundling the current one"
         )

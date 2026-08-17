@@ -47,7 +47,7 @@ MUTATIONS = (
     Mutation(
         name="bundle-reads-the-ledger-a-second-time",
         path="touchstone/verify.py",
-        old="    if actual != committed:",
+        old="    if bundled_ledger_digest != committed:",
         new="    if False:",
         tests=(
             "tests/test_verify.py::"
