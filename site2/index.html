@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Touchstone</title>
+<meta name="description" content="Machine-checked disclosure evidence for tokenized funds. Controls compiled from an issuer's own documents, evaluated deterministically, signed, and published on X Layer testnet — including when the answer is that it cannot verify.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products">Products</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">Disclosure evidence for tokenized funds</p>
+        <h1 class="hero-title">Machine-checked evidence for tokenized funds</h1>
+        <p class="t-lead">Touchstone compiles controls from a fund issuer's own
+        disclosures, evaluates them deterministically, signs the result with
+        Ed25519, and publishes it to an on-chain registry. When the evidence
+        cannot support an answer, it reports that too.</p>
+        <div class="cta-row">
+          <a class="cta" href="/dossier">Read the dossier</a>
+          <a class="cta-ghost" href="/verify">Verify a report</a>
+        </div>
+      </div>
+
+      <aside class="verdict-card" aria-label="Latest published report">
+        <div class="vc-head">
+          <span class="chip chip-unverifiable"><i class="dot" aria-hidden="true"></i>UNVERIFIABLE</span>
+          <span class="vc-tag">USTB · sequence 1</span>
+        </div>
+        <p class="vc-controls">5 of 8 controls satisfied · 3 unevaluable</p>
+        <ol class="dots" aria-label="Per-control results, in report order">
+          <li class="d-s"><span class="sr">holdings-as-of-date-present: satisfied</span></li>
+          <li class="d-u"><span class="sr">ustb-aum-published: unevaluable</span></li>
+          <li class="d-s"><span class="sr">ustb-nav-date-freshness: satisfied</span></li>
+          <li class="d-u"><span class="sr">ustb-nav-per-share-published: unevaluable</span></li>
+          <li class="d-s"><span class="sr">ustb-one-day-yield-present: satisfied</span></li>
+          <li class="d-u"><span class="sr">ustb-outstanding-shares-published: unevaluable</span></li>
+          <li class="d-s"><span class="sr">ustb-seven-day-yield-present: satisfied</span></li>
+          <li class="d-s"><span class="sr">ustb-thirty-day-yield-present: satisfied</span></li>
+        </ol>
+        <p class="vc-meta mono">observed 2026-08-17T16:48:32.075003Z</p>
+        <p class="vc-meta mono">block 38526525 · X Layer testnet</p>
+        <a class="vc-link" href="/dossier/ustb-2026-08-17">Read the full report</a>
+      </aside>
+    </div>
+  </section>
+
+  <section class="metrics-band" aria-label="Real counts">
+    <div class="wrap metrics">
+      <div class="metric">
+        <p class="metric-n">1</p>
+        <p class="metric-l">Report published</p>
+        <p class="metric-q">USTB sequence 1 — and it says UNVERIFIABLE</p>
+      </div>
+      <div class="metric">
+        <p class="metric-n">8</p>
+        <p class="metric-l">Controls evaluated</p>
+        <p class="metric-q">5 satisfied, 3 reported unevaluable</p>
+      </div>
+      <div class="metric">
+        <p class="metric-n">3</p>
+        <p class="metric-l">Evidence captures</p>
+        <p class="metric-q">each identified by SHA-256 digest</p>
+      </div>
+      <div class="metric">
+        <p class="metric-n">4</p>
+        <p class="metric-l">Assets under manifest</p>
+        <p class="metric-q">1 live · 2 open · 1 pending a host route</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">How it works</p>
+      <h2>What Touchstone does</h2>
+      <div class="prose">
+        <p>Touchstone compiles a fund issuer's own disclosures into
+        machine-checkable controls. Each control cites a byte-exact span of the
+        issuer's document. A deterministic engine evaluates the controls against
+        freshly retrieved evidence, signs the result with Ed25519, and publishes
+        it to a registry on X&nbsp;Layer testnet. A consumer contract, AssetGate,
+        is written to gate on that state — on the report's status, freshness,
+        publisher lineage and pinned control-set root — but it is not deployed,
+        so nothing is reading the registry in production today.</p>
+      </div>
+
+      <figure class="flow">
+        <svg viewBox="0 0 1080 232" role="img" aria-labelledby="flow-title flow-desc">
+          <title id="flow-title">How a claim becomes a published report</title>
+          <desc id="flow-desc">An issuer document supplies a cited span; the span becomes a
+          control with an operator and an expected value; the control is evaluated against a
+          fresh capture, producing either a result or an abstention; the results are signed
+          and published to the registry.</desc>
+
+          <g fill="none" stroke="#D8D4CE" stroke-width="1">
+            <rect x="0.5"   y="16.5" width="216" height="130" rx="9"/>
+            <rect x="288.5" y="16.5" width="216" height="130" rx="9"/>
+            <rect x="576.5" y="16.5" width="216" height="130" rx="9"/>
+            <rect x="864.5" y="16.5" width="215" height="130" rx="9"/>
+          </g>
+
+          <!-- 1 — the issuer's own bytes, with the one line a control is allowed to cite -->
+          <g>
+            <rect x="24" y="44" width="140" height="7" rx="3.5" fill="#D5D1CB"/>
+            <rect x="24" y="62" width="168" height="7" rx="3.5" fill="#D5D1CB"/>
+            <rect x="24" y="80" width="112" height="7" rx="3.5" fill="#A6552A"/>
+            <rect x="24" y="98" width="152" height="7" rx="3.5" fill="#D5D1CB"/>
+            <rect x="24" y="116" width="88" height="7" rx="3.5" fill="#D5D1CB"/>
+          </g>
+
+          <!-- 2 — the span becomes a predicate. The copper bar is the same width as the cited
+               line above it: the control carries the citation, it does not paraphrase it. -->
+          <g>
+            <rect x="312" y="44" width="112" height="7" rx="3.5" fill="#A6552A"/>
+            <text x="312" y="82" font-size="15" fill="#3A4149">exists</text>
+            <text x="312" y="106" font-size="15" fill="#3A4149">field = one_day</text>
+            <text x="312" y="130" font-size="13" fill="#8C949B">effective 2026-08-14</text>
+          </g>
+
+          <!-- 3 — eight controls, five answered and three that could not be -->
+          <g>
+            <circle cx="606" cy="60" r="7" fill="#2F7D4F"/>
+            <circle cx="638" cy="60" r="6" fill="none" stroke="#8C949B" stroke-width="2.5"/>
+            <circle cx="670" cy="60" r="7" fill="#2F7D4F"/>
+            <circle cx="702" cy="60" r="6" fill="none" stroke="#8C949B" stroke-width="2.5"/>
+            <circle cx="606" cy="92" r="7" fill="#2F7D4F"/>
+            <circle cx="638" cy="92" r="6" fill="none" stroke="#8C949B" stroke-width="2.5"/>
+            <circle cx="670" cy="92" r="7" fill="#2F7D4F"/>
+            <circle cx="702" cy="92" r="7" fill="#2F7D4F"/>
+            <text x="600" y="130" font-size="13" fill="#8C949B">5 read · 3 could not be</text>
+          </g>
+
+          <!-- 4 — one report, at one sequence, permanent -->
+          <g>
+            <rect x="888" y="46" width="60" height="30" rx="5" fill="#EBE8E4"/>
+            <rect x="956" y="46" width="60" height="30" rx="5" fill="#EBE8E4"/>
+            <rect x="1024" y="46" width="32" height="30" rx="5" fill="#F4F2EF" stroke="#D8D4CE"/>
+            <rect x="956" y="46" width="60" height="30" rx="5" fill="none" stroke="#A6552A" stroke-width="1.5"/>
+            <text x="888" y="106" font-size="15" fill="#3A4149">sequence 1</text>
+            <text x="888" y="130" font-size="13" fill="#8C949B">signed · permanent</text>
+          </g>
+
+          <g stroke="#B9BEC3" stroke-width="1.5" fill="none">
+            <path d="M232 81 L272 81"/><path d="M266 76 L272 81 L266 86"/>
+            <path d="M520 81 L560 81"/><path d="M514 76 L520 81 L514 86"/>
+            <path d="M808 81 L848 81"/><path d="M802 76 L808 81 L802 86"/>
+          </g>
+
+          <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="12"
+             letter-spacing="1.1" fill="#6B747C">
+            <text x="0"   y="180">ISSUER DOCUMENT</text>
+            <text x="288" y="180">CONTROL</text>
+            <text x="576" y="180">EVALUATION</text>
+            <text x="864" y="180">REGISTRY</text>
+          </g>
+          <g font-size="13" fill="#8C949B">
+            <text x="0"   y="204">The bytes, retrieved</text>
+            <text x="288" y="204">A predicate, citing them</text>
+            <text x="576" y="204">A result, or an abstention</text>
+            <text x="864" y="204">On chain, checkable</text>
+          </g>
+        </svg>
+        <figcaption>A control never restates the issuer; it points at the bytes it was drawn
+        from, and carries the citation all the way to the chain.</figcaption>
+      </figure>
+
+      <div class="movements">
+        <div class="movement">
+          <span class="num" aria-hidden="true">01</span>
+          <h3>Compile</h3>
+          <p>A model reads the issuer's published documents and proposes controls.
+          Each candidate cites the exact bytes it was drawn from. Deterministic
+          gates screen every candidate; a human approves the set. Declined
+          candidates are recorded, with reasons.</p>
+        </div>
+        <div class="movement">
+          <span class="num" aria-hidden="true">02</span>
+          <h3>Evaluate</h3>
+          <p>An engine retrieves fresh evidence and evaluates each control. It
+          never guesses. When the evidence cannot support an answer, the control
+          is reported unevaluable — and that is a result, not an omission.</p>
+        </div>
+        <div class="movement">
+          <span class="num" aria-hidden="true">03</span>
+          <h3>Publish</h3>
+          <p>The report is signed with Ed25519 and published to a registry
+          contract on X&nbsp;Layer testnet. Anyone can download the signed bundle
+          and verify the signature, the roots, and every control hash offline.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">Products</p>
+      <h2>Five parts, one record</h2>
+      <div class="product-grid">
+        <article class="product-card">
+          <h3><a href="/products/dossier">Dossier</a></h3>
+          <p>Signed epoch reports for each covered asset — every control result,
+          digest and limitation in one downloadable bundle.</p>
+          <p class="card-link" aria-hidden="true">Read about the dossier →</p>
+        </article>
+        <article class="product-card">
+          <h3><a href="/products/control-language">Control Language</a></h3>
+          <p>The unit of verification: a predicate compiled from the issuer's
+          own bytes, citing the exact span it came from.</p>
+          <p class="card-link" aria-hidden="true">Read about controls →</p>
+        </article>
+        <article class="product-card">
+          <h3><a href="/products/verifier">Verifier</a></h3>
+          <p>Five offline checks that recompute the signature, both roots and
+          every content hash from the bundle alone.</p>
+          <p class="card-link" aria-hidden="true">Read about verification →</p>
+        </article>
+        <article class="product-card">
+          <h3><a href="/products/asset-gate">AssetGate</a> <span class="status-tag">Not deployed</span></h3>
+          <p>A consumer contract written to gate on report state, freshness and
+          publisher lineage. It is not deployed.</p>
+          <p class="card-link" aria-hidden="true">Read about AssetGate →</p>
+        </article>
+        <article class="product-card">
+          <h3><a href="/products/registry">Registry</a></h3>
+          <p>The on-chain record on X Layer testnet: sequenced, signed reports,
+          published permanently.</p>
+          <p class="card-link" aria-hidden="true">Read about the registry →</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">Coverage</p>
+      <h2>Every asset, with its honest status</h2>
+      <p class="prose secondary">Statuses are facts, not aspirations. Assets that
+      are not yet live are shown with the exact work that opens them.</p>
+      <div class="table-scroll">
+        <table>
+          <caption class="sr">Asset coverage summary</caption>
+          <thead>
+            <tr>
+              <th scope="col">Asset</th>
+              <th scope="col">Status</th>
+              <th scope="col">Where it stands</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>USTB</strong><span class="td-sub">Invesco/Superstate Short Duration U.S. Government Securities Fund</span></td>
+              <td><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>LIVE</span></td>
+              <td>One published report, sequence 1, X Layer testnet. Three issuer JSON sources.</td>
+            </tr>
+            <tr>
+              <td><strong>OUSG</strong><span class="td-sub">Ondo Short-Term U.S. Government Treasuries</span></td>
+              <td><span class="chip chip-next"><i class="dot" aria-hidden="true"></i>NEXT</span></td>
+              <td>Ruled the fastest credible second asset. Its evidence is issuer-published HTML, not a documented JSON API.</td>
+            </tr>
+            <tr>
+              <td><strong>FOBXX</strong><span class="td-sub">Franklin OnChain U.S. Government Money Fund</span></td>
+              <td><span class="chip chip-pending"><i class="dot" aria-hidden="true"></i>PENDING</span></td>
+              <td>The daily issuer endpoint returned Cloudflare 403. Monthly regulator-backed only until production-host access is proven.</td>
+            </tr>
+            <tr>
+              <td><strong>USDY</strong><span class="td-sub">Ondo U.S. Dollar Yield</span></td>
+              <td><span class="chip chip-open"><i class="dot" aria-hidden="true"></i>OPEN</span></td>
+              <td>One 260,431,605-byte archive with no bounded retrieval. Not bounded, so it cannot be scheduled.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cta-row">
+        <a class="cta-ghost" href="/coverage">Full coverage, including why</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">Why it abstains</p>
+      <h2>Abstention is a decision</h2>
+      <div class="split">
+        <div class="prose">
+          <p>On its first live run, Touchstone evaluated the eight approved
+          controls for Superstate's USTB. Five were satisfied. For three, no
+          qualifying earlier capture existed, so their values were not evaluated.
+          The engine did not fill the gap with an assumption. It published the
+          asset as <span class="mono">UNVERIFIABLE</span> — signed, sequenced,
+          permanent.</p>
+          <p>Anyone can build a thing that says CONFIRMED. This one tells you
+          when it doesn't know.</p>
+        </div>
+        <div class="strip-card">
+          <p class="strip-title">Sequence 1, per control</p>
+          <ol class="dots dots-lg" aria-label="Per-control results, in report order">
+            <li class="d-s"><span class="sr">holdings-as-of-date-present: satisfied</span></li>
+            <li class="d-u"><span class="sr">ustb-aum-published: unevaluable</span></li>
+            <li class="d-s"><span class="sr">ustb-nav-date-freshness: satisfied</span></li>
+            <li class="d-u"><span class="sr">ustb-nav-per-share-published: unevaluable</span></li>
+            <li class="d-s"><span class="sr">ustb-one-day-yield-present: satisfied</span></li>
+            <li class="d-u"><span class="sr">ustb-outstanding-shares-published: unevaluable</span></li>
+            <li class="d-s"><span class="sr">ustb-seven-day-yield-present: satisfied</span></li>
+            <li class="d-s"><span class="sr">ustb-thirty-day-yield-present: satisfied</span></li>
+          </ol>
+          <p class="strip-label">5 satisfied · 3 unevaluable</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">Changelog</p>
+      <h2>Recent, real, dated</h2>
+      <ol class="timeline">
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-18</p>
+          <div class="tl-body">
+            <h3>Control set revised</h3>
+            <p>A five-control set was approved for USTB. It applies only to
+            sequences published after sequence 1, which stays bound to the
+            eight-control ledger it was signed under.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-17</p>
+          <div class="tl-body">
+            <h3>First publication</h3>
+            <p>USTB sequence 1 published to the registry at block 38526525:
+            UNVERIFIABLE, five of eight controls satisfied, three unevaluable.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-16</p>
+          <div class="tl-body">
+            <h3>Eight controls approved</h3>
+            <p>A human approved the eight-control USTB set. Two candidates were
+            declined, with the reasons recorded in the approval ledger.</p>
+          </div>
+        </li>
+      </ol>
+      <div class="cta-row">
+        <a class="cta-ghost" href="/changelog">Full changelog</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-band">
+    <div class="wrap">
+      <h2>The bundle is the record</h2>
+      <p class="t-lead">This site is only a rendering of it. Download the signed
+      file and check every claim on your own machine, offline.</p>
+      <div class="cta-row">
+        <a class="cta" href="/data/ustb-2026-08-17-1.json">Download the signed bundle</a>
+        <a class="cta-ghost" href="/verify">Verify it offline</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

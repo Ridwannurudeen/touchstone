@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registry · Products · Touchstone</title>
+<meta name="description" content="The Touchstone registry on X Layer testnet: sequenced, signed reports, published permanently. One publication to date, at block 38526525.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/products/registry">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products" aria-current="page">Products</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Products · Registry</p>
+      <h1>The on-chain record</h1>
+      <p class="t-lead prose">The registry is a contract on X&nbsp;Layer testnet
+      that makes each published report permanent. A report lands at a sequence
+      number and stays there; a later report can correct it only by naming it.
+      One report has been published.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>The deployment</h2>
+      <dl class="facts">
+        <div><dt>Network</dt><dd>X Layer testnet · chain id <code>1952</code></dd></div>
+        <div><dt>Registry</dt><dd><code class="wrap-code">0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C</code></dd></div>
+        <div><dt>Publisher</dt><dd><code class="wrap-code">0x86A100BDdF8754c95fec97BeC96dBFd64Be44710</code></dd></div>
+        <div><dt>Publications</dt><dd><code>1</code> — USTB, sequence 1</dd></div>
+        <div><dt>Block</dt><dd><code>38526525</code></dd></div>
+        <div><dt>Transaction</dt><dd>
+          <details class="digest">
+            <summary><code>0x510714…5be6b869</code><span class="tog" aria-hidden="true"></span><span class="sr">show full value</span></summary>
+            <code class="full">0x5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869</code>
+          </details>
+        </dd></div>
+      </dl>
+      <p class="t-small secondary">The publication transaction is public:
+      <a href="https://www.oklink.com/xlayer-test/tx/0x5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869">view
+      it on the X&nbsp;Layer testnet explorer</a>.</p>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <h2>How the record behaves</h2>
+      <div class="grid-2">
+        <article class="use-card">
+          <h3>Sequenced, permanent</h3>
+          <p>Reports for an asset are published in sequence. Sequence 1 for
+          USTB is on chain at block 38526525 and will not be edited or
+          replaced.</p>
+        </article>
+        <article class="use-card">
+          <h3>Corrections by name</h3>
+          <p>A report can name an earlier sequence it corrects via
+          <code>correction_of</code>. The earlier record stays; readers see
+          both, and which one supersedes which. Sequence 1 corrects
+          nothing.</p>
+        </article>
+        <article class="use-card">
+          <h3>Bound to its control set</h3>
+          <p>Each report carries the digest of the approval ledger it was
+          signed under. Sequence 1 is bound to an eight-control ledger; the
+          five-control set approved later applies only to later sequences.</p>
+        </article>
+        <article class="use-card">
+          <h3>Readable by contracts</h3>
+          <p>AssetGate is written to gate on this state — status, freshness,
+          publisher lineage, pinned control-set root — but it is
+          <a href="/products/asset-gate">not deployed</a>, so nothing reads the
+          registry in production today.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>Structurally multi-asset, honestly single-operator</h2>
+      <div class="prose">
+        <p>The registry is structurally multi-asset and could carry ten assets.
+        The current single-operator design supports two or three daily assets.
+        That ceiling is stated on the <a href="/coverage">coverage page</a>
+        rather than hidden, because publishing the limit is the kind of thing
+        this project says out loud.</p>
+      </div>
+      <div class="cta-row">
+        <a class="cta" href="/dossier/ustb-2026-08-17">Read the published report</a>
+        <a class="cta-ghost" href="/verify">Verify it offline</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

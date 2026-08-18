@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verifier · Products · Touchstone</title>
+<meta name="description" content="Offline verification of a Touchstone bundle: the signature, the ledger digest, the compilation artifacts, every content hash and both roots — recomputed on your machine.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/products/verifier">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products" aria-current="page">Products</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Products · Verifier</p>
+      <h1>Check the work, offline</h1>
+      <p class="t-lead prose">The bundle is the record; this site is only a
+      rendering of it. Five short Python scripts recompute the signature, the
+      approval-ledger digest, the compilation artifacts, all eight content
+      hashes and both roots — on your machine, with no trust in this page
+      required.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>What a bundle contains</h2>
+      <p class="prose secondary">The published file is
+      <code>touchstone.verification-bundle.v4</code>. Its sections are the
+      complete input to every check.</p>
+      <div class="grid-2">
+        <article class="use-card">
+          <h3><code>signed_report</code></h3>
+          <p>The report itself with its Ed25519 signature and the key id it was
+          signed under. The canonical bytes travel alongside as
+          <code>report_canonical</code>, so the signature can be checked against
+          exactly what was signed.</p>
+        </article>
+        <article class="use-card">
+          <h3><code>approval_ledger</code></h3>
+          <p>The full text of the approval ledger the report was signed under —
+          every approved control and every declined candidate, with reasons. Its
+          SHA-256 must match the digest inside the signed report.</p>
+        </article>
+        <article class="use-card">
+          <h3><code>compilations</code></h3>
+          <p>The compilation artifacts, keyed by their own SHA-256. Each control
+          points at the artifact it was accepted in; the report's provenance
+          digests must be exactly this set.</p>
+        </article>
+        <article class="use-card">
+          <h3><code>control_records</code></h3>
+          <p>The eight controls in full — subject, cited span, predicate,
+          cadence, approval state. Hashing each record's canonical bytes must
+          reproduce the content hash the report references it by.</p>
+        </article>
+        <article class="use-card">
+          <h3><code>evidence_digests</code></h3>
+          <p>The SHA-256 of each evidence capture the engine retrieved, with
+          source id, role and retrieval time. These chain into the report's
+          evidence root.</p>
+        </article>
+        <article class="use-card">
+          <h3><code>published_key</code></h3>
+          <p>The Ed25519 public key and key id. The report names the same key
+          id as its publisher, so lineage is checkable without any external
+          lookup.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <h2>The five checks</h2>
+      <p class="prose secondary">Each is a few lines of Python 3. Check 1 needs
+      the <code>cryptography</code> package; the rest are standard library only.
+      The <a href="/verify">verify page</a> carries the full scripts.</p>
+      <div class="table-scroll">
+        <table>
+          <caption class="sr">The five offline checks and what each proves</caption>
+          <thead>
+            <tr>
+              <th scope="col">Check</th>
+              <th scope="col">What it proves</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="check-n">1</span> The signature</td>
+              <td>The Ed25519 signature verifies over the canonical report
+              bytes, and those bytes are the same report this site renders.</td>
+            </tr>
+            <tr>
+              <td><span class="check-n">2</span> The approval ledger</td>
+              <td>The ledger text in the bundle hashes to the digest the signed
+              report names — the report was signed under exactly this
+              control-set approval history.</td>
+            </tr>
+            <tr>
+              <td><span class="check-n">3</span> The compilation artifacts</td>
+              <td>Every artifact hashes to its own key, and the report's
+              provenance digests are exactly those artifacts.</td>
+            </tr>
+            <tr>
+              <td><span class="check-n">4</span> The content hashes</td>
+              <td>All eight control records rehash to the content hashes the
+              report references them by. Change one byte of a control and this
+              fails.</td>
+            </tr>
+            <tr>
+              <td><span class="check-n">5</span> The roots</td>
+              <td>The control set root and evidence root — domain-separated
+              ordered hash chains — recompute from the bundle alone.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="cta-row">
+        <a class="cta" href="/verify">Run the five checks</a>
+        <a class="cta-ghost" href="/data/ustb-2026-08-17-1.json">Download the bundle</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>What the checks do not cover</h2>
+      <div class="prose">
+        <p>The bundle carries evidence digests, not the evidence artifacts
+        themselves, so these checks cannot replay retrieval or normalization.
+        And no check proves the issuer's figures are true — only that they were
+        published, checked against a cited predicate, and signed. The five
+        limitations carried inside the signed report are
+        <a href="/limitations">reproduced verbatim here</a>.</p>
+        <p>This site runs no JavaScript, which is enforced at the server with
+        <code>script-src 'none'</code>. Nothing on any page computes an answer
+        for you; every check runs on your machine or not at all.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

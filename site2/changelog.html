@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changelog · Touchstone</title>
+<meta name="description" content="Real dated events: controls taking effect, coverage triage, approvals, the first publication, and the control-set revision.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/changelog">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products">Products</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Changelog</p>
+      <h1>Real events, real dates</h1>
+      <p class="t-lead prose">Every entry below is a dated fact backed by the
+      published data: the approval ledger, the signed bundle, or the asset
+      manifests. Nothing aspirational appears here.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <ol class="timeline">
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-18</p>
+          <div class="tl-body">
+            <h2>Control set revised</h2>
+            <p>A five-control set was approved for USTB, with five candidates
+            declined. It applies only to sequences published after sequence 1.
+            Sequence 1 remains bound to the eight-control approval ledger it was
+            signed under — its digest is inside the signed report, and this site
+            never renders sequence 1 against the newer set.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-17</p>
+          <div class="tl-body">
+            <h2>First publication</h2>
+            <p>USTB sequence 1, epoch
+            <a href="/dossier/ustb-2026-08-17"><code>ustb-2026-08-17</code></a>,
+            published to the registry on X&nbsp;Layer testnet at block 38526525.
+            The reported state is UNVERIFIABLE: five of eight controls
+            satisfied, three unevaluable. Observed at
+            <span class="mono">2026-08-17T16:48:32.075003Z</span>.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-16</p>
+          <div class="tl-body">
+            <h2>Eight controls approved for USTB</h2>
+            <p>A human approved the eight-control set proposed from Superstate's
+            own documents. Two candidates —
+            <code>holdings-line-items-present</code> and
+            <code>ustb-fund-identifier-stable</code> — were declined, with the
+            reasons recorded verbatim in the approval ledger.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-15</p>
+          <div class="tl-body">
+            <h2>Coverage triage</h2>
+            <p>USDY suspended: its only attestation source is a 260,431,605-byte
+            archive with no bounded retrieval, so it cannot be scheduled. FOBXX
+            demoted: the daily issuer feed is unreachable from a production
+            host, so no daily-liveness or issuer-versus-regulator control may be
+            claimed until repeatable access is verified. OUSG opened as the
+            candidate second daily asset.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-14</p>
+          <div class="tl-body">
+            <h2>USTB controls take effect</h2>
+            <p>All eight USTB controls carry
+            <code>effective_from 2026-08-14</code>. From this date the controls
+            are in force; no end date is set.</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="cta-band">
+    <div class="wrap">
+      <h2>The record behind the dates</h2>
+      <p class="t-lead">Each event above is checkable against the signed bundle
+      and the coverage page.</p>
+      <div class="cta-row">
+        <a class="cta" href="/dossier/ustb-2026-08-17">Read the report</a>
+        <a class="cta-ghost" href="/coverage">See coverage</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control Language · Products · Touchstone</title>
+<meta name="description" content="What a Touchstone control is: subject, cited span, adapter, operator, expected value, effective date. A real one, dissected.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/products/control-language">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products" aria-current="page">Products</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Products · Control Language</p>
+      <h1>The unit of verification</h1>
+      <p class="t-lead prose">A control is a machine-checkable claim compiled
+      from the issuer's own words. It names its subject, cites the exact bytes
+      it came from, and states a predicate an engine can evaluate without
+      judgment. Below is a real one, dissected — as signed in
+      sequence&nbsp;1.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>Anatomy of a control</h2>
+      <p class="prose secondary">This control was evaluated in sequence 1 and
+      satisfied. Every field below is reproduced byte-exactly from the signed
+      bundle.</p>
+
+      <article class="card anatomy">
+        <header class="control-head">
+          <h3 class="control-id">ustb-one-day-yield-present</h3>
+          <span class="chip chip-satisfied"><i class="dot" aria-hidden="true"></i>SATISFIED</span>
+        </header>
+
+        <dl class="fields fields--gloss">
+          <div>
+            <dt>Subject</dt>
+            <dd>Superstate USTB one-day yield figure is published</dd>
+            <dd class="gloss">One sentence stating what is checked. Written by
+            the compiler, approved by a human.</dd>
+          </div>
+          <div>
+            <dt>Cited span</dt>
+            <dd><code>&quot;one_day&quot;:0.03519765645878166</code></dd>
+            <dd class="gloss">The byte-exact span of the issuer document the
+            compiler cited when it proposed this control. Compile-time evidence,
+            not this epoch's observation.</dd>
+          </div>
+          <div>
+            <dt>Source</dt>
+            <dd><code>superstate-ustb-yield · issuer-api</code></dd>
+            <dd class="gloss">Where evidence comes from, and what kind of
+            authority it is. An issuer API proves publication, not truth.</dd>
+          </div>
+          <div>
+            <dt>Adapter</dt>
+            <dd><code>ustb-yield</code></dd>
+            <dd class="gloss">The deterministic code path that retrieves and
+            normalizes evidence for this control.</dd>
+          </div>
+          <div>
+            <dt>Predicate</dt>
+            <dd><code>exists · field = one_day</code></dd>
+            <dd class="gloss">The operator and expected value. This one asserts
+            the field is present in qualifying evidence.</dd>
+          </div>
+          <div>
+            <dt>Cadence</dt>
+            <dd><code>business-daily · grace period 1</code></dd>
+            <dd class="gloss">How often evidence is expected, and how many
+            periods may lapse before absence counts against the asset.</dd>
+          </div>
+          <div>
+            <dt>Effective from</dt>
+            <dd><code>2026-08-14</code></dd>
+            <dd class="gloss">The date the control is in force from. No end date
+            is set.</dd>
+          </div>
+          <div>
+            <dt>Compiler confidence</dt>
+            <dd><code>0.85</code></dd>
+            <dd class="gloss">The compiler's own confidence in the candidate.
+            Candidates below 0.8 are abstained from automatically and never
+            reach a human.</dd>
+          </div>
+          <div>
+            <dt>Approval state</dt>
+            <dd><code>approved</code></dd>
+            <dd class="gloss">Approval changes exactly two fields —
+            approval_state and compilation_sha256. Nothing else about a control
+            can be edited by a human.</dd>
+          </div>
+          <div>
+            <dt>Compilation</dt>
+            <dd>
+              <details class="digest">
+                <summary><code>8724e933…1fba6b5e</code><span class="tog" aria-hidden="true"></span><span class="sr">show full value</span></summary>
+                <code class="full">8724e9338d92f60055720f6a1fe3b7307c22a9c4b57e8e52b76c62dc1fba6b5e</code>
+              </details>
+            </dd>
+            <dd class="gloss">The compilation artifact this control was accepted
+            in. The control is read from that artifact; the approval ledger can
+            only point at it, never restate it.</dd>
+          </div>
+          <div>
+            <dt>Content hash</dt>
+            <dd>
+              <details class="digest">
+                <summary><code>1b71225f…21b348a7</code><span class="tog" aria-hidden="true"></span><span class="sr">show full value</span></summary>
+                <code class="full">1b71225f38aad052fc8ccd7f29e7bde1568a82dfad2e62f7dff983d921b348a7</code>
+              </details>
+            </dd>
+            <dd class="gloss">SHA-256 over the control's canonical bytes. The
+            signed report references the control by this hash; change one byte
+            and the hash changes.</dd>
+          </div>
+          <div>
+            <dt>Evaluated</dt>
+            <dd><code>0.035406030377782935</code> on <code>2026-08-16</code></dd>
+            <dd class="gloss">What sequence 1's evaluation observed for this
+            control, and the row date it belongs to.</dd>
+          </div>
+        </dl>
+      </article>
+
+      <div class="cta-row">
+        <a class="cta-ghost" href="/dossier/ustb-2026-08-17#ustb-one-day-yield-present">See
+        all eight controls as evaluated in sequence 1</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <h2>From proposal to report</h2>
+      <ol class="steps">
+        <li>
+          <span class="num" aria-hidden="true">1</span>
+          <div>
+            <h3>Proposed</h3>
+            <p>A model reads the issuer's published documents and proposes
+            candidate controls. Each cites the exact bytes it was drawn from and
+            carries the compiler's own confidence.</p>
+          </div>
+        </li>
+        <li>
+          <span class="num" aria-hidden="true">2</span>
+          <div>
+            <h3>Gated</h3>
+            <p>Deterministic checks screen every candidate. A candidate below
+            0.8 confidence is abstained from — recorded in the compilation
+            artifact, never shown to a human as approvable.</p>
+          </div>
+        </li>
+        <li>
+          <span class="num" aria-hidden="true">3</span>
+          <div>
+            <h3>Approved or declined</h3>
+            <p>A human approves or declines each surviving candidate. Approval
+            may change only approval_state and compilation_sha256. Declines are
+            recorded with reasons.</p>
+          </div>
+        </li>
+        <li>
+          <span class="num" aria-hidden="true">4</span>
+          <div>
+            <h3>Evaluated</h3>
+            <p>Each epoch, the engine retrieves fresh evidence and evaluates
+            every approved control. A control the evidence cannot answer is
+            reported unevaluable, not skipped.</p>
+          </div>
+        </li>
+        <li>
+          <span class="num" aria-hidden="true">5</span>
+          <div>
+            <h3>Reported</h3>
+            <p>Results are bound into a report by content hash and control set
+            root, signed with Ed25519, and published to the registry on
+            X&nbsp;Layer testnet.</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>Declined is recorded too</h2>
+      <div class="prose">
+        <p>The approval ledger keeps what a human turned down, next to what was
+        approved. In its own words:</p>
+      </div>
+      <blockquote>
+        <p>Declined entries are candidates that passed every deterministic gate
+        and a human still did not approve — recorded because a control set that
+        silently omits them cannot be audited for why.</p>
+        <cite>approval ledger, sequence 1</cite>
+      </blockquote>
+
+      <div class="grid-2">
+        <article class="card">
+          <header class="control-head">
+            <h3 class="control-id">holdings-line-items-present</h3>
+            <span class="declined-tag">Declined 2026-08-16</span>
+          </header>
+          <p class="control-subject">&ldquo;holdings is a collection, and whether
+          exists means 'present' or 'non-empty' is undefined in the control
+          language. Deciding that here would smuggle in a semantics change as an
+          approval.&rdquo;</p>
+        </article>
+        <article class="card">
+          <header class="control-head">
+            <h3 class="control-id">ustb-fund-identifier-stable</h3>
+            <span class="declined-tag">Declined 2026-08-16</span>
+          </header>
+          <p class="control-subject">&ldquo;The expected_value is a literal fund
+          identifier, but eq compares decimals: the evaluator resolves
+          expected_value['value'] to a Decimal and returns UNEVALUABLE when it
+          cannot. Approval may change only approval_state and
+          compilation_sha256, so this cannot be repaired by approving it.&rdquo;</p>
+        </article>
+      </div>
+
+      <div class="note">
+        <p>The control dissected above belongs to the eight-control set
+        sequence&nbsp;1 was signed under. The project has since approved a
+        different, five-control set, which applies only to later sequences.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

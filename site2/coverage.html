@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coverage · Touchstone</title>
+<meta name="description" content="Every asset Touchstone covers, with its honest status: USTB live, USDY and OUSG open, FOBXX pending a production-host route — and the reasons, stated plainly.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/coverage">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products">Products</a>
+      <a href="/coverage" aria-current="page">Coverage</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Coverage</p>
+      <h1>Every asset, with its honest status</h1>
+      <p class="t-lead prose">The direction is expansion beyond one asset, and
+      an auditor has just ruled the order. This page states that ruling and
+      nothing more optimistic. Statuses are facts, not aspirations — an asset
+      not yet live is shown with the exact work that opens it.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="table-scroll">
+        <table class="coverage-table">
+          <caption class="sr">Asset coverage, ruled by audit</caption>
+          <thead>
+            <tr>
+              <th scope="col">Asset</th>
+              <th scope="col">Status</th>
+              <th scope="col">What stands</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <strong>USTB</strong>
+                <span class="td-sub">Invesco/Superstate Short Duration U.S. Government Securities Fund</span>
+              </td>
+              <td><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>LIVE</span></td>
+              <td>One published report, sequence 1, X&nbsp;Layer testnet. Three
+              issuer JSON sources:
+              <code>superstate-ustb-nav-daily</code>,
+              <code>superstate-ustb-yield</code>,
+              <code>superstate-ustb-holdings</code>.</td>
+            </tr>
+            <tr>
+              <td>
+                <strong>OUSG</strong>
+                <span class="td-sub">Ondo Short-Term U.S. Government Treasuries</span>
+              </td>
+              <td><span class="chip chip-next"><i class="dot" aria-hidden="true"></i>NEXT</span></td>
+              <td>Ruled the fastest credible second asset: a bounded ~732&nbsp;KB
+              page with real business-day movement and no archive dependency.
+              Open work is concrete — no committed fixture, no normalizer,
+              extraction anchors unselected, oracle cross-check incomplete. Its
+              evidence is issuer-published HTML, not a documented JSON API.</td>
+            </tr>
+            <tr>
+              <td>
+                <strong>FOBXX</strong>
+                <span class="td-sub">Franklin OnChain U.S. Government Money Fund</span>
+              </td>
+              <td><span class="chip chip-pending"><i class="dot" aria-hidden="true"></i>PENDING</span></td>
+              <td>The strongest evidence model found so far — an issuer source
+              and an SEC N-MFP3 regulator source that can be reconciled against
+              each other. Pending a production-host route: the daily issuer endpoint returned
+              Cloudflare 403 and the Benji API requires client credentials.
+              Monthly regulator-backed only until production-host access is
+              proven.</td>
+            </tr>
+            <tr>
+              <td>
+                <strong>USDY</strong>
+                <span class="td-sub">Ondo U.S. Dollar Yield</span>
+              </td>
+              <td><span class="chip chip-open"><i class="dot" aria-hidden="true"></i>OPEN</span></td>
+              <td>Reopened 2026-08-18 by measurement. The suspension treated USDY
+              as one source; it is two. Only the <em>attestation</em> archive is
+              the 260&nbsp;MB one. The daily portfolio page returns
+              <strong>HTTP&nbsp;200 in 1,544,898 bytes</strong> and carries
+              <code>asOfDate</code>, <code>collateralizationRatio</code>,
+              <code>outstandingValue</code>, <code>total</code> and per-holding
+              rows inline — bounded, and richer than any source now live. It is
+              the first source here that can carry a coverage predicate
+              (<code>total&nbsp;&gt;=&nbsp;outstandingValue</code>) rather than a
+              presence check. Daily attestations stay out of reach: HTTP range
+              requests on the archive return 200 with all 260,640,295 bytes, and
+              the folder page carries no server-rendered listing.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="prose secondary under-table">Assets under evaluation but
+      <strong>not</strong> selected — BUIDL, ACRED, Hashnote, Backed,
+      Centrifuge — because no stable public retrieval surface has been verified
+      for them. A brand name is not an ingestion contract.</p>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <h2>The asset keys and manifests</h2>
+      <p class="prose secondary">Each covered asset is identified by a stable
+      key and a source manifest. These are the identifiers the engine and the
+      registry use, reproduced from the manifests.</p>
+      <div class="table-scroll">
+        <table>
+          <caption class="sr">Asset keys and evidence sources</caption>
+          <thead>
+            <tr>
+              <th scope="col">Asset</th>
+              <th scope="col">Asset key</th>
+              <th scope="col">Sources</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>USTB</strong></td>
+              <td><code class="wrap-code">eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e</code></td>
+              <td><code>superstate-ustb-nav-daily</code><br><code>superstate-ustb-yield</code><br><code>superstate-ustb-holdings</code></td>
+            </tr>
+            <tr>
+              <td><strong>OUSG</strong></td>
+              <td><code class="wrap-code">eip155:1:0x1b19c19393e2d034d8ff31ff34c81252fcbbee92</code></td>
+              <td><code>ondo-ousg-page</code></td>
+            </tr>
+            <tr>
+              <td><strong>FOBXX</strong></td>
+              <td><code class="wrap-code">sec:cik:0001786958:series:S000067043</code></td>
+              <td><code>franklin-fobxx-price-performance</code><br><code>sec-edgar-fobxx-submissions</code><br><code>sec-edgar-fobxx-nmfp3</code></td>
+            </tr>
+            <tr>
+              <td><strong>USDY</strong></td>
+              <td><code class="wrap-code">eip155:1:0x96f6ef951840721adbf46ac996b59e0235cb985c</code></td>
+              <td><code>ondo-usdy-page</code><br><code>ondo-usdy-attestation-archive</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>The operator ceiling</h2>
+      <div class="prose">
+        <p>The registry is structurally multi-asset and could carry ten. The
+        current single-operator design supports two or three daily assets.
+        Publishing that limit is the kind of thing this project says out
+        loud.</p>
+      </div>
+      <div class="cta-row">
+        <a class="cta" href="/dossier/ustb-2026-08-17">Read the USTB report</a>
+        <a class="cta-ghost" href="/changelog">See how coverage got here</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

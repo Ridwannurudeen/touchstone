@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify · Touchstone</title>
+<meta name="description" content="How to verify the signed USTB bundle yourself, offline: five checks, real commands, no trust in this page required.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/verify">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products">Products</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/verify" aria-current="page">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Check the work</p>
+      <h1>Verify</h1>
+      <p class="t-lead prose">The bundle is the record; this site is only a
+      rendering of it. Download the file and check the signature, the ledger
+      digest, the compilation artifacts, every control hash and both roots —
+      offline, on your machine.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>The bundle</h2>
+      <div class="cta-row">
+        <a class="cta" href="/data/ustb-2026-08-17-1.json">Download ustb-2026-08-17-1.json</a>
+        <span class="t-small secondary">sha256 of the file:</span>
+        <details class="digest">
+          <summary><code>914ea892…10bfc955</code><span class="tog" aria-hidden="true"></span><span class="sr">show full value</span></summary>
+          <code class="full">914ea892e181d7bad2583da5c1f377b3f1ee9bf197c5a799b8d5f8cc10bfc955</code>
+        </details>
+      </div>
+      <p class="t-small secondary under-cta">The checks below are
+      Python&nbsp;3. Check 1 needs the <code>cryptography</code> package; the
+      rest are standard library only. Run each next to the downloaded
+      bundle.</p>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <h2>Five checks, offline</h2>
+
+      <div class="check">
+        <h3>1 · The signature</h3>
+        <p class="what">The report was signed with Ed25519. This verifies the
+        signature over the canonical report bytes, and that those bytes are the
+        same report this site renders.</p>
+<pre><code># check_signature.py — needs: pip install cryptography
+import json
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+bundle = json.load(open("ustb-2026-08-17-1.json", encoding="utf-8"))
+assert json.loads(bundle["report_canonical"]) == bundle["signed_report"]["report"]
+key = Ed25519PublicKey.from_public_bytes(bytes.fromhex(bundle["published_key"]["public_key"]))
+key.verify(bytes.fromhex(bundle["signed_report"]["signature"]),
+           bundle["report_canonical"].encode("utf-8"))
+print("signature verifies over report_canonical")</code></pre>
+      </div>
+
+      <div class="check">
+        <h3>2 · The approval ledger</h3>
+        <p class="what">Sequence 1 names the exact approval ledger it was signed
+        under by digest. This recomputes it from the ledger text carried in the
+        bundle.</p>
+<pre><code># check_ledger.py
+import hashlib, json
+
+bundle = json.load(open("ustb-2026-08-17-1.json", encoding="utf-8"))
+digest = hashlib.sha256(bundle["approval_ledger"].encode("utf-8")).hexdigest()
+assert digest == bundle["signed_report"]["report"]["approval_ledger_sha256"]
+print("approval ledger digest matches:", digest)</code></pre>
+      </div>
+
+      <div class="check">
+        <h3>3 · The compilation artifacts</h3>
+        <p class="what">Each control points at the compilation artifact it was
+        accepted in. This confirms every artifact in the bundle hashes to its
+        own key, and that the report's provenance digests are exactly those
+        artifacts.</p>
+<pre><code># check_compilations.py
+import hashlib, json
+
+bundle = json.load(open("ustb-2026-08-17-1.json", encoding="utf-8"))
+for digest, artifact in bundle["compilations"].items():
+    assert hashlib.sha256(artifact.encode("utf-8")).hexdigest() == digest
+assert set(bundle["compilations"]) == set(
+    bundle["signed_report"]["report"]["compiler_provenance_digests"])
+print("all", len(bundle["compilations"]), "compilation artifacts self-hash")</code></pre>
+      </div>
+
+      <div class="check">
+        <h3>4 · The control content hashes</h3>
+        <p class="what">The report references each control by a hash of its
+        canonical bytes. This recomputes all eight from the control records in
+        the bundle.</p>
+<pre><code># check_content_hashes.py
+import hashlib, json
+
+bundle = json.load(open("ustb-2026-08-17-1.json", encoding="utf-8"))
+records = {r["control_id"]: r for r in bundle["control_records"]}
+for control in bundle["signed_report"]["report"]["controls"]:
+    canonical = json.dumps(records[control["control_id"]],
+                           sort_keys=True, separators=(",", ":"))
+    assert hashlib.sha256(canonical.encode("utf-8")).hexdigest() == control["content_hash"]
+print("all 8 content hashes match")</code></pre>
+      </div>
+
+      <div class="check">
+        <h3>5 · The roots</h3>
+        <p class="what">The control set root and evidence root are
+        domain-separated ordered hash chains. This recomputes both from the
+        bundle alone.</p>
+<pre><code># check_roots.py
+import hashlib, json
+
+bundle = json.load(open("ustb-2026-08-17-1.json", encoding="utf-8"))
+report = bundle["signed_report"]["report"]
+
+def root(domain, items):
+    state = hashlib.sha256(b"touchstone-root-v1:" + domain.encode()).digest()
+    for item in items:
+        canonical = json.dumps(item, sort_keys=True, separators=(",", ":"))
+        state = hashlib.sha256(b"\x01" + state + canonical.encode()).digest()
+    return state.hex()
+
+controls = sorted(
+    ({"content_hash": c["content_hash"], "control_id": c["control_id"]}
+     for c in report["controls"]),
+    key=lambda item: item["control_id"])
+assert root("control-set", controls) == report["control_set_root"]
+
+evidence = sorted(bundle["evidence_digests"],
+                  key=lambda item: (item["source_id"], item["capture_role"]))
+assert root("evidence", evidence) == report["evidence_root"]
+print("control set root and evidence root both recompute")</code></pre>
+      </div>
+
+      <div class="note">
+        <p><strong>This page runs no JavaScript. Everything above is a static
+        rendering of the bundle you can download — nothing on this page is
+        computing the answer for you.</strong></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>The on-chain record</h2>
+      <dl class="facts">
+        <div><dt>Network</dt><dd>X Layer testnet · chain id <code>1952</code></dd></div>
+        <div><dt>Registry</dt><dd><code class="wrap-code">0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C</code></dd></div>
+        <div><dt>Publisher</dt><dd><code class="wrap-code">0x86A100BDdF8754c95fec97BeC96dBFd64Be44710</code></dd></div>
+        <div><dt>Block</dt><dd><code>38526525</code></dd></div>
+        <div><dt>Transaction</dt><dd>
+          <details class="digest">
+            <summary><code>0x510714…5be6b869</code><span class="tog" aria-hidden="true"></span><span class="sr">show full value</span></summary>
+            <code class="full">0x5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869</code>
+          </details>
+        </dd></div>
+      </dl>
+      <p class="t-small secondary">The publication transaction is public:
+      <a href="https://www.oklink.com/xlayer-test/tx/0x5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869">view
+      it on the X&nbsp;Layer testnet explorer</a>.</p>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <h2>What these checks do not cover</h2>
+      <div class="prose">
+        <p>The bundle carries evidence digests, not the evidence artifacts
+        themselves, so these checks cannot replay retrieval or normalization.
+        And no check here proves the issuer's figures are true — only that they
+        were published, checked against a cited predicate, and signed. The five
+        limitations carried inside the signed report are
+        <a href="/limitations">reproduced verbatim here</a>.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

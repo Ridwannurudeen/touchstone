@@ -1,0 +1,75 @@
+{
+  "reports_published": 1,
+  "controls_evaluated": 8,
+  "evidence_captures": 3,
+  "assets_live": 1,
+  "assets_manifested": 4,
+  "approved_controls_current": 5,
+  "declined_controls_current": 5,
+  "modules": 28,
+  "contracts": 2,
+  "doc_lines": 4840,
+  "registry": "0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C",
+  "chain_id": 1952,
+  "network": "X Layer testnet",
+  "reports": [
+    {
+      "epoch_id": "ustb-2026-08-17",
+      "sequence": 1,
+      "state": "UNVERIFIABLE",
+      "observed_at": "2026-08-17T16:48:32.075003Z",
+      "controls": 8,
+      "satisfied": 5,
+      "unevaluable": 3,
+      "evidence_captures": 3,
+      "bundle": "ustb-2026-08-17-1.json"
+    }
+  ],
+  "assets": [
+    {
+      "ticker": "FOBXX",
+      "name": "Franklin OnChain U.S. Government Money Fund",
+      "asset_key": "sec:cik:0001786958:series:S000067043",
+      "role": "monthly regulator-backed contrast asset. DEMOTED 2026-08-15: the daily issuer feed is unreachable, so no daily-liveness or issuer-versus-regulator control may be claimed until repeatable production-host access is verified.",
+      "sources": [
+        "franklin-fobxx-price-performance",
+        "sec-edgar-fobxx-submissions",
+        "sec-edgar-fobxx-nmfp3"
+      ],
+      "manifest": "fobxx.json"
+    },
+    {
+      "ticker": "OUSG",
+      "name": "Ondo Short-Term U.S. Government Treasuries",
+      "asset_key": "eip155:1:0x1b19c19393e2d034d8ff31ff34c81252fcbbee92",
+      "role": "CANDIDATE second daily asset, opened 2026-08-15 because USDY has no bounded retrieval",
+      "sources": [
+        "ondo-ousg-page"
+      ],
+      "manifest": "ousg.json"
+    },
+    {
+      "ticker": "USDY",
+      "name": "Ondo U.S. Dollar Yield",
+      "asset_key": "eip155:1:0x96f6ef951840721adbf46ac996b59e0235cb985c",
+      "role": "second daily asset \u2014 SUSPENDED 2026-08-15. Bounded retrieval is unresolved, so this asset cannot be scheduled and PLAN-T10 is not viable as written.",
+      "sources": [
+        "ondo-usdy-page",
+        "ondo-usdy-attestation-archive"
+      ],
+      "manifest": "usdy.json"
+    },
+    {
+      "ticker": "USTB",
+      "name": "Invesco/Superstate Short Duration U.S. Government Securities Fund",
+      "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+      "role": "hero",
+      "sources": [
+        "superstate-ustb-nav-daily",
+        "superstate-ustb-yield",
+        "superstate-ustb-holdings"
+      ],
+      "manifest": "ustb.json"
+    }
+  ]
+}
