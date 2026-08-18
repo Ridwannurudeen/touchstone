@@ -1245,6 +1245,9 @@ blockquote cite {
    nav should not have to open the page to learn the contract is not deployed, so the status
    travels with the name wherever the name appears. */
 .foot-flag {
+  /* Inside the anchor, not beside it: the footer column stacks its children, so a sibling
+     span became its own row and read like a fifth product rather than a note on the fourth. */
+  margin-left: 0.5em;
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.04em;
