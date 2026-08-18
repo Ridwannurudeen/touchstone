@@ -84,7 +84,16 @@ _CONTROL_RESULT_FIELDS = {"content_hash", "control_id", "evaluation"}
 _EVALUATION_FIELDS = {"evidence_deadline", "observed_on", "observed_value", "result"}
 _TRANSITION_FIELDS = {"as_of", "event", "evidence_deadline", "previous_state"}
 _DIGEST = re.compile(r"[0-9a-f]{64}")
-_ASSET_KEY = re.compile(r"eip155:[1-9][0-9]*:0x[0-9a-f]{40}")
+_ASSET_KEY = re.compile(
+    r"eip155:[1-9][0-9]*:0x[0-9a-f]{40}"
+    # A policy publishes under its own registry key, and that key extends the asset
+    # identifier rather than replacing it: the asset form remains a valid prefix, so a
+    # reader can see which asset a policy concerns without a lookup table. The registry
+    # itself is keyed by an opaque bytes32 and never needed this constraint; it lived
+    # here and in the verifier, which is why a policy key was refused before it reached
+    # the chain.
+    r"(?:#policy:[a-z0-9]+(?:-[a-z0-9]+)*:[1-9][0-9]*)?"
+)
 _CONCLUSIVE_RESULTS = frozenset(
     {EvaluationResult.SATISFIED, EvaluationResult.CONTRADICTED}
 )

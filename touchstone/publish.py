@@ -62,7 +62,16 @@ _CONFIRMATION_POLL_SECONDS = 1.0
 MISSING = "missing"
 INCLUDED = "included"
 CONFIRMED = "confirmed"
-_ASSET_KEY = re.compile(r"eip155:[1-9][0-9]*:0x[0-9a-f]{40}")
+_ASSET_KEY = re.compile(
+    r"eip155:[1-9][0-9]*:0x[0-9a-f]{40}"
+    # A policy publishes under its own registry key, and that key extends the asset
+    # identifier rather than replacing it: the asset form remains a valid prefix, so a
+    # reader can see which asset a policy concerns without a lookup table. The registry
+    # itself is keyed by an opaque bytes32 and never needed this constraint; it lived
+    # here and in the verifier, which is why a policy key was refused before it reached
+    # the chain.
+    r"(?:#policy:[a-z0-9]+(?:-[a-z0-9]+)*:[1-9][0-9]*)?"
+)
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _TX_HASH = re.compile(r"0x[0-9a-f]{64}")
 _LOWER_HEX = re.compile(r"(?:[0-9a-f]{2})+")

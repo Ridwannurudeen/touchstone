@@ -4,12 +4,28 @@ Three inputs produced this list: an external judge-perspective audit of the whol
 Codex audits of the recent build, and defects found while working them. It is ordered by
 judge impact per hour, not by how interesting the work is.
 
-**Deadline: 2026-08-21 23:59 UTC.** The submission is already in; this is about what a judge
-finds when they open the project URL and the repository.
+**Scope changed 2026-08-19.** This was first written as three-day triage against the
+2026-08-21 deadline. The owner has since directed that the deadline not constrain the work:
+build and fix everything properly, with the resources to finish it. So the cuts made for time
+are reinstated as sequenced work rather than dropped, and the ordering below optimises for a
+system that is correct and complete rather than for what fits before Friday.
+
+The submission is already in. Anything landing before Friday still helps a judge; everything
+after it still makes the product real.
 
 Each item says who can do it. **Owner** means it needs a decision or an account only the owner
 holds — those are not blocked on engineering and should be started first because they have the
 longest lead time.
+
+### What the deadline was forcing us to drop, now back in scope
+
+| Was cut for time | Why it matters |
+|---|---|
+| **Registry v2 with EIP-712** | The contract currently proves *an authorized publisher posted these fields* — not that the status came from the signed report. That gap is the difference between "publisher-attested" and "verifiable". |
+| **Signed approvals** | Human approval is the strongest defence against a valid-looking malicious proposal, and it is an unauthenticated JSON field. |
+| **AI evaluation benchmark** | The compiler's measured behaviour is currently 72 outcomes from ordinary use, not an adversarial corpus. Fabricated citations and prompt injection are untested at scale. |
+| **A second asset (FOBXX)** | Regulator-filed evidence rather than issuer-published is a different *class* of source, and the platform claim is not real with one. |
+| **Rebrand** | A collision with an existing product occupying a near-identical verification architecture. |
 
 ---
 
