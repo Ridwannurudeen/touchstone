@@ -1255,3 +1255,22 @@ blockquote cite {
   color: var(--ink-400);
   white-space: nowrap;
 }
+
+/* The gate call-and-answer. It is the only place on the site where a refusal is the headline,
+   so it is set like a result rather than like prose: the call above, the verdict below, and
+   the reason string exactly as the contract returns it. */
+.gate-call {
+  margin: var(--s6) 0;
+  padding: var(--s6);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--st-unevaluable);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  max-width: 46rem;
+}
+.gate-label { font-size: 0.75rem; color: var(--ink-400); margin: 0 0 var(--s4); word-break: break-all; }
+.gate-line { font-size: 0.9375rem; color: var(--ink-500); margin: 0 0 var(--s3); word-break: break-all; }
+.gate-result { font-size: 1.375rem; margin: 0; }
+.gate-false { color: var(--st-inconsistent); font-weight: 600; }
+.gate-reason { color: var(--ink-700); }

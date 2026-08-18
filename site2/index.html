@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Touchstone</title>
-<meta name="description" content="Machine-checked disclosure evidence for tokenized funds. Controls compiled from an issuer's own documents, evaluated deterministically, signed, and published on X Layer testnet — including when the answer is that it cannot verify.">
+<meta name="description" content="Machine-checked disclosure evidence for tokenized funds. Controls compiled from an issuer's own documents, evaluated deterministically, signed, and published on X Layer mainnet and testnet — including when the answer is that it cannot verify.">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 <link rel="canonical" href="https://touchstone.gudman.xyz/">
 <link rel="stylesheet" href="/assets/style.css">
@@ -60,6 +60,8 @@
         </ol>
         <p class="vc-meta mono">observed 2026-08-17T16:48:32.075003Z</p>
         <p class="vc-meta mono">block 38526525 · X Layer testnet</p>
+        <p class="vc-meta vc-mainnet mono">and again on <strong>X&nbsp;Layer mainnet</strong>,
+        2026-08-18 · sequence 1 · <strong>UNVERIFIABLE</strong></p>
         <a class="vc-link" href="/dossier/ustb-2026-08-17">Read the full report</a>
       </aside>
     </div>
@@ -68,9 +70,9 @@
   <section class="metrics-band" aria-label="Real counts">
     <div class="wrap metrics">
       <div class="metric">
-        <p class="metric-n">1</p>
-        <p class="metric-l">Report published</p>
-        <p class="metric-q">USTB sequence 1 — and it says UNVERIFIABLE</p>
+        <p class="metric-n">2</p>
+        <p class="metric-l">Reports published</p>
+        <p class="metric-q">testnet and mainnet — both say UNVERIFIABLE</p>
       </div>
       <div class="metric">
         <p class="metric-n">8</p>
@@ -330,6 +332,36 @@
     </div>
   </section>
 
+  <section class="section section-sunk">
+    <div class="wrap">
+      <p class="eyebrow">The consumer side</p>
+      <h2>And the gate refuses it</h2>
+      <div class="prose">
+        <p>A report is only worth something if a contract will act on it. <code>AssetGate</code>
+        is live on X&nbsp;Layer testnet, pointed at the registry, and it admits
+        <code>CONFIRMED</code> only. Asked about USTB, it reads the latest report, sees
+        <code>UNVERIFIABLE</code>, and declines.</p>
+      </div>
+
+      <div class="gate-call">
+        <p class="gate-label mono">AssetGate 0xAac48DC261B04737FDCB101D5049395121034a83</p>
+        <p class="gate-line mono">check(0x82287f63…54cc8)</p>
+        <p class="gate-result mono"><span class="gate-false">false</span> &nbsp;·&nbsp;
+        <span class="gate-reason">&ldquo;status not allowed&rdquo;</span></p>
+      </div>
+
+      <div class="prose">
+        <p>That refusal is the deployment&rsquo;s purpose, not its failure. The mask could have
+        been widened until the call returned <em>allowed</em> — and it would then be a consumer
+        contract that accepts an asset nobody has verified, which is the thing a gate exists to
+        prevent.</p>
+        <p>So the whole chain is on public chains and every link of it says no: an engine that
+        would not assert a NAV it could not confirm twice, and a contract that would not act on
+        the report that resulted. Neither was staged.</p>
+      </div>
+    </div>
+  </section>
+
   <section class="section">
     <div class="wrap">
       <p class="eyebrow">Changelog</p>
@@ -413,7 +445,8 @@
     </div>
     <div class="foot-meta">
       <p>Touchstone — disclosure evidence for tokenized funds.</p>
-      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p class="mono">mainnet registry 0xc9d58e4496bF061C3177301Ff02518eBB70AD30d · chain id 196</p>
+      <p class="mono">testnet registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952</p>
       <p>This site runs no JavaScript and makes no external requests. Fonts are
       self-hosted. What you see is static text over a signed bundle.</p>
     </div>
