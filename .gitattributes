@@ -19,3 +19,10 @@ data/compilations/** -text
 # under held CRLF — identical text, different bytes, different digest. Tests threading it into
 # a digest-checked boundary passed only because they compared it against itself.
 tests/historical_pack.json -text
+
+# The published bundles the site serves for download. `/verify` prints the sha256 of this
+# exact file and tells a reader to check it, so the bytes are the claim. Without this rule the
+# working tree held CRLF (sha 914ea892…) while the committed blob held LF (sha 0b9be60b…), and
+# a deploy from a fresh clone would have served a file contradicting the hash printed beside
+# its own download link.
+site/data/** -text
