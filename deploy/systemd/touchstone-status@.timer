@@ -1,0 +1,17 @@
+[Unit]
+Description=Regenerate the Touchstone status snapshot (%i)
+Documentation=file:/opt/touchstone/docs/DEPLOY-SERVICE.md
+
+[Timer]
+# Every five minutes. The page states its own generation time, so this interval is the
+# maximum age it can honestly claim — not a promise about the daemon, which the page says
+# explicitly. Faster would not make the underlying observation any fresher: the watcher runs
+# every fifteen minutes, and a status page that regenerated every second would only restate
+# the same observation more often.
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

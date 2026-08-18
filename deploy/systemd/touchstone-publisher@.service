@@ -1,0 +1,69 @@
+[Unit]
+# The daily epoch service. Instance is the network name, e.g.
+# touchstone-publisher@xlayer-mainnet.
+#
+# Unlike the observer this one signs and publishes, so it holds key material and runs once a
+# day. The two facts are related: the process that can do the most runs the least often, and
+# has the smallest surface for as long as possible.
+#
+# ⚠️ HOST CUSTODY DEVIATION, DISCLOSED NOT RESOLVED.
+# docs/KEY-MANAGEMENT.md separates the publisher and reporter by host. This unit runs both on
+# one machine, and that machine also serves unrelated public sites. docs/OPERATIONS.md records
+# the deviation. Do not read this unit as evidence that role separation exists.
+Description=Touchstone daily epoch service (%i)
+Documentation=file:/opt/touchstone/docs/DEPLOY-SERVICE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=touchstone
+Group=touchstone
+WorkingDirectory=/opt/touchstone
+
+# Root-owned, 0600, never readable by the service account or the web user. systemd reads it
+# as root before dropping privileges, so the secret never needs to be readable by the
+# identity that runs the process.
+EnvironmentFile=/etc/touchstone/%i.env
+
+ExecStart=/opt/touchstone/.venv/bin/python /opt/touchstone/scripts/run_service.py \
+    --manifest /opt/touchstone/deployments/%i.json \
+    --workspace /var/lib/touchstone/%i/ustb \
+    --asset-key eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e
+
+# A publication left in flight is settled on startup before anything new is signed, so a
+# restart is a resolution path rather than a risk. It still waits: a service that relaunched
+# instantly into a failing chain endpoint would burn the gas runway on retries.
+Restart=always
+RestartSec=300
+TimeoutStopSec=120
+
+ReadWritePaths=/var/lib/touchstone/%i
+StateDirectory=touchstone
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+MemoryMax=1G
+CPUQuota=50%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

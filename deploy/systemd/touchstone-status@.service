@@ -1,0 +1,46 @@
+[Unit]
+# Regenerates the public status snapshot. Instance is the network name.
+#
+# Reads the workspace and writes one HTML file into the served tree. It holds no key material
+# and publishes nothing to any chain. It is a timer rather than a daemon because a page that
+# regenerates on a schedule fails visibly — the timestamp on it stops moving — whereas a
+# crashed generator pretending to be a service would leave the same page with no signal.
+Description=Touchstone public status snapshot (%i)
+Documentation=file:/opt/touchstone/docs/DEPLOY-SERVICE.md
+
+[Service]
+Type=oneshot
+User=touchstone
+Group=touchstone
+WorkingDirectory=/opt/touchstone
+ExecStart=/opt/touchstone/.venv/bin/python /opt/touchstone/scripts/build_status.py \
+    --workspace /var/lib/touchstone/%i/ustb \
+    --out /opt/touchstone-site/status.html \
+    --registry-address ${TOUCHSTONE_REGISTRY_ADDRESS}
+EnvironmentFile=/etc/touchstone/%i.status.env
+
+# The served tree, and nothing else. It writes one file into a directory nginx reads; it has
+# no business anywhere else on a host that carries unrelated sites.
+ReadWritePaths=/opt/touchstone-site
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+MemoryMax=256M
+CPUQuota=10%
+TasksMax=32

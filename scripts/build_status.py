@@ -1,0 +1,184 @@
+"""Render a public status snapshot from the watcher's log and the daemon's heartbeat.
+
+The site is static and carries no JavaScript, which constrains what a status page is allowed
+to say. **A static page cannot know when it is being read.** So it never says "checked N
+seconds ago": that number would be computed when the file was written and then served,
+unchanged and increasingly wrong, for as long as the file survives. Every time here is
+absolute, in UTC, and the page states when it was generated so a reader can do the subtraction
+against their own clock rather than trusting ours.
+
+It also refuses the other easy lie. A green badge would be the daemon's own verdict about
+itself, and a process that has stopped writing cannot notice that it has stopped. The daemon's
+liveness is decided at generation time by `heartbeat.verify`, which compares the record's
+declared expiry against the clock rather than reading a stored answer — and the page says
+plainly that an old snapshot is not evidence of a dead daemon, only of a snapshot that was not
+regenerated. Those are different failures and only one of them is about the publisher.
+
+Nothing here reads a key or touches a chain. It renders a file.
+"""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import html
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from touchstone import heartbeat, observation  # noqa: E402
+from touchstone.assets import USTB  # noqa: E402
+from touchstone.workspace import Workspace  # noqa: E402
+
+TEMPLATE = ROOT / "site2" / "_docs-template.html"
+
+# What each transition means, in the reader's terms rather than the enum's. `PAYLOAD_CHANGED`
+# gets the longest gloss because it is the one a reader is most likely to over-read: the bytes
+# moved and the substance did not, which is not the issuer changing a number.
+MEANING = {
+    "FIRST_OBSERVATION": "first look at this source; nothing to compare against yet",
+    "UNCHANGED": "byte-for-byte identical to the previous look",
+    "PAYLOAD_CHANGED": (
+        "the response bytes differed, but the normalized observation did not — a "
+        "re-serialisation or reordering, not a change in what the issuer published"
+    ),
+    "OBSERVATION_CHANGED": "the normalized observation itself differed",
+    "SOURCE_UNAVAILABLE": "the source did not answer; recorded as silence, not as an observation",
+    "PARSE_FAILED": "an artifact arrived and the normalizer refused it",
+}
+
+
+def _stamp(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _row(record: dict[str, object]) -> str:
+    transition = str(record.get("transition", ""))
+    digest = str(record.get("payload_sha256") or "")
+    detail = record.get("detail")
+    return (
+        "<tr>"
+        f"<td><code>{html.escape(str(record.get('source_id', '')))}</code></td>"
+        f"<td><code>{html.escape(str(record.get('observed_at', '')))}</code></td>"
+        f"<td><strong>{html.escape(transition)}</strong>"
+        f'<span class="td-sub">{html.escape(MEANING.get(transition, ""))}</span></td>'
+        f"<td><code>{html.escape(digest[:16])}{'…' if digest else ''}</code>"
+        + (f'<span class="td-sub">{html.escape(str(detail))}</span>' if detail else "")
+        + "</td>"
+        "</tr>"
+    )
+
+
+def render(workspace: Workspace, *, now: datetime, registry_address: str) -> str:
+    latest = observation.latest_by_source(workspace.root / "observations.jsonl")
+    total = len(observation.read_all(workspace.root / "observations.jsonl"))
+    health = heartbeat.verify(
+        workspace.root / "heartbeat.json",
+        now=now,
+        asset_key=USTB.asset_key,
+        registry_address=registry_address,
+    )
+
+    rows = "\n".join(
+        _row(latest[manifest.source_id])
+        for manifest in USTB.sources
+        if manifest.source_id in latest
+    )
+    if not rows:
+        rows = '<tr><td colspan="4">No observation has been recorded yet.</td></tr>'
+
+    record = health.record or {}
+    beat = (
+        f"<p>The publishing daemon last wrote a heartbeat at "
+        f"<code>{html.escape(str(record.get('written_at', 'never')))}</code>, declaring it "
+        f"valid until <code>{html.escape(str(record.get('expires_at', 'n/a')))}</code>.</p>"
+        if record
+        else "<p>No heartbeat has been written by the publishing daemon.</p>"
+    )
+    verdict = (
+        "Within its declared window at the moment this page was generated."
+        if health.daemon_alive
+        else "Outside its declared window at the moment this page was generated, or absent."
+    )
+    reasons = (
+        "<ul>" + "".join(f"<li>{html.escape(r)}</li>" for r in health.reasons) + "</ul>"
+        if health.reasons
+        else ""
+    )
+
+    body = f"""<h1>Status</h1>
+<p class="t-lead">What was last observed, and when. <strong>This page is a static
+snapshot generated at <code>{_stamp(now)}</code>.</strong> It cannot know when you are
+reading it, so every time below is absolute and in UTC; subtract against your own clock.</p>
+
+<h2 id="watching">The sources</h2>
+<p>{total} observations recorded. The watcher fetches each source, stores the exact
+response bytes, and records what changed. It signs nothing and publishes nothing.</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Source</th><th>Last observed (UTC)</th><th>Result</th><th>Artifact</th></tr></thead>
+<tbody>
+{rows}
+</tbody>
+</table>
+</div>
+
+<h2 id="daemon">The publishing daemon</h2>
+{beat}
+<p><strong>{html.escape(verdict)}</strong></p>
+{reasons}
+<p>That verdict is computed here, at generation time, by comparing the heartbeat's own
+declared expiry against the clock. It is not a status the daemon stored about itself: a
+process that has stopped running cannot write down that it stopped.</p>
+
+<h2 id="reading">How to read a stale page</h2>
+<p><strong>An old timestamp above is not proof that the daemon is down.</strong> It proves
+that this page was not regenerated. Those are different failures: one is about the publisher,
+the other about whatever refreshes this file. Neither is evidence for the other, and this page
+will not guess which one happened.</p>
+<p>Nothing on this page asserts that an asset is verified. Every report published so far
+reports <code>UNVERIFIABLE</code>, and the consumer gate on X&nbsp;Layer testnet refuses the
+asset accordingly. See <a href="/verify">Verify</a> and <a href="/coverage">Coverage</a>.</p>
+"""
+    page = TEMPLATE.read_text(encoding="utf-8")
+    page = page.replace("<!--DOC_TITLE-->", "Status")
+    page = page.replace("<!--DOC_BODY-->", body)
+    return page.replace(
+        "<!--DOC_NAV-->",
+        '      <ol class="doc-toc-list">'
+        '<li class="toc-2"><a href="#watching">The sources</a></li>'
+        '<li class="toc-2"><a href="#daemon">The publishing daemon</a></li>'
+        '<li class="toc-2"><a href="#reading">How to read a stale page</a></li>'
+        "</ol>",
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--workspace", required=True)
+    parser.add_argument("--out", required=True, help="where to write status.html")
+    parser.add_argument(
+        "--registry-address",
+        required=True,
+        help="the registry this workspace publishes to; the heartbeat is checked against it",
+    )
+    arguments = parser.parse_args(argv)
+
+    now = datetime.now(timezone.utc)
+    page = render(
+        Workspace(arguments.workspace),
+        now=now,
+        registry_address=arguments.registry_address,
+    )
+    target = Path(arguments.out)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(page, encoding="utf-8")
+    print(f"status snapshot generated {_stamp(now)} -> {target}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

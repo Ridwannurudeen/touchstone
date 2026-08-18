@@ -1,0 +1,62 @@
+[Unit]
+# The watcher. Instance is the network name, e.g. touchstone-observer@xlayer-mainnet.
+#
+# This unit deliberately has NO EnvironmentFile. The observer holds no key material and
+# cannot publish — that is the reason it is the process allowed to run every few minutes on
+# a host shared with unrelated sites. If a future change makes it need a secret, that change
+# is wrong, and this missing line is where it should be noticed.
+Description=Touchstone source observer (%i)
+Documentation=file:/opt/touchstone/docs/DEPLOY-SERVICE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=touchstone
+Group=touchstone
+WorkingDirectory=/opt/touchstone
+ExecStart=/opt/touchstone/.venv/bin/python /opt/touchstone/scripts/run_observer.py \
+    --workspace /var/lib/touchstone/%i/ustb \
+    --interval-seconds 900
+
+# The issuer is a third party. A crash loop that reconnected instantly would become a burst
+# against them, so a restart waits longer than the poll interval it is restarting into.
+Restart=always
+RestartSec=120
+TimeoutStopSec=30
+
+# The workspace is the only thing it may write. Its evidence is the one artifact in this
+# project that cannot be recreated, and everything else on a shared host is none of its
+# business.
+ReadWritePaths=/var/lib/touchstone/%i
+StateDirectory=touchstone
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# The box carries roughly 37 other live sites and runs hot. A watcher that parses a 226 KB
+# feed every fifteen minutes needs very little, and a bound is cheaper than an argument
+# about whose process caused an outage.
+MemoryMax=512M
+CPUQuota=25%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
