@@ -21,15 +21,26 @@ observed.
 | Version | `0.1.0` (`pyproject.toml`) |
 | Licence | Apache-2.0 |
 | One sentence | Touchstone compiles issuer-published RWA disclosures into cited, machine-checkable controls, evaluates them deterministically against retained evidence, and can publish signed results to an append-only registry on X Layer. |
-| Public website | `not_deployed` |
-| Public dossier | `not_deployed` (PLAN-T9 unbuilt) |
-| Demo URL | `not_deployed` |
-| Documentation site | `not_deployed` |
-| X / social handles | `not_deployed` (owner gate; see `docs/BRAND-CLEARANCE.md`) |
-| Domain | `not_deployed` |
-| Repository | Private git remote `github.com/Ridwannurudeen/touchstone` exists. Making it public is a separate owner decision. A public clone URL is `not_deployed`. |
-| Submission venue | `unknown` — this repository names a hackathon submission as owner gate G5 and does not name the form or organiser. |
+| Public website | **LIVE** — https://touchstone.gudman.xyz — 20 pages, zero JavaScript, self-hosted fonts |
+| Public dossier | **LIVE** — https://touchstone.gudman.xyz/dossier/ustb-2026-08-17 — the published report in full, every control and digest |
+| Demo URL | `not_deployed` — no video recorded yet |
+| Documentation site | **LIVE** — https://touchstone.gudman.xyz/docs — 1,803 lines of the project's committed documentation |
+| X / social handles | `not_deployed` — **required by the competition rules (a dedicated account, plus a post mentioning @XLayerOfficial). Owner action.** |
+| Domain | `gudman.xyz` subdomain, TLS via Let's Encrypt, certificate to 2026-11-16 |
+| Repository | `github.com/Ridwannurudeen/touchstone` — **still PRIVATE, verified 2026-08-18.** Judges cannot read 1,732 tests they cannot clone. Making it public is an owner decision and is on the critical path for the submission. |
+| Submission venue | **OKX AI Season Hackathon**, X Layer. Google Form, deadline **2026-08-21 23:59 UTC**. |
 | Contact | `unknown` — not recorded in the tracked tree. |
+
+## Competition requirements, checked against the tree on 2026-08-18
+
+| Requirement | State |
+|---|---|
+| AI in the product design | **Met.** A model compiles issuer disclosures into controls citing byte-exact spans. It never runs in the serving path, which is the point — the daily result is deterministic. |
+| Deployed on X Layer testnet | **Met.** Registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`, chain 1952, one published report at block 38526525. |
+| Launched on X Layer mainnet | **NOT MET.** `deployments/xlayer-mainnet.template.json` holds placeholder addresses. Mainnet is reachable (chain 196) and gas is 0.02 gwei, so registry + `AssetGate` + one report costs about 0.000073 OKB — a fraction of a cent. All three role addresses hold 0 OKB at nonce 0, so the requirement is one small transfer and one deploy run, not an engineering problem. |
+| Dedicated X account, kept active | **NOT MET.** No account exists. |
+| Post mentioning @XLayerOfficial | **NOT MET.** Depends on the account. |
+| Google Form by 2026-08-21 23:59 UTC | **NOT SUBMITTED.** Owner action; nothing is submitted without explicit approval. |
 
 Touchstone does not issue assets, custody funds, recommend investments,
 assign credit ratings, or claim facts beyond the evidence class it has
