@@ -36,10 +36,10 @@ observed.
 | Requirement | State |
 |---|---|
 | AI in the product design | **Met.** A model compiles issuer disclosures into controls citing byte-exact spans. It never runs in the serving path, which is the point — the daily result is deterministic. |
-| Deployed on X Layer testnet | **Met.** Registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`, chain 1952, one published report at block 38526525. |
-| Launched on X Layer mainnet | **NOT MET.** `deployments/xlayer-mainnet.template.json` holds placeholder addresses. Mainnet is reachable (chain 196) and gas is 0.02 gwei, so registry + `AssetGate` + one report costs about 0.000073 OKB — a fraction of a cent. All three role addresses hold 0 OKB at nonce 0, so the requirement is one small transfer and one deploy run, not an engineering problem. |
+| Deployed on X Layer testnet | **Met.** Registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`, chain 1952, three published reports (sequences 1–3; sequence 3 is a correction). `AssetGate` is also live there at `0xAac48DC261B04737FDCB101D5049395121034a83` and correctly refuses USTB. |
+| Launched on X Layer mainnet | **MET, 2026-08-18.** Registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, chain 196, deployed at block 68291416 under a recorded owner approval; manifest `deployments/xlayer-mainnet.json`, `deployment_state: active`. Two published reports (sequence 1, and sequence 2 correcting it). ⚠️ That address is *also* a superseded registry on chain 1952 — same deployer, nonce 0 — so the chain id is the only thing that identifies this deployment. `AssetGate` is deliberately **not** on mainnet: `requiredControlSetRoot` is immutable and the approved control set is still moving. |
 | Dedicated X account, kept active | **Account created:** `@touch__stone`. "Kept active" is a continuing obligation, not a one-time step. |
-| Post mentioning @XLayerOfficial | **NOT MET.** The account now exists, so this is unblocked. |
+| Post mentioning @XLayerOfficial | **Owner reports this as done.** Not machine-verifiable from this repo, and the post URL is not recorded here — it belongs in the submission form field, not in a document that cannot check it. |
 | Google Form by 2026-08-21 23:59 UTC | **NOT SUBMITTED.** The owner holds the form. Nothing is submitted without explicit approval. |
 
 Touchstone does not issue assets, custody funds, recommend investments,
@@ -213,9 +213,9 @@ evidence or the refusal.
 
 | Claim one might want | Honest substitute | Evidence |
 |---|---|---|
-| "Live on X Layer" | A testnet registry is deployed and holds one published report. Testnet only; mainnet is unscheduled. | `docs/OPERATIONS.md`, `docs/DEPLOYMENT-G1-EXECUTED.md` |
-| "Two live adapters" | One adapter, one live run. Not two, and not continuous. | `ROADMAP.md` completion table |
-| "Consumer contract in production" | `AssetGate` is `not_deployed` on a persistent chain. | `scripts/e2e_local.py`; no address in `deployments/` |
+| "Live on X Layer" | Registries are live on testnet (3 reports) and mainnet (2 reports), all `UNVERIFIABLE`. Live is accurate; "verified" is not. | `docs/OPERATIONS.md`, `docs/DEPLOYMENT-G1-EXECUTED.md` |
+| "Two live adapters" | One adapter, several live runs. Not two assets, and **not continuous** — every run was hand-started. | `ROADMAP.md` completion table |
+| "Consumer contract in production" | `AssetGate` is live on **testnet** at `0xAac48DC2…`, and refuses USTB. It is `not_deployed` on mainnet, and no third party consumes it. | `contracts/scripts/deploy_gate.js` |
 | "Autonomous canary" | Prepared, not executed. | `docs/CANARY-G1B.md` |
 | "Public dossier" | Live since 2026-08-18 at touchstone.gudman.xyz. | The site itself; `docs/DEPLOY-T9.md` |
 | "Independently attested" | Not claimed. Issuer API is issuer disclosure. | `manifests/sources/ustb.json` `authority_class: issuer-api` |

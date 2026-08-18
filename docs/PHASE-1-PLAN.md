@@ -260,8 +260,11 @@ The wiring came first because it was the real gap: `scripts/run_service.py` refu
 mode except `--resolve-only`, saying so honestly — "no live epoch adapter is wired yet". The
 USTB pipeline was complete and the daemon could reconcile, but nothing drove an epoch on a
 schedule, so the number of *autonomous* adapters was zero rather than one. **That is closed:
-USTB now runs unattended.** It has still never run against live sources, so the adapter count
-is one built-and-tested, zero proven live.
+USTB now runs unattended.** ⚠️ This paragraph continued "it has still never run against live
+sources, so the adapter count is one built-and-tested, zero proven live" until 2026-08-18, by
+which point USTB had published five reports from live issuer retrieval across two chains. The
+adapter count is **one, proven live**. What is still absent is *continuity*: every slot was
+hand-started.
 
 **USDY is cut.** Its retrieval is unbounded and no official bounded route has been found, so
 further work on it buys nothing. **FOBXX is cut as an adapter and retained as a documented

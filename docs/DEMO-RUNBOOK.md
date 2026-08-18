@@ -65,12 +65,12 @@ fabricated demo.
 | Approved USTB control set | Present. Eight controls in `data/compilations/APPROVALS.json`, each bound to a compilation digest. |
 | Committed fixtures | Present. The 2026-08-13 and 2026-08-14 Superstate captures, plus FOBXX SEC fixtures. Declared in the source manifests. See `fixtures/README.md`. |
 | USTB adapter | Built, wired, tested, and **run once against live sources** on 2026-08-17. |
-| Testnet registry | Deployed. `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` on chain 1952. Holds **one** report: USTB sequence 1, state `UNVERIFIABLE`. See `docs/OPERATIONS.md`. |
-| Publisher authorised and funded | Yes, on that registry. Publication itself is a separate owner gate (`docs/CANARY-G1B.md`) and has not been run. |
-| Previous signed epoch on a public chain | **One.** `ustb-2026-08-17`, sequence 1, `UNVERIFIABLE`. |
-| Living dossier (PLAN-T9) | **Unbuilt.** No public page, no "Compile disclosure" button, no "why this state?" view. |
-| `AssetGate` on a persistent chain | **`not_deployed`.** Written and tested; constructed only inside the local end-to-end run. |
-| Demo URL | **`not_deployed`.** |
+| Testnet registry | Deployed. `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` on chain 1952. Holds **three** reports (sequences 1–3, the last a correction), all `UNVERIFIABLE`. A mainnet registry is also live on chain 196. See `docs/OPERATIONS.md`. |
+| Publisher authorised and funded | Yes, on both registries. Publication is a separate owner gate (`docs/CANARY-G1B.md`) and **has now been run five times**. |
+| Previous signed epoch on a public chain | **Five**, across two chains. Epochs `ustb-2026-08-17` and `ustb-2026-08-18`; every one `UNVERIFIABLE`. |
+| Living dossier (PLAN-T9) | **Built and live** at https://touchstone.gudman.xyz — 21 pages, zero JavaScript. |
+| `AssetGate` on a persistent chain | **Live on testnet** at `0xAac48DC261B04737FDCB101D5049395121034a83`; `check(USTB)` returns `(false, "status not allowed")`. `not_deployed` on mainnet. |
+| Demo URL | https://touchstone.gudman.xyz |
 | Host / supervisor | **`not_configured`.** |
 
 The pre-staged list in the roadmap is therefore only partly true today.
@@ -242,7 +242,7 @@ deployed `AssetGate`. Those remain PLAN-T9 and a later owner gate.
 ## 7. What this document does not claim
 
 - That a judge can walk the two-act script today.
-- That a public demo URL exists. It is `not_deployed`.
+- ~~That a public demo URL exists.~~ One does: https://touchstone.gudman.xyz (since 2026-08-18).
 - That fixture evaluation is a live source observation.
 - That the local `AssetGate` is the testnet consumer.
 - That a canary publication is this demo, or that this demo authorises

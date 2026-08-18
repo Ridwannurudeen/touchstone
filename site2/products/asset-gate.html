@@ -101,12 +101,14 @@
     <div class="wrap">
       <h2>What deployment would take</h2>
       <div class="prose">
-        <p>The registry it would read is live on X&nbsp;Layer testnet at
+        <p>The registry it reads is live on X&nbsp;Layer testnet at
         <code class="wrap-code">0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C</code>,
-        chain id <code>1952</code>, with one published report. AssetGate stays
-        undeployed until there is a consumer with a real gating decision to
-        make; deploying it with no consumer would add a contract address to
-        this page and nothing true to the record.</p>
+        chain id <code>1952</code>, holding three published reports. AssetGate is
+        deployed there and answering. It stays <em>undeployed on mainnet</em> until
+        there is a consumer with a real gating decision to make, and until the
+        approved control set stops moving — <code>requiredControlSetRoot</code> is
+        immutable once set, so pinning a root the project intends to retire would be
+        wrong on the day it was deployed.</p>
       </div>
       <div class="cta-row">
         <a class="cta-ghost" href="/products/registry">Read about the registry</a>

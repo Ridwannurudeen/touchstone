@@ -1,7 +1,7 @@
 {
-  "reports_published": 1,
+  "reports_published": 5,
   "controls_evaluated": 8,
-  "evidence_captures": 3,
+  "evidence_captures": 9,
   "assets_live": 1,
   "assets_manifested": 4,
   "approved_controls_current": 5,
@@ -9,20 +9,86 @@
   "modules": 28,
   "contracts": 2,
   "doc_lines": 4840,
-  "registry": "0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C",
-  "chain_id": 1952,
-  "network": "X Layer testnet",
   "reports": [
     {
+      "network": "xlayer-mainnet",
+      "chain_id": 196,
+      "registry": "0xc9d58e4496bF061C3177301Ff02518eBB70AD30d",
+      "epoch_id": "ustb-2026-08-18",
+      "sequence": 1,
+      "correction_of": null,
+      "state": "UNVERIFIABLE",
+      "event": "RECONFIRMED",
+      "observed_at": "2026-08-18T14:04:21.592662Z",
+      "controls": 5,
+      "satisfied": 4,
+      "unevaluable": 1,
+      "block": 68292878,
+      "transaction_hash": "0xfa4b7992bee12819017ca16a0d338d629e86b0bf2d3487f6dd07abfe6bef0b85"
+    },
+    {
+      "network": "xlayer-mainnet",
+      "chain_id": 196,
+      "registry": "0xc9d58e4496bF061C3177301Ff02518eBB70AD30d",
+      "epoch_id": "ustb-2026-08-18",
+      "sequence": 2,
+      "correction_of": 1,
+      "state": "UNVERIFIABLE",
+      "event": "CORRECTION_PUBLISHED",
+      "observed_at": "2026-08-18T14:04:21.592662Z",
+      "controls": 5,
+      "satisfied": 4,
+      "unevaluable": 1,
+      "block": 68307118,
+      "transaction_hash": "0x363539ad1cc5577936ee6111e4a4f1c826f9d35b0b7a6f020d2d712affc41bfb"
+    },
+    {
+      "network": "xlayer-testnet",
+      "chain_id": 1952,
+      "registry": "0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C",
       "epoch_id": "ustb-2026-08-17",
       "sequence": 1,
+      "correction_of": null,
       "state": "UNVERIFIABLE",
+      "event": "RECONFIRMED",
       "observed_at": "2026-08-17T16:48:32.075003Z",
       "controls": 8,
       "satisfied": 5,
       "unevaluable": 3,
-      "evidence_captures": 3,
-      "bundle": "ustb-2026-08-17-1.json"
+      "block": 38526525,
+      "transaction_hash": "0x5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869"
+    },
+    {
+      "network": "xlayer-testnet",
+      "chain_id": 1952,
+      "registry": "0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C",
+      "epoch_id": "ustb-2026-08-18",
+      "sequence": 2,
+      "correction_of": null,
+      "state": "UNVERIFIABLE",
+      "event": "RECONFIRMED",
+      "observed_at": "2026-08-18T16:28:07.833801Z",
+      "controls": 5,
+      "satisfied": 4,
+      "unevaluable": 1,
+      "block": 38611710,
+      "transaction_hash": "0x6a2832db0999840141c80d04c5dbed4295ddce8a3a62db4b27fec74093d990da"
+    },
+    {
+      "network": "xlayer-testnet",
+      "chain_id": 1952,
+      "registry": "0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C",
+      "epoch_id": "ustb-2026-08-17",
+      "sequence": 3,
+      "correction_of": 1,
+      "state": "UNVERIFIABLE",
+      "event": "CORRECTION_PUBLISHED",
+      "observed_at": "2026-08-17T16:48:32.075003Z",
+      "controls": 8,
+      "satisfied": 5,
+      "unevaluable": 3,
+      "block": 38617112,
+      "transaction_hash": "0x1cdf45d0f93f7268a147eed015df45f1e531107c961473b711b6ef6abcd9059b"
     }
   ],
   "assets": [
@@ -71,5 +137,10 @@
       ],
       "manifest": "ustb.json"
     }
+  ],
+  "corrections_published": 2,
+  "networks_live": [
+    "xlayer-mainnet",
+    "xlayer-testnet"
   ]
 }

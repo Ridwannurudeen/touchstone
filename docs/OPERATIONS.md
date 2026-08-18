@@ -177,7 +177,7 @@ Testnet publisher: `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710`, funded with 0.0
 deploy measured 1,284,548 gas at 20,000,001 wei — about 0.0000257 OKB — so one faucet claim
 covers the operating window many times over.
 
-Mainnet publisher: `not_deployed`.
+Mainnet publisher: `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710` — the same identity as testnet, authorized on the mainnet registry, holding roughly 0.005 OKB. Mainnet OKB is bought, not faucet-claimed, so the runway there is finite in a way testnet's is not.
 
 ---
 

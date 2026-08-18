@@ -43,6 +43,34 @@
         <li class="tl-item">
           <p class="tl-date mono">2026-08-18</p>
           <div class="tl-body">
+            <h2>Two corrections published, one on each chain</h2>
+            <p>Sequence&nbsp;1 on both chains was signed carrying an operational event
+            of <code>RECONFIRMED</code>. A first publication has nothing to reconfirm,
+            so that asserted a history which did not exist. The same reports also
+            carried a limitation reading &ldquo;This local-only report&rdquo; while
+            sitting on a public chain. Both statements were wrong in the signed bytes,
+            and signed bytes cannot be edited.</p>
+            <p>They were restated through the registry&rsquo;s
+            <code>publishCorrection</code> entry point: <strong>testnet sequence 3</strong>
+            (block 38617112) and <strong>mainnet sequence 2</strong> (block 68307118).
+            A correction restates; it does not re-decide. Each reproduces its
+            original&rsquo;s <code>control_set_root</code>, <code>evidence_root</code> and
+            approval-ledger digest exactly &mdash; the builder refuses to sign one that
+            cannot &mdash; and the reported state stays <code>UNVERIFIABLE</code> on both.
+            The limitation count is unchanged, because a correction that quietly dropped
+            a caveat would be using an honesty mechanism to say less.</p>
+            <p><code>epochSequence</code> still points at each epoch&rsquo;s <em>first</em>
+            publication, so a correction restates an epoch without opening one. One
+            consequence is worth stating plainly: on testnet the <em>latest</em> report is
+            now sequence&nbsp;3, which is an <em>older</em> epoch than sequence&nbsp;2.
+            That is what append-only correction looks like.</p>
+            <p>Testnet sequence&nbsp;2 was left alone. Its <code>RECONFIRMED</code> is
+            genuine.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-18</p>
+          <div class="tl-body">
             <h2>Two retrieval routes re-measured</h2>
             <p>FOBXX&rsquo;s regulator route was re-verified live and is bounded:
             <code>data.sec.gov</code> returns HTTP&nbsp;200 in 29,354 bytes with 68
