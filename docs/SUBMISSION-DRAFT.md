@@ -23,7 +23,7 @@ observed.
 | One sentence | Touchstone compiles issuer-published RWA disclosures into cited, machine-checkable controls, evaluates them deterministically against retained evidence, and can publish signed results to an append-only registry on X Layer. |
 | Public website | **LIVE** — https://touchstone.gudman.xyz — 21 pages, zero JavaScript, self-hosted fonts |
 | Public dossier | **LIVE** — https://touchstone.gudman.xyz/dossier/ustb-2026-08-17 — the published report in full, every control and digest |
-| Demo URL | `not_deployed` — no video recorded yet |
+| Demo URL | `not_deployed` — an 89-second silent cut exists and is not yet uploaded or narrated |
 | Documentation site | **LIVE** — https://touchstone.gudman.xyz/docs — 2,003 lines of the project's committed documentation |
 | X / social handles | **`@touch__stone`** — created by the owner 2026-08-18. The owner reports the @XLayerOfficial post as published; it is not machine-verifiable from this repository, and its URL belongs in the submission form. The rules require the account be *kept active*, which cannot be backdated. |
 | Domain | `gudman.xyz` subdomain, TLS via Let's Encrypt, certificate to 2026-11-16 |
@@ -159,7 +159,7 @@ attestation and must not be described as trustless.
 | Hero asset (off-chain identity) | USTB `eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e` |
 | Published report / explorer tx | Five reports, all `UNVERIFIABLE`. First: USTB sequence 1, block 38526525, tx `0x5107140c…5be6b869`, X Layer testnet. Latest testnet: sequence 3 (a correction), block 38617112. Latest mainnet: sequence 2 (a correction), block 68307118 |
 | Verification API | `not_deployed` |
-| Status page | `not_deployed` |
+| Status page | https://touchstone.gudman.xyz/status — regenerated every five minutes from the observer's log; states its own generation time and that it may be stale |
 
 Mainnet is unscheduled. It is conditional on a proven testnet loop, and
 is additionally blocked until the deployer and publisher keys sit on
@@ -240,12 +240,19 @@ Prepared in the repository, not attached to anything:
 - A release document from `scripts/build_release.py` — **not yet cut**
 - A signed release manifest — **not implemented**
 
+Prepared since this list was written:
+
+- Live explorer link to a publication — testnet tx `0x5107140c…5be6b869` (block 38526525) and
+  mainnet tx `0xfa4b7992…6bef0b85` (block 68292878)
+- Mainnet addresses — registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` on chain 196,
+  publisher `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710`
+- Demo video — an 89-second silent cut exists; **no public URL yet**, so the field below stays
+  unfilled rather than pointing at a local file
+
 Not prepared, and not to be invented:
 
-- Public repository URL — `not_deployed`
-- Demo video URL — `not_deployed`
-- Live explorer link to a publication — `not_deployed`
-- Mainnet addresses — `not_deployed`
+- Public repository URL — `not_deployed` until the owner makes the repository public
+- Demo video URL — `not_deployed` until the narrated cut is uploaded
 
 ---
 

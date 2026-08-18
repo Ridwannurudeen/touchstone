@@ -80,7 +80,12 @@ Three instances found and fixed this session: `site2/dossier.html` claiming one 
 `docs/DEMO-RUNBOOK.md` §4 claiming the dossier was unbuilt and the gate never deployed while §3
 said both were live; `AI_USAGE.md` describing only coding assistants.
 
-**But hand-sweeping has now missed something three times running.** The real fix is
+**Then a fourth round, found by Codex.** It asserted contradictions remained without citing
+one, so I checked every occurrence: the status page was listed `not_deployed` while `/status` is
+live, and "live explorer link" and "mainnet addresses" were listed as not prepared while both
+exist. Fixed — and the pattern is now four for four.
+
+**Hand-sweeping has missed something every single time it has been tried.** The real fix is
 mechanical: generate `project-state.json` from manifests, chain reads, transparency logs, the
 approval ledger and the bundles; render every public surface from it; and add a CI check that
 fails on a deployed contract called undeployed, a report count disagreeing with chain state, or
@@ -162,19 +167,56 @@ relevant trademarks. Contracts and deployment history can remain as legacy infra
 
 ---
 
-## D. Where I want the joint decision — Registry v2
+## D. Registry v2 — joint recommendation
 
-The audit recommends EIP-712/secp256k1 for an onchain-verifiable report signature, retaining
-Ed25519 for the offline bundle. That is a real design fork and I do not want to pick it alone:
+My objection was that two signatures over one report means two things that can disagree, and if
+they do, which is the report? Codex's design dissolves it, and we now agree:
 
-- **Two signatures over one report** means two things that can disagree. If they ever do, which
-  is the report?
-- **The five already-published reports** were signed Ed25519 only. A v2 registry either
-  abandons them or must represent them as legacy.
-- **A relayer paying gas without becoming the reporting authority** is a genuine benefit and is
-  the strongest argument for the change.
+**They are not two signatures over the same claim.** Ed25519 keeps signing the report — that is
+the artifact, and the offline bundle depends on it. EIP-712/secp256k1 signs a *separate
+attestation* whose subject is `{reportDigest, policyId, policyRoot, controlSetRoot,
+evidenceRoot, publisher, validUntil}`. One says "this is the report"; the other says "this
+report digest is what I put on chain". They cannot contradict each other because they assert
+different things, and the second is checkable by an EVM contract, which Ed25519 is not.
 
-Codex is drafting its own view; the merged recommendation will land here.
+This also delivers the benefit that argued for the change: a relayer can pay gas without
+becoming the reporting authority, because the attestation names the signer.
+
+**The five already-published reports stay as legacy v1**, unchanged, on the existing contract,
+with a compatibility read path. Optional `legacy_bridge` entries may link an old report id to a
+bundle digest **only where that digest can be proven from retained artifacts** — and they are
+marked legacy and not policy-bound, because presenting a reconstruction as an original is the
+one thing this project must never do.
+
+**Sequencing:** report schema → bundle commitment and approver identity → registry v2 →
+consumer. The registry cannot be designed before the fields it must store are fixed.
+
+---
+
+## D2. Where Codex and I disagreed, and how it resolved
+
+Recording these because a plan both parties merely nodded at is worth less than one where the
+disagreements are visible.
+
+**1. Does `AssetGate` need modifying for policies? — No. I was right.**
+Codex's plan allocated 1.5–2 days to "update `AssetGate` to require exact `policyId` +
+`controlSetRoot`". `AssetGate.check(bytes32 assetKey)` passes its argument straight to
+`registry.getLatestReport(assetKey)` and never interprets it
+(`contracts/contracts/AssetGate.sol:47-48`). A policy key *is* a `bytes32`. The only thing that
+must change is the constructor's `requiredControlSetRoot`, which is deploy-time configuration —
+one gate per policy, pinned to that policy's root. Codex's own earlier memo said exactly this
+before its plan contradicted it. **Work dropped.**
+
+**2. Do the public docs still contradict themselves? — Yes. Codex was right.**
+I had marked Blocker 5 partial and believed the remaining `not_deployed` strings were
+definitional or true. Codex asserted contradictions remained without citing one, so I checked
+every occurrence. Three were false: the status page listed as `not_deployed` while
+`/status` is live, and "live explorer link" and "mainnet addresses" listed as not prepared
+while both exist. **Fixed.**
+
+That is the **fourth** consecutive sweep in which hand-checking missed something. It is the
+strongest possible argument for keeping Blocker 5 open until public claims are generated
+mechanically, and for not trusting my own "I checked it" on this class of defect.
 
 ---
 
