@@ -8,11 +8,19 @@ records what changed since the last look.
 signer, a publisher, a deployment manifest or a registry, and a test parses the import graph
 to keep that true. The process that runs most often is the one that carries the least.
 
-That is a statement about this program, not a capability boundary around it. If the observer
-and the publisher run as the same Unix user, same-UID code can read the publisher's process
-environment on a host with ordinary `/proc` permissions — so "the observer cannot publish"
-would be a claim about the operating system, and this file cannot make it. See
-`docs/DEPLOY-SERVICE.md`.
+That is a statement about this program, not a capability boundary around it. Two things bound
+how far it can be taken:
+
+* **Key exposure** is bounded by running as a separate Unix identity, because same-UID code
+  can otherwise read the publisher's process environment. That is done; see
+  `docs/DEPLOY-SERVICE.md`.
+* **Conclusion integrity is not bounded at all.** This process writes the evidence store the
+  daily service confirms against, and `retrieved_at` is caller-supplied. Code running here
+  could append a fabricated payload with a backdated capture time and cause a later epoch to
+  confirm a value that was never retrieved. It cannot publish; it can decide what a
+  publication concludes. That is **R-13** in `docs/THREAT-MODEL.md`, and it is the reason
+  "the process that runs most often is the one that can do least" is a description of this
+  file's imports rather than a security property.
 
 Two things it deliberately does not do:
 
@@ -52,10 +60,6 @@ from touchstone.sources import (  # noqa: E402
     fetch_source,
 )
 from touchstone.workspace import Workspace  # noqa: E402
-
-
-def observation_log(workspace: Workspace) -> Path:
-    return workspace.root / "observations.jsonl"
 
 
 def normalized_digest(source_id: str, raw: bytes) -> str | None:
@@ -173,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
     workspace.root.mkdir(parents=True, exist_ok=True)
     store = EvidenceStore(workspace.evidence)
     transport = LiveTransport()
-    log_path = observation_log(workspace)
+    log_path = workspace.observation_log
 
     def job(scheduled_at: datetime) -> None:
         for entry in look_once(

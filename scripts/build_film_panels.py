@@ -111,15 +111,34 @@ def _captures(
         if not distinct or record["sha256"] != distinct[-1]["sha256"]:
             distinct.append(record)
     if earlier or later:
+        # Both, or neither. One pin plus a free choice is not a pinned comparison, and the
+        # failure would look like success: the panel renders, the narration is unchanged, and
+        # only one of the two artifacts on screen is the one the script names.
+        if not (earlier and later):
+            raise SystemExit(
+                "pin both captures or neither: one pin still lets the other half of the "
+                "comparison drift as the observer adds captures"
+            )
+        if earlier == later:
+            raise SystemExit(
+                "the two pins are the same artifact; a capture cannot be compared to itself"
+            )
         held = {record["sha256"]: record for record in nav}
         for pin, role in ((earlier, "earlier"), (later, "later")):
-            if pin and pin not in held:
+            if pin not in held:
                 raise SystemExit(
                     f"the {role} capture {pin[:16]}… is not in this workspace. The film is "
                     "about specific retained artifacts; rendering a different pair under the "
                     "same narration would be a fabricated comparison."
                 )
-        return held[earlier], held[later]
+        first, second = held[earlier], held[later]
+        if first["retrieved_at"] >= second["retrieved_at"]:
+            raise SystemExit(
+                f"the pinned 'earlier' capture was retrieved at {first['retrieved_at']}, "
+                f"which is not before {second['retrieved_at']}. Swapping them would render a "
+                "revision backwards."
+            )
+        return first, second
 
     if len(distinct) < 2:
         raise SystemExit(
@@ -252,7 +271,7 @@ def panel_policy() -> str:
     )
     minimum = control.expected_value.get("minimum_row_age_business_days")
     body = f"""
-    <p class="eyebrow">Why it was skipped</p>
+    <p class="eyebrow">The rule that exists for that</p>
     <h1>The freshest number is never the verified one</h1>
     <p class="lead">A human-approved control decides what may be observed. This one will not
     read a value until a later capture still carries it, unchanged.</p>
@@ -273,8 +292,10 @@ def panel_policy() -> str:
       A row revised between captures is skipped, and an older settled row is observed
       instead.</td></tr></tbody>
     </table>
-    <p class="foot">The row that moved was skipped before anything was signed &mdash; not
-    flagged afterwards.</p>
+    <p class="foot">When a qualifying capture exists, a row revised between the two is
+    skipped and an older settled row is observed instead &mdash; decided before anything is
+    signed, not flagged afterwards. Whether that comparison happened on any given run is a
+    separate question, answered next.</p>
     """
     return _page("The policy", body)
 

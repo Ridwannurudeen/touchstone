@@ -308,6 +308,37 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   endpoint or a light-client proof. Neither exists in Phase 1.
 - **R-8 — Source probes were run from a development machine.** Repeated retrieval from the
   eventual deployment host is unverified and remains parked behind the deployment gate.
+- **R-13 — Writing evidence is upstream of publishing, and the observer writes evidence.**
+  The continuous observer (`scripts/run_observer.py`) is described elsewhere as the process
+  that "can do least": it holds no key, imports no signer or publisher, and since 2026-08-18
+  runs as its own Unix identity. That is all true and it is **not** the same as saying a
+  compromise of it is bounded to public artifacts.
+
+  It appends to the same evidence store the daily service reads, which is deliberate — that
+  is how a qualifying confirmation predecessor comes to exist. But `retrieved_at` is supplied
+  by the caller and only *format*-checked (`touchstone/evidence.py:432`); nothing binds it to
+  the instant bytes actually arrived, and nothing binds the bytes to the issuer beyond the
+  fetch policy at the moment of retrieval. So code running as the observer identity could
+  append a fabricated payload with a backdated capture time, and the next epoch's
+  `confirmation_capture` would select it as a qualifying predecessor
+  (`touchstone/epoch.py:182`). A value control comparing the current row against that
+  fabricated row would find them identical and report `SATISFIED` — and the asset could reach
+  `CONFIRMED` on evidence that was never retrieved.
+
+  **The observer therefore cannot publish, but it can determine what a publication concludes.**
+  Any claim that separating it from the publisher bounds the damage should be read narrowly:
+  it bounds *key* exposure, not *conclusion* integrity.
+
+  Partial mitigations that exist today: the evidence index is a hash chain, so an insertion
+  cannot be hidden after the fact; the bundle names the confirmation capture it evaluated
+  against, so a reader can see which artifact was relied on; and the archive retains both.
+  None of these prevent the write — they make it visible afterwards to someone who looks.
+
+  A future item should constrain `retrieved_at` at the store boundary to the writer's own
+  clock within a tolerance, which would remove *retroactive* fabrication and leave only the
+  slower, more visible kind that has to wait out the confirmation interval in real time. It is
+  not implemented, because tests and fixture paths construct histories at arbitrary instants
+  and the constraint needs a considered exemption rather than a flag.
 
 ## 7. Explicitly out of scope for Phase 1
 

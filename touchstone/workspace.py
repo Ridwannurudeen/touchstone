@@ -48,6 +48,16 @@ class Workspace:
         return self.root / "pending.json"
 
     @property
+    def observation_log(self) -> Path:
+        """The watcher's append-only record of what it saw.
+
+        Workspace state, not scratch: it is the only place the transition history lives, and
+        a restore without it makes the next pass a first observation while the evidence store
+        still holds the captures those observations describe.
+        """
+        return self.root / "observations.jsonl"
+
+    @property
     def observer_lock(self) -> Path:
         """The watcher's own lock, held for its whole run.
 

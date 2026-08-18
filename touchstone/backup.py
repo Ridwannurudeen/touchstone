@@ -143,6 +143,10 @@ def _candidates(workspace: Workspace) -> list[Path]:
         workspace.pending_journal,
         workspace.incidents,
         workspace.incidents.with_name(workspace.incidents.name + ".head"),
+        # The watcher's history. Omitting it made a restore silently lose every recorded
+        # transition while keeping the captures they described, so the next pass would read
+        # as a first observation against evidence that was not new.
+        workspace.observation_log,
         evidence / "index.jsonl",
     ]
     paths.extend(sorted((evidence / "objects").glob("*")))

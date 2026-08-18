@@ -26,7 +26,7 @@ What the layout below does to bound it:
 |---|---|---|
 | Web compromise reaching the key | The service account is **not** the nginx user, and the workspace is outside the served tree | A root compromise of the box takes everything |
 | Secret readable by the service identity | `EnvironmentFile` is root-owned `0600`; systemd reads it as root and drops privileges before `ExecStart` | The secret is in the process environment once running |
-| Blast radius of the frequent process | The **observer holds no key at all** and cannot publish | The daily publisher still does |
+| Blast radius of the frequent process | The **observer holds no key**, runs as its own Unix identity, and can write only `evidence/`, `observations.jsonl` and its own lock — not the transparency log, pending journal, incidents or operations | It still writes the evidence the publisher confirms against, so it can decide what a publication *concludes* — **R-13** in `docs/THREAT-MODEL.md`. That one is inherent to letting a second process capture evidence at all |
 | Noisy-neighbour interference | `MemoryMax`, `CPUQuota`, `TasksMax` on every unit | The box runs hot and is shared |
 
 **The observer is the part that is safe to run here.** It has no `EnvironmentFile`, imports no
@@ -51,7 +51,9 @@ never given a key file, and the publisher keeps `touchstone`. They share only
 |---|---|---|---|
 | `/opt/touchstone` | `root` | `0755` | the checkout, pinned to a commit |
 | `/opt/touchstone/.venv` | `root` | `0755` | dependencies |
-| `/var/lib/touchstone/<network>/ustb` | `touchstone:touchstone-data` | `2770` | workspace: evidence, logs, heartbeat. Setgid so both identities' files inherit the shared group; both units set `UMask=0002` |
+| `/var/lib/touchstone/<network>/ustb` | `touchstone:touchstone-data` | **`2750`** | workspace root — the publisher's. The group traverses and reads; it cannot create or replace |
+| `…/ustb/evidence/` | `touchstone-observer:touchstone-data` | `2770` | the one tree the observer writes |
+| `…/ustb/observations.jsonl`, `observer.lock` | `touchstone-observer:touchstone-data` | `664` | pre-created, so the observer never needs write on the root |
 | `/etc/touchstone/<network>.env` | `root` | `0600` | publisher key, signing seed |
 | `/etc/touchstone/<network>.status.env` | `root` | `0644` | registry address; public values only |
 | `/opt/touchstone-site` | `www-data` | `0755` | the served site; the status snapshot lands here |
@@ -112,7 +114,15 @@ specifically to prevent it. From the authoring machine, pipe the blob rather tha
 ### 3a. The observer — no secret, install now
 
 ```sh
-install -d -o touchstone -g touchstone-data -m 2770 /var/lib/touchstone/xlayer-mainnet/ustb
+W=/var/lib/touchstone/xlayer-mainnet/ustb
+# The root belongs to the publisher. A group-writable root would let the observer create or
+# replace the transparency log, the pending journal, incidents and operations — all state the
+# publisher trusts — which makes the shared group a hole rather than a boundary.
+install -d -o touchstone         -g touchstone-data -m 2750 "$W"
+install -d -o touchstone-observer -g touchstone-data -m 2770 "$W/evidence"
+# Pre-created and group-writable, so appending needs no write permission on the root.
+install -o touchstone-observer -g touchstone-data -m 664 /dev/null "$W/observations.jsonl"
+install -o touchstone-observer -g touchstone-data -m 664 /dev/null "$W/observer.lock"
 systemctl enable --now touchstone-observer@xlayer-mainnet
 systemctl status touchstone-observer@xlayer-mainnet --no-pager
 journalctl -u touchstone-observer@xlayer-mainnet -n 20 --no-pager
@@ -150,6 +160,9 @@ Before enabling it, confirm on the host:
 - `systemd-analyze security touchstone-publisher@xlayer-mainnet` — read the exposure score;
 - `sudo -u touchstone cat /etc/touchstone/xlayer-mainnet.env` — **must** be denied;
 - `sudo -u touchstone-observer cat /etc/touchstone/xlayer-mainnet.env` — **must** be denied;
+- `sudo -u touchstone-observer sh -c 'echo x > $W/transparency.jsonl'` — **must** be denied,
+  and the same for `pending.json`, `incidents.jsonl` and `mkdir operations`. If any succeeds,
+  the observer can forge the state the publisher trusts and the split has bought nothing;
 - the workspace is not inside `/opt/touchstone-site`, so nginx cannot serve it;
 - `journalctl -u touchstone-publisher@xlayer-mainnet` shows no secret in any line.
 
