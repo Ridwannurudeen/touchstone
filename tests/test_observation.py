@@ -96,11 +96,23 @@ class TestClassify:
         """An artifact that arrived and would not parse is not the same as no artifact."""
         assert classify(**digests(normalized_sha256=None)) is Transition.PARSE_FAILED
 
-    def test_no_prior_substance_to_compare_is_reported_as_changed(self) -> None:
-        """Never PAYLOAD_CHANGED here: that would claim substance was compared and matched."""
+    def test_no_prior_substance_to_compare_is_reported_as_uncomparable(self) -> None:
+        """Neither PAYLOAD_CHANGED nor OBSERVATION_CHANGED: no comparison happened.
+
+        This used to assert OBSERVATION_CHANGED, and the test encoded the overclaim rather
+        than catching it: PAYLOAD_CHANGED would say the substance was checked and matched,
+        OBSERVATION_CHANGED would say it was checked and differed, and on this branch there
+        was nothing to check it against.
+        """
         assert (
             classify(**digests(previous_normalized_sha256=None))
-            is Transition.OBSERVATION_CHANGED
+            is Transition.UNCOMPARABLE
+        )
+
+    def test_uncomparable_is_not_reported_when_a_prior_form_exists(self) -> None:
+        assert classify(**digests()) is not Transition.UNCOMPARABLE
+        assert (
+            classify(**digests(normalized_sha256="m")) is Transition.OBSERVATION_CHANGED
         )
 
 

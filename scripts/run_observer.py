@@ -4,11 +4,15 @@ The daily service makes one statement per day. This makes none. It fetches each 
 source, stores the exact response bytes in the same evidence store the service reads, and
 records what changed since the last look.
 
-**It holds no key material and cannot publish.** Nothing below imports a signer, a publisher,
-a deployment manifest or a registry, and there is a test asserting that stays true. That is
-the whole safety argument for running it on a shared host: the process that runs most often is
-the one that can do least, and a compromise of it yields retained public artifacts rather than
-the ability to sign a report.
+**It is given no key material and contains no publishing code.** Nothing below imports a
+signer, a publisher, a deployment manifest or a registry, and a test parses the import graph
+to keep that true. The process that runs most often is the one that carries the least.
+
+That is a statement about this program, not a capability boundary around it. If the observer
+and the publisher run as the same Unix user, same-UID code can read the publisher's process
+environment on a host with ordinary `/proc` permissions — so "the observer cannot publish"
+would be a claim about the operating system, and this file cannot make it. See
+`docs/DEPLOY-SERVICE.md`.
 
 Two things it deliberately does not do:
 
@@ -52,18 +56,6 @@ from touchstone.workspace import Workspace  # noqa: E402
 
 def observation_log(workspace: Workspace) -> Path:
     return workspace.root / "observations.jsonl"
-
-
-def observer_lock(workspace: Workspace) -> Path:
-    """A lock of this watcher's own.
-
-    Not the workspace lock the service holds: taking that one would make the watcher and the
-    daily service mutually exclusive, and the watcher would then be unable to run for the
-    minutes the service spends publishing — which is exactly when a reader most wants to know
-    the sources are still being looked at. Evidence appends are already serialised by the
-    evidence store's own lock, so the two processes never race over the thing that matters.
-    """
-    return workspace.root / "observer.lock"
 
 
 def normalized_digest(source_id: str, raw: bytes) -> str | None:
@@ -198,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         flush=True,
     )
     try:
-        with exclusive_lock(observer_lock(workspace)):
+        with exclusive_lock(workspace.observer_lock):
             run_schedule(
                 job,
                 interval_seconds=interval,

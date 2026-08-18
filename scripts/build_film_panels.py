@@ -85,8 +85,17 @@ def _rows(document: object) -> list[dict]:
     return document if isinstance(document, list) else []
 
 
-def _captures(workspace: Path) -> tuple[dict, dict]:
-    """The two oldest NAV captures held, with their index records."""
+def _captures(
+    workspace: Path, *, earlier: str | None = None, later: str | None = None
+) -> tuple[dict, dict]:
+    """The two NAV captures the film is about, with their index records.
+
+    ``earlier`` and ``later`` pin the exact artifacts by digest. Without them this takes the
+    two oldest distinct payloads, which is fine for a one-off render and wrong for a film:
+    the observer adds captures continuously, so an unpinned render can quietly become a
+    different comparison than the one the script narrates. The script names its digests; the
+    pins let the builder refuse anything else.
+    """
     index = workspace / "evidence" / "index.jsonl"
     records = [
         json.loads(line)
@@ -101,6 +110,17 @@ def _captures(workspace: Path) -> tuple[dict, dict]:
     for record in nav:
         if not distinct or record["sha256"] != distinct[-1]["sha256"]:
             distinct.append(record)
+    if earlier or later:
+        held = {record["sha256"]: record for record in nav}
+        for pin, role in ((earlier, "earlier"), (later, "later")):
+            if pin and pin not in held:
+                raise SystemExit(
+                    f"the {role} capture {pin[:16]}… is not in this workspace. The film is "
+                    "about specific retained artifacts; rendering a different pair under the "
+                    "same narration would be a fabricated comparison."
+                )
+        return held[earlier], held[later]
+
     if len(distinct) < 2:
         raise SystemExit(
             "this workspace holds fewer than two distinct NAV captures; there is nothing to "
@@ -183,6 +203,46 @@ def panel_diff(workspace: Path, earlier: dict, later: dict) -> tuple[str, int, i
     return _page("The catch", body), identical, changed_count
 
 
+def panel_interval(earlier: dict, later: dict) -> str:
+    """The fact the first cut of this film left out.
+
+    The film originally said the revised row "was skipped" in favour of an older settled one.
+    That is what the rule does; it is not what happened on this run. These two captures are
+    less than the confirmation interval apart, so no predecessor qualified and the value
+    control never compared any row at all — it returned UNEVALUABLE with no observed value.
+    Narrating the skip over this evidence asserted a cause that did not occur.
+    """
+    first = datetime.fromisoformat(earlier["retrieved_at"].replace("Z", "+00:00"))
+    second = datetime.fromisoformat(later["retrieved_at"].replace("Z", "+00:00"))
+    elapsed = int((second - first).total_seconds())
+    hours, remainder = divmod(elapsed, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    short_by = 86_400 - elapsed
+    body = f"""
+    <p class="eyebrow">What it did about that</p>
+    <h1>It refused, and the reason was its own clock</h1>
+    <p class="lead">A value is observed only when a capture at least twenty-four hours older
+    still carries it. These two captures were closer together than that, so nothing qualified
+    to confirm against and the value control did not evaluate at all.</p>
+    <div class="cards">
+      <div class="card"><h2>Between these captures</h2>
+        <p class="big mono">{hours}h {minutes}m {seconds}s</p></div>
+      <div class="card"><h2>Required</h2>
+        <p class="big mono">24h 0m 0s</p></div>
+      <div class="card"><h2>Short by</h2>
+        <p class="big mono">{short_by // 60}m {short_by % 60}s</p></div>
+    </div>
+    <table>
+      <thead><tr><th>Control</th><th>Result</th><th>Observed value</th></tr></thead>
+      <tbody><tr class="changed"><td class="mono">ustb-nav-per-share-present</td>
+      <td><strong>UNEVALUABLE</strong></td><td class="mono">none</td></tr></tbody>
+    </table>
+    <p class="foot">The asset was reported <strong>UNVERIFIABLE</strong>. Twenty minutes of
+    shortfall was enough for it to decline rather than round its own rule down.</p>
+    """
+    return _page("The interval", body)
+
+
 def panel_policy() -> str:
     ledger = (ROOT / "data" / "compilations" / "APPROVALS.json").read_bytes()
     control = next(
@@ -225,19 +285,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--out", required=True, help="directory for the rendered panels"
     )
+    parser.add_argument(
+        "--earlier-sha256",
+        default=None,
+        help="pin the earlier capture so a later render cannot film a different pair",
+    )
+    parser.add_argument("--later-sha256", default=None)
     arguments = parser.parse_args(argv)
 
     workspace = Path(arguments.workspace)
     out = Path(arguments.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    earlier, later = _captures(workspace)
+    earlier, later = _captures(
+        workspace, earlier=arguments.earlier_sha256, later=arguments.later_sha256
+    )
     diff_page, identical, changed = panel_diff(workspace, earlier, later)
 
     written = {
         "panel-2-captures.html": panel_captures(earlier, later),
         "panel-3-diff.html": diff_page,
         "panel-4-policy.html": panel_policy(),
+        "panel-5-interval.html": panel_interval(earlier, later),
     }
     for name, page in written.items():
         (out / name).write_text(page, encoding="utf-8")

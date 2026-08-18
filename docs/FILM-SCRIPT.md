@@ -10,6 +10,16 @@ number the issuer went on to change.
 has ever reached `CONFIRMED`. **This script does not chase it.** Nothing here is staged, no
 control set is changed for the camera, and no state is altered off-screen.
 
+> ⚠️ **Corrected after an audit, and the correction matters.** The first cut of this film said
+> the revised row "was skipped" in favour of an older settled one. That is what the rule does
+> in general. It is **not** what happened on this run. These two captures are 23h39m35s apart,
+> short of the twenty-four-hour confirmation interval, so **no predecessor qualified and the
+> value control never compared any row at all** — the published sequence-2 report records
+> `ustb-nav-per-share-present` as `UNEVALUABLE` with no observed value. Narrating a skip over
+> that evidence asserted a cause that did not occur. The cut now says what the run actually
+> did, which is a better story anyway: it declined because it was twenty minutes short of its
+> own rule.
+
 ---
 
 ## The facts on screen
@@ -27,6 +37,8 @@ evidence rather than recalled.
 | The revision | `08/17/2026` NAV `11.17883400` → `11.18208300` |
 | Unrevised rows | `08/15/2026` and `08/16/2026`, byte-identical across both captures |
 | The policy | `ustb-nav-per-share-present`, `minimum_row_age_business_days: 2` |
+| Gap between the captures | **23h 39m 35s** — short of the 24h confirmation interval by 20m 25s |
+| What the run actually returned | `ustb-nav-per-share-present` → `UNEVALUABLE`, no observed value; asset `UNVERIFIABLE` |
 | Signed bundle | sha256 `914ea892…bfc955`, printed on `/verify` beside its own download |
 
 ⚠️ **Do not say the issuer restates every day.** Two captures support one changed row and two
@@ -37,57 +49,61 @@ kind of overclaim this film is about.
 
 ## The cut
 
-Timings are targets. Narration word counts assume a measured pace of roughly 150 words per
-minute; the whole script is about 215 words, which fits 90 seconds with air around it.
+Seven beats, ninety seconds. Narration is about 210 words, which fits a measured 150 wpm with
+air around it.
 
-### 1 — The decision, first (0:00–0:10)
+### 1 — The decision, first (0:00–0:10) · 10s
 
-**On screen:** `touchstone.gudman.xyz` dossier for `ustb-2026-08-17`. Hold on the
-`UNVERIFIABLE` chip. Cut to the gate result panel: `(false, "status not allowed")`.
+**On screen:** the live dossier for `ustb-2026-08-17`. Hold on the `UNVERIFIABLE` chip.
 
 > A consumer contract on X Layer asks Touchstone whether this tokenised Treasury fund's
 > disclosures check out. Touchstone says: not confirmed. So the gate refuses it.
 
-### 2 — What it looked at (0:10–0:30)
+### 2 — What it looked at (0:10–0:24) · 14s
 
-**On screen:** the two capture identifiers with their UTC retrieval times, side by side. Then
-the source: Superstate's published daily NAV feed for USTB.
+**On screen:** the two capture identifiers with their UTC retrieval times, side by side.
 
-> It had fetched the issuer's own daily NAV feed twice, about twenty-four hours apart, and kept
-> both responses exactly as they arrived — every byte, hashed.
+> It had fetched the issuer's own daily NAV feed twice, a day apart, and kept both responses
+> exactly as they arrived — every byte, hashed on receipt.
 
-### 3 — The catch (0:30–0:50)
+### 3 — The issuer moved a number (0:24–0:42) · 18s
 
-**On screen:** the row diff. Three rows: 08/15 unchanged, 08/16 unchanged, 08/17 highlighted,
+**On screen:** the row diff — 08/15 unchanged, 08/16 unchanged, 08/17 highlighted,
 `11.17883400 → 11.18208300`.
 
 > Nine hundred and fifty-seven rows were identical. One was not. The value published for the
-> seventeenth of August had changed by the time it was read again the next day.
+> seventeenth of August had changed by the time the feed was read again the next day.
 
-### 4 — Why that matters (0:50–1:10)
+### 4 — The rule that exists for exactly that (0:42–0:58) · 16s
 
-**On screen:** the approved control, showing `minimum_row_age_business_days: 2`, then the
-evaluator's rule in plain words: *the newest row that is unchanged across two captures and at
-least two business days old.*
+**On screen:** the approved control, `minimum_row_age_business_days: 2`, and the rule in words.
 
-> Touchstone never reads the freshest number and calls it verified. It observes a value only
-> once a second capture, taken at least a day later, still carries it unchanged. The row that
-> moved was skipped — not flagged after the fact, skipped before anything was signed.
+> So Touchstone never reads the freshest number and calls it verified. A value counts only
+> once a capture at least twenty-four hours older still carries it, unchanged.
 
-### 5 — The proof (1:10–1:24)
+### 5 — What it actually did (0:58–1:16) · 18s
 
-**On screen:** the verifier running against the downloaded bundle; the sha256 on `/verify`
-matching the file. Then the registry entry on chain. Keep the gate refusal visible.
+**On screen:** the interval panel — 23h 39m 35s elapsed, 24h required, short by 20m 25s; and
+`ustb-nav-per-share-present → UNEVALUABLE`, no observed value.
 
-> The result is signed, published to an append-only registry on X Layer, and checkable offline
-> by anyone. The page tells you the hash of the file it is offering you, and the file matches.
+> On this run it never got that far. The two captures were twenty minutes short of the
+> interval, so nothing qualified to confirm against and the control did not evaluate the value
+> at all. The asset stayed unverifiable — not because the number looked wrong, but because the
+> system would not vouch for a check it had not been able to make.
 
-### 6 — The thesis (1:24–1:30)
+### 6 — Checkable by anyone (1:16–1:24) · 8s
 
-**On screen:** the `UNVERIFIABLE` chip, held.
+**On screen:** `/verify`, the published sha256 beside the bundle it describes.
 
-> This is not a rating, and not a price oracle. It is a machine-checkable refusal to overclaim
-> when the evidence is provisional.
+> The result is signed, published to an append-only registry on X Layer, and checkable
+> offline. The page tells you the hash of the file it is handing you.
+
+### 7 — The thesis (1:24–1:30) · 6s
+
+**On screen:** the live status page, then hold.
+
+> Not a rating. Not a price oracle. A machine-checkable refusal to overclaim when the evidence
+> is provisional.
 
 ---
 
@@ -119,5 +135,15 @@ narrate while clicking — the pauses land in the wrong places.
 evidence panels and writes numbered scene clips. `scripts/build_film_panels.py` renders the
 panels from retained evidence — it fetches nothing, so the numbers on screen are the ones that
 were captured, not whatever the issuer is serving today.
+
+**Pin the capture pair.** The observer adds captures continuously, so an unpinned render can
+quietly become a different comparison than the one narrated above. Render with:
+
+    --workspace <the workspace holding both artifacts>
+    --earlier-sha256 4d22989cec6a7aa2763e2bc8cdfa705572997613e4366cc69e41528169307e54
+    --later-sha256   f9f87f321e6342ea5b31f2181ad506495233cb0558b6b60f8556eabbf51d1cd7
+
+The builder refuses if either is absent. Both live in the **testnet** workspace; the mainnet
+workspace holds only the later one, so rendering from mainnet is not a substitute.
 
 The result is a silent cut at the timings above. The voiceover is laid over it afterwards.

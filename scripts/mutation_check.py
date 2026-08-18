@@ -54,7 +54,7 @@ class Mutation:
 # job that exists to prove the tests bite would go green having run nothing. That is the same
 # failure `assert_suite_ran.py` exists to prevent one job over, and this harness had it too.
 # Raise this deliberately when a mutation is added; a diff that changes it is the point.
-EXPECTED_MUTATIONS = 124
+EXPECTED_MUTATIONS = 125
 
 
 MUTATIONS = (
@@ -1072,11 +1072,22 @@ MUTATIONS = (
         # which error was caught, so it proved the refusal was worded correctly while the
         # lock still did all the work — it could not distinguish a backup module that
         # enforces the invariant from one that merely reports it.
-        old="        with exclusive_lock(root.lock) as held:",
+        old="        with exclusive_lock(root.lock) as held, exclusive_lock(root.observer_lock):",
         new="        held = Held(path=root.lock.resolve())\n        if True:",
         tests=(
             "tests/test_backup.py::test_a_genuinely_separate_process_cannot_back_up_a_live_workspace",
         ),
+    ),
+    Mutation(
+        name="a-backup-may-run-while-the-observer-is-appending",
+        path="touchstone/backup.py",
+        # The observer half of the same invariant. The daemon lock alone proved only that a
+        # *daemon* was stopped; the watcher writes evidence into the same workspace under a
+        # different lock, so dropping this one lets an archive be taken mid-append while the
+        # code still reads as if it establishes quiescence.
+        old="        with exclusive_lock(root.lock) as held, exclusive_lock(root.observer_lock):",
+        new="        with exclusive_lock(root.lock) as held:",
+        tests=("tests/test_backup.py::test_a_live_observer_also_blocks_a_backup",),
     ),
     Mutation(
         name="a-restore-trusts-the-inventory-that-travelled-with-it",

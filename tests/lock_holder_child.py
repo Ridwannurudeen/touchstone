@@ -22,7 +22,13 @@ from touchstone.workspace import Workspace  # noqa: E402
 
 def main() -> int:
     workspace = Workspace(sys.argv[1])
-    with exclusive_lock(workspace.lock):
+    # Which lock, because "is anything writing to this workspace" now has two answers: the
+    # daily service holds one for its whole life, and the observer holds another. A backup
+    # that waited on only the first would call a workspace quiescent while the watcher was
+    # mid-append.
+    which = sys.argv[2] if len(sys.argv) > 2 else "service"
+    target = workspace.observer_lock if which == "observer" else workspace.lock
+    with exclusive_lock(target):
         # Announce only after the lock is actually held, so the parent never races the
         # acquisition and mistake a not-yet-locked workspace for a refusal it did not get.
         print("HELD", flush=True)

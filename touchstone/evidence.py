@@ -135,7 +135,15 @@ class EvidenceStore:
 
         # One snapshot for the whole decision. Verifying and then re-reading meant a
         # capture could be selected from an index that had never been verified.
-        entries = self.verified_entries()
+        #
+        # Read under the same lock a writer takes. The index is extended by appending a line,
+        # which is not atomic against a concurrent whole-file read: an observer capturing on
+        # a short cadence can be mid-append while the daily service is selecting a
+        # confirmation capture, and the reader then sees a final line with no newline and
+        # raises. That aborts a slot for no reason but timing, which is the same class of
+        # failure the confirmation interval already cost this project once.
+        with exclusive_lock(self.index_path):
+            entries = self.verified_entries()
         deadline = before.astimezone(timezone.utc) - timedelta(
             seconds=CONFIRMATION_INTERVAL_SECONDS
         )
@@ -188,11 +196,21 @@ class EvidenceStore:
 
         expected_previous: str | None = None
         entries: list[dict[str, Any]] = []
+        # Objects are content-addressed, so re-hashing one a second time inside a single
+        # pass cannot learn anything the first hash did not. Without this the cost of a
+        # verify is one full object read per *entry*, and `store()` verifies before every
+        # append — so a watcher capturing every fifteen minutes made each append re-hash the
+        # whole store, and the work grew with the square of the number of captures. The
+        # guarantee is unchanged: every digest an entry references is still read and hashed
+        # in this pass, and each entry's own byte_size is still checked against the file.
+        hashed: set[str] = set()
         for line_number, raw_line in enumerate(
             index_bytes.splitlines(keepends=True), 1
         ):
             entry = self._decode_entry(raw_line[:-1], line_number)
-            self._verify_entry(entry, raw_line[:-1], line_number, expected_previous)
+            self._verify_entry(
+                entry, raw_line[:-1], line_number, expected_previous, hashed
+            )
             expected_previous = entry["entry_hash"]
             entries.append(entry)
         return entries
@@ -253,6 +271,7 @@ class EvidenceStore:
         raw_line: bytes,
         line_number: int,
         expected_previous: str | None,
+        hashed: set[str] | None = None,
     ) -> None:
         if set(entry) != _ENTRY_FIELDS:
             missing = sorted(_ENTRY_FIELDS - set(entry))
@@ -303,12 +322,40 @@ class EvidenceStore:
             )
 
         digest = entry["sha256"]
+        object_path = self.objects_dir / digest
+        if hashed is not None and digest in hashed:
+            # Already hashed in this pass. The size still comes from *this* entry, because
+            # two entries naming one digest with different sizes is itself a corruption and
+            # skipping the check would hide it.
+            self._verify_object_size(object_path, digest, entry["byte_size"],
+                                     context=f"line {line_number}")
+            return
         self._verify_object(
-            self.objects_dir / digest,
+            object_path,
             digest,
             entry["byte_size"],
             context=f"line {line_number}",
         )
+        if hashed is not None:
+            hashed.add(digest)
+
+    @staticmethod
+    def _verify_object_size(
+        object_path: Path, digest: str, expected_size: int, *, context: str
+    ) -> None:
+        """The stat-only half, for a digest already hashed in this pass."""
+        if not object_path.is_file():
+            raise EvidenceIntegrityError(f"{context}: object {digest} is missing")
+        try:
+            size = object_path.stat().st_size
+        except OSError as error:
+            raise EvidenceIntegrityError(
+                f"{context}: cannot read object {digest}: {error}"
+            ) from error
+        if size != expected_size:
+            raise EvidenceIntegrityError(
+                f"{context}: object {digest} has size {size}, expected {expected_size}"
+            )
 
     @staticmethod
     def _verify_object(

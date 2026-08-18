@@ -18,7 +18,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=touchstone
-Group=touchstone
+Group=touchstone-data
+UMask=0002
 WorkingDirectory=/opt/touchstone
 
 # Root-owned, 0600, never readable by the service account or the web user. systemd reads it

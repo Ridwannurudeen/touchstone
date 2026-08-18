@@ -352,15 +352,22 @@ def take_offline(
     asset_key: str,
     registry_address: str,
 ) -> bytes:
-    """Back up a workspace no daemon is serving, by taking the lock the daemon would hold.
+    """Back up a workspace nothing is serving, by taking every lock a writer would hold.
 
     If a daemon is running this refuses rather than proceeding, which is the entire point:
     a second process copying a live workspace is how an archive ends up holding files from
     three different instants.
+
+    **Both locks, not just the daemon's.** The observer writes evidence into this workspace
+    and deliberately does not hold the daemon's lock — it could not, because the daemon holds
+    that one for its whole lifetime. Taking only the daemon lock therefore proved the daemon
+    was stopped and said nothing about the watcher, so an archive could be taken mid-append
+    and the quiescence this function exists to establish would simply not have been
+    established.
     """
     root = Workspace(workspace)
     try:
-        with exclusive_lock(root.lock) as held:
+        with exclusive_lock(root.lock) as held, exclusive_lock(root.observer_lock):
             return create(
                 held,
                 root.root,

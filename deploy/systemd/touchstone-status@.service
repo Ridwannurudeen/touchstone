@@ -10,8 +10,9 @@ Documentation=file:/opt/touchstone/docs/DEPLOY-SERVICE.md
 
 [Service]
 Type=oneshot
-User=touchstone
-Group=touchstone
+# Runs as the keyless identity: it only reads a workspace and writes one HTML file.
+User=touchstone-observer
+Group=touchstone-data
 WorkingDirectory=/opt/touchstone
 ExecStart=/opt/touchstone/.venv/bin/python /opt/touchstone/scripts/build_status.py \
     --workspace /var/lib/touchstone/%i/ustb \

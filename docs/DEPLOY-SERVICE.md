@@ -29,9 +29,17 @@ What the layout below does to bound it:
 | Blast radius of the frequent process | The **observer holds no key at all** and cannot publish | The daily publisher still does |
 | Noisy-neighbour interference | `MemoryMax`, `CPUQuota`, `TasksMax` on every unit | The box runs hot and is shared |
 
-**The observer is the part that is genuinely safe to run here.** It has no `EnvironmentFile`,
-imports no signer or publisher, and two tests parse its import graph to keep that true. A
-compromise of it yields retained public artifacts. Install it freely.
+**The observer is the part that is safe to run here.** It has no `EnvironmentFile`, imports no
+signer or publisher, and two tests parse its import graph to keep that true. Install it freely.
+
+⚠️ **This was corrected after an audit, and then fixed.** The first version of this layout ran
+the observer and the publisher as one Unix identity while claiming a compromise of the observer
+"yields retained public artifacts". That was an operating-system claim the layout did not
+support: systemd places the publisher's secrets in the publisher process's environment, and
+same-UID code can read another same-UID process's environment on a host with ordinary `/proc`
+permissions. The observer now runs as **`touchstone-observer`**, a separate identity that is
+never given a key file, and the publisher keeps `touchstone`. They share only
+`touchstone-data`, the group that owns the workspace.
 
 **The publisher is the part that carries the deviation.** It is a separate, owner-gated step.
 
@@ -43,7 +51,7 @@ compromise of it yields retained public artifacts. Install it freely.
 |---|---|---|---|
 | `/opt/touchstone` | `root` | `0755` | the checkout, pinned to a commit |
 | `/opt/touchstone/.venv` | `root` | `0755` | dependencies |
-| `/var/lib/touchstone/<network>/ustb` | `touchstone` | `0700` | workspace: evidence, logs, heartbeat |
+| `/var/lib/touchstone/<network>/ustb` | `touchstone:touchstone-data` | `2770` | workspace: evidence, logs, heartbeat. Setgid so both identities' files inherit the shared group; both units set `UMask=0002` |
 | `/etc/touchstone/<network>.env` | `root` | `0600` | publisher key, signing seed |
 | `/etc/touchstone/<network>.status.env` | `root` | `0644` | registry address; public values only |
 | `/opt/touchstone-site` | `www-data` | `0755` | the served site; the status snapshot lands here |
@@ -57,12 +65,16 @@ can never disagree.
 ## 3. Install
 
 ```sh
-# Identity. No login shell, no home, no password: this account exists to own a directory
-# and run two processes, and nothing about it should be usable interactively.
-useradd --system --no-create-home --shell /usr/sbin/nologin touchstone
+# Two identities and one shared group. The publisher holds keys; the observer never does,
+# and running them as one user would let observer-side code read the publisher's process
+# environment. Neither account has a login shell, a home, or a password.
+groupadd --system touchstone-data
+useradd --system --no-create-home --shell /usr/sbin/nologin -g touchstone-data touchstone
+useradd --system --no-create-home --shell /usr/sbin/nologin -g touchstone-data touchstone-observer
 
 install -d -o root -g root -m 0755 /opt/touchstone
-install -d -o touchstone -g touchstone -m 0700 /var/lib/touchstone
+# Setgid, so files created by either identity stay in the shared group.
+install -d -o touchstone -g touchstone-data -m 2770 /var/lib/touchstone
 install -d -o root -g root -m 0700 /etc/touchstone
 
 # Code, pinned. A service that tracks a branch is a service whose behaviour changes when
@@ -84,7 +96,7 @@ systemctl daemon-reload
 ### 3a. The observer — no secret, install now
 
 ```sh
-install -d -o touchstone -g touchstone -m 0700 /var/lib/touchstone/xlayer-mainnet/ustb
+install -d -o touchstone -g touchstone-data -m 2770 /var/lib/touchstone/xlayer-mainnet/ustb
 systemctl enable --now touchstone-observer@xlayer-mainnet
 systemctl status touchstone-observer@xlayer-mainnet --no-pager
 journalctl -u touchstone-observer@xlayer-mainnet -n 20 --no-pager
@@ -121,6 +133,7 @@ Before enabling it, confirm on the host:
 
 - `systemd-analyze security touchstone-publisher@xlayer-mainnet` — read the exposure score;
 - `sudo -u touchstone cat /etc/touchstone/xlayer-mainnet.env` — **must** be denied;
+- `sudo -u touchstone-observer cat /etc/touchstone/xlayer-mainnet.env` — **must** be denied;
 - the workspace is not inside `/opt/touchstone-site`, so nginx cannot serve it;
 - `journalctl -u touchstone-publisher@xlayer-mainnet` shows no secret in any line.
 

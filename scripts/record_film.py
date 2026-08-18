@@ -44,13 +44,17 @@ class Scene:
     settle: float = 1.2
 
 
+# Seven beats totalling ninety seconds. Scene 5 exists because the first cut did not have
+# it: without the interval on screen, scene 4's rule reads as the reason this run refused,
+# and it was not — the run never reached a row comparison at all.
 SCENES = (
     Scene(1, "verdict", f"{SITE}/dossier/ustb-2026-08-17", 10.0),
-    Scene(2, "captures", "panel-2-captures.html", 20.0),
-    Scene(3, "diff", "panel-3-diff.html", 20.0),
-    Scene(4, "policy", "panel-4-policy.html", 20.0),
-    Scene(5, "verify", f"{SITE}/verify", 14.0, scroll_to=520),
-    Scene(6, "status", f"{SITE}/status", 6.0),
+    Scene(2, "captures", "panel-2-captures.html", 14.0),
+    Scene(3, "diff", "panel-3-diff.html", 18.0),
+    Scene(4, "policy", "panel-4-policy.html", 16.0),
+    Scene(5, "interval", "panel-5-interval.html", 18.0),
+    Scene(6, "verify", f"{SITE}/verify", 8.0, scroll_to=520),
+    Scene(7, "status", f"{SITE}/status", 6.0),
 )
 
 

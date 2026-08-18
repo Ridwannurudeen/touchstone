@@ -46,6 +46,10 @@ MEANING = {
         "re-serialisation or reordering, not a change in what the issuer published"
     ),
     "OBSERVATION_CHANGED": "the normalized observation itself differed",
+    "UNCOMPARABLE": (
+        "the response bytes differed and there was no earlier normalized form to compare "
+        "them against, so whether the substance changed is unknown"
+    ),
     "SOURCE_UNAVAILABLE": "the source did not answer; recorded as silence, not as an observation",
     "PARSE_FAILED": "an artifact arrived and the normalizer refused it",
 }
@@ -139,9 +143,16 @@ process that has stopped running cannot write down that it stopped.</p>
 that this page was not regenerated. Those are different failures: one is about the publisher,
 the other about whatever refreshes this file. Neither is evidence for the other, and this page
 will not guess which one happened.</p>
-<p>Nothing on this page asserts that an asset is verified. Every report published so far
-reports <code>UNVERIFIABLE</code>, and the consumer gate on X&nbsp;Layer testnet refuses the
-asset accordingly. See <a href="/verify">Verify</a> and <a href="/coverage">Coverage</a>.</p>
+<p>Nothing on this page asserts that an asset is verified. <strong>As of the generation
+time above</strong>, every report published reported <code>UNVERIFIABLE</code>, and the
+consumer gate on X&nbsp;Layer <em>testnet</em> refused the asset accordingly. That is a
+statement about this snapshot, not a standing guarantee: a later report can reach a different
+state while this file is still being served, so check
+<a href="/coverage">Coverage</a> and <a href="/verify">Verify</a> rather than treating this
+sentence as current.</p>
+<p class="secondary">The observations above are captured against the workspace named in this
+service's configuration; the gate result is a separate fact about the testnet consumer
+contract. Neither implies the other.</p>
 """
     page = TEMPLATE.read_text(encoding="utf-8")
     page = page.replace("<!--DOC_TITLE-->", "Status")

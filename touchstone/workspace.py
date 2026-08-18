@@ -48,6 +48,17 @@ class Workspace:
         return self.root / "pending.json"
 
     @property
+    def observer_lock(self) -> Path:
+        """The watcher's own lock, held for its whole run.
+
+        Deliberately not `lock`: the daily service holds that one for its entire lifetime,
+        so a watcher that waited on it could never run at all. It lives here rather than in
+        the watcher because a second definition of this path is a second answer to "is
+        anything writing to this workspace", and backup asks exactly that question.
+        """
+        return self.root / "observer.lock"
+
+    @property
     def operations(self) -> Path:
         return self.root / "operations"
 

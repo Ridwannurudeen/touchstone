@@ -1,10 +1,16 @@
 [Unit]
 # The watcher. Instance is the network name, e.g. touchstone-observer@xlayer-mainnet.
 #
-# This unit deliberately has NO EnvironmentFile. The observer holds no key material and
-# cannot publish — that is the reason it is the process allowed to run every few minutes on
-# a host shared with unrelated sites. If a future change makes it need a secret, that change
-# is wrong, and this missing line is where it should be noticed.
+# This unit deliberately has NO EnvironmentFile. The observer is given no key material and
+# contains no signing or publishing code. If a future change makes it need a secret, that
+# change is wrong, and this missing line is where it should be noticed.
+#
+# It also runs as its OWN Unix identity, `touchstone-observer`, which is not the identity the
+# publisher runs as. That is what makes "the observer cannot reach the publisher's key" a
+# statement about the operating system rather than about this program's imports: systemd puts
+# the publisher's secrets in the publisher process's environment, and same-UID code can read
+# another same-UID process's environment on a host with ordinary /proc permissions. Two
+# identities remove that path. The two share only the group that owns the workspace.
 Description=Touchstone source observer (%i)
 Documentation=file:/opt/touchstone/docs/DEPLOY-SERVICE.md
 After=network-online.target
@@ -12,8 +18,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=touchstone
-Group=touchstone
+User=touchstone-observer
+Group=touchstone-data
+# Group-writable, because the
+# publisher writes the same evidence store under a different user.
+UMask=0002
 WorkingDirectory=/opt/touchstone
 ExecStart=/opt/touchstone/.venv/bin/python /opt/touchstone/scripts/run_observer.py \
     --workspace /var/lib/touchstone/%i/ustb \

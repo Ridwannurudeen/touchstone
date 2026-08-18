@@ -68,6 +68,11 @@ class Transition(str, Enum):
     # because a source that answers with something unparseable is a different failure from
     # a source that does not answer, and they want different attention.
     PARSE_FAILED = "PARSE_FAILED"
+    # The bytes moved and there is no earlier normalized form to compare them against, so
+    # whether the substance changed is simply unknown. This used to report
+    # OBSERVATION_CHANGED, which asserted a comparison that had not happened — the same
+    # shape of error as calling an unavailable source unchanged.
+    UNCOMPARABLE = "UNCOMPARABLE"
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,9 +114,10 @@ def classify(
     if normalized_sha256 is None:
         return Transition.PARSE_FAILED
     if previous_normalized_sha256 is None:
-        # The bytes moved and there is nothing comparable behind them. Reporting
-        # PAYLOAD_CHANGED would imply the substance was checked and found equal.
-        return Transition.OBSERVATION_CHANGED
+        # The bytes moved and there is nothing comparable behind them. PAYLOAD_CHANGED would
+        # imply the substance was checked and found equal; OBSERVATION_CHANGED would imply it
+        # was checked and found different. Neither happened.
+        return Transition.UNCOMPARABLE
     if normalized_sha256 == previous_normalized_sha256:
         return Transition.PAYLOAD_CHANGED
     return Transition.OBSERVATION_CHANGED

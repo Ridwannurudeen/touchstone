@@ -526,6 +526,65 @@ def test_a_valid_archive_naming_one_path_twice_is_refused(tmp_path: Path) -> Non
         )
 
 
+def test_a_live_observer_also_blocks_a_backup(tmp_path: Path) -> None:
+    """Quiescence means nothing is writing, not that the daemon is stopped.
+
+    The observer writes evidence into this workspace and deliberately does not hold the
+    daemon's lock — it cannot, because the daemon holds that one for its whole lifetime. So a
+    backup that waited only on the daemon lock proved the daemon was stopped and said nothing
+    about the watcher, and could copy the store mid-append while looking correct.
+    """
+    import subprocess
+    import sys
+
+    workspace = populated(tmp_path)
+    child = subprocess.Popen(
+        [
+            sys.executable,
+            str(Path(__file__).parent / "lock_holder_child.py"),
+            str(workspace.root),
+            "observer",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert child.stdout is not None
+        assert child.stdout.readline().strip() == "HELD", (
+            "the child never took the observer lock"
+        )
+        with pytest.raises(BackupError, match="in use by a running service"):
+            take_offline(
+                workspace.root,
+                now=AT,
+                key=KEY,
+                asset_key=ASSET,
+                registry_address=REGISTRY,
+            )
+    finally:
+        child.kill()
+        child.wait(timeout=10)
+
+    # And it succeeds once the watcher is gone, so the refusal was this lock and not an
+    # unrelated failure raising the same type. Retried for the same reason the sibling test
+    # retries: a dead holder's lock is released asynchronously on Windows.
+    for attempt in range(50):
+        try:
+            assert take_offline(
+                workspace.root,
+                now=AT,
+                key=KEY,
+                asset_key=ASSET,
+                registry_address=REGISTRY,
+            )
+            break
+        except BackupError:
+            if attempt == 49:
+                raise
+            time.sleep(0.1)
+
+
 def test_a_genuinely_separate_process_cannot_back_up_a_live_workspace(
     tmp_path: Path,
 ) -> None:
