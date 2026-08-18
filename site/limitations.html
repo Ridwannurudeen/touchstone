@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Limitations · Touchstone</title>
+<meta name="description" content="What a Touchstone report does not prove. The five limitations carried inside the signed report, verbatim.">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/">Touchstone</a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/dossier">Dossier</a>
+      <a href="/controls">Controls</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations" aria-current="page">Limitations</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Read this before relying on a report</p>
+      <h1>What this does not prove</h1>
+      <p class="t-lead prose" style="margin-top: var(--s4)">A Touchstone report
+      proves what the issuer published, that a cited predicate was checked
+      against it, and that the result was signed. It does not prove the issuer
+      told the truth. The five limitations below travel inside the signed
+      report, verbatim.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="limitation">
+        <span class="n" aria-hidden="true">1</span>
+        <p>Issuer APIs prove only what Superstate published at the observed endpoints; Touchstone does not independently audit the fund, its assets, or issuer accuracy.</p>
+      </div>
+      <div class="limitation">
+        <span class="n" aria-hidden="true">2</span>
+        <p>Holdings publication lags daily NAV and its 40-day freshness window is provisional.</p>
+      </div>
+      <div class="limitation">
+        <span class="n" aria-hidden="true">3</span>
+        <p>The newest nav-daily rows are provisional and are revised in place, so value controls observe only a row confirmed unchanged across two retained captures; a control&#x27;s observed_on names the row its observed_value belongs to. Confirmation shows a row was not revised between those captures, not that it is final.</p>
+      </div>
+      <div class="limitation">
+        <span class="n" aria-hidden="true">4</span>
+        <p>This bundle carries evidence digests, not the artifacts themselves, so it cannot replay normalization or prove that a reported row occurs inside an artifact.</p>
+      </div>
+      <div class="limitation">
+        <span class="n" aria-hidden="true">5</span>
+        <p>This local-only report does not verify an onchain NAV oracle or token supply.</p>
+      </div>
+
+      <div class="note" style="margin-top: var(--s7)">
+        <p>These five strings are part of the canonical report bytes. They are
+        covered by the same Ed25519 signature as every digest and every result
+        — removing one would change the signature. You can confirm that on
+        the <a href="/verify">verify page</a>.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap foot-grid">
+    <div>
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952</p>
+    </div>
+    <div>
+      <p>This site runs no JavaScript and makes no external requests.</p>
+      <p>Fonts are self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

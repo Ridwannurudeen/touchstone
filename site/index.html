@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Touchstone</title>
+<meta name="description" content="Machine-checkable controls compiled from a fund issuer's own disclosures, evaluated deterministically, signed, and published on X Layer. It reports what it can prove — and says when it cannot.">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/">Touchstone</a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/dossier">Dossier</a>
+      <a href="/controls">Controls</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="hero">
+    <div class="wrap">
+      <div class="hero-verdict">
+        <p class="eyebrow">USTB · Sequence 1 · X Layer testnet</p>
+        <h1 class="t-display state-unverifiable-display">UNVERIFIABLE</h1>
+        <p class="t-lead">Five of eight controls were satisfied. Three could not be
+        evaluated, so the asset is reported as unverified — and that report is on
+        chain, permanently.</p>
+
+        <div class="verdict-strip">
+          <ol class="dots" aria-label="Per-control results, in report order">
+            <li class="d-s"><span class="sr">holdings-as-of-date-present: satisfied</span></li>
+            <li class="d-u"><span class="sr">ustb-aum-published: unevaluable</span></li>
+            <li class="d-s"><span class="sr">ustb-nav-date-freshness: satisfied</span></li>
+            <li class="d-u"><span class="sr">ustb-nav-per-share-published: unevaluable</span></li>
+            <li class="d-s"><span class="sr">ustb-one-day-yield-present: satisfied</span></li>
+            <li class="d-u"><span class="sr">ustb-outstanding-shares-published: unevaluable</span></li>
+            <li class="d-s"><span class="sr">ustb-seven-day-yield-present: satisfied</span></li>
+            <li class="d-s"><span class="sr">ustb-thirty-day-yield-present: satisfied</span></li>
+          </ol>
+          <p class="strip-label">5 satisfied · 3 unevaluable</p>
+        </div>
+
+        <p class="hero-meta mono">2026-08-17T16:48:32.075003Z · block 38526525</p>
+
+        <div class="cta-row">
+          <a class="cta" href="/dossier/ustb-2026-08-17">Read the report</a>
+          <a class="t-small" href="/verify">Verify it yourself</a>
+        </div>
+      </div>
+
+      <aside class="hero-manifest">
+        <p class="manifest-title">The eight controls</p>
+        <ul class="manifest-list">
+          <li><span class="dot d-s"></span><code>holdings-as-of-date-present<span class="sr"> — satisfied</span></code></li>
+          <li><span class="dot d-u"></span><code>ustb-aum-published<span class="sr"> — unevaluable</span></code></li>
+          <li><span class="dot d-s"></span><code>ustb-nav-date-freshness<span class="sr"> — satisfied</span></code></li>
+          <li><span class="dot d-u"></span><code>ustb-nav-per-share-published<span class="sr"> — unevaluable</span></code></li>
+          <li><span class="dot d-s"></span><code>ustb-one-day-yield-present<span class="sr"> — satisfied</span></code></li>
+          <li><span class="dot d-u"></span><code>ustb-outstanding-shares-published<span class="sr"> — unevaluable</span></code></li>
+          <li><span class="dot d-s"></span><code>ustb-seven-day-yield-present<span class="sr"> — satisfied</span></code></li>
+          <li><span class="dot d-s"></span><code>ustb-thirty-day-yield-present<span class="sr"> — satisfied</span></code></li>
+        </ul>
+        <p class="manifest-foot"><a href="/dossier/ustb-2026-08-17">Each one in full</a></p>
+      </aside>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>What Touchstone does</h2>
+      <div class="prose">
+        <p>Touchstone compiles a fund issuer's own disclosures into machine-checkable
+        controls. Each control cites a byte-exact span of the issuer's document. A
+        deterministic engine evaluates the controls against freshly retrieved
+        evidence, signs the result with Ed25519, and publishes it to a registry on
+        X&nbsp;Layer. A consumer contract, AssetGate, reads the asset's state from
+        the registry. You can read it here.</p>
+      </div>
+
+      <div class="movements">
+        <div class="movement">
+          <span class="num" aria-hidden="true">01</span>
+          <h3>Compile</h3>
+          <p>A model reads the issuer's published documents and proposes controls.
+          Each candidate cites the exact bytes it was drawn from. Deterministic
+          gates screen every candidate; a human approves the set. Declined
+          candidates are recorded, with reasons.</p>
+        </div>
+        <div class="movement">
+          <span class="num" aria-hidden="true">02</span>
+          <h3>Evaluate</h3>
+          <p>An engine retrieves fresh evidence and evaluates each control. It
+          never guesses. When the evidence cannot support an answer, the control
+          is reported unevaluable — and that is a result, not an omission.</p>
+        </div>
+        <div class="movement">
+          <span class="num" aria-hidden="true">03</span>
+          <h3>Publish</h3>
+          <p>The report is signed with Ed25519 and published to a registry
+          contract on X&nbsp;Layer testnet. Anyone can download the signed bundle
+          and verify the signature, the roots, and every control hash offline.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>Abstention is a decision</h2>
+      <div class="prose">
+        <p>On its first live run, Touchstone evaluated the eight approved controls
+        for Superstate's USTB. Five were satisfied. For three, no qualifying
+        earlier capture existed, so their values were not evaluated. The engine
+        did not fill the gap with an assumption. It published the asset as
+        <span class="mono">UNVERIFIABLE</span> — signed, sequenced, permanent.</p>
+        <p>Anyone can build a thing that says CONFIRMED. This one tells you when
+        it doesn't know.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>One report</h2>
+      <div class="prose">
+        <p>The registry holds one published report: USTB, epoch
+        <a href="/dossier/ustb-2026-08-17"><code>ustb-2026-08-17</code></a>,
+        sequence 1. This site renders it in full and links the bundle it was
+        signed from. Nothing else is claimed.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap foot-grid">
+    <div>
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952</p>
+    </div>
+    <div>
+      <p>This site runs no JavaScript and makes no external requests.</p>
+      <p>Fonts are self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

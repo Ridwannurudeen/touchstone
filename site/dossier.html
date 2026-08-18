@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dossier · Touchstone</title>
+<meta name="description" content="Every report Touchstone has published, in sequence.">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/">Touchstone</a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/dossier" aria-current="page">Dossier</a>
+      <a href="/controls">Controls</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Published reports</p>
+      <h1>Dossier</h1>
+      <p class="t-lead prose" style="margin-top: var(--s4)">Every report Touchstone
+      has published, in sequence. There is one.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="table-scroll">
+        <table>
+          <caption class="sr">Published reports, newest first</caption>
+          <thead>
+            <tr>
+              <th scope="col">Epoch</th>
+              <th scope="col">Seq</th>
+              <th scope="col">State</th>
+              <th scope="col">Controls</th>
+              <th scope="col">Observed at (UTC)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a class="epoch-link" href="/dossier/ustb-2026-08-17"><code>ustb-2026-08-17</code></a></td>
+              <td class="mono">1</td>
+              <td><span class="chip chip-unevaluable"><i class="dot" aria-hidden="true"></i>UNVERIFIABLE</span></td>
+              <td>5 satisfied · 3 unevaluable</td>
+              <td class="mono">2026-08-17T16:48:32.075003Z</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note" style="margin-top: var(--s6)">
+        <p><strong>A report is bound to the control set it was signed under.</strong>
+        Sequence 1 was evaluated under an eight-control set; the digest of that
+        approval ledger is inside the signed report. The project has since approved
+        a different, five-control set. It applies only to sequences
+        published after it, and it is never shown against sequence&nbsp;1.</p>
+        <p>A report can also name an earlier sequence it corrects.
+        Sequence&nbsp;1 corrects nothing.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap foot-grid">
+    <div>
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952</p>
+    </div>
+    <div>
+      <p>This site runs no JavaScript and makes no external requests.</p>
+      <p>Fonts are self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
