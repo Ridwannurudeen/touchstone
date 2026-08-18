@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI usage · Docs · Touchstone</title>
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products">Products</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap doc-layout">
+    <article class="doc-body">
+<h1 id="ai-usage">AI usage</h1>
+<p>Two different things in this project are called AI, and only one of them is part of the
+product. This file used to describe only the other one — three sentences about coding
+assistants — which left a reader to conclude that AI here meant autocomplete. That was a poor
+description of a system whose central component is a bounded AI compiler.</p>
+<hr />
+<h2 id="1-ai-in-the-product-the-control-compiler">1. AI in the product: the control compiler</h2>
+<p>An issuer publishes disclosures as prose and loosely-typed JSON. A smart contract cannot read
+them. The gap between "the fund says its NAV is dated the fourteenth" and a predicate a
+deterministic engine can evaluate is a <em>semantic</em> problem, and it is the one thing here that a
+model is genuinely better at than code.</p>
+<p>So a model proposes controls. It does not decide anything.</p>
+<h3 id="what-the-model-is-allowed-to-do">What the model is allowed to do</h3>
+<p>Propose typed candidate controls from the issuer's own retrieved bytes. Each candidate must
+carry a subject, an adapter, a comparison operator, an expected value, and <strong>an exact byte span
+quoted from the source artifact</strong>.</p>
+<h3 id="what-the-model-is-not-allowed-to-do">What the model is not allowed to do</h3>
+<ul>
+<li>It cannot approve a control. Approval is a separate human decision recorded in
+  <code>data/compilations/APPROVALS.json</code>.</li>
+<li>It cannot decide an asset's status. Runtime state is computed by <code>touchstone/evaluate.py</code>
+  from approved controls and retained evidence. <strong>The model is never consulted at evaluation
+  time</strong>, and nothing in the serving path calls a provider.</li>
+<li>It cannot widen its own remit. <code>expected_value</code> may not carry keys its operator does not
+  define; a freshness window must equal the source manifest's declared policy; <code>grace_period</code>
+  must be zero for every non-freshness operator.</li>
+<li>It cannot smuggle instructions. Proposals matching an instruction-like pattern
+  (<code>ignore</code>, <code>disregard</code>, <code>override</code>, <code>execute</code>, <code>fetch</code>, <code>curl</code>, …) or carrying URLs to
+  unexpected hosts are treated as suspect (<code>touchstone/compiler.py:44</code>).</li>
+</ul>
+<h3 id="the-deterministic-gates-every-proposal-must-pass">The deterministic gates every proposal must pass</h3>
+<p>A proposal is not a control. Before it can even be offered for approval, code checks that the
+cited span occurs in the retrieved artifact byte-for-byte; that the source and adapter
+combination is one the evaluator can actually decide; that the schema is exact; that the
+declared confidence clears 0.8; and that the asset binding matches. A candidate that fails any
+gate is recorded as rejected or abstained, with its reason, in a durable artifact.</p>
+<h3 id="measured-from-the-artifacts-in-this-repository">Measured, from the artifacts in this repository</h3>
+<p>18 compilation artifacts, 72 candidate outcomes:</p>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th>Count</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Accepted by the gates</td>
+<td>55</td>
+<td>passed every deterministic check — <em>eligible for human review</em>, not live</td>
+</tr>
+<tr>
+<td>Abstained</td>
+<td>15</td>
+<td>compiler confidence below the 0.8 threshold</td>
+</tr>
+<tr>
+<td>Rejected</td>
+<td>2</td>
+<td>the evaluator cannot decide that source and operator combination</td>
+</tr>
+</tbody>
+</table>
+<p>Requested model identity matched the returned model identity in <strong>72 of 72</strong> outcomes
+(<code>claude-opus-5</code>). A response from a different model than the one asked for is a provenance
+failure, so the returned identity is recorded rather than assumed.</p>
+<p>Of the accepted candidates, a human approved <strong>5</strong> and declined <strong>5</strong>. The declines are the
+interesting half, because they show the boundary doing work a model would not have applied to
+itself:</p>
+<ul>
+<li>two declined as <em>redundant</em> — a second control reading the same field a live control already
+  reads;</li>
+<li>one declined for clearing the confidence gate <strong>by zero margin</strong> (0.80 against a gate of
+  &lt; 0.80);</li>
+<li>two declined as additional scalar coverage on a document already covered, rather than breadth.</li>
+</ul>
+<p>Approving those five would have doubled the control count and added no evidence. The published
+completion table records the control target as <em>missed</em> at five rather than met at ten, because
+counting duplication as breadth is the kind of number that makes a metric worthless.</p>
+<h3 id="provenance-recorded-for-every-compilation">Provenance recorded for every compilation</h3>
+<p>Requested and returned model identity, provider endpoint and response id, SHA-256 of the
+prompt, of the input evidence, and of the raw provider response, the compiler version, and the
+retrieval instant. An approved control is bound by digest to the compilation that produced it,
+so a control cannot be silently re-attributed to a different model run.</p>
+<h3 id="what-this-does-not-claim">What this does not claim</h3>
+<p>The model's self-reported confidence is not a calibrated probability. An exact span proves the
+bytes occur in the artifact, not that they denote the field the adapter consumes — that is
+recorded as <strong>R-1</strong> in <code>docs/THREAT-MODEL.md</code>. A schema-valid proposal can still be steered by
+a dishonest source. And the approval that stops all of this is currently an unauthenticated
+field: it records a decision without proving who made it. That is a known gap, not a solved
+problem.</p>
+<hr />
+<h2 id="2-ai-outside-the-product-coding-assistants">2. AI outside the product: coding assistants</h2>
+<p>AI coding assistants were used for implementation, testing and review, as they are on most
+software written in 2026. Generated work is checked against the repository's specifications and
+verified by the project owner before any submission or deployment.</p>
+<p><strong>This has nothing to do with the compiler above.</strong> No coding assistant runs at compile time,
+evaluation time, signing time or publication time. Nothing in <code>touchstone/</code> calls a model except
+<code>touchstone/compiler.py</code>, and that path runs only when a human deliberately recompiles controls
+— never while an epoch is being served.</p>
+    </article>
+    <aside class="doc-toc" aria-label="On this page">
+      <p class="foot-h">On this page</p>
+      <ol class="doc-toc-list">
+        <li class="toc-2"><a href="#1-ai-in-the-product-the-control-compiler">1. AI in the product: the control compiler</a></li>
+        <li class="toc-3"><a href="#what-the-model-is-allowed-to-do">What the model is allowed to do</a></li>
+        <li class="toc-3"><a href="#what-the-model-is-not-allowed-to-do">What the model is not allowed to do</a></li>
+        <li class="toc-3"><a href="#the-deterministic-gates-every-proposal-must-pass">The deterministic gates every proposal must pass</a></li>
+        <li class="toc-3"><a href="#measured-from-the-artifacts-in-this-repository">Measured, from the artifacts in this repository</a></li>
+        <li class="toc-3"><a href="#provenance-recorded-for-every-compilation">Provenance recorded for every compilation</a></li>
+        <li class="toc-3"><a href="#what-this-does-not-claim">What this does not claim</a></li>
+        <li class="toc-2"><a href="#2-ai-outside-the-product-coding-assistants">2. AI outside the product: coding assistants</a></li>
+      </ol>
+    </aside>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate<span class="foot-flag">testnet only</span></a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/status">Status</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

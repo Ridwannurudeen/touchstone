@@ -68,7 +68,7 @@ fabricated demo.
 | Testnet registry | Deployed. `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` on chain 1952. Holds **three** reports (sequences 1–3, the last a correction), all `UNVERIFIABLE`. A mainnet registry is also live on chain 196. See `docs/OPERATIONS.md`. |
 | Publisher authorised and funded | Yes, on both registries. Publication is a separate owner gate (`docs/CANARY-G1B.md`) and **has now been run five times**. |
 | Previous signed epoch on a public chain | **Five**, across two chains. Epochs `ustb-2026-08-17` and `ustb-2026-08-18`; every one `UNVERIFIABLE`. |
-| Living dossier (PLAN-T9) | **Built and live** at https://touchstone.gudman.xyz — 20 pages, zero JavaScript. |
+| Living dossier (PLAN-T9) | **Built and live** at https://touchstone.gudman.xyz — 21 pages, zero JavaScript. |
 | `AssetGate` on a persistent chain | **Live on testnet** at `0xAac48DC261B04737FDCB101D5049395121034a83`; `check(USTB)` returns `(false, "status not allowed")`. `not_deployed` on mainnet. |
 | Demo URL | https://touchstone.gudman.xyz |
 | Host / supervisor | **`not_configured`.** |

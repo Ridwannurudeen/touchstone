@@ -51,6 +51,12 @@ PUBLISHED: dict[str, tuple[Path, str, str]] = {
         "What was measured when the 260 MB suspension was re-examined, including the two "
         "shortcuts that turned out to be closed.",
     ),
+    "ai": (
+        ROOT / "AI_USAGE.md",
+        "AI usage",
+        "Where a model is used, what it may propose, what it may never decide, and the "
+        "measured outcome of every compilation in this repository.",
+    ),
     "source-audit": (
         ROOT / "SOURCE_AUDIT.md",
         "Source audit",

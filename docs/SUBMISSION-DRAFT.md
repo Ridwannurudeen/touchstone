@@ -21,10 +21,10 @@ observed.
 | Version | `0.1.0` (`pyproject.toml`) |
 | Licence | Apache-2.0 |
 | One sentence | Touchstone compiles issuer-published RWA disclosures into cited, machine-checkable controls, evaluates them deterministically against retained evidence, and can publish signed results to an append-only registry on X Layer. |
-| Public website | **LIVE** — https://touchstone.gudman.xyz — 20 pages, zero JavaScript, self-hosted fonts |
+| Public website | **LIVE** — https://touchstone.gudman.xyz — 21 pages, zero JavaScript, self-hosted fonts |
 | Public dossier | **LIVE** — https://touchstone.gudman.xyz/dossier/ustb-2026-08-17 — the published report in full, every control and digest |
 | Demo URL | `not_deployed` — no video recorded yet |
-| Documentation site | **LIVE** — https://touchstone.gudman.xyz/docs — 1,870 lines of the project's committed documentation |
+| Documentation site | **LIVE** — https://touchstone.gudman.xyz/docs — 2,003 lines of the project's committed documentation |
 | X / social handles | **`@touch__stone`** — created by the owner 2026-08-18. The owner reports the @XLayerOfficial post as published; it is not machine-verifiable from this repository, and its URL belongs in the submission form. The rules require the account be *kept active*, which cannot be backdated. |
 | Domain | `gudman.xyz` subdomain, TLS via Let's Encrypt, certificate to 2026-11-16 |
 | Repository | `github.com/Ridwannurudeen/touchstone` — **private until after the 2026-08-21 deadline, by owner decision on 2026-08-18.** The reason is disclosure timing, not concealment: the approach is novel and the owner does not want it copied inside the submission window. Judging happens after the deadline, so the code is readable when it is read. Anyone following the link before then gets a 404, which is an accepted cost. |
@@ -120,7 +120,7 @@ Stated as misses, not as near-misses.
 | ≥2 fully autonomous **live** adapters | **Missed — one, not zero.** USTB ran the unattended daemon against the live issuer on 2026-08-17 and published sequence 1. This row said "zero proven live" until 2026-08-18, contradicting both `LIMITATIONS.md` and the published report. One live slot is also not continuous operation. USDY's daily page is bounded and measured but has no approved control; FOBXX has a live bounded SEC N-MFP3 regulator route, monthly; OUSG is the ruled next adapter. |
 | One live consumer contract gating on state | **Met on testnet**, 2026-08-18. `AssetGate` at `0xAac48DC261B04737FDCB101D5049395121034a83` returns `(false, "status not allowed")` for USTB — it refuses, which is the correct behaviour against an `UNVERIFIABLE` report. Not on mainnet, and no third party consumes it. |
 | One production canary epoch | **Met on both chains.** Testnet 2026-08-17 (sequence 1, block 38526525) and mainnet 2026-08-18 (sequence 1, block 68292878). Both `UNVERIFIABLE`. |
-| Living dossier and developer surface | **Shipped 2026-08-18.** Live at https://touchstone.gudman.xyz — 20 pages, zero JavaScript, an offline verifier, a coverage page, and 1,870 lines of the repository's documentation. |
+| Living dossier and developer surface | **Shipped 2026-08-18.** Live at https://touchstone.gudman.xyz — 21 pages, zero JavaScript, an offline verifier, a coverage page, and 2,003 lines of the repository's documentation. |
 | Public demo | **Live** at https://touchstone.gudman.xyz. The two-act script in `ROADMAP.md` still cannot be walked as written; see `docs/DEMO-RUNBOOK.md`. |
 
 Phase 1 ships one USTB vertical. The two-adapter and production-canary
