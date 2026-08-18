@@ -152,8 +152,9 @@ On this tree, as of the files read for this runbook, the real manifests are:
 | `deployments/xlayer-testnet-2.json` | `active` | `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` |
 | `deployments/xlayer-testnet.json` | `superseded` | `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` |
 
-Mainnet is `not_deployed`. There is no mainnet manifest that is not a
-template.
+Mainnet is **deployed** as of 2026-08-18: `deployments/xlayer-mainnet.json`,
+`deployment_state: active`, registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`
+on chain 196. The template beside it is retained as the template.
 
 ---
 
@@ -280,10 +281,12 @@ host and supervisor units as unset; this runbook does not invent them.
 PLAN-T13 named systemd units as later packaging work. They are not in
 this tree.
 
-**Mainnet is `not_deployed`.** It is owner-gated, conditional on a proven
-testnet loop (nothing has published to testnet), and additionally blocked
-until the deployer and publisher keys sit on separate hosts. They
-currently do not; see `docs/DEPLOYMENT-G1-EXECUTED.md`.
+**Mainnet is deployed** as of 2026-08-18, and this passage previously said it
+was gated until the deployer and publisher keys sat on separate hosts. **They
+still do not.** Mainnet proceeded under owner direction with that deviation
+disclosed rather than resolved; see `docs/DEPLOYMENT-G1-EXECUTED.md` and the
+deployment table in `docs/OPERATIONS.md`. The constraint was not met — it was
+overridden, and this runbook records that rather than quietly dropping it.
 
 ---
 
@@ -335,10 +338,11 @@ file is not edited.
 - That a release has been cut. No release document is committed in this
   tree.
 - That tests passed a particular count. The builder will not invent one.
-- That the active registry has been published to. It has not.
-- That `AssetGate` is on any persistent chain. It is `not_deployed`.
-- That a production host, supervisor unit, public URL, or mainnet
-  registry exists. Host and units are `not_configured`; mainnet is
-  `not_deployed`.
+- That the active registry has been published to more than the record shows.
+  Testnet holds three reports, mainnet two; all `UNVERIFIABLE`.
+- That `AssetGate` is on mainnet. It is live on testnet only.
+- That a production host or supervisor unit exists. Both are
+  `not_configured`, so **no continuity or reliability claim is available**:
+  every slot to date was hand-started.
 - That cutting a release authorises a canary, a post, or a submission.
   Those remain owner gates, listed in `docs/OPERATIONS.md`.

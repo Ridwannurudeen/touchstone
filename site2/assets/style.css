@@ -1242,7 +1242,7 @@ blockquote cite {
 }
 
 /* AssetGate is named in the footer of every page as a product link. An auditor reading the
-   nav should not have to open the page to learn the contract is not deployed, so the status
+   nav should not have to open the page to learn the contract is testnet-only, so the status
    travels with the name wherever the name appears. */
 .foot-flag {
   /* Inside the anchor, not beside it: the footer column stacks its children, so a sibling

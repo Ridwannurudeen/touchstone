@@ -259,11 +259,13 @@ an epoch, deploy on another network, or make a private repository public.
       `28981261449063` wei. `docs/DEPLOYMENT-G1.md` remains the unchanged, pre-execution
       approval packet, so its `AWAITING DIGEST-BOUND APPROVAL` banner is historical rather
       than current status. `docs/DEPLOYMENT-G1-EXECUTED.md` is the execution record
-- [ ] **Live USTB testnet epoch** — the next critical-path action. The active registry and
-      publisher are ready and hold no reports, but deployment approval did not authorize a
-      publication
-- [ ] **Mainnet deploy + canary** — after a proven testnet loop only, and nothing has
-      published to testnet yet
+- [x] **Live USTB testnet epoch** — done 2026-08-17 under its own owner authorisation, and
+      twice more since. Testnet holds three reports
+- [x] **Mainnet deploy + canary** — done 2026-08-18 under a recorded owner approval. Mainnet
+      holds two reports. Note this was authorized while the key separation this document
+      requires still did not exist; see the deployment table above
+- [ ] **Continuous operation** — still open, and the real gap. Every slot to date was
+      hand-started; no production host holds a sustained schedule
 - [ ] **Submission** — owner-handled
 - [ ] **Domains and handles** — deliberately last; see `docs/BRAND-CLEARANCE.md`
 - [x] **Private git remote** — `github.com/Ridwannurudeen/touchstone` exists and is private.

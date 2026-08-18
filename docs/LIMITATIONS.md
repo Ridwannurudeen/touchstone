@@ -54,7 +54,7 @@ missed rows.
 
 The living dossier (PLAN-T9) shipped 2026-08-18 and is live at
 https://touchstone.gudman.xyz — 20 pages, zero JavaScript, an offline
-verifier, a coverage page, and 1,803 lines of this documentation rendered
+verifier, a coverage page, and 1,870 lines of this documentation rendered
 from the repository. This paragraph previously read "there is no public
 page", and was being served *from* the public page. A project whose whole
 claim is that it does not assert more than the evidence supports cannot
@@ -257,7 +257,7 @@ Touchstone is.
   not recommend. It does not decide listings.
 - **Safety of an asset or of a consumer protocol.** `AssetGate` reacts
   to verification freshness. A permissive policy admits stale state. The
-  gate has never been deployed to a persistent chain.
+  gate is live on X Layer testnet at `0xAac48DC261B04737FDCB101D5049395121034a83`, where it currently refuses USTB; it is not deployed on mainnet, and no third party consumes it.
 - **Independent attestation, audit, or formal verification of
   Touchstone itself.** The Phase 3 formal threat model, independent
   contract audit, and external pipeline review are not claimed. This
@@ -279,5 +279,6 @@ design partners; formal specifications; multi-publisher quorum;
 accreditation; staking or a token; institutional governance; HSM or
 multisig custody; multi-region deployment.
 
-The public dossier, a public verification endpoint, and any project URL
-are `not_deployed`.
+The public dossier is live at https://touchstone.gudman.xyz. A public
+verification endpoint is still `not_deployed` — verification is offline, by
+running the verifier against a bundle.
