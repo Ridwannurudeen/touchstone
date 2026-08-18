@@ -91,7 +91,22 @@ python3 -m venv /opt/touchstone/.venv
 cp /opt/touchstone/deploy/systemd/touchstone-*.service /etc/systemd/system/
 cp /opt/touchstone/deploy/systemd/touchstone-*.timer   /etc/systemd/system/
 systemctl daemon-reload
+
+# Always confirm. A unit read with CRLF carries a trailing carriage return on every value,
+# so ExecStart names a binary that does not exist while looking exactly right.
+for f in /etc/systemd/system/touchstone-*; do
+  printf '%s %s
+' "$(tr -cd '' < "$f" | wc -c)" "$(basename "$f")"
+done   # every count must be 0
 ```
+
+⚠️ **Install units from the committed blob, not from a Windows working tree.** `.gitattributes`
+forces `deploy/**` to LF *in git*, which does not stop a checkout on a machine with
+`core.autocrlf=true` from holding CRLF on disk — and a tar of that working tree ships the
+carriage returns to the host. This has now happened once, after the rule was added
+specifically to prevent it. From the authoring machine, pipe the blob rather than the file:
+
+    git show ":deploy/systemd/touchstone-observer@.service"       | ssh root@<host> 'cat > /etc/systemd/system/touchstone-observer@.service'
 
 ### 3a. The observer — no secret, install now
 
