@@ -173,14 +173,27 @@ def make_producer(
                 f"{label} evidence could not be retrieved: {error}"
             ) from error
 
+        # Asked once and reused: `next_sequence` reads the chain, and calling it twice
+        # could straddle another publication and describe a different report than the one
+        # being built.
+        sequence = next_sequence()
+
         report = build_observation_report(
             epoch,
             controls,
             epoch_id=epoch_id,
-            sequence=next_sequence(),
+            sequence=sequence,
             publisher_kid=signer.kid,
             previous_state=previous_state(observed_on),
-            event=OperationalEvent.RECONFIRMED,
+            # Sequence 1 is the first report for this asset on this registry, which is
+            # precisely what the event describes. The previous state is UNVERIFIABLE either
+            # way, so the state cannot distinguish a first run from a genuine reconfirmation
+            # of an unverified asset — only the sequence can.
+            event=(
+                OperationalEvent.FIRST_OBSERVATION
+                if sequence == 1
+                else OperationalEvent.RECONFIRMED
+            ),
             approval_ledger=ledger,
         )
         signed = signer.sign_report(report)

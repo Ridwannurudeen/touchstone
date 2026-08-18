@@ -45,7 +45,7 @@ USTB_LIMITATIONS = (
     "shows a row was not revised between those captures, not that it is final.",
     "This bundle carries evidence digests, not the artifacts themselves, so it cannot "
     "replay normalization or prove that a reported row occurs inside an artifact.",
-    "This local-only report does not verify an onchain NAV oracle or token supply.",
+    "This report does not verify an onchain NAV oracle or token supply.",
 )
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 

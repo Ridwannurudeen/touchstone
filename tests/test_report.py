@@ -466,3 +466,21 @@ def test_a_report_resolves_each_instant_once(tmp_path: Path) -> None:
         confirmation=shifted.confirmation,
     )
     assert report["evidence_root"] == evidence_root(evidence_references(settled))
+
+
+def test_no_limitation_calls_a_published_report_local_only() -> None:
+    """The signed caveats travel onto a public chain, so they must be true there.
+
+    One of them read "This local-only report does not verify an onchain NAV oracle or token
+    supply." It was written when reports were local artifacts and was still being stamped into
+    every report after publication began, so USTB sequence 1 asserts on two chains that it is
+    local-only. Those bytes are signed and cannot be edited — only superseded — which is why
+    this pins the generator rather than the artifact.
+    """
+    offenders = [text for text in USTB_LIMITATIONS if "local-only" in text.lower()]
+    assert not offenders, (
+        f"a limitation still describes the report as local-only: {offenders}"
+    )
+    assert any("onchain NAV oracle" in text for text in USTB_LIMITATIONS), (
+        "the claim the sentence actually makes was dropped rather than corrected"
+    )

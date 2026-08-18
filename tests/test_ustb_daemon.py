@@ -1040,3 +1040,36 @@ def test_recovery_reads_a_bundle_the_way_a_reader_would(tmp_path: Path) -> None:
     guard = require_verifying_bundle(workspace.bundles)
     with pytest.raises(EpochProductionError, match="not strictly readable JSON"):
         guard(_pending(genuine))
+
+
+def test_a_first_publication_does_not_claim_to_have_reconfirmed_anything(
+    tmp_path: Path,
+) -> None:
+    """Sequence 1 has nothing behind it to reconfirm.
+
+    The producer stamped `RECONFIRMED` on every slot, so USTB sequence 1 went onto two public
+    chains asserting it had reconfirmed a state that had never been observed. Those bytes are
+    signed and can only be superseded, never edited, which is why this pins the producer.
+
+    The previous state cannot distinguish the two cases: an empty operations store reports
+    UNVERIFIABLE, and so does a genuine reconfirmation of an asset that is still unverified.
+    The sequence can — 1 is the first report for this asset on this registry.
+    """
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+    service, workspace = built(tmp_path, backend)
+    _, produce = producer(
+        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+    )
+
+    run(service, produce)
+
+    written = sorted(workspace.bundles.glob("*.json"))
+    assert len(written) == 1, f"expected one bundle, got {written}"
+    report = json.loads(written[0].read_text(encoding="utf-8"))["signed_report"]["report"]
+
+    assert report["sequence"] == 1
+    assert report["state_transition"]["event"] == "FIRST_OBSERVATION", (
+        "a first publication reported "
+        f"{report['state_transition']['event']!r}, which claims a history it does not have"
+    )

@@ -42,6 +42,12 @@ class AssetState(str, Enum):
 
 
 class OperationalEvent(str, Enum):
+    # A first publication has nothing to reconfirm. Until this existed the daemon had no
+    # honest value to send and stamped RECONFIRMED on every slot, so USTB sequence 1 claims
+    # on two chains that it reconfirmed a state that had never been observed. `transition_state`
+    # reads the event only for SOURCE_ERROR, so this member changes no transition rule — it
+    # only stops the record asserting something that did not happen.
+    FIRST_OBSERVATION = "FIRST_OBSERVATION"
     RECONFIRMED = "RECONFIRMED"
     EVIDENCE_CHANGED = "EVIDENCE_CHANGED"
     SOURCE_ERROR = "SOURCE_ERROR"
