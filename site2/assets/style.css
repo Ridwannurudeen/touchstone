@@ -1240,3 +1240,15 @@ blockquote cite {
 @media (max-width: 640px) {
   .span-inset code { white-space: pre-wrap; word-break: break-all; }
 }
+
+/* AssetGate is named in the footer of every page as a product link. An auditor reading the
+   nav should not have to open the page to learn the contract is not deployed, so the status
+   travels with the name wherever the name appears. */
+.foot-flag {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-400);
+  white-space: nowrap;
+}

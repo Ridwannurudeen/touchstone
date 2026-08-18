@@ -43,6 +43,28 @@
         <li class="tl-item">
           <p class="tl-date mono">2026-08-18</p>
           <div class="tl-body">
+            <h2>Two retrieval routes re-measured</h2>
+            <p>FOBXX&rsquo;s regulator route was re-verified live and is bounded:
+            <code>data.sec.gov</code> returns HTTP&nbsp;200 in 29,354 bytes with 68
+            N-MFP3 filings, the latest filed 2026-08-06 for period 2026-07-31. Its
+            status had been reported as unavailable because the <em>daily issuer
+            feed</em> returns 403, which was allowed to describe the whole asset.
+            FOBXX carries monthly controls on filed evidence.</p>
+            <p>USDY&rsquo;s suspension was found to rest on the same mistake &mdash;
+            it was treated as one source when it is two, and only the attestation
+            archive is the 260&nbsp;MB one. A bounded daily page was measured at
+            1,544,898 bytes. It is <strong>not approved</strong>: the issuer&rsquo;s
+            published <code>collateralizationRatio</code> of 105.29 does not
+            reconcile with its own published <code>total</code> and
+            <code>outstandingValue</code>, which give 100.87%. That discrepancy was
+            found in audit, after this project had already written that the figures
+            were internally consistent. They are not, and no control can be written
+            on them until the field definitions come from the issuer.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-18</p>
+          <div class="tl-body">
             <h2>Control set revised</h2>
             <p>A five-control set was approved for USTB, with five candidates
             declined. It applies only to sequences published after sequence 1.
@@ -121,7 +143,7 @@
         <a href="/products/dossier">Dossier</a>
         <a href="/products/control-language">Control Language</a>
         <a href="/products/verifier">Verifier</a>
-        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/asset-gate">AssetGate</a> <span class="foot-flag">not deployed</span>
         <a href="/products/registry">Registry</a>
       </div>
       <div class="foot-col">

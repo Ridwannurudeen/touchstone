@@ -93,19 +93,19 @@
                 <strong>USDY</strong>
                 <span class="td-sub">Ondo U.S. Dollar Yield</span>
               </td>
-              <td><span class="chip chip-open"><i class="dot" aria-hidden="true"></i>OPEN</span></td>
-              <td>Reopened 2026-08-18 by measurement. The suspension treated USDY
-              as one source; it is two. Only the <em>attestation</em> archive is
-              the 260&nbsp;MB one. The daily portfolio page returns
-              <strong>HTTP&nbsp;200 in 1,544,898 bytes</strong> and carries
-              <code>asOfDate</code>, <code>collateralizationRatio</code>,
-              <code>outstandingValue</code>, <code>total</code> and per-holding
-              rows inline — bounded, and richer than any source now live. It is
-              the first source here that can carry a coverage predicate
-              (<code>total&nbsp;&gt;=&nbsp;outstandingValue</code>) rather than a
-              presence check. Daily attestations stay out of reach: HTTP range
-              requests on the archive return 200 with all 260,640,295 bytes, and
-              the folder page carries no server-rendered listing.</td>
+              <td><span class="chip chip-next"><i class="dot" aria-hidden="true"></i>SOURCE FOUND</span></td>
+              <td>Retrieval reopened 2026-08-18 by measurement; the control set is
+              not. The suspension treated USDY as one source; it is two, and only the
+              <em>attestation</em> archive is the 260&nbsp;MB one. The daily portfolio page
+              returns <strong>HTTP&nbsp;200 in 1,544,898 bytes</strong> and carries
+              <code>asOfDate</code>, <code>outstandingValue</code>, <code>total</code> and
+              per-holding rows inline. Two shortcuts were tested and closed: range requests on
+              the archive return 200 with all 260,640,295 bytes, and the folder page has no
+              server-rendered listing. <strong>Not approved</strong>: the issuer's published
+              <code>collateralizationRatio</code> of 105.29 does not reconcile with its own
+              <code>total</code> and <code>outstandingValue</code>, which give 100.87%. Until
+              those field definitions come from issuer documentation, no control can be written
+              on them. The manifest still reads suspended and there is no adapter.</td>
             </tr>
           </tbody>
         </table>
@@ -187,7 +187,7 @@
         <a href="/products/dossier">Dossier</a>
         <a href="/products/control-language">Control Language</a>
         <a href="/products/verifier">Verifier</a>
-        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/asset-gate">AssetGate</a> <span class="foot-flag">not deployed</span>
         <a href="/products/registry">Registry</a>
       </div>
       <div class="foot-col">

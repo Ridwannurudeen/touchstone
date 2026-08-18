@@ -87,10 +87,33 @@ liabilities, which the issuer itself summarises as <code>collateralizationRatio<
 about solvency rather than about publication, and it is the first evidence surface in this
 project that can carry one. On the measured figures the reserve exceeds the outstanding value by
 18,589,741.49.</p>
-<p>It should be approved with its limits stated: this is the <strong>issuer's own arithmetic on the
-issuer's own page</strong>, not an independent audit, and Touchstone verifying it proves the issuer
-published those figures and that they are internally consistent — never that the assets exist.
-The attestation archive is what would speak to that, and it remains out of daily reach.</p>
+<p><strong>Correction, 2026-08-18, found in audit.</strong> The paragraph above originally said these figures
+are "internally consistent". They are not, and the claim was mine, not the issuer's.</p>
+<pre><code>total / outstandingValue = 2154893984.54 / 2136304243.05555 = 100.87018%
+issuer's published collateralizationRatio       = 105.29
+</code></pre>
+<p>A 4.42 percentage-point gap. For 105.29% to hold against that total, the liability base would
+have to be about 2,046,627,395 — roughly 89.7 million below the published <code>outstandingValue</code>.
+The probe also parsed only three holding rows totalling about 11.3 million against a stated
+total of 2.15 billion, so the extraction was incomplete as well.</p>
+<p>Two possibilities, and this document does not get to pick between them without evidence: the
+fields are scoped differently than their names suggest, or the published ratio does not
+reconcile with the published components. <strong>Either way, a control asserting consistency cannot
+be written until the field definitions are established from the issuer's own documentation.</strong></p>
+<p>That is the finding, and it is a better argument for the product than the one it replaces: the
+first serious look at a new issuer's numbers turned up a discrepancy in their own published
+figures. It is also exactly why <code>total &gt;= outstandingValue</code> must not be sold as a solvency
+proof. At most it could show that two published fields satisfy an inequality. It would not show
+that reserves exist, are eligible, are unencumbered, are scoped to these liabilities, or cover
+them — and none of that is reachable from a page the issuer renders.</p>
+<p>The limits stand as originally written and are worth restating plainly: this is the issuer's own
+arithmetic on the issuer's own page, not an independent audit. The attestation archive is what
+would speak to the assets existing, and it remains out of daily reach.</p>
+<p><strong>What this source needs before any control is approved on it:</strong> a strict parser rather than a
+regex, a committed sanitised fixture, drift detection against the payload's shape, field
+definitions taken from issuer documentation rather than inferred from field names, and the
+provenance limit stated on the dossier. It is a candidate bounded source. It is not yet a
+retrieval contract.</p>
 <h2 id="what-this-changes-in-the-manifest">What this changes in the manifest</h2>
 <p><code>ondo-usdy-page</code> is described today only as <strong>link rediscovery</strong> for the archive, with
 <code>fixture_disposition: exempt</code> because the page carries a rotating credential. Both need to
@@ -148,7 +171,7 @@ monthly on filed evidence, and one class of control on it is waiting for a route
         <a href="/products/dossier">Dossier</a>
         <a href="/products/control-language">Control Language</a>
         <a href="/products/verifier">Verifier</a>
-        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/asset-gate">AssetGate</a> <span class="foot-flag">not deployed</span>
         <a href="/products/registry">Registry</a>
       </div>
       <div class="foot-col">

@@ -56,10 +56,40 @@ about solvency rather than about publication, and it is the first evidence surfa
 project that can carry one. On the measured figures the reserve exceeds the outstanding value by
 18,589,741.49.
 
-It should be approved with its limits stated: this is the **issuer's own arithmetic on the
-issuer's own page**, not an independent audit, and Touchstone verifying it proves the issuer
-published those figures and that they are internally consistent — never that the assets exist.
-The attestation archive is what would speak to that, and it remains out of daily reach.
+**Correction, 2026-08-18, found in audit.** The paragraph above originally said these figures
+are "internally consistent". They are not, and the claim was mine, not the issuer's.
+
+```
+total / outstandingValue = 2154893984.54 / 2136304243.05555 = 100.87018%
+issuer's published collateralizationRatio       = 105.29
+```
+
+A 4.42 percentage-point gap. For 105.29% to hold against that total, the liability base would
+have to be about 2,046,627,395 — roughly 89.7 million below the published `outstandingValue`.
+The probe also parsed only three holding rows totalling about 11.3 million against a stated
+total of 2.15 billion, so the extraction was incomplete as well.
+
+Two possibilities, and this document does not get to pick between them without evidence: the
+fields are scoped differently than their names suggest, or the published ratio does not
+reconcile with the published components. **Either way, a control asserting consistency cannot
+be written until the field definitions are established from the issuer's own documentation.**
+
+That is the finding, and it is a better argument for the product than the one it replaces: the
+first serious look at a new issuer's numbers turned up a discrepancy in their own published
+figures. It is also exactly why `total >= outstandingValue` must not be sold as a solvency
+proof. At most it could show that two published fields satisfy an inequality. It would not show
+that reserves exist, are eligible, are unencumbered, are scoped to these liabilities, or cover
+them — and none of that is reachable from a page the issuer renders.
+
+The limits stand as originally written and are worth restating plainly: this is the issuer's own
+arithmetic on the issuer's own page, not an independent audit. The attestation archive is what
+would speak to the assets existing, and it remains out of daily reach.
+
+**What this source needs before any control is approved on it:** a strict parser rather than a
+regex, a committed sanitised fixture, drift detection against the payload's shape, field
+definitions taken from issuer documentation rather than inferred from field names, and the
+provenance limit stated on the dossier. It is a candidate bounded source. It is not yet a
+retrieval contract.
 
 ## What this changes in the manifest
 
