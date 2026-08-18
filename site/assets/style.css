@@ -247,15 +247,31 @@ main { display: block; }
   padding-block: var(--s5);
 }
 
+/* The copper rule under the wordmark is gone. It existed because there was no mark and the
+   name needed something to sit on; now the mark carries the copper, and keeping both would
+   state the accent twice in the same lockup — and run a line under the mark's own corner. */
 .wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
   font-weight: 600;
   font-size: 1.0625rem;
   letter-spacing: -0.01em;
   color: var(--bone-100);
   text-decoration: none;
-  border-bottom: 2px solid var(--copper);
-  padding-bottom: 3px;
 }
+
+.mark {
+  width: 26px;
+  height: 26px;
+  display: block;
+  flex: none;
+}
+
+/* The lockup is the one place the accent moves on hover, and it moves by a hair. Anything
+   more would make the header the loudest thing on a page whose subject is restraint. */
+.wordmark:hover .mark { opacity: 0.85; }
+.mark, .wordmark:hover .mark { transition: opacity var(--dur) var(--ease); }
 
 .site-nav { display: flex; flex-wrap: wrap; gap: var(--s5); }
 
@@ -794,3 +810,41 @@ blockquote {
   max-width: 68ch;
 }
 blockquote cite { display: block; margin-top: var(--s2); color: var(--bone-600); font-size: 0.875rem; font-style: normal; }
+
+/* The flow diagram. It sits above the three written movements rather than replacing them:
+   the drawing carries the shape of the mechanism, the prose carries what each step refuses
+   to do, and neither says the other's half. */
+.flow {
+  margin: var(--s8) 0 0;
+  padding: 0;
+}
+
+.flow svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 720px;
+}
+
+/* Below about 780px the diagram would shrink past the point where its labels are readable,
+   so it scrolls inside its own box instead. The page itself never scrolls sideways. */
+.flow {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.flow figcaption {
+  margin-top: var(--s5);
+  max-width: 68ch;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--bone-400);
+  min-width: 0;
+}
+
+/* The hero already ends on a card and a rule of whitespace; adding a full --s10 section gap
+   on top of its own --s9 produced a 240px dead band that read as a missing section rather
+   than as breathing room. The first section after the hero gets a tighter lead-in. */
+@media (min-width: 1024px) {
+  .hero + .section { padding-top: var(--s8); }
+}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Touchstone">
+  <title>Touchstone</title>
+  <!-- How a touchstone is actually used: you draw the metal across the stone and compare its
+       streak against reference streaks already there. So the mark is a set of streaks, not a
+       glyph invented for a logo — one copper (the assay), two muted (what it is read against).
+       No frame: a border scales badly, competing with the streaks at large sizes and closing
+       into a blob at 16px, which is where a favicon spends its life. -->
+  <rect width="32" height="32" rx="7" fill="#101214"/>
+  <g stroke-linecap="round" fill="none">
+    <path d="M7.5 24 L14.5 9"   stroke="#5A6167" stroke-width="2.6"/>
+    <path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/>
+    <path d="M23 24 L27.5 13.5"  stroke="#5A6167" stroke-width="2.6"/>
+  </g>
+</svg>

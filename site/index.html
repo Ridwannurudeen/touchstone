@@ -5,6 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Touchstone</title>
 <meta name="description" content="Machine-checkable controls compiled from a fund issuer's own disclosures, evaluated deterministically, signed, and published on X Layer testnet. It reports what it can prove — and says when it cannot.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Touchstone">
+<meta property="og:title" content="Touchstone">
+<meta property="og:description" content="Machine-checkable controls compiled from a fund issuer's own disclosures, evaluated deterministically, signed, and published on X Layer testnet. It reports what it can prove — and says when it cannot.">
+<meta property="og:url" content="https://touchstone.gudman.xyz/">
+<meta property="og:image" content="https://touchstone.gudman.xyz/assets/share.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Touchstone — USTB sequence 1 reported UNVERIFIABLE: five of eight controls satisfied, three not evaluated.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Touchstone">
+<meta name="twitter:description" content="Machine-checkable controls compiled from a fund issuer's own disclosures, evaluated deterministically, signed, and published on X Layer testnet. It reports what it can prove — and says when it cannot.">
+<meta name="twitter:image" content="https://touchstone.gudman.xyz/assets/share.png">
 <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
@@ -12,7 +27,7 @@
 
 <header class="site-head">
   <div class="wrap head-row">
-    <a class="wordmark" href="/">Touchstone</a>
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
     <nav class="site-nav" aria-label="Site">
       <a href="/dossier">Dossier</a>
       <a href="/controls">Controls</a>
@@ -85,6 +100,86 @@
         control-set root — but it is not deployed, so nothing is reading the
         registry in production today.</p>
       </div>
+
+      <figure class="flow">
+        <svg viewBox="0 0 1080 232" role="img" aria-labelledby="flow-title flow-desc">
+          <title id="flow-title">How a claim becomes a published report</title>
+          <desc id="flow-desc">An issuer document supplies a cited span; the span becomes a
+          control with an operator and an expected value; the control is evaluated against a
+          fresh capture, producing either a result or an abstention; the results are signed
+          and published to the registry.</desc>
+
+          <g fill="none" stroke="#262B30" stroke-width="1">
+            <rect x="0.5"   y="16.5" width="216" height="130" rx="9"/>
+            <rect x="288.5" y="16.5" width="216" height="130" rx="9"/>
+            <rect x="576.5" y="16.5" width="216" height="130" rx="9"/>
+            <rect x="864.5" y="16.5" width="215" height="130" rx="9"/>
+          </g>
+
+          <!-- 1 — the issuer's own bytes, with the one line a control is allowed to cite -->
+          <g>
+            <rect x="24" y="44" width="140" height="7" rx="3.5" fill="#2A3037"/>
+            <rect x="24" y="62" width="168" height="7" rx="3.5" fill="#2A3037"/>
+            <rect x="24" y="80" width="112" height="7" rx="3.5" fill="#C2703F"/>
+            <rect x="24" y="98" width="152" height="7" rx="3.5" fill="#2A3037"/>
+            <rect x="24" y="116" width="88" height="7" rx="3.5" fill="#2A3037"/>
+          </g>
+
+          <!-- 2 — the span becomes a predicate. The copper bar is the same width as the cited
+               line above it: the control carries the citation, it does not paraphrase it. -->
+          <g>
+            <rect x="312" y="44" width="112" height="7" rx="3.5" fill="#C2703F"/>
+            <text x="312" y="82" font-size="15" fill="#929A9F">exists</text>
+            <text x="312" y="106" font-size="15" fill="#929A9F">field = one_day</text>
+            <text x="312" y="130" font-size="13" fill="#646C72">effective 2026-08-14</text>
+          </g>
+
+          <!-- 3 — eight controls, five answered and three that could not be -->
+          <g>
+            <circle cx="606" cy="60" r="7" fill="#7FB07C"/>
+            <circle cx="638" cy="60" r="6" fill="none" stroke="#8B9298" stroke-width="2.5"/>
+            <circle cx="670" cy="60" r="7" fill="#7FB07C"/>
+            <circle cx="702" cy="60" r="6" fill="none" stroke="#8B9298" stroke-width="2.5"/>
+            <circle cx="606" cy="92" r="7" fill="#7FB07C"/>
+            <circle cx="638" cy="92" r="6" fill="none" stroke="#8B9298" stroke-width="2.5"/>
+            <circle cx="670" cy="92" r="7" fill="#7FB07C"/>
+            <circle cx="702" cy="92" r="7" fill="#7FB07C"/>
+            <text x="600" y="130" font-size="13" fill="#646C72">5 read · 3 could not be</text>
+          </g>
+
+          <!-- 4 — one report, at one sequence, permanent -->
+          <g>
+            <rect x="888" y="46" width="60" height="30" rx="5" fill="#1E2226"/>
+            <rect x="956" y="46" width="60" height="30" rx="5" fill="#1E2226"/>
+            <rect x="1024" y="46" width="32" height="30" rx="5" fill="#16191C" stroke="#262B30"/>
+            <rect x="956" y="46" width="60" height="30" rx="5" fill="none" stroke="#C2703F" stroke-width="1.5"/>
+            <text x="888" y="106" font-size="15" fill="#929A9F">sequence 1</text>
+            <text x="888" y="130" font-size="13" fill="#646C72">signed · permanent</text>
+          </g>
+
+          <g stroke="#3A4149" stroke-width="1.5" fill="none">
+            <path d="M232 81 L272 81"/><path d="M266 76 L272 81 L266 86"/>
+            <path d="M520 81 L560 81"/><path d="M514 76 L520 81 L514 86"/>
+            <path d="M808 81 L848 81"/><path d="M802 76 L808 81 L802 86"/>
+          </g>
+
+          <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="12"
+             letter-spacing="1.1" fill="#646C72">
+            <text x="0"   y="180">ISSUER DOCUMENT</text>
+            <text x="288" y="180">CONTROL</text>
+            <text x="576" y="180">EVALUATION</text>
+            <text x="864" y="180">REGISTRY</text>
+          </g>
+          <g font-size="13" fill="#8A9298">
+            <text x="0"   y="204">The bytes, retrieved</text>
+            <text x="288" y="204">A predicate, citing them</text>
+            <text x="576" y="204">A result, or an abstention</text>
+            <text x="864" y="204">On chain, checkable</text>
+          </g>
+        </svg>
+        <figcaption>A control never restates the issuer; it points at the bytes it was drawn
+        from, and carries the citation all the way to the chain.</figcaption>
+      </figure>
 
       <div class="movements">
         <div class="movement">
