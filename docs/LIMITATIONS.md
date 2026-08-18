@@ -52,9 +52,13 @@ missed rows.
 | Production canary epoch | 1 | **1 — met on testnet, 2026-08-17.** USTB sequence 1 published at block 38526525, state `UNVERIFIABLE`. The target said *production*; this is testnet, so read it as met for testnet and unmet for mainnet, which remains unscheduled. |
 | Claims span-cited and hash-bound | 100% | Met for every accepted control. |
 
-The living dossier (PLAN-T9) is unbuilt. There is no public page, no
-wallet-free UI, and no developer surface. T26 in the threat model is
-still backlog for that reason.
+The living dossier (PLAN-T9) shipped 2026-08-18 and is live at
+https://touchstone.gudman.xyz — 20 pages, zero JavaScript, an offline
+verifier, a coverage page, and 1,803 lines of this documentation rendered
+from the repository. This paragraph previously read "there is no public
+page", and was being served *from* the public page. A project whose whole
+claim is that it does not assert more than the evidence supports cannot
+leave a page telling its reader that page does not exist.
 
 PLAN-T12 (release-candidate matrix) is not marked done in
 `docs/PHASE-1-PLAN.md`. A CI workflow exists at
