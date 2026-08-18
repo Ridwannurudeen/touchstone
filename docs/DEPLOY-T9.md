@@ -42,6 +42,24 @@ uses, and the vhost is installed only once the file it references exists.
    page, a font and the bundle — the three response paths, because a header set in a `location`
    replaces the inherited set rather than adding to it.
 
+## Content updates after the first deploy
+
+The vhost, certificate and nginx configuration are already in place, so a content update is
+steps 1 and 6 only — nothing shared is touched and no reload is needed.
+
+**There is no `rsync` on the authoring machine.** The upload is therefore a tar stream over
+ssh, which is equivalent here only because the file sets were compared first:
+
+    cd site2 && tar -czf - --exclude=_docs-template.html .       | ssh root@75.119.153.252 'tar -xzf - -C /opt/touchstone-site'
+
+Extract-over-top does not remove files that have been deleted locally, which `rsync --delete`
+would. **So compare the two file lists before uploading** and delete any orphan explicitly.
+Sort both with `LC_ALL=C` — Git Bash and the host disagree on collation otherwise, and `comm`
+will report differences that do not exist.
+
+Take a snapshot first: `cp -a /opt/touchstone-site /opt/touchstone-site.bak-$(date -u +%Y%m%dT%H%M%SZ)`.
+Rolling a content update back is restoring that directory, not removing the vhost.
+
 ## What to check after any later epoch
 
 A new epoch adds one bundle and one page; it does not change the vhost. Re-run steps 1 and 6.

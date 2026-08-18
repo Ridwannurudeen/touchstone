@@ -26,6 +26,13 @@ tests/historical_pack.json -text
 # a deploy from a fresh clone would have served a file contradicting the hash printed beside
 # its own download link.
 site/data/** -text
+# The same rule for the rebuilt site, which is the one actually deployed. This was missed when
+# `site2/` replaced `site/`: the working tree held the bundle as CRLF (sha 914ea892…, which is
+# what the workspace produced, what `/verify` prints and what the host serves) while the
+# committed blob was normalised to LF (sha 0b9be60b…). Nothing was wrong on the deploying
+# machine, which is what made it dangerous — a clone on any other platform would have served a
+# file contradicting the digest printed beside its own download link.
+site2/data/** -text
 
 # Everything else `scripts/build_release.py` hashes into a release manifest. It reads bytes
 # off disk (`sha256_file`), so any path it digests and `.gitattributes` does not cover has a
