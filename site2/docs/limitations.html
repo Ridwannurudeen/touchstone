@@ -85,7 +85,7 @@ missed rows.</p>
 <tr>
 <td>Live consumer contract gating on state</td>
 <td>1</td>
-<td><strong>0 — missed.</strong> <code>AssetGate</code> is written and tested. It is deployed only ephemerally inside the local end-to-end run (<code>scripts/e2e_local.py</code>). It has never existed on a persistent chain. Address: <code>not_deployed</code>.</td>
+<td><strong>1 — met on testnet, 2026-08-18.</strong> <code>AssetGate</code> at <code>0xAac48DC261B04737FDCB101D5049395121034a83</code> on X Layer testnet, block 38602126, pointed at the live registry. <code>check()</code> on USTB returns <strong><code>(false, "status not allowed")</code></strong> — the gate refuses the asset, because the latest report is <code>UNVERIFIABLE</code> and the mask admits <code>CONFIRMED</code> only. That refusal is the point rather than a failure: a gate widened until it returned <code>allowed</code> would be a consumer contract accepting an unverified asset. <code>requiredControlSetRoot</code> is zero and so unpinned, deliberately — the approved set changed on 2026-08-18 and the root is immutable once constructed, so pinning one the project intends to retire would be wrong on the day it was deployed. Publisher lineage and freshness are still enforced. Not deployed on mainnet, by the same reasoning.</td>
 </tr>
 <tr>
 <td>Production canary epoch</td>
