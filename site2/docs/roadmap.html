@@ -289,12 +289,12 @@ recorded as missed.</p>
 <tr>
 <td>Live consumer contract gating on state</td>
 <td>1</td>
-<td><strong>0 — MISSED.</strong> <code>AssetGate</code> is written and tested, but deployed only ephemerally inside the local end-to-end run. It has never existed on a persistent chain</td>
+<td><strong>1 — met on testnet, 2026-08-18.</strong> <code>AssetGate</code> at <code>0xAac48DC261B04737FDCB101D5049395121034a83</code>, X Layer testnet, block 38602126. <code>check(USTB)</code> returns <code>(false, "status not allowed")</code> — it refuses, because the latest report is <code>UNVERIFIABLE</code> and the mask admits <code>CONFIRMED</code> only. Not deployed on mainnet: <code>requiredControlSetRoot</code> is immutable and the approved set is still moving</td>
 </tr>
 <tr>
 <td>Production canary epoch</td>
 <td>1</td>
-<td><strong>0 — MISSED.</strong> Nothing has been published to any registry</td>
+<td><strong>1 — met on mainnet, 2026-08-18.</strong> USTB sequence 1 on X Layer mainnet (chain 196), epoch <code>ustb-2026-08-18</code>, state <code>UNVERIFIABLE</code>. A testnet canary preceded it on 2026-08-17, block 38526525</td>
 </tr>
 <tr>
 <td>Claims span-cited and hash-bound</td>
@@ -625,7 +625,7 @@ Sept 1 operations plan.</p>
         <a href="/products/dossier">Dossier</a>
         <a href="/products/control-language">Control Language</a>
         <a href="/products/verifier">Verifier</a>
-        <a href="/products/asset-gate">AssetGate<span class="foot-flag">not deployed</span></a>
+        <a href="/products/asset-gate">AssetGate<span class="foot-flag">testnet only</span></a>
         <a href="/products/registry">Registry</a>
       </div>
       <div class="foot-col">

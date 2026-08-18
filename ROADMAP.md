@@ -271,8 +271,8 @@ recorded as missed.
 | Accepted controls | ≥6 | **8 — met.** Each is a candidate a model proposed from issuer bytes, bound by digest to the compilation that accepted it |
 | Assets documented | 3 | **3 — met.** USTB, USDY and FOBXX source manifests with golden fixtures |
 | Fully autonomous live adapters | ≥2 | **0 proven live — MISSED.** One adapter (USTB) is built, wired and tested end to end, but has never run against live sources, so the count of *live* adapters is zero. Counting it as one while saying it has never run live would be self-contradictory. USDY is blocked on unbounded retrieval; FOBXX is retained as a documented monthly contrast asset, not an adapter. **Phase 1 deliberately ships one flawless vertical rather than two hurried ones** |
-| Live consumer contract gating on state | 1 | **0 — MISSED.** `AssetGate` is written and tested, but deployed only ephemerally inside the local end-to-end run. It has never existed on a persistent chain |
-| Production canary epoch | 1 | **0 — MISSED.** Nothing has been published to any registry |
+| Live consumer contract gating on state | 1 | **1 — met on testnet, 2026-08-18.** `AssetGate` at `0xAac48DC261B04737FDCB101D5049395121034a83`, X Layer testnet, block 38602126. `check(USTB)` returns `(false, "status not allowed")` — it refuses, because the latest report is `UNVERIFIABLE` and the mask admits `CONFIRMED` only. Not deployed on mainnet: `requiredControlSetRoot` is immutable and the approved set is still moving |
+| Production canary epoch | 1 | **1 — met on mainnet, 2026-08-18.** USTB sequence 1 on X Layer mainnet (chain 196), epoch `ustb-2026-08-18`, state `UNVERIFIABLE`. A testnet canary preceded it on 2026-08-17, block 38526525 |
 | Claims span-cited and hash-bound | 100% | Met for every accepted control |
 
 ## The minimum hero demo (90–120 seconds, two acts)
