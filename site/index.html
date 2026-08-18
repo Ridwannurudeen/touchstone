@@ -80,8 +80,10 @@
         controls. Each control cites a byte-exact span of the issuer's document. A
         deterministic engine evaluates the controls against freshly retrieved
         evidence, signs the result with Ed25519, and publishes it to a registry on
-        X&nbsp;Layer. A consumer contract, AssetGate, reads the asset's state from
-        the registry. You can read it here.</p>
+        X&nbsp;Layer. A consumer contract, AssetGate, is written to gate on that
+        state — on the report's status, freshness, publisher lineage and pinned
+        control-set root — but it is not deployed, so nothing is reading the
+        registry in production today.</p>
       </div>
 
       <div class="movements">

@@ -26,3 +26,14 @@ tests/historical_pack.json -text
 # a deploy from a fresh clone would have served a file contradicting the hash printed beside
 # its own download link.
 site/data/** -text
+
+# Everything else `scripts/build_release.py` hashes into a release manifest. It reads bytes
+# off disk (`sha256_file`), so any path it digests and `.gitattributes` does not cover has a
+# digest that depends on which platform checked the tree out: `manifests/sources` and the
+# deployment schema were `i/lf w/crlf`, so a release built on Linux and one built here would
+# have disagreed about files neither had changed. `manifests/sources` is covered as a
+# directory because `_file_digests` walks the whole tree, not a fixed list.
+manifests/sources/** -text
+deployments/manifest.schema.json -text
+contracts/solidity.json -text
+contracts/package-lock.json -text
