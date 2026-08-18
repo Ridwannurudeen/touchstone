@@ -117,14 +117,32 @@ Stated as misses, not as near-misses.
 
 | Target (`ROADMAP.md`) | Result |
 |---|---|
-| ≥2 fully autonomous **live** adapters | **Missed.** One adapter built (USTB), zero proven live. USDY blocked on a 260 MB archive. FOBXX cut as an adapter. OUSG cut. |
+| ≥2 fully autonomous **live** adapters | **Missed — one, not zero.** USTB ran the unattended daemon against the live issuer on 2026-08-17 and published sequence 1. This row said "zero proven live" until 2026-08-18, contradicting both `LIMITATIONS.md` and the published report. One live slot is also not continuous operation. USDY's daily page is bounded and measured but has no approved control; FOBXX has a live bounded SEC N-MFP3 regulator route, monthly; OUSG is the ruled next adapter. |
 | One live consumer contract gating on state | **Missed.** `AssetGate` is `not_deployed` on any persistent chain. |
 | One production canary epoch | **Met on testnet**, 2026-08-17: USTB sequence 1, block 38526525, state `UNVERIFIABLE`. Unmet for mainnet, which is unscheduled. |
-| Living dossier and developer surface | **Unbuilt.** PLAN-T9. |
+| Living dossier and developer surface | **Shipped 2026-08-18.** Live at https://touchstone.gudman.xyz — 20 pages, zero JavaScript, an offline verifier, a coverage page, and 1,803 lines of the repository's documentation. |
 | Public demo | **`not_deployed`.** The two-act script in `ROADMAP.md` cannot be walked as written. See `docs/DEMO-RUNBOOK.md`. |
 
 Phase 1 ships one USTB vertical. The two-adapter and production-canary
 metrics were not retargeted.
+
+
+## What the contract does not do
+
+Recorded here because it was found in review and was written down nowhere else, and because a
+submission that omits it would be claiming a guarantee the code does not provide.
+
+**`TouchstoneRegistry` does not verify the Ed25519 report signature.** The contract contains no
+signature check of any kind — no `ecrecover`, no Ed25519 verification. It accepts a status and
+the roots from any address the owner has authorised as a publisher. The Ed25519 signature is
+real and is what the offline bundle verifies, but on chain the guarantee is narrower than it
+looks: **an authorised address asserted this commitment**, not *this report was signed by the
+reporting key*.
+
+The honest description of the registry is therefore append-only publication integrity with
+bounded authority — publisher lineage is preserved across rotation, sequence replay is refused,
+epochs cannot be double-published, and history cannot be rewritten. It is not on-chain
+attestation and must not be described as trustless.
 
 ---
 
@@ -196,10 +214,10 @@ evidence or the refusal.
 | Claim one might want | Honest substitute | Evidence |
 |---|---|---|
 | "Live on X Layer" | A testnet registry is deployed and holds one published report. Testnet only; mainnet is unscheduled. | `docs/OPERATIONS.md`, `docs/DEPLOYMENT-G1-EXECUTED.md` |
-| "Two live adapters" | One adapter built, zero proven live. | `ROADMAP.md` completion table |
+| "Two live adapters" | One adapter, one live run. Not two, and not continuous. | `ROADMAP.md` completion table |
 | "Consumer contract in production" | `AssetGate` is `not_deployed` on a persistent chain. | `scripts/e2e_local.py`; no address in `deployments/` |
 | "Autonomous canary" | Prepared, not executed. | `docs/CANARY-G1B.md` |
-| "Public dossier" | Unbuilt. | PLAN-T9 status empty in `docs/PHASE-1-PLAN.md` |
+| "Public dossier" | Live since 2026-08-18 at touchstone.gudman.xyz. | The site itself; `docs/DEPLOY-T9.md` |
 | "Independently attested" | Not claimed. Issuer API is issuer disclosure. | `manifests/sources/ustb.json` `authority_class: issuer-api` |
 | "Regulatory-grade" / "safe" / "solvent" | Banned. Not claimed. | `ROADMAP.md` ambition-theatre list; `docs/LIMITATIONS.md` |
 | "Users" / "volume" / "TVL" | None. No product users are recorded. | No such metric exists in the tree |
