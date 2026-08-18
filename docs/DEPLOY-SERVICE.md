@@ -96,7 +96,8 @@ systemctl daemon-reload
 # so ExecStart names a binary that does not exist while looking exactly right.
 for f in /etc/systemd/system/touchstone-*; do
   printf '%s %s
-' "$(tr -cd '' < "$f" | wc -c)" "$(basename "$f")"
+' "$(tr -cd '
+' < "$f" | wc -c)" "$(basename "$f")"
 done   # every count must be 0
 ```
 
@@ -151,6 +152,36 @@ Before enabling it, confirm on the host:
 - `sudo -u touchstone-observer cat /etc/touchstone/xlayer-mainnet.env` — **must** be denied;
 - the workspace is not inside `/opt/touchstone-site`, so nginx cannot serve it;
 - `journalctl -u touchstone-publisher@xlayer-mainnet` shows no secret in any line.
+
+---
+
+## 3d. How fast the workspace grows, measured rather than assumed
+
+An audit raised the archive cap as a risk on the grounds that a 226 KB NAV response captured
+96 times a day would exhaust the 512 MiB backup limit in under a fortnight. That is the right
+worst case and it is not what happens, because objects are content-addressed and a capture
+whose bytes are unchanged writes no new object.
+
+Measured on the host over six passes (18 captures, 3 sources):
+
+| | |
+|---|---|
+| Index cost per capture | 437 B |
+| Distinct objects created | 3 — one per source; no intra-day churn observed |
+| Projected index | ~123 KiB/day at a 900 s interval |
+| Projected objects | ~226 KiB/day, assuming all three sources change once daily |
+| Archive growth (hex-encoded, so doubled) | ~698 KiB/day |
+| 512 MiB cap reached in | ~751 days |
+
+**The whole difference is deduplication, so watch the thing that would break it.** If a source
+began embedding a timestamp or a nonce, every capture would be a distinct object and the
+runway would collapse from about two years to about twelve days.
+
+That condition is already visible without adding a monitor: the observer would report
+`PAYLOAD_CHANGED` — bytes differed, normalized observation did not — on *every* pass for that
+source. A run of `PAYLOAD_CHANGED` where `UNCHANGED` is expected is the early warning, and it
+appears on `/status`. Sustained `PAYLOAD_CHANGED` means: re-measure this table before trusting
+the runway.
 
 ---
 
