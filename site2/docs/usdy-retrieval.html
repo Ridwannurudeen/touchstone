@@ -103,6 +103,28 @@ persisted, and nothing here needs it.</p>
 to a single member was found. USDY can therefore ship daily <strong>portfolio and coverage</strong> controls
 now, and cannot ship a daily <strong>attestation</strong> control at all. Saying otherwise on the dossier
 would be the exact failure this project exists to refuse.</p>
+<hr />
+<h2 id="fobxx-the-regulator-path-was-never-closed">FOBXX: the regulator path was never closed</h2>
+<p>Recorded here rather than in a second file because it is the same lesson: a status that says
+<em>unavailable</em> is a claim, and claims get re-measured.</p>
+<p><code>SOURCE_AUDIT.md</code> had already verified FOBXX's SEC route and committed a fixture. The coverage
+status still read as unavailable, because the <strong>daily issuer feed</strong> returns Cloudflare 403 —
+and that was allowed to describe the whole asset.</p>
+<p>Re-verified live 2026-08-18:</p>
+<pre><code>GET https://data.sec.gov/submissions/CIK0001786958.json
+-&gt; HTTP 200, 29,354 bytes, FRANKLIN TEMPLETON TRUST
+   68 N-MFP3 filings listed
+   latest: filed 2026-08-06, period 2026-07-31
+</code></pre>
+<p>Bounded, public, no credential, and served by a regulator rather than by the issuer whose
+figures are being checked. It is the strongest provenance of any source in this project —
+Chainlink's and RedStone's disclosure feeds read issuer APIs, not filings.</p>
+<p>What it is not is daily. A money-market fund files N-MFP3 monthly with a four-to-six day lag,
+so FOBXX carries <strong>monthly</strong> controls. The daily-liveness control and the
+issuer-versus-regulator reconciliation both need the issuer feed and are the only things
+actually waiting on it.</p>
+<p>Stating that as "unavailable" understated the asset. The correct statement is that FOBXX ships
+monthly on filed evidence, and one class of control on it is waiting for a route to the issuer.</p>
     </article>
     <aside class="doc-toc" aria-label="On this page">
       <p class="foot-h">On this page</p>
@@ -112,6 +134,7 @@ would be the exact failure this project exists to refuse.</p>
         <li class="toc-2"><a href="#why-this-matters-beyond-unblocking-one-asset">Why this matters beyond unblocking one asset</a></li>
         <li class="toc-2"><a href="#what-this-changes-in-the-manifest">What this changes in the manifest</a></li>
         <li class="toc-2"><a href="#what-is-still-genuinely-out-of-reach">What is still genuinely out of reach</a></li>
+        <li class="toc-2"><a href="#fobxx-the-regulator-path-was-never-closed">FOBXX: the regulator path was never closed</a></li>
       </ol>
     </aside>
   </div>

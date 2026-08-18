@@ -77,3 +77,35 @@ Daily third-party attestations. They exist only inside the 260 MB archive, and n
 to a single member was found. USDY can therefore ship daily **portfolio and coverage** controls
 now, and cannot ship a daily **attestation** control at all. Saying otherwise on the dossier
 would be the exact failure this project exists to refuse.
+
+---
+
+# FOBXX: the regulator path was never closed
+
+Recorded here rather than in a second file because it is the same lesson: a status that says
+*unavailable* is a claim, and claims get re-measured.
+
+`SOURCE_AUDIT.md` had already verified FOBXX's SEC route and committed a fixture. The coverage
+status still read as unavailable, because the **daily issuer feed** returns Cloudflare 403 —
+and that was allowed to describe the whole asset.
+
+Re-verified live 2026-08-18:
+
+```
+GET https://data.sec.gov/submissions/CIK0001786958.json
+-> HTTP 200, 29,354 bytes, FRANKLIN TEMPLETON TRUST
+   68 N-MFP3 filings listed
+   latest: filed 2026-08-06, period 2026-07-31
+```
+
+Bounded, public, no credential, and served by a regulator rather than by the issuer whose
+figures are being checked. It is the strongest provenance of any source in this project —
+Chainlink's and RedStone's disclosure feeds read issuer APIs, not filings.
+
+What it is not is daily. A money-market fund files N-MFP3 monthly with a four-to-six day lag,
+so FOBXX carries **monthly** controls. The daily-liveness control and the
+issuer-versus-regulator reconciliation both need the issuer feed and are the only things
+actually waiting on it.
+
+Stating that as "unavailable" understated the asset. The correct statement is that FOBXX ships
+monthly on filed evidence, and one class of control on it is waiting for a route to the issuer.
