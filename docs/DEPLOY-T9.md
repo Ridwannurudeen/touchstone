@@ -57,6 +57,17 @@ would. **So compare the two file lists before uploading** and delete any orphan 
 Sort both with `LC_ALL=C` — Git Bash and the host disagree on collation otherwise, and `comm`
 will report differences that do not exist.
 
+⚠️ **`status.html` is generated on the host, not shipped in `site2/`.** It is owned
+`touchstone:www-data` so the status timer can replace it in place. A deploy that runs
+`chown -R www-data:www-data /opt/touchstone-site` takes that ownership away, and the timer
+then fails every five minutes while the page it cannot rewrite keeps serving an old
+timestamp — which is precisely the "stale page" the page itself warns about, caused by the
+deploy rather than by the daemon. So after any `chown -R`, restore it::
+
+    chown touchstone:www-data /opt/touchstone-site/status.html
+
+and confirm with `systemctl start touchstone-status@<network>.service`.
+
 Take a snapshot first: `cp -a /opt/touchstone-site /opt/touchstone-site.bak-$(date -u +%Y%m%dT%H%M%SZ)`.
 Rolling a content update back is restoring that directory, not removing the vhost.
 
