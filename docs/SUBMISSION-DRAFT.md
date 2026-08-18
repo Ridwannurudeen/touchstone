@@ -27,7 +27,7 @@ observed.
 | Documentation site | **LIVE** — https://touchstone.gudman.xyz/docs — 1,803 lines of the project's committed documentation |
 | X / social handles | **`@touch__stone`** — created by the owner 2026-08-18. The post mentioning @XLayerOfficial is still outstanding, and the rules require the account be *kept active*, which cannot be backdated. |
 | Domain | `gudman.xyz` subdomain, TLS via Let's Encrypt, certificate to 2026-11-16 |
-| Repository | `github.com/Ridwannurudeen/touchstone` — **still PRIVATE, verified 2026-08-18.** Judges cannot read 1,732 tests they cannot clone. Making it public is an owner decision and is on the critical path for the submission. |
+| Repository | `github.com/Ridwannurudeen/touchstone` — **private until after the 2026-08-21 deadline, by owner decision on 2026-08-18.** The reason is disclosure timing, not concealment: the approach is novel and the owner does not want it copied inside the submission window. Judging happens after the deadline, so the code is readable when it is read. Anyone following the link before then gets a 404, which is an accepted cost. |
 | Submission venue | **OKX AI Season Hackathon**, X Layer. Google Form, deadline **2026-08-21 23:59 UTC**. |
 | Contact | `unknown` — not recorded in the tracked tree. |
 
