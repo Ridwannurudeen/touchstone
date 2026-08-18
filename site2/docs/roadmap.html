@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roadmap · Docs · Touchstone</title>
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products">Products</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap doc-layout">
+    <article class="doc-body">
+<h1 id="touchstone-build-plan-roadmap">Touchstone — Build Plan &amp; Roadmap</h1>
+<blockquote>
+<p><strong>Name chosen by the owner on 2026-08-13: Touchstone</strong> — the stone assayers rubbed
+gold against to verify what it really was before anyone accepted it.
+That claim was corrected on 2026-08-14: <strong>existing crypto projects do use the name</strong> —
+see <code>docs/BRAND-CLEARANCE.md</code>, which records a Morpho vault curator branded Touchstone
+for gold-RWA lending (announced 2026-07-15, contracts live on Ethereum) and a PyPI SDK
+<code>touchstone-verify</code> implementing signed, hash-chained disclosure verification
+(2026-07-12). Known adjacent
+mark: Touchstone Investments (Cincinnati mutual-fund/ETF firm, Western &amp; Southern) —
+different business (asset management vs. verification software), but a trademark
+opinion from counsel is required before commercial launch. DNS quick-check:
+touchstone.finance, touchstonelabs.xyz, touchstone-rwa.com show no DNS records
+(registrar confirmation pending); touchstone.xyz and usetouchstone.com resolve and
+are likely taken. Domain purchase, handles, and any announcement remain owner actions.
+(Prior internal codename ARGUS retired — collision with Cobo Argus.)</p>
+</blockquote>
+<p><strong>Mission.</strong> Touchstone turns the disclosures behind real-world assets into executable
+intelligence. AI compiles issuer-published commitments into cited, machine-checkable
+controls. Deterministic surveillance evaluates those controls against current evidence.
+Signed results are published to X Layer, where applications can enforce freshness and
+verification requirements through a shared registry.</p>
+<p>Touchstone does not issue assets, custody funds, recommend investments, assign credit
+ratings, or claim facts beyond the evidence class it has actually verified.</p>
+<p><strong>The sentence the project is built around:</strong></p>
+<blockquote>
+<p><em>"I accepted this RWA because its required evidence was current, attributable, and
+independently verifiable through Touchstone."</em> — a future X Layer application</p>
+</blockquote>
+<hr />
+<h2 id="product-principles">Product principles</h2>
+<ol>
+<li><strong>Evidence classes are never inflated.</strong> An issuer webpage is issuer disclosure — not
+   independent attestation. An API observation is not proof of reserves. Retrieval
+   failure is not issuer failure.</li>
+<li><strong>AI proposes meaning; deterministic systems control state.</strong> AI compiles evidence
+   into typed controls. Schema validation, approved policies, and deterministic
+   evaluation decide registry transitions.</li>
+<li><strong>Every accepted claim is traceable</strong> to an exact evidence span, source URL, artifact
+   hash, retrieval time, compiler version, and control version.</li>
+<li><strong>Abstention is a valid result.</strong> <code>UNVERIFIABLE</code> is more valuable than a confident
+   hallucination.</li>
+<li><strong>Onchain state must have a consumer.</strong> The registry is incomplete without a contract
+   that admits, pauses, or rejects based on its state.</li>
+<li><strong>Corrections are append-only.</strong> Reports may be superseded, never silently rewritten.</li>
+<li><strong>Public claims remain conservative.</strong> Touchstone reports what it observed and verified —
+   not whether an asset is safe, compliant, solvent, or suitable.</li>
+<li><strong>Every deployment, post, grant application, partnership message, and submission
+   requires owner approval.</strong></li>
+</ol>
+<h2 id="system-architecture">System architecture</h2>
+<pre><code class="language-text">Official issuer sources
+        │
+        ▼
+Allowlisted isolated fetchers
+        │
+        ▼
+Content-addressed evidence store
+        │   raw bytes + source metadata · exact hashes + retrieval time
+        │   immutable version history
+        ▼
+AI control compiler
+        │   typed candidate control · exact supporting span
+        │   confidence + abstention · compiler/prompt/model version
+        ▼
+Deterministic validator + approval gate
+        ▼
+Versioned approved control set
+        ▼
+Source-specific surveillance adapters
+        ▼
+Deterministic evaluator
+        ▼
+Signed observation report
+        │   Ed25519 signature · hash-chained transparency log
+        │   offline-verifiable bundle
+        ▼
+X Layer registry
+        │   control-set root · evidence root · status + freshness
+        │   immutable transition history
+        ├───────────────┐
+        ▼               ▼
+   AssetGate      Living dossier
+</code></pre>
+<h2 id="evidence-status-entering-phase-0-as-of-2026-08-13">Evidence status entering Phase 0 (as of 2026-08-13)</h2>
+<p>Preliminary probes are encouraging but do not replace the formal audit:</p>
+<ul>
+<li><strong>PAXG (Paxos):</strong> transparency page fetched directly — monthly attestation reports,
+  KPMG LLP since Feb 2025. Direct repeatable PDF retrieval from the deployment
+  environment <strong>unverified</strong>.</li>
+<li><strong>OUSG / USDY (Ondo):</strong> secondary sources report end-of-business-day NAV updates,
+  daily third-party reporting, daily Ankura Trust attestations for USDY. Exact
+  endpoints and historical accessibility <strong>unverified</strong>.</li>
+<li><strong>USTB (Superstate):</strong> documented public NAV/holdings API. Whether every required
+  endpoint is unauthenticated and stable from the VPS <strong>unverified</strong>.</li>
+<li><strong>BENJI/FOBXX (Franklin Templeton):</strong> official page exposes prospectus material and
+  daily yield fields. Stable machine retrieval <strong>unverified</strong>.</li>
+<li>RWA.xyz may corroborate but is never the authoritative source for controls.</li>
+</ul>
+<hr />
+<h2 id="phase-0-evidence-and-brand-kill-gates-aug-1314">Phase 0 — Evidence and brand kill gates (Aug 13–14)</h2>
+<p><strong>Purpose:</strong> prove Touchstone can monitor real evidence before any product code expands.</p>
+<p><strong>Source audit</strong> of PAXG, OUSG, USDY, USTB, BENJI + one spare. Per source, record:
+asset identity and canonical contract addresses; publishing legal entity; first-party
+URL; evidence class; MIME type and true file signature; login/cookie/JS/anti-bot
+requirements; retrieval from the production VPS (repeatedly — browser-only access is
+insufficient); redirect behavior and URL stability; publication cadence, timezone,
+holidays, grace period; version semantics; historical-version availability;
+terms-of-use constraints; observable structured fields; proposed controls with exact
+evidentiary limits; failure behavior.</p>
+<p><strong>Asset acceptance gate.</strong> An asset enters the build only with: an attributable
+official source; repeatable no-login retrieval; ≥2 honest machine-observable controls;
+explicit update semantics; a defensible asset-identity mapping; hashable, retainable
+evidence; an adapter feasible within the sprint; no manual-download dependence.</p>
+<p><strong>Portfolio selection:</strong> one <strong>hero</strong> asset (strongest machine-readable daily evidence
+— provisional order: USTB, then USDY, then OUSG/BENJI), one <strong>second daily</strong> asset
+(cross-issuer repeatability), one <strong>contrast</strong> asset (likely PAXG — monthly cadence and
+staleness semantics). PAXG is never the hero: monthly evidence may not change in the
+judging window.</p>
+<p><strong>Deliverables:</strong> <code>SOURCE_AUDIT.md</code>; accepted source manifests; rejected candidates
+with reasons; raw sample artifacts + hashes; proposed controls; cadence and failure
+rules; evidence-class glossary; initial threat model; brand-collision report. No
+issuer-specific negative findings published at this stage.</p>
+<p><strong>Abort conditions.</strong> Reject any asset requiring fragile interactive sessions,
+aggregator-only data, unknowable cadence, speculative legal interpretation, unretainable
+evidence, uncertain contract mapping, or controls claiming more than the source proves.
+<strong>Abort Touchstone entirely if fewer than two candidates pass. Do not preserve the concept by
+lowering evidence standards.</strong></p>
+<p><strong>Brand clearance for "Touchstone" (deadline Aug 14, before the project X account
+opens):</strong> completed 2026-08-14 and recorded in <code>docs/BRAND-CLEARANCE.md</code>. The earlier
+2026-08-13 finding that no existing crypto/web3 project uses the name <strong>was wrong</strong> — two
+live projects use it, one of them in this project's own verification lane;
+Touchstone Investments (US mutual-fund/ETF firm) is the known adjacent financial mark,
+different service class but requiring a counsel trademark opinion before commercial
+launch. Remaining checks: USPTO, WIPO, EUIPO/TMview, Nigerian and operating-market
+registries, GitHub, npm/PyPI, CoinGecko/CoinMarketCap/DefiLlama, explorers,
+X/Telegram/Discord/Farcaster/LinkedIn handles, app stores, ENS; phonetic and visual
+similarity. DNS quick-check found touchstone.finance, touchstonelabs.xyz, and
+touchstone-rwa.com unresolving (registrar confirmation pending); touchstone.xyz and
+usetouchstone.com likely taken. Domain purchase and handle registration are owner
+actions.</p>
+<h2 id="phase-1-hackathon-build-aug-1321">Phase 1 — Hackathon build (Aug 13–21)</h2>
+<p><strong>Dependency order (corrected):</strong> evidence audit → state and control semantics → golden
+fixtures → contract interface → live source adapter → compiler/evaluator → registry
+publishing → consumer gate → product UI → operations hardening. Contracts encode
+settled semantics; they are not designed before the evidence model.</p>
+<h3 id="aug-13-evidence-kill-gate">Aug 13 — Evidence kill gate</h3>
+<p>Audit sources; select hero/second/contrast; capture real artifacts + metadata; define
+allowed evidence classes; start brand clearance; minimum repo structure for audit
+artifacts. <strong>Exit gate:</strong> hero source retrieves repeatedly from the intended server; ≥2
+honest controls identified; one historical observation exists for comparison; no
+unresolved ambiguity about what the source proves.</p>
+<h3 id="aug-14-semantics-fixtures-threat-model">Aug 14 — Semantics, fixtures, threat model</h3>
+<p>Freeze control-language v0 <strong>before contracts</strong>. Control fields: <code>asset_key</code>,
+<code>control_id</code>, <code>control_version</code>, <code>predicate_type</code>, <code>subject</code>, <code>source_id</code>,
+<code>source_authority_class</code>, <code>evidence_span</code>, <code>cadence</code>, <code>grace_period</code>,
+<code>observation_adapter</code>, <code>comparison_operator</code>, <code>expected_value</code>, <code>effective_from</code>,
+<code>effective_until</code>, <code>compiler_confidence</code>, <code>approval_state</code>.
+Asset states: <code>CONFIRMED</code> / <code>STALE</code> / <code>INCONSISTENT</code> / <code>UNVERIFIABLE</code>. Operational
+events kept separate: <code>RECONFIRMED</code> / <code>EVIDENCE_CHANGED</code> / <code>SOURCE_ERROR</code> /
+<code>CORRECTION_PUBLISHED</code>. A transient outage is <code>SOURCE_ERROR</code>, never instant
+inconsistency; only an expired evidence deadline moves status toward <code>STALE</code>.
+Also: golden evidence fixtures, expected compiler outputs and abstentions,
+state-transition test matrix, adversarial-document tests, contract storage model, UI
+wireframe, submission-copy skeleton.</p>
+<h3 id="aug-15-contracts-and-testnet-foundation">Aug 15 — Contracts and testnet foundation</h3>
+<p><code>TouchstoneRegistry</code>: canonical asset key, control-set root, evidence root, status,
+<code>observedAt</code>, <code>validUntil</code>, publisher, monotonic sequence, report URI. Protections:
+publisher authorization, replay protection, monotonic enforcement, chain/domain
+separation, correction events, key rotation, <strong>no custody or value-transfer logic</strong>.
+<code>AssetGate</code>: allowed statuses, maximum observation age, required publisher, optional
+control-set version. Tests cover every transition, stale boundary, unauthorized
+publisher, replay, correction, rotation. Deploy fixture-driven system to X Layer
+testnet only after tests pass.</p>
+<h3 id="aug-16-hero-compiler-and-source-adapter">Aug 16 — Hero compiler and source adapter</h3>
+<p>Full hero ingestion path: allowlist → raw retrieval → content hash → normalization →
+exact evidence-span extraction → AI candidate control → schema validation → confidence
+gate → explicit abstention → deterministic observation evaluation.
+<strong>Security:</strong> all documents are adversarial input; the model gets no shell, network,
+wallet, or contract tools; instructions embedded in evidence cannot self-approve a
+control or move it into evaluation — <strong>narrowed 2026-08-15</strong>: steering is a stated
+residual, because a well-formed injected candidate is accepted as a proposal and only the
+approval gate stops it (see <code>docs/THREAT-MODEL.md</code> T9 and R-9);
+allowlisted URLs, blocked redirects; MIME/magic-byte/size/decompression/page/time
+limits; isolated parsing worker; model ID, prompt hash, compiler version, input hash,
+raw output all recorded. <strong>Exit gate:</strong> one real source compiles into an exact cited
+control; ambiguous examples abstain; golden cases reproduce.</p>
+<h3 id="aug-17-signed-surveillance-and-onchain-publication">Aug 17 — Signed surveillance and onchain publication</h3>
+<p>Scheduled epochs; Ed25519-signed reports; hash-chained transparency log; offline
+verification bundle; idempotent submission; receipt tracking; restart reconciliation;
+failure recovery without duplicate publication; hero report on testnet; working
+<code>AssetGate</code> consumption. <strong>By end of day the narrow vertical works end to end — if not,
+stop adding assets.</strong></p>
+<h3 id="aug-18-product-experience">Aug 18 — Product experience</h3>
+<p>Hero living dossier: state + freshness, accepted controls, evidence excerpts + hashes,
+"what Touchstone verified" vs "what it did not verify", transition timeline, explorer links,
+offline-verifier download, evidence-grounded "why this state?" interaction, developer
+integration page. No wallet required to browse. Second source only after the hero flow
+is polished.</p>
+<h3 id="aug-19-coverage-and-operations">Aug 19 — Coverage and operations</h3>
+<p><em>(Amended 2026-08-16: the second daily asset and the contrast asset are cut. See the
+completion-metrics table — the two-adapter target is recorded as missed, not retargeted.)</em>
+Public heartbeat; source
+health; last successful epoch; next scheduled epoch; gas runway; incident history;
+watchdog; alerting; backup/restore; production-like deployment rehearsal. <strong>Contract
+interface frozen at end of day.</strong></p>
+<h3 id="aug-20-hardening-and-release-candidate">Aug 20 — Hardening and release candidate</h3>
+<p>Full contract suite; pipeline tests; golden compiler evaluations; adversarial-document
+tests; browser smoke tests; restart/recovery; duplicate-publication tests; source-outage
+simulations; key-rotation rehearsal; restore rehearsal; full hero-demo rehearsal.
+Prepare: verified addresses, release commit, deployment manifest, rollback procedure,
+public limitations, submission form draft, X posts (drafts). <em>(Amended 2026-08-16: the
+line that stood here staged a mainnet deployment for approval on Aug 20 — before the
+Aug 21 testnet proof it was supposed to depend on. Mainnet is unscheduled and conditional
+on a proven testnet loop.)</em> Stage the <strong>testnet</strong> replacement-registry deployment package
+and request owner approval.</p>
+<h3 id="aug-21-testnet-release-candidate-internal-deadline-1800-utc">Aug 21 — Testnet release candidate (internal deadline 18:00 UTC)</h3>
+<p><strong>Amended 2026-08-16.</strong> This date previously scheduled a mainnet deploy and production
+canary. That was not a credible plan and contradicted this repository's own owner gates,
+which permit mainnet only "after a proven testnet loop" — and nothing had then published to
+testnet at all. Scheduling an action the same documents forbid is how an operator ends up
+taking it.</p>
+<p>Aug 21 is now a <strong>testnet</strong> target: prove the loop end to end on X Layer testnet — deployed
+registry, one autonomous live epoch, an offline-verifiable bundle, and a consumer contract
+gating on the published state. After explicit approval only, and no feature work on the day.</p>
+<p><strong>Mainnet is unscheduled.</strong> It is conditional on the completed testnet loop above being
+proven, not on a date, and returns as a separate owner decision.</p>
+<h3 id="hackathon-completion-metrics">Hackathon completion metrics</h3>
+<p>Three real assets documented; ≥2 fully autonomous live adapters; ≥6 accepted controls;
+100% of accepted claims span-cited and hash-bound; zero unproven production claims; one
+live consumer contract gating on Touchstone state; every transition independently
+verifiable; all contract authorization boundaries tested; public interface wallet-free;
+watchdog + incident history + reconciliation operational; every scheduled epoch through
+Sept 1 completed or publicly recorded as an incident.</p>
+<p><strong>Standing as of 2026-08-16.</strong> The targets are not restated downward; what is missed is
+recorded as missed.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Target</th>
+<th>Actual</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Accepted controls</td>
+<td>≥6</td>
+<td><strong>8 — met.</strong> Each is a candidate a model proposed from issuer bytes, bound by digest to the compilation that accepted it</td>
+</tr>
+<tr>
+<td>Assets documented</td>
+<td>3</td>
+<td><strong>3 — met.</strong> USTB, USDY and FOBXX source manifests with golden fixtures</td>
+</tr>
+<tr>
+<td>Fully autonomous live adapters</td>
+<td>≥2</td>
+<td><strong>0 proven live — MISSED.</strong> One adapter (USTB) is built, wired and tested end to end, but has never run against live sources, so the count of <em>live</em> adapters is zero. Counting it as one while saying it has never run live would be self-contradictory. USDY is blocked on unbounded retrieval; FOBXX is retained as a documented monthly contrast asset, not an adapter. <strong>Phase 1 deliberately ships one flawless vertical rather than two hurried ones</strong></td>
+</tr>
+<tr>
+<td>Live consumer contract gating on state</td>
+<td>1</td>
+<td><strong>0 — MISSED.</strong> <code>AssetGate</code> is written and tested, but deployed only ephemerally inside the local end-to-end run. It has never existed on a persistent chain</td>
+</tr>
+<tr>
+<td>Production canary epoch</td>
+<td>1</td>
+<td><strong>0 — MISSED.</strong> Nothing has been published to any registry</td>
+</tr>
+<tr>
+<td>Claims span-cited and hash-bound</td>
+<td>100%</td>
+<td>Met for every accepted control</td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-minimum-hero-demo-90120-seconds-two-acts">The minimum hero demo (90–120 seconds, two acts)</h2>
+<p><strong>Act 1 — AI makes disclosure executable.</strong> Judge opens the hero dossier (no wallet);
+sees source, evidence class, limitations; runs "Compile disclosure" on the labeled
+testnet demo path; Touchstone fetches the official source; AI extracts one bounded
+commitment into a typed control; the UI highlights the exact supporting span;
+deterministic validation confirms span-in-artifact, schema, source identity, operator,
+confidence; the accepted control root publishes to testnet. If the compiler cannot
+support the control, <strong>it abstains live — never hidden</strong>.</p>
+<p><strong>Act 2 — current evidence changes contract behavior.</strong> A demo <code>AssetGate</code> shows
+<code>REQUIRES_REFRESH</code> (its freshness requirement is deliberately stricter than the last
+observation age); Touchstone retrieves the current official daily observation; UI shows
+previous vs current values (an ordinary NAV movement is never called a risk event);
+report signed; transparency log appends; freshness renews on X Layer; the gate flips to
+<code>ACCEPTED</code>; judge opens the explorer transaction; judge asks "why did the gate accept
+this asset?" and the dossier answers solely from accepted graph nodes. The gate reacts
+to <strong>verification freshness</strong>, never declares the asset safe.</p>
+<p><strong>Pre-staged:</strong> deployed contracts, publisher authorization, funded account, verified
+adapters, previous genuine evidence snapshot, previous signed epoch, approved control
+set, demo consumer, hash-bound cached fallback artifacts, recorded fallback walkthrough.
+<strong>Never pre-staged:</strong> modified issuer evidence, fabricated reports, synthetic NAV
+changes presented as real, hidden manual state changes, self-funded activity described
+as user activity. If the live source fails, switch <strong>visibly</strong> to verified historical
+replay mode and log the incident.</p>
+<h2 id="aug-21-sept-1-operations-calendar">Aug 21 – Sept 1 operations calendar</h2>
+<p>Daily: poll each source per its documented window; offchain source-health checks; one
+signed observation per asset; anchor fresh observations on X Layer; one aggregate daily
+epoch root; heartbeat update; honest <code>RECONFIRMED</code>/<code>EVIDENCE_CHANGED</code>/failure surfacing;
+onchain reconciliation; gas and watchdog checks.</p>
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th>System activity</th>
+<th>Public milestone (drafts; owner approves)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fri Aug 21</td>
+<td><strong>Testnet</strong> RC target: first live testnet epoch, initial dossier roots. No mainnet action</td>
+<td>Drafts only; nothing published</td>
+</tr>
+<tr>
+<td>Sat Aug 22</td>
+<td>Weekend re-observation (no business-day NAV promised)</td>
+<td>Architecture/verification thread</td>
+</tr>
+<tr>
+<td>Sun Aug 23</td>
+<td>Reconfirmation or honest source-health incident</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Mon Aug 24</td>
+<td>First post-weekend publication windows</td>
+<td>First genuine fresh observation, if published</td>
+</tr>
+<tr>
+<td>Tue Aug 25</td>
+<td>Daily surveillance and state renewal</td>
+<td>Evidence-to-X-Layer lifecycle clip</td>
+</tr>
+<tr>
+<td>Wed Aug 26</td>
+<td>Daily surveillance</td>
+<td>Developer post: <code>AssetGate</code> integration</td>
+</tr>
+<tr>
+<td>Thu Aug 27</td>
+<td>Daily surveillance</td>
+<td>Only if state materially changes</td>
+</tr>
+<tr>
+<td>Fri Aug 28</td>
+<td>Weekly reliability summary</td>
+<td>7-day uptime, epochs, incidents, corrections</td>
+</tr>
+<tr>
+<td>Sat–Sun Aug 29–30</td>
+<td>Weekend reconfirmations; snapshot-readiness check</td>
+<td>Heartbeat is the visible proof</td>
+</tr>
+<tr>
+<td>Mon Aug 31</td>
+<td>Business-day + month-end monitoring</td>
+<td>Only actual issuer changes (never promise PAXG timing)</td>
+</tr>
+<tr>
+<td>Tue Sep 1</td>
+<td>Fresh snapshot-day epoch; archived verification bundle</td>
+<td>Snapshot report + next-phase commitment</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Reliability objectives:</strong> 100% of scheduled epochs complete or produce a public
+incident; 99.5% availability in the window; alert ≤5 min on daemon failure; safe
+auto-restart ≤15 min; no duplicate registry sequence after restart; daily encrypted
+backup; one tested restore before submission and one during the window; gas runway
+through Sept 3+; no incident ever removed from public history.</p>
+<hr />
+<h2 id="phase-2-product-proof-septoct-2026">Phase 2 — Product proof (Sept–Oct 2026)</h2>
+<p><strong>Objective:</strong> prove teams other than Touchstone want to consume the primitive.</p>
+<p>Deliverables: 8–10 production-grade assets across ≥3 RWA categories (same evidence
+standard — never a vanity count); verification API v1; Python and TypeScript SDKs;
+webhooks/event subscriptions; commissioned rescans via x402; integration sandbox;
+external contract security review; initial legal review (research language, source
+terms/copyright, financial-promotion boundaries, liability and corrections, issuer
+naming/trademark); methodology, conflict-of-interest, correction, and appeals policies;
+two X Layer design partners.</p>
+<p><strong>Graduation metrics:</strong> ≥8 assets at production evidence standards; ≥30 active
+controls; 100% citation-bound claims; 99.5% surveillance SLO over 30 days; corrections
+within 24h; two independent testnet integrations; one external team using <code>AssetGate</code>
+or the API publicly; <strong>first paid</strong> commissioned adapter, rescan, or freshness
+subscription.</p>
+<p><strong>First revenue</strong> comes from a protocol, wallet, or infrastructure team — never from
+issuers paying for favorable state. Issuer-funded integrations are disclosed and
+organizationally separated from methodology.</p>
+<p><strong>Checkpoint:</strong> Touchstone is a credible X Layer project when another builder publicly
+consumes its state. Deployment alone is not adoption.</p>
+<h2 id="phase-3-open-standard-and-institutional-readiness-novdec-2026">Phase 3 — Open standard and institutional readiness (Nov–Dec 2026)</h2>
+<p>Deliverables: Control Language Spec v0.1; Registry Interface Spec v0.1; Evidence Bundle
+Spec v0.1; reference compiler + offline verifier; reference clients; formal threat
+model; independent smart-contract audit; public compiler evaluation set; published
+methodology-change process; publisher/key-rotation spec; xStocks-readiness research
+package (contingent on confirmed ecosystem direction — never presented as guaranteed);
+corporate-action control prototypes (separate from core); first non-Touchstone publisher
+sandbox.</p>
+<p><strong>Graduation metrics:</strong> 25 production-grade assets; 5 external integrations (≥2 live);
+3 external spec/adapter contributors; zero unresolved critical/high contract findings;
+public compiler evaluation with measured precision and abstention (≥90% precision on
+supported control families; coverage may stay lower through abstention); 3 paying
+organizations or $25k cumulative revenue; one external publisher accepted in a
+non-material test environment.</p>
+<p><strong>Monetization added:</strong> metered API plans, enterprise freshness SLAs, integration and
+adapter fees, dedicated evidence archives, paid on-demand scans, protocol support
+contracts. The public dossier, base verification endpoint, specs, and offline verifier
+stay open.</p>
+<p><strong>OKX / X Layer strategy:</strong> monthly ecosystem contribution reports; position as
+listing-diligence and collateral-admission infrastructure (never the listing
+decision-maker); request technical feedback from X Layer RWA/devrel; grants only with
+owner approval; demonstrate how tokenized equities could consume disclosure and
+corporate-action controls; never imply OKX/X Layer/issuer endorsement without written
+confirmation; registry and reference consumer stay native to X Layer even as observed
+assets span chains.</p>
+<h2 id="phase-4-verification-network-2027-h1">Phase 4 — Verification network (2027 H1)</h2>
+<p><strong>Objective:</strong> remove Touchstone as the sole publisher.</p>
+<p>Deliverables: curated multi-publisher network with identities and performance history;
+independent observation comparison; challenge and correction interface; publisher
+quorum policies; conflict disclosures; disaster-recovery regions; adapter certification
+tests; issuer-side machine-readable disclosure tooling; multi-chain observation with X
+Layer as the canonical registry home. <strong>No staking, slashing, or token merely to claim
+decentralization</strong> — accountable independent publishers with observable performance
+come first.</p>
+<p><strong>Graduation metrics:</strong> 100 covered assets; 5 independent publishers; 10 production
+consumers; 99.9% SLO over 90 days; ≥2 externally maintained publisher implementations;
+challenge acknowledgement &lt;4h; confirmed corrections &lt;24h; 10 paying organizations or
+~$250k ARR; no single publisher required by every consumer policy.</p>
+<h2 id="phase-5-the-independent-rwa-verification-institution-2027">Phase 5 — The independent RWA verification institution (2027+)</h2>
+<p>Public positioning is <strong>"the open verification and admission layer for tokenized
+real-world assets"</strong> — never "the Moody's of RWA" (that implies subjective ratings,
+regulated activity, and authority not yet earned).</p>
+<p>Deliverables: independent methodology and appeals council; formal legal/compliance
+structure; publisher accreditation; public methodology and model-risk reports; annual
+audits; cross-jurisdiction source policies; coverage across major RWA categories and
+origin chains; exchange, wallet, custodian, and DeFi integrations; an issuer disclosure
+standard designed for machine verification; institutional-grade historical evidence
+archive; model/compiler reproducibility program.</p>
+<p><strong>Long-term metrics:</strong> 500 production-grade assets; 10+ RWA categories; 10 origin
+chains; 25+ production consumers; 10 independent publishers; 99.95% SLO; published
+annual transparency and model-risk reports; majority of registry reports produced or
+corroborated outside the founding organization; 50 paying organizations or &gt;$1M ARR; no
+unresolved critical integrity incident; demonstrable use in listing, collateral,
+wallet, or settlement workflows.</p>
+<hr />
+<h2 id="defensibility-what-compounds">Defensibility — what compounds</h2>
+<p>The Solidity registry and dossier UI are cloneable; the moat is everything that
+accumulates: (1) the content-addressed historical evidence graph; (2) the corpus of
+accepted/rejected/corrected/abstained controls tied to exact evidence; (3) compiler
+evaluations built on real financial-document failure cases; (4) hardened issuer-specific
+adapters with known cadence and failure semantics; (5) the public operational record —
+uptime, correction speed, incident transparency; (6) integration depth in production
+consumers; (7) publisher reputation over time; (8) issuer relationships that yield
+machine-readable feeds without surrendering independence; (9) open-standard leadership
+— contributors converge on Touchstone interfaces even with other publishers; (10) trust
+earned through restraint — a public history of abstaining instead of overclaiming.
+A well-funded team can reproduce the first demo. It cannot instantly reproduce years of
+evidence lineage, correction history, and integration trust.</p>
+<h2 id="security-integrity-and-governance-ladder">Security, integrity, and governance ladder</h2>
+<p><strong>Immediate (hackathon):</strong> separated deployer / publisher / Ed25519-reporting /
+operations keys; no secrets in code, logs, bundles, or clients; onchain key rotation;
+monotonic sequences + replay protection; allowlisted adapters; sandboxed parsing;
+prompt-injection tests; full model/prompt version recording; signed release manifests;
+daily backups + tested restore; public status and incident history.</p>
+<p><strong>Before external production dependence:</strong> hardware-backed or multisig admin roles;
+independent contract audit; external pipeline security review; incident-response
+runbook; 99.9% SLO architecture; multi-region deployment; supply-chain controls;
+reproducible deployment; upgrade/rollback policy; independent legal review; published
+correction and challenge policy.</p>
+<p><strong>Before multi-publisher operation:</strong> admission criteria; conflict disclosures;
+key-compromise procedure; quorum and disagreement semantics; suspension rules; appeals;
+independent methodology governance; no token or slashing until real adversarial and
+legal requirements justify them.</p>
+<h3 id="adopted-from-the-incumbents-design-audit-2026-08-1718">Adopted from the incumbents (design audit, 2026-08-17/18)</h3>
+<p>Two rounds against Chainlink and RedStone. Round 1 audited their price-feed surface, which
+was the wrong opponent; round 2 found the products in this category. Ordered by what each
+closes, not by how large it sounds.</p>
+<ol>
+<li><strong>Root / derivative publisher hierarchy.</strong> From RedStone's TSSO, which co-signs
+   single-source NAV with a cold root key for material change and a bounded hot key for
+   routine updates. Closes routine-key compromise without giving the hot key authority over
+   the control set. <code>touchstone/publish.py</code>, <code>touchstone/keyring.py</code>,
+   <code>TouchstoneRegistry.sol</code>.</li>
+<li><strong>Chained publication.</strong> A report must commit to its predecessor's digest. Today
+   <code>report.py</code> carries <code>sequence</code> and <code>correction_of</code> but no parent, and the registry
+   enforces sequence monotonicity only — so an authorized publisher can place an unrelated
+   report at the next sequence and nothing detects the splice. Sequence binds position; it
+   does not bind content. Requires a registry struct change, so it lands in the next
+   deployed version rather than being bolted onto the current one.</li>
+<li><strong>Explicit <code>SOURCE_ERROR</code> publication.</strong> The state exists in the transition model and has
+   no runtime producer: a fetch failure ends the epoch instead. <code>touchstone/epoch.py</code>,
+   <code>touchstone/schedule.py</code>, <code>touchstone/controls.py</code>.</li>
+<li><strong>Scheduled republication of unchanged state.</strong> TSSO re-signs a static value to keep it
+   from reading as stale. Adopt the shape, not the numeric deviation threshold — a 0.1%
+   band is meaningless over <code>CONFIRMED</code> / <code>UNVERIFIABLE</code> / <code>STALE</code> / <code>INCONSISTENT</code>.</li>
+<li><strong>Bind the evidence span to the adapter field it justifies</strong> (residual R-1). The span is
+   presence-only today.</li>
+</ol>
+<p><strong>Deferred, deliberately:</strong> threshold co-signing. RedStone ship a quorum product with
+<code>getUniqueSignersThreshold</code> and an onchain median, and still concluded that a valuation with
+one authoritative source cannot be established by aggregation. Three signers reading the same
+issuer API agree on the same wrong answer. Quorum earns its place when there are publishers
+whose disagreement carries information, not before.</p>
+<p><strong>Watched, not adoptable:</strong> zkTLS (Chainlink DECO) is a public sandbox with no production
+product. It would prove transport — that these bytes came from that server — which is
+strictly stronger than the unauthenticated fetch this project records today. It would not
+prove typed interpretation, predicate evaluation, approval binding, or abstention.</p>
+<h2 id="public-backing-milestone-arc-every-item-drafted-owner-approves">Public-backing milestone arc (every item drafted, owner approves)</h2>
+<p>The owner's personal account carries the convictions; the project account carries
+technical progress. Deliberate, not promotional.</p>
+<ol>
+<li><strong>The commitment</strong> (after Phase 0 gates + provisional brand clearance): the problem,
+   the evidence-integrity principles, the decision to build publicly. Never name
+   issuers as partners or imply endorsement.</li>
+<li><strong>Evidence standard</strong> (after control-language v0): one exact citation becoming a
+   typed control, plus rejected examples. Message: <em>the hard part is not extracting a
+   number — it is refusing to claim more than the source proves.</em></li>
+<li><strong>First X Layer enforcement</strong> (after the testnet full loop): source artifact →
+   signed report → registry transaction → AssetGate decision → explorer link.</li>
+<li><strong>Living dossier</strong> (Aug 18–20): the public dossier and the verified / not-verified
+   distinction.</li>
+<li><strong>Testnet release candidate</strong> (Aug 21): hero demo, <strong>testnet</strong> addresses, open
+   verification endpoint, limitations, the @XLayerOfficial mention. Separate approvals for
+   post and submission. <em>(Amended 2026-08-16: mainnet is unscheduled and conditional on a
+   proven testnet loop, so it cannot be a launch item on a fixed date.)</em></li>
+<li><strong>Reliability proof</strong> (Aug 28): scheduled vs completed epochs, evidence changes,
+   incidents and recovery, uptime. Observation counts are never presented as adoption.</li>
+<li><strong>Snapshot report</strong> (Sept 1): full judging-window history, signed archive, roadmap.</li>
+<li><strong>External adoption</strong> (only when real): the first protocol consuming Touchstone state —
+   the milestone that proves infrastructure status.</li>
+</ol>
+<h2 id="ambition-theater-banned-phrasing-and-mechanics">Ambition theater — banned phrasing and mechanics</h2>
+<p>Cut everywhere, permanently: "the Moody's/S&amp;P of tokenized finance" (use
+"machine-verification and admission layer"); "regulatory-grade" before formal legal and
+audit work; stake/slashing before independent publishers and real dispute data; any
+governance token; issuer-paid ratings (Touchstone does not rate, and payment never affects
+status); asset-count vanity expansion; daily social posting as proof of life (the
+heartbeat and signed epochs are the proof); guaranteed xStocks alignment (say "ready to
+help if confirmed"); "every major RWA chain" before production consumers; automated
+legal conclusions.</p>
+<h2 id="priority-stack-and-never-cut-list">Priority stack and never-cut list</h2>
+<p>Hackathon priority: 1) evidence integrity, 2) one flawless hero loop, 3)
+contract-enforced consumption, 4) autonomous reliability, 5) public transparency, 6)
+second/third asset coverage, 7) x402 and richer dossier interaction.
+If time slips, cut in order: x402 rescans → third adapter → semantic-diff visualization
+→ rich Q&amp;A.
+<strong>Never cut:</strong> exact citations, abstention, signed reports, the transparency log,
+<code>AssetGate</code>, end-to-end surveillance, public incident visibility, key separation, the
+Sept 1 operations plan.</p>
+    </article>
+    <aside class="doc-toc" aria-label="On this page">
+      <p class="foot-h">On this page</p>
+      <ol class="doc-toc-list">
+        <li class="toc-2"><a href="#product-principles">Product principles</a></li>
+        <li class="toc-2"><a href="#system-architecture">System architecture</a></li>
+        <li class="toc-2"><a href="#evidence-status-entering-phase-0-as-of-2026-08-13">Evidence status entering Phase 0 (as of 2026-08-13)</a></li>
+        <li class="toc-2"><a href="#phase-0-evidence-and-brand-kill-gates-aug-1314">Phase 0 — Evidence and brand kill gates (Aug 13–14)</a></li>
+        <li class="toc-2"><a href="#phase-1-hackathon-build-aug-1321">Phase 1 — Hackathon build (Aug 13–21)</a></li>
+        <li class="toc-3"><a href="#aug-13-evidence-kill-gate">Aug 13 — Evidence kill gate</a></li>
+        <li class="toc-3"><a href="#aug-14-semantics-fixtures-threat-model">Aug 14 — Semantics, fixtures, threat model</a></li>
+        <li class="toc-3"><a href="#aug-15-contracts-and-testnet-foundation">Aug 15 — Contracts and testnet foundation</a></li>
+        <li class="toc-3"><a href="#aug-16-hero-compiler-and-source-adapter">Aug 16 — Hero compiler and source adapter</a></li>
+        <li class="toc-3"><a href="#aug-17-signed-surveillance-and-onchain-publication">Aug 17 — Signed surveillance and onchain publication</a></li>
+        <li class="toc-3"><a href="#aug-18-product-experience">Aug 18 — Product experience</a></li>
+        <li class="toc-3"><a href="#aug-19-coverage-and-operations">Aug 19 — Coverage and operations</a></li>
+        <li class="toc-3"><a href="#aug-20-hardening-and-release-candidate">Aug 20 — Hardening and release candidate</a></li>
+        <li class="toc-3"><a href="#aug-21-testnet-release-candidate-internal-deadline-1800-utc">Aug 21 — Testnet release candidate (internal deadline 18:00 UTC)</a></li>
+        <li class="toc-3"><a href="#hackathon-completion-metrics">Hackathon completion metrics</a></li>
+        <li class="toc-2"><a href="#the-minimum-hero-demo-90120-seconds-two-acts">The minimum hero demo (90–120 seconds, two acts)</a></li>
+        <li class="toc-2"><a href="#aug-21-sept-1-operations-calendar">Aug 21 – Sept 1 operations calendar</a></li>
+        <li class="toc-2"><a href="#phase-2-product-proof-septoct-2026">Phase 2 — Product proof (Sept–Oct 2026)</a></li>
+        <li class="toc-2"><a href="#phase-3-open-standard-and-institutional-readiness-novdec-2026">Phase 3 — Open standard and institutional readiness (Nov–Dec 2026)</a></li>
+        <li class="toc-2"><a href="#phase-4-verification-network-2027-h1">Phase 4 — Verification network (2027 H1)</a></li>
+        <li class="toc-2"><a href="#phase-5-the-independent-rwa-verification-institution-2027">Phase 5 — The independent RWA verification institution (2027+)</a></li>
+        <li class="toc-2"><a href="#defensibility-what-compounds">Defensibility — what compounds</a></li>
+        <li class="toc-2"><a href="#security-integrity-and-governance-ladder">Security, integrity, and governance ladder</a></li>
+        <li class="toc-3"><a href="#adopted-from-the-incumbents-design-audit-2026-08-1718">Adopted from the incumbents (design audit, 2026-08-17/18)</a></li>
+        <li class="toc-2"><a href="#public-backing-milestone-arc-every-item-drafted-owner-approves">Public-backing milestone arc (every item drafted, owner approves)</a></li>
+        <li class="toc-2"><a href="#ambition-theater-banned-phrasing-and-mechanics">Ambition theater — banned phrasing and mechanics</a></li>
+        <li class="toc-2"><a href="#priority-stack-and-never-cut-list">Priority stack and never-cut list</a></li>
+      </ol>
+    </aside>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Limitations · Docs · Touchstone</title>
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products">Products</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap doc-layout">
+    <article class="doc-body">
+<h1 id="limitations">Limitations</h1>
+<p><strong>Unpublished text in a file.</strong> This is not a legal opinion, not an audit
+report, not a safety case, and not an independent attestation. It is a
+list of things Touchstone does not do, written before anyone has to ask.</p>
+<p>The project's hardest standard is that a document must not claim more than
+the code does. Where a fact has not been verified against this repository,
+it is written <code>not_configured</code>, <code>not_deployed</code>, or stated as unknown.</p>
+<p>Nothing here asserts that any observed asset is safe, solvent, compliant,
+or suitable.</p>
+<p>Day-to-day operations, including the live testnet registry, are
+<code>docs/OPERATIONS.md</code>. The security residuals this file summarises are
+sourced from <code>docs/THREAT-MODEL.md</code>. Completion metrics are sourced from
+<code>ROADMAP.md</code>.</p>
+<hr />
+<h2 id="1-what-touchstone-is-trusted-to-say">1. What Touchstone is trusted to say</h2>
+<p>Touchstone claims one class of thing: that it retrieved exact bytes from a
+first-party endpoint reached from an allowlisted URL at the recorded
+retrieval time, that a stated control was evaluated against those bytes
+deterministically, and that the result was signed and — if a publisher
+was authorised to — published.</p>
+<p>It does not claim the issuer is honest. It does not claim the published
+figures are accurate. It does not claim an asset is sound.</p>
+<p>The retrieval time is Touchstone's own. It is supplied by the caller or
+read from the local clock (<code>touchstone/sources.py</code>). It is not an
+authenticated publication timestamp from the issuer. No source in the
+portfolio provides one.</p>
+<hr />
+<h2 id="2-hackathon-completion-metrics-what-was-missed">2. Hackathon completion metrics — what was missed</h2>
+<p>The targets in <code>ROADMAP.md</code> were not restated downward. Misses are
+recorded as misses. Standing in that table is dated 2026-08-16; the
+testnet registry landed the next day and does not change the three
+missed rows.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Target</th>
+<th>Actual</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Accepted controls</td>
+<td>≥6</td>
+<td><strong>5 — missed.</strong> The 0.3.0 recompile (2026-08-17, live retrieval) proposed ten candidates that passed the deterministic gates. Five were approved and five declined, with reasons, in <code>data/compilations/APPROVALS.json</code>. The five declines were not forced: three are duplicate presence checks on a document another approved control already reads, and one clears the 0.80 confidence gate with zero margin. Approving any of them would have met this target and would have counted duplication as breadth, so the number stands at five and the row reads missed. Each approved control is bound by digest to the compilation that accepted it, and a declined candidate cannot be relabelled approved.</td>
+</tr>
+<tr>
+<td>Assets documented</td>
+<td>3</td>
+<td><strong>3 — met.</strong> USTB, USDY and FOBXX source manifests, with golden fixtures where retrieval was bounded.</td>
+</tr>
+<tr>
+<td>Fully autonomous live adapters</td>
+<td>≥2</td>
+<td><strong>1 — missed.</strong> USTB ran the unattended daemon against the live issuer on 2026-08-17 and published sequence 1, so the count is one, not zero. ⚠️ This row read "0 proven live… it has never run against live sources" until 2026-08-18, which the canary row two lines below had already contradicted — the count was corrected upward, but a table that disagrees with itself is the defect worth recording, not the number. One live slot is also not continuous operation: the daemon has run one scheduled slot, not a sustained schedule. USDY is blocked on unbounded retrieval (a single 260,431,605-byte archive). FOBXX is retained as a documented monthly contrast asset; no adapter ships. OUSG was cut rather than rushed into the second slot (<code>manifests/sources/ousg.json</code>, <code>phase_1_status.state: cut</code>). Phase 1 deliberately ships one vertical rather than two hurried ones.</td>
+</tr>
+<tr>
+<td>Live consumer contract gating on state</td>
+<td>1</td>
+<td><strong>0 — missed.</strong> <code>AssetGate</code> is written and tested. It is deployed only ephemerally inside the local end-to-end run (<code>scripts/e2e_local.py</code>). It has never existed on a persistent chain. Address: <code>not_deployed</code>.</td>
+</tr>
+<tr>
+<td>Production canary epoch</td>
+<td>1</td>
+<td><strong>1 — met on testnet, 2026-08-17.</strong> USTB sequence 1 published at block 38526525, state <code>UNVERIFIABLE</code>. The target said <em>production</em>; this is testnet, so read it as met for testnet and unmet for mainnet, which remains unscheduled.</td>
+</tr>
+<tr>
+<td>Claims span-cited and hash-bound</td>
+<td>100%</td>
+<td>Met for every accepted control.</td>
+</tr>
+</tbody>
+</table>
+<p>The living dossier (PLAN-T9) is unbuilt. There is no public page, no
+wallet-free UI, and no developer surface. T26 in the threat model is
+still backlog for that reason.</p>
+<p>PLAN-T12 (release-candidate matrix) is not marked done in
+<code>docs/PHASE-1-PLAN.md</code>. A CI workflow exists at
+<code>.github/workflows/ci.yml</code>. Whether every case that document named has
+been added is not claimed here.</p>
+<hr />
+<h2 id="3-parser-isolation-is-process-isolation">3. Parser isolation is process isolation</h2>
+<p>Normalisation of USTB payloads runs in a spawned worker
+(<code>touchstone/normalize/ustb.py</code>, <code>multiprocessing.get_context("spawn")</code>)
+with a hard wall-clock timeout (<code>DEFAULT_ISOLATED_TIMEOUT = 2.0</code>
+seconds). A worker that never returns is terminated and, if it ignores
+that, killed.</p>
+<p>That bounds a misbehaving parser and a runaway one. It is <strong>not</strong> a
+kernel sandbox. There is no seccomp, container, namespace, or capability
+restriction. The worker retains the privileges of the service account.</p>
+<p>The result crosses back over a <code>multiprocessing</code> connection
+(<code>receive.recv()</code>). The parent deserialises whatever arrives. A worker
+that an adversary has genuinely compromised can act on the parent across
+that channel. Closing this would need a restricted transport carrying
+only plain data, plus OS-level confinement. That is residual <strong>R-3</strong> in
+<code>docs/THREAT-MODEL.md</code>.</p>
+<p>There is no PDF or archive parser in Phase 1. Those paths were cut with
+the USDY and FOBXX adapters.</p>
+<hr />
+<h2 id="4-steering-by-injected-evidence-is-a-retained-residual">4. Steering by injected evidence is a retained residual</h2>
+<p>The compiler is given no tool surface. The request body carries only
+<code>model</code> and <code>messages</code> (<code>touchstone/compiler.py</code>, <code>HTTPProvider</code>). There
+is no shell, network, wallet, or contract capability for injected text
+to invoke.</p>
+<p>A candidate declaring any <code>approval_state</code> other than <code>proposed</code> is
+refused. A fabricated citation is refused. A control redirected to
+another adapter is refused.</p>
+<p>This constrains impact. It does not prevent steering. A well-formed
+injected candidate — correct adapter, exact citation, <code>proposed</code>,
+maximum confidence — is accepted as a proposal, because nothing detects
+that a human never intended it. That limit is pinned by tests
+(<code>tests/test_compiler.py</code>).</p>
+<p>Only the approval gate stops it. Approval is a field on the record, set
+by whoever edits the control set. There is no approver identity, no
+signature over the decision, and no four-eyes requirement. The
+compiler's confidence value is supplied by the model itself, so it
+cannot substitute for that gate. This is residual <strong>R-9</strong> (and threat
+<strong>T9</strong>) in <code>docs/THREAT-MODEL.md</code>.</p>
+<p>The serving runtime does not call a model. <code>scripts/compile_controls.py</code>
+is the only place a model is invoked; it runs at proposal time, on the
+operator's machine, and does not approve anything.</p>
+<hr />
+<h2 id="5-value-controls-abstain-without-a-qualifying-earlier-capture">5. Value controls abstain without a qualifying earlier capture</h2>
+<p>A value control on the USTB NAV source observes only a row whose whole
+normalised record is identical in a qualifying earlier capture.
+"Qualifying" means retrieved at least
+<code>CONFIRMATION_INTERVAL_SECONDS = 86_400</code> earlier
+(<code>touchstone/evidence.py</code>). Two captures taken minutes apart, including
+either side of midnight, never confirm each other.</p>
+<p><code>run_ustb_epoch</code> resolves that predecessor <strong>before</strong> appending this
+epoch's own capture, so a fetch can never confirm itself
+(<code>touchstone/epoch.py</code>). If there is no qualifying predecessor,
+<code>_confirmed_nav_row</code> returns nothing, the control evaluates
+<code>UNEVALUABLE</code>, and — while evidence is still fresh — the asset state is
+<code>UNVERIFIABLE</code> (<code>touchstone/controls.py</code>, <code>touchstone/evaluate.py</code>).</p>
+<p>An unseeded workspace therefore reports <code>UNVERIFIABLE</code>. That is the
+honest result, not a defect. The canary packet accepts it.</p>
+<p>The confirmation window is empirical, not proven (residual <strong>R-2</strong>). A
+row revised and restored between the two captures is indistinguishable
+from one never touched. One approved USTB control now declares
+<code>minimum_row_age_business_days</code>: <code>ustb-nav-per-share-present</code>, at two
+business days. Earlier sets carried none — the compiler did not propose
+the field, and approval may change only <code>approval_state</code> and
+<code>compilation_sha256</code>, so it could not be added afterwards. The 0.3.0
+compiler prompt requests it and the evaluator accepts it only on the NAV
+source and never for <code>fresh_within</code>. Note the deterministic gate
+validates a non-negative integer, not the constant two: this candidate
+declares two because the model proposed two, not because the compiler
+could produce nothing else.</p>
+<p>Presence controls on the yield and holdings sources do not use this
+window. They prove only that the issuer returned a named scalar in these
+hash-bound bytes.</p>
+<hr />
+<h2 id="6-keys-hosts-and-what-is-absent">6. Keys, hosts, and what is absent</h2>
+<p>There is no HSM, no KMS, no passphrase at rest, no multisig, and no
+threshold signing. Runtime keys are environment variables on their host.
+Anything that can read the process environment can publish. The
+publisher key can only append reports; it cannot revoke, rotate, or
+rewrite. Recovery is the deployer calling <code>rotatePublisher</code>. The
+deployer key itself is a single key. The registry has no owner-rotation
+path, so loss or theft of the deployer is unrecoverable. See
+<code>docs/KEY-MANAGEMENT.md</code> and residual <strong>R-5</strong>.</p>
+<p>There is no multi-region failover, no leader election, and no second
+publisher. A single host runs a single daemon. The host is
+<code>not_configured</code>. Supervisor units are <code>not_configured</code>. Detection and
+recovery timings are proven in a local subprocess harness; they have
+not been proven on production hardware, because there is no production
+host yet.</p>
+<p>Compromise detection does not exist. Nothing watches for a publication
+from an unexpected publisher or a report signed by a retired key.</p>
+<p>TLS is trusted without pinning (residual <strong>R-7</strong>). Evidence integrity in
+transit rests on the platform certificate store.</p>
+<p>Chain state is read from the same single JSON-RPC endpoint it is written
+through (residual <strong>R-12</strong>). An endpoint that answers dishonestly can
+report a publication that did not occur, or conceal one that did.</p>
+<p>Time is taken from the host clock (residual <strong>R-10</strong>). The chain rejects
+a future <code>observedAt</code>; that check is one-sided and delay-sensitive.</p>
+<p>Source probes were run from a development machine (residual <strong>R-8</strong>).
+Repeated retrieval from the eventual deployment host is unverified.</p>
+<hr />
+<h2 id="7-evidence-bundles-and-citations">7. Evidence, bundles, and citations</h2>
+<p>The evidence index is a hash chain. Every append re-verifies the chain
+and re-hashes referenced objects. That detects modification. An actor
+with write access who rewrites objects and recomputes the entire chain
+is not detected. The transparency log is another local JSON-lines file
+with the same trust properties. The only genuinely external record is
+what has been published on chain, and that is a root, not the evidence.
+Residual <strong>R-4</strong>.</p>
+<p>A verification bundle carries the signed report, control records,
+evidence <strong>references</strong>, compilation artifacts, the approval ledger, and
+the published key. It does not carry evidence bytes, registry state, or
+the transparency log. An offline verifier can confirm the signature,
+recompute roots, and repeat the compilation-to-control binding. It
+cannot confirm the report was published, cannot verify the log, and
+cannot replay normalisation against artifacts it does not hold.
+Residual <strong>R-6</strong>.</p>
+<p>Byte-span provenance proves the cited bytes occur in the artifact. It
+does not prove uniqueness, or that they denote the field the adapter
+consumed. Residual <strong>R-1</strong>.</p>
+<hr />
+<h2 id="8-retrieval-failures-incidents-and-scheduling">8. Retrieval failures, incidents, and scheduling</h2>
+<p>A source outage is not asset inconsistency. The transition rule
+preserves the previous state under <code>SOURCE_ERROR</code> until the evidence
+deadline expires. <strong>No runtime caller currently produces that event.</strong>
+A fetch or normalisation failure leaves <code>run_ustb_epoch</code> and the failed
+slot opens an incident instead. That residual is not owned by any open
+plan item (<code>docs/THREAT-MODEL.md</code> T14, T22).</p>
+<p>A missed slot is recorded and never backfilled. Running yesterday's
+slot today retrieves today's evidence and files it under yesterday.</p>
+<p>Alerts are one HTTPS webhook. Delivery is not guaranteed. There is no
+retry-until-success, no paging escalation, and no failover.</p>
+<p>Gas runway is <code>UNKNOWN</code> whenever any operand is missing, and unknown
+fails the gate. Top-up is manual.</p>
+<hr />
+<h2 id="9-claims-this-project-does-not-make">9. Claims this project does not make</h2>
+<p>These are not residuals to be closed later. They are outside what
+Touchstone is.</p>
+<ul>
+<li><strong>Legal.</strong> <code>docs/BRAND-CLEARANCE.md</code> is a record of searches. It is
+  not a clearance opinion. <code>legal_status</code> is <code>not_assessed</code> for every
+  entry. Superstate API terms of use are recorded <code>unresolved</code> in
+  <code>manifests/sources/ustb.json</code>.</li>
+<li><strong>Solvency, reserves, collateral.</strong> An issuer API is issuer
+  disclosure. USDY's third-party attestation, if it were retrieved, would
+  still cover Ondo USDY LLC only and would still not be an audit. It is
+  not retrieved.</li>
+<li><strong>Compliance, suitability, credit.</strong> Touchstone does not rate. It does
+  not recommend. It does not decide listings.</li>
+<li><strong>Safety of an asset or of a consumer protocol.</strong> <code>AssetGate</code> reacts
+  to verification freshness. A permissive policy admits stale state. The
+  gate has never been deployed to a persistent chain.</li>
+<li><strong>Independent attestation, audit, or formal verification of
+  Touchstone itself.</strong> The Phase 3 formal threat model, independent
+  contract audit, and external pipeline review are not claimed. This
+  document is not a substitute.</li>
+<li><strong>Production reliability.</strong> Until an epoch is produced and published
+  without a person present, every reliability figure in
+  <code>docs/OPERATIONS.md</code> is a property of the tests.</li>
+<li><strong>Endorsement.</strong> Nothing here implies OKX, X Layer, Superstate, Ondo,
+  Franklin Templeton, or any issuer endorses this project.</li>
+</ul>
+<hr />
+<h2 id="10-explicitly-out-of-scope-for-phase-1">10. Explicitly out of scope for Phase 1</h2>
+<p>From <code>docs/PHASE-1-PLAN.md</code> and <code>ROADMAP.md</code> Phases 2–5, and not claimed:
+legal review; external contract and pipeline audits; API and SDKs; paid
+rescans; a second autonomous adapter; FOBXX or OUSG adapters; PAXG;
+design partners; formal specifications; multi-publisher quorum;
+accreditation; staking or a token; institutional governance; HSM or
+multisig custody; multi-region deployment.</p>
+<p>The public dossier, a public verification endpoint, and any project URL
+are <code>not_deployed</code>.</p>
+    </article>
+    <aside class="doc-toc" aria-label="On this page">
+      <p class="foot-h">On this page</p>
+      <ol class="doc-toc-list">
+        <li class="toc-2"><a href="#1-what-touchstone-is-trusted-to-say">1. What Touchstone is trusted to say</a></li>
+        <li class="toc-2"><a href="#2-hackathon-completion-metrics-what-was-missed">2. Hackathon completion metrics — what was missed</a></li>
+        <li class="toc-2"><a href="#3-parser-isolation-is-process-isolation">3. Parser isolation is process isolation</a></li>
+        <li class="toc-2"><a href="#4-steering-by-injected-evidence-is-a-retained-residual">4. Steering by injected evidence is a retained residual</a></li>
+        <li class="toc-2"><a href="#5-value-controls-abstain-without-a-qualifying-earlier-capture">5. Value controls abstain without a qualifying earlier capture</a></li>
+        <li class="toc-2"><a href="#6-keys-hosts-and-what-is-absent">6. Keys, hosts, and what is absent</a></li>
+        <li class="toc-2"><a href="#7-evidence-bundles-and-citations">7. Evidence, bundles, and citations</a></li>
+        <li class="toc-2"><a href="#8-retrieval-failures-incidents-and-scheduling">8. Retrieval failures, incidents, and scheduling</a></li>
+        <li class="toc-2"><a href="#9-claims-this-project-does-not-make">9. Claims this project does not make</a></li>
+        <li class="toc-2"><a href="#10-explicitly-out-of-scope-for-phase-1">10. Explicitly out of scope for Phase 1</a></li>
+      </ol>
+    </aside>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threat model · Docs · Touchstone</title>
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products">Products</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap doc-layout">
+    <article class="doc-body">
+<h1 id="touchstone-threat-model-phase-1">Touchstone Threat Model — Phase 1</h1>
+<p><strong>Status:</strong> Phase 1 (hackathon build). Written 2026-08-14; <strong>revised 2026-08-17</strong> after
+PLAN-T7 and PLAN-T8 closed and PLAN-T10/T11 were cut. That revision existed to remove
+deferrals pointing at items that had since closed <em>without</em> doing the work — a backlog label
+naming a finished item reads as covered when it is not.</p>
+<p>This document states what Touchstone defends against today, what it does not, and where
+each roadmap security requirement actually stands. It is deliberately narrow: the formal
+threat model, the independent contract audit, and the external pipeline review are Phase 3
+deliverables and are <strong>not</strong> claimed here.</p>
+<p>Every control below is cited to the code that implements it. Where a requirement is not
+implemented, it is recorded as a backlog item or a residual limitation rather than
+described as covered. Nothing here asserts that any observed asset is safe, solvent,
+compliant, or suitable, and nothing here claims an independent attestation, audit, or
+legal opinion that Touchstone has not obtained.</p>
+<h2 id="1-what-touchstone-is-trusted-to-say">1. What Touchstone is trusted to say</h2>
+<p>Touchstone claims exactly one class of thing: <em>that it retrieved exact bytes from a
+first-party endpoint reached from an allowlisted URL at the recorded retrieval time, that a stated control was
+evaluated against those bytes deterministically, and that the result was signed and
+published.</em> It does not claim the issuer is honest, that the published figures are
+accurate, or that an asset is sound.</p>
+<p>Note the retrieval time is Touchstone's own: it is supplied by the caller or read from the
+local clock (<code>touchstone/sources.py:216</code>). It is not an authenticated publication timestamp
+from the issuer, and no source in the portfolio provides one.</p>
+<p>A consumer relying on Touchstone inherits the trust assumptions in section 2. Those
+assumptions are the product, so they are enumerated rather than minimised.</p>
+<h2 id="2-trust-boundaries">2. Trust boundaries</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Boundary</th>
+<th>Trusted for</th>
+<th>If it fails</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>B1</td>
+<td><strong>Source</strong> (issuer endpoint)</td>
+<td>Publishing its own figures</td>
+<td>Touchstone reports what the issuer published; it cannot detect issuer dishonesty</td>
+</tr>
+<tr>
+<td>B2</td>
+<td><strong>Network path to the source</strong></td>
+<td>Transport integrity via TLS</td>
+<td>A successful TLS MITM could substitute evidence; pinning is not implemented</td>
+</tr>
+<tr>
+<td>B3</td>
+<td><strong>Model provider</strong> (control compiler)</td>
+<td>Proposing candidate controls only</td>
+<td>A hostile model cannot itself change state: compilation only ever emits <code>proposed</code> records, and a candidate the deterministic evaluator cannot decide is refused at compilation. An approved control is bound to the compilation that accepted it, checked at report construction and repeated by the offline verifier from artifacts the bundle carries. What remains is that the approval decision itself is unattributed — see R-9</td>
+</tr>
+<tr>
+<td>B4</td>
+<td><strong>Parsing worker</strong></td>
+<td>Normalising bytes into typed observations</td>
+<td>Process isolation only, not a kernel sandbox — see R-3</td>
+</tr>
+<tr>
+<td>B5</td>
+<td><strong>Evidence store</strong></td>
+<td>Retaining exact bytes and their order</td>
+<td>Local filesystem trust; chain verification detects modification, not a privileged rewrite of both objects and index</td>
+</tr>
+<tr>
+<td>B6</td>
+<td><strong>Ed25519 reporting key</strong></td>
+<td>Authenticity of a report's content</td>
+<td>A compromised key can sign false reports. A bundle verifies against the key it carries, so a consumer must decide which key it trusts out of band. Rollover is built (<code>touchstone/keyring.py</code>) and is additive: a superseded key stays published and trusted, and only the active key may sign or publish anew. Note the limit this creates — because a bundle carries its own key, a bundle signed by a <strong>revoked</strong> key still passes <code>verify_bundle</code> (<code>touchstone/verify.py:133</code>). Revocation is a manifest-level withdrawal of trust, not a cryptographic one, so a consumer who cares must consult the manifest. Custody is the open part — R-5</td>
+</tr>
+<tr>
+<td>B7</td>
+<td><strong>EVM publisher key</strong></td>
+<td>Authority to write to the registry</td>
+<td>A compromised key can publish authentic-looking state; the owner can revoke it onchain</td>
+</tr>
+<tr>
+<td>B8</td>
+<td><strong>Deployer / owner key</strong></td>
+<td>Contract deployment and publisher authorisation</td>
+<td>Full control of the registry's publisher set</td>
+</tr>
+<tr>
+<td>B9</td>
+<td><strong>Operations / backup identity</strong></td>
+<td>Service continuity and archive integrity</td>
+<td>Backup loss or forgery. Its address is a required manifest field as of PLAN-T6, so the publisher can be shown not to be running as it; that is an <em>address</em> separation only. Nothing yet verifies who actually funds the publisher or holds the archive, and archive integrity is now built (PLAN-T8: <code>touchstone/backup.py</code>), though nothing verifies <strong>who</strong> holds the archive</td>
+</tr>
+<tr>
+<td>B10</td>
+<td><strong>Registry contract</strong> (X Layer)</td>
+<td>Immutable, ordered, append-only history</td>
+<td>Chain reorganisation or a wrong-chain deployment; guarded by an immutable expected chain id compared on every report publication, including corrections (<code>contracts/contracts/TouchstoneRegistry.sol:239</code>); publisher-authorisation writes are not chain-checked</td>
+</tr>
+<tr>
+<td>B11</td>
+<td><strong>Consumer contract</strong> (<code>AssetGate</code>)</td>
+<td>Enforcing its own freshness policy</td>
+<td>A permissive policy admits stale state; the gate reacts to verification freshness, never to asset safety</td>
+</tr>
+<tr>
+<td>B12</td>
+<td><strong>Public projection</strong> (dossier, heartbeat)</td>
+<td>Displaying only signed, verified data</td>
+<td>Claim inflation in the UI — see T26</td>
+</tr>
+<tr>
+<td>B13</td>
+<td><strong>Viewer's browser</strong></td>
+<td>Rendering</td>
+<td>No wallet is required and no key material reaches the page</td>
+</tr>
+<tr>
+<td>B14</td>
+<td><strong>Control approver / release authority</strong></td>
+<td>Deciding which proposals become approved, evaluable controls</td>
+<td>This is the gate the compiler's output must pass, so it is the point where a hostile or careless approval enters the system. Today approval is a field on the record (<code>approval_state</code>) set by whoever edits the control set; there is no separate approver identity, no signature over the approval, and no four-eyes requirement</td>
+</tr>
+<tr>
+<td>B15</td>
+<td><strong>Host clock / time source</strong></td>
+<td>Retrieval timestamps, freshness deadlines, confirmation windows</td>
+<td>Every freshness and staleness decision and the 24h confirmation separation derive from it. The chain provides a partial check — the registry rejects an <code>observedAt</code> in the future against <code>block.timestamp</code> (<code>contracts/contracts/TouchstoneRegistry.sol:257</code>) and the gate measures age the same way — so a clock fast enough that <code>observedAt</code> is <em>still</em> ahead of chain time when the transaction executes is rejected. Publication delay masks a moderately fast clock, and offchain-only decisions are never checked. See R-10</td>
+</tr>
+<tr>
+<td>B16</td>
+<td><strong>JSON-RPC endpoint</strong></td>
+<td>Reporting chain state honestly</td>
+<td>Reads and writes go through one configured endpoint, so it can both accept a transaction and describe the resulting state. See R-12</td>
+</tr>
+</tbody>
+</table>
+<p>Keys at B6, B7, B8 and B9 are <strong>required to be four distinct identities</strong>. <strong>Amended
+2026-08-15 by PLAN-T6:</strong> the separation is now enforced rather than stated. A deployment
+manifest must state all four role addresses and cannot declare a publisher that is also
+the deployer or the operations address (<code>touchstone/deployment.py</code>); the publisher key must
+derive exactly the declared publisher address; a run refuses to start if the reporting seed
+and the publisher key are the same secret <strong>when both are present on one host</strong> — on a
+split-host deployment neither can see the other, so that particular collision is an
+operator responsibility rather than an enforced property; and preflight refuses to publish
+if the registry's <code>owner()</code> is the publisher, or if the publisher belongs to a different
+<code>publisherIdentity</code> lineage than the manifest declares. No unlocked-account path remains in
+the <em>publishing</em> code on any network — deployment and owner-administration calls still use
+an unlocked signer under Hardhat, which is an operator action rather than an unattended
+one. What is <em>not</em> enforced is custody: see the revised R-5 and <code>docs/KEY-MANAGEMENT.md</code>.</p>
+<h2 id="3-threats-and-current-disposition">3. Threats and current disposition</h2>
+<p>Legend: <strong>Implemented</strong> (control exists and is tested) · <strong>Backlog</strong> (a named item in
+<code>docs/PHASE-1-PLAN.md</code> that will implement it) · <strong>Residual</strong> (accepted, documented, not
+mitigated in Phase 1). Backlog items are written <code>PLAN-Tn</code> to keep them distinct from the
+threat identifiers <code>T1</code>–<code>T27</code> used in this section.</p>
+<h3 id="evidence-acquisition">Evidence acquisition</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Threat</th>
+<th>Disposition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td><strong>Source impersonation / wrong endpoint</strong> — evidence fetched from an address that is not the approved source</td>
+<td><strong>Implemented (PLAN-T5).</strong> The initial URL must match the manifest exactly, every URL must be HTTPS with no embedded credentials and no non-443 port, and a redirect may now only land on a URL the allowlist itself names, so retrieval cannot end anywhere the manifest did not approve</td>
+</tr>
+<tr>
+<td>T2</td>
+<td><strong>Redirect abuse</strong> — an open or cross-host redirect moves retrieval to attacker-controlled bytes</td>
+<td><strong>Implemented (PLAN-T5).</strong> At most one redirect is followed; cross-host and non-HTTPS redirects are refused; and the target must itself be allowlisted, so a same-host open redirect on an approved host no longer moves retrieval off-manifest. A test drives that exact case</td>
+</tr>
+<tr>
+<td>T3</td>
+<td><strong>MIME confusion</strong> — a source returns a different content type than the manifest approved</td>
+<td><strong>Implemented (PLAN-T5).</strong> The received media type is compared against the manifest's <code>expected_mime</code> and a mismatch is refused before anything is stored; a missing <code>Content-Type</code> is refused outright. Parameters such as <code>charset</code> are ignored for the comparison</td>
+</tr>
+<tr>
+<td>T4</td>
+<td><strong>Content-encoding confusion / decompression bomb</strong></td>
+<td><strong>Implemented for the JSON path (PLAN-T5).</strong> <code>Accept-Encoding: identity</code> is requested, every response is capped on the wire, and a non-identity <code>Content-Encoding</code> is now refused, so a compressed body cannot smuggle more expanded data than the cap allows. Archive and document expansion limits are unbuilt, and unneeded while no portfolio source is an archive or document after the <strong>PLAN-T10</strong> cut</td>
+</tr>
+<tr>
+<td>T5</td>
+<td><strong>Oversized input</strong> — memory exhaustion via a large response</td>
+<td><strong>Implemented.</strong> Per-source <code>max_bytes</code> enforced at read time and again after transport (<code>touchstone/sources.py:192</code>, <code>touchstone/sources.py:235</code>)</td>
+</tr>
+<tr>
+<td>T6</td>
+<td><strong>Hostile JSON</strong> — deep nesting, duplicate keys, float coercion, unexpected shape</td>
+<td><strong>Implemented.</strong> Depth cap (<code>touchstone/normalize/ustb.py:17</code>), magic-byte root check, exact-object field sets, decimal-as-text parsing, and duplicate row-date rejection. Numbers never round-trip through binary floats</td>
+</tr>
+<tr>
+<td>T7</td>
+<td><strong>Hostile PDF</strong></td>
+<td><strong>Not applicable in Phase 1.</strong> No PDF path exists, and none is needed: <strong>PLAN-T10's USDY adapter was cut on 2026-08-16</strong> and PLAN-T11's FOBXX adapter was dropped, so no portfolio source is a PDF or archive. Page, expanded-text and timeout limits become required again the moment one is added</td>
+</tr>
+<tr>
+<td>T8</td>
+<td><strong>Parser escape</strong> — parsing code executes attacker-influenced logic in the main process</td>
+<td><strong>Partially mitigated.</strong> Normalisation runs in a spawned worker with a hard wall-clock timeout (<code>touchstone/normalize/ustb.py:265</code>, default 2.0s at <code>:18</code>), which bounds runaway parsing. It does <strong>not</strong> contain a genuinely compromised worker: the worker's result crosses back over a <code>multiprocessing</code> connection (<code>touchstone/normalize/ustb.py:295</code>), and the parent deserialises whatever arrives. See <strong>R-3</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="compilation">Compilation</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Threat</th>
+<th>Disposition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T9</td>
+<td><strong>Prompt injection</strong> — instructions embedded in issuer evidence steer the compiler</td>
+<td><strong>Partially mitigated, and the limit is now pinned by tests.</strong> The model is given no tool surface at all: the request body carries only <code>model</code> and <code>messages</code> (<code>temperature</code> was removed when current models began rejecting it as deprecated), so there is no shell, network, wallet or contract capability for injected text to invoke. Impact is further bounded because output is only a <em>proposal</em> that must survive schema validation, an adapter/source binding check (<code>touchstone/compiler.py:379</code>) and explicit approval before evaluation. <strong>This constrains impact; it does not prevent steering</strong> — embedded instructions can still shape a schema-valid, byte-citable proposal. <strong>Tested as of PLAN-T5:</strong> evidence carrying explicit self-approval instructions is refused outright, because a candidate declaring any <code>approval_state</code> other than <code>proposed</code> is rejected; a fabricated citation is rejected; a control redirected to another adapter is rejected; and the request carries no tool schema for injected text to invoke. <strong>The honest limit is also pinned:</strong> a <em>well-formed</em> injected candidate — correct adapter, exact citation, <code>proposed</code>, maximum confidence — is ACCEPTED by the compiler, because nothing detects that a human never intended it. Only the approval gate stops it, and approval is unattributed (B14, R-9)</td>
+</tr>
+<tr>
+<td>T10</td>
+<td><strong>False citation</strong> — a proposed control cites evidence it did not come from</td>
+<td><strong>Partially implemented — byte-presence only.</strong> The cited span must occur byte-exactly in both the stored artifact and the excerpt shown to the model (<code>touchstone/compiler.py:325</code>). That proves the bytes are present; it does not prove uniqueness or that they denote the value the adapter consumed. The broader threat remains open under <strong>R-1</strong></td>
+</tr>
+<tr>
+<td>T11</td>
+<td><strong>Silent model substitution</strong> — output attributed to a model that did not produce it</td>
+<td><strong>Closed 2026-08-16.</strong> The provider boundary returns the identity the service answered with, and provenance records <code>returned_model_name</code> beside <code>requested_model_name</code>, the resolved endpoint, the response id, and a digest over the whole response body — which is persisted in the artifact, so the digest is checkable rather than asserted. A response whose returned model differs from the requested one is refused, as is any finish reason other than <code>stop</code>. The identity is still the provider's own claim about itself: Touchstone can prove what the service <em>said</em> it used, not what it actually ran</td>
+</tr>
+<tr>
+<td>T12</td>
+<td><strong>Overconfident acceptance</strong> — an ambiguous document yields a confident control</td>
+<td><strong>Partially implemented.</strong> Below-threshold confidence abstains rather than accepting (<code>touchstone/compiler.py:340</code>), but <code>compiler_confidence</code> is <strong>supplied by the model in its own proposal</strong>, so a confidently wrong or hostile output can clear the threshold by asserting a high number. The remaining protection is that a control must be marked approved before it becomes evaluable — which is a string comparison on a field, not an attested human decision (B14, R-9, R-11)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="evaluation-and-state">Evaluation and state</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Threat</th>
+<th>Disposition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T13</td>
+<td><strong>Mutable evidence</strong> — the source revises a value after it was observed</td>
+<td><strong>Partially implemented.</strong> Value controls observe only a row whose whole record is identical in two retained captures at least 24h apart; a row revised between them is skipped. This compares two instants only (<code>touchstone/evaluate.py:361</code>), so a row revised and restored between captures is indistinguishable from one never touched. Documented in <code>docs/CONTROL-LANGUAGE.md</code> and <code>SOURCE_AUDIT.md</code></td>
+</tr>
+<tr>
+<td>T14</td>
+<td><strong>Retrieval failure mistaken for issuer failure</strong></td>
+<td><strong>Rule implemented; runtime path still not, after PLAN-T7 closed.</strong> The transition rule is correct and tested: <code>SOURCE_ERROR</code> preserves the previous state while its evidence deadline holds and only becomes <code>STALE</code> after expiry (<code>touchstone/controls.py:308</code>) — <strong>except</strong> that a contradicted result is checked first (<code>touchstone/controls.py:306</code>), so a source error arriving alongside a genuine contradiction still yields <code>INCONSISTENT</code>. But <strong>no runtime caller ever produces that event</strong> — a fetch or normalisation failure propagates out of <code>run_ustb_epoch</code> and terminates the run instead of being recorded — though the failed slot now opens an incident and the schedule continues (T22, T23). <strong>No open plan item owns the missing producer.</strong></td>
+</tr>
+<tr>
+<td>T15</td>
+<td><strong>Missing or conflicting observations</strong></td>
+<td><strong>Implemented within an epoch that completes.</strong> Absent or unusable evidence yields <code>UNEVALUABLE</code>, which drives <code>UNVERIFIABLE</code> rather than a confident result; only a genuine predicate conflict yields <code>INCONSISTENT</code> (<code>touchstone/controls.py:262</code>). This covers evidence that is retrieved but unusable, not an epoch that fails to complete — see T14</td>
+</tr>
+<tr>
+<td>T16</td>
+<td><strong>Evidence-store tampering</strong></td>
+<td><strong>Implemented for detection.</strong> The index is a hash chain and every append re-verifies the full chain and re-hashes every referenced object (<code>touchstone/evidence.py:78</code>, <code>:88</code>). A privileged actor able to rewrite objects <em>and</em> recompute the whole chain is not defended against — <strong>R-4</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="publication">Publication</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Threat</th>
+<th>Disposition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T17</td>
+<td><strong>Signature or key compromise</strong></td>
+<td><strong>Partially implemented.</strong> Reports are Ed25519-signed and offline-verifiable; the registry supports onchain publisher rotation with preserved historical attribution. Reporting-key rollover is <strong>implemented</strong> (<code>touchstone/keyring.py</code>): the outgoing key is superseded rather than dropped, so bundles it already signed stay verifiable, and revocation is a separate, later step that cannot leave a deployment unable to sign. Rollover under load is exercised in <strong>PLAN-T12</strong>. Hardware-backed or multisig custody is <strong>not a Phase 1 item at all</strong> — <code>ROADMAP.md</code> places it in the "before external production dependence" ladder; see <strong>R-5</strong></td>
+</tr>
+<tr>
+<td>T18</td>
+<td><strong>Sequence replay / gap</strong></td>
+<td><strong>Implemented.</strong> The registry enforces a monotonic per-asset sequence, and the publisher refuses a sequence already onchain or not exactly next (<code>touchstone/publish.py:381</code>)</td>
+</tr>
+<tr>
+<td>T19</td>
+<td><strong>Duplicate publication after a crash</strong></td>
+<td><strong>Implemented, revised 2026-08-15.</strong> The transaction is signed <em>before</em> anything is journalled, and the journal records the exact signed bytes and nonce, so recovery re-sends those bytes rather than re-signing: identical nonce, identical hash, at most one publication however many attempts occur. This also fixed two defects in the first T6 implementation — a definite pre-broadcast refusal used to leave a journal entry claiming an unknown broadcast outcome, and a dropped transaction had no path back. The journalled hash is recomputed from its bytes on load, so an edited journal is refused. Real subprocess-restart coverage is <strong>PLAN-T7/PLAN-T12</strong></td>
+</tr>
+<tr>
+<td>T20</td>
+<td><strong>Chain or deployment mismatch</strong> — publishing to the wrong chain or a wrong contract</td>
+<td><strong>Partially implemented.</strong> The registry stores an immutable expected chain id (<code>contracts/contracts/TouchstoneRegistry.sol:72</code>) and compares it on every report publication, including corrections (<code>contracts/contracts/TouchstoneRegistry.sol:239</code>); publisher-authorisation writes are not chain-checked. <strong>Amended 2026-08-15:</strong> client-side verification is now <strong>implemented</strong>. Before signing, the publisher compares the endpoint's own chain id, the runtime bytecode actually deployed at the registry address, and the chain id the registry was constructed with, against a committed deployment manifest, and refuses on any disagreement (<code>touchstone/publish.py</code>). Publisher <strong>lineage</strong> is verified too: <code>publisherIdentity</code> must match the manifest, so an owner who authorizes a replacement publisher directly instead of rotating — creating a second, unrelated lineage that reads as authorized — is refused</td>
+</tr>
+<tr>
+<td>T21</td>
+<td><strong>RPC failure</strong></td>
+<td><strong>Partially implemented.</strong> No value is ever invented on failure, and an interrupted send is reconciled rather than resent (see T19). <strong>Amended 2026-08-15:</strong> endpoint pinning and client-side chain-id and runtime-bytecode verification are <strong>implemented</strong> (see T20), and a typed <code>PreflightFailed</code> is raised without signing. Not built: retry/backoff on a failed submission (<strong>PLAN-T7</strong>)</td>
+</tr>
+<tr>
+<td>T27</td>
+<td><strong>Dishonest RPC endpoint</strong></td>
+<td><strong>Not defended — residual R-12.</strong> Every fact the publisher reconciles against — latest sequence, receipts, events, stored reports — is read back from the same single configured endpoint that it writes through</td>
+</tr>
+</tbody>
+</table>
+<h3 id="operations-and-presentation">Operations and presentation</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Threat</th>
+<th>Disposition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T22</td>
+<td><strong>Source outage</strong></td>
+<td><strong>Partially implemented (PLAN-T7 closed 2026-08-15).</strong> A failed slot is recorded as an incident and the schedule continues (<code>touchstone/schedule.py:153</code>, <code>touchstone/incidents.py:164</code>). <strong>The <code>SOURCE_ERROR</code> transition itself still has no runtime producer</strong> — <code>grep</code> finds it only in <code>touchstone/controls.py</code>, so a fetch failure ends the epoch and opens an incident rather than yielding the <code>SOURCE_ERROR</code> result whose semantics T14 describes. That residual is <strong>not owned by any open plan item</strong>; it was left behind when T7 closed</td>
+</tr>
+<tr>
+<td>T23</td>
+<td><strong>Scheduler stops on the first failure</strong></td>
+<td><strong>Implemented (PLAN-T7).</strong> A failed slot is caught and reported rather than swallowed, and the schedule continues (<code>touchstone/schedule.py:153</code>, with the reasoning recorded at <code>:342</code>). The recurring scheduler still does not overlap invocations</td>
+</tr>
+<tr>
+<td>T24</td>
+<td><strong>Backup loss</strong></td>
+<td><strong>Implemented (PLAN-T8).</strong> Encrypted backup and restore exist as <code>touchstone/backup.py</code> with <code>scripts/backup_workspace.py</code> and <code>scripts/restore_workspace.py</code>. Restore is exercised, not merely written</td>
+</tr>
+<tr>
+<td>T25</td>
+<td><strong>Incident deletion</strong> — an embarrassing failure quietly disappears</td>
+<td><strong>Implemented (PLAN-T7).</strong> <code>touchstone/incidents.py</code> is a hash-chained JSON-lines log whose head <strong>and entry count</strong> are persisted separately, because truncation alone leaves a shorter chain that verifies (<code>:99</code>, <code>:222</code>). Recovery closes an incident with a new event (<code>:185</code>) rather than removing one, and hardlinked logs are refused (<code>:131</code>)</td>
+</tr>
+<tr>
+<td>T26</td>
+<td><strong>UI claim inflation</strong> — the public surface implies more than the evidence proves</td>
+<td><strong>Backlog: PLAN-T9.</strong> No public surface exists yet. Requirements: "verified" and "not verified" visually separated, deterministic explanations drawn only from accepted graph data, explorer links absent rather than fabricated when undeployed, and no ordinary NAV movement described as a risk event</td>
+</tr>
+</tbody>
+</table>
+<h2 id="4-state-semantics-that-this-model-depends-on">4. State semantics that this model depends on</h2>
+<p>These distinctions are load-bearing and must not be collapsed:</p>
+<ul>
+<li><strong><code>SOURCE_ERROR</code> is an operational event, not an asset judgement.</strong> Touchstone failing to
+  retrieve evidence says nothing about the issuer. Absent a contradicted result it preserves
+  the last evidence-derived state until that evidence's own deadline expires; a contradiction
+  is evaluated first (<code>touchstone/controls.py:280</code>) and still yields <code>INCONSISTENT</code>.</li>
+<li><strong><code>STALE</code> means the evidence deadline passed</strong>, not that anything is wrong with the asset.</li>
+<li><strong><code>INCONSISTENT</code> requires a genuine predicate conflict</strong> between attributable
+  observations — never a retrieval failure, never a missing field, never an ordinary value
+  movement.</li>
+<li><strong><code>UNVERIFIABLE</code> is a success mode.</strong> Abstention is preferred over a confident claim; a
+  first epoch with no confirming capture reports <code>UNVERIFIABLE</code> by design.</li>
+</ul>
+<h2 id="5-roadmap-requirement-traceability">5. Roadmap requirement traceability</h2>
+<h3 id="51-aug-16-security-requirements">5.1 Aug 16 security requirements</h3>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>All documents treated as adversarial input</td>
+<td>Implemented — exact-object parsing, typed conversion, no evaluation of document content</td>
+</tr>
+<tr>
+<td>Model gets no shell, network, wallet or contract tools</td>
+<td><strong>Implemented</strong> — no tool surface in the request (<code>touchstone/compiler.py:114</code>)</td>
+</tr>
+<tr>
+<td>Instructions embedded in evidence are never followed</td>
+<td>Partially — impact is bounded by tool denial and deterministic gates and the limit is pinned by five tests, but <strong>steering is not prevented</strong>: a well-formed injected candidate is accepted as a proposal (T9, R-9)</td>
+</tr>
+<tr>
+<td>Allowlisted URLs</td>
+<td><strong>Implemented (PLAN-T5)</strong> — the initial URL must match the manifest, and a redirect may only land on that source's own URL or a <code>redirect_alias</code> it declares (T1, T2)</td>
+</tr>
+<tr>
+<td>Blocked redirects</td>
+<td><strong>Implemented (PLAN-T5)</strong> — at most one hop, same host, HTTPS, and the target must be the source's own URL or a <code>redirect_alias</code> it declares; a redirect to a <em>different</em> approved source is refused</td>
+</tr>
+<tr>
+<td>MIME limits</td>
+<td><strong>Implemented (PLAN-T5)</strong> — enforced against the manifest before storage</td>
+</tr>
+<tr>
+<td>Magic-byte limits</td>
+<td>Implemented for JSON. PDF/ZIP magic checks are unbuilt and unneeded after the <strong>PLAN-T10</strong> cut</td>
+</tr>
+<tr>
+<td>Size limits</td>
+<td>Implemented (<code>touchstone/sources.py:192</code>)</td>
+</tr>
+<tr>
+<td>Decompression limits</td>
+<td><strong>Implemented for the JSON path (PLAN-T5)</strong> — a non-identity Content-Encoding is refused. Archive/document expansion limits are unbuilt, and unneeded while no portfolio source is an archive or document after the <strong>PLAN-T10</strong> cut</td>
+</tr>
+<tr>
+<td>Page limits</td>
+<td>Not applicable — no PDF source remains in Phase 1 after the PLAN-T10 cut. <strong>No open item owns this</strong>; it returns with the first document source</td>
+</tr>
+<tr>
+<td>Time limits</td>
+<td>Implemented and <strong>proved (PLAN-T5)</strong> — a worker that never returns is terminated by the wall-clock limit and raises a typed failure</td>
+</tr>
+<tr>
+<td>Isolated parsing worker</td>
+<td>Implemented, with <strong>R-3</strong> stated</td>
+</tr>
+<tr>
+<td>Model id, prompt hash, compiler version, input hash, raw output recorded</td>
+<td>Yes — prompt hash, compiler version, input hash, raw output and the full response body are recorded, with the provider's <strong>returned</strong> model identity beside the requested one and a mismatch refused (T11 closed)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="52-immediate-hackathon-security-ladder">5.2 Immediate (hackathon) security ladder</h3>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Separated deployer / publisher / Ed25519 / operations keys</td>
+<td><strong>Partially implemented 2026-08-15 (PLAN-T6).</strong> Precisely: <strong>three</strong> EVM role addresses — publisher, deployer, operations — are required manifest fields and must be pairwise distinct, and the loaded publisher key must derive the declared publisher, so that separation is enforced. The reporter is <strong>Ed25519 and has no EVM address at all</strong>, so it is not among them. (<code>publisher_identity_address</code> is publisher <em>lineage</em>, not a fourth role; it equals the publisher on a first authorization and is refused if it is the deployer or operations.) Reporter-versus-publisher <strong>secret</strong> separation is checked only where both variables are present on one host; a split-host deployment could reuse one secret undetected. Custody remains a residual: <strong>R-5</strong></td>
+</tr>
+<tr>
+<td>No secrets in code, logs, bundles or clients</td>
+<td>Holds today; no secret is committed. The E2E now warns when a Hardhat log containing development keys cannot be removed</td>
+</tr>
+<tr>
+<td>Onchain key rotation</td>
+<td>Implemented in the registry, with preserved historical attribution and lineage</td>
+</tr>
+<tr>
+<td>Monotonic sequences + replay protection</td>
+<td>Implemented (registry + <code>touchstone/publish.py:381</code>)</td>
+</tr>
+<tr>
+<td>Allowlisted adapters</td>
+<td>Implemented — control adapter must match the source manifest (<code>touchstone/compiler.py:379</code>)</td>
+</tr>
+<tr>
+<td>Sandboxed parsing</td>
+<td>Process isolation only — <strong>R-3</strong></td>
+</tr>
+<tr>
+<td>Prompt-injection tests</td>
+<td><strong>Implemented (PLAN-T5)</strong> — five cases: self-approval, fabricated citation, adapter redirection, the absence of any tool surface, and the honest limit that a well-formed injected candidate is accepted as a proposal</td>
+</tr>
+<tr>
+<td>Full model/prompt version recording</td>
+<td>Partially — see the row above and T11/R-11</td>
+</tr>
+<tr>
+<td>Signed release manifests</td>
+<td>Backlog: <strong>PLAN-T13</strong></td>
+</tr>
+<tr>
+<td>Daily backups + tested restore</td>
+<td><strong>Implemented (PLAN-T8)</strong> — <code>touchstone/backup.py</code>, <code>scripts/backup_workspace.py</code>, <code>scripts/restore_workspace.py</code></td>
+</tr>
+<tr>
+<td>Public status and incident history</td>
+<td>Incident history <strong>implemented</strong> (PLAN-T7, <code>touchstone/incidents.py</code>); the <strong>public</strong> surface that exposes it is <strong>PLAN-T9</strong>, still open</td>
+</tr>
+</tbody>
+</table>
+<h2 id="6-residual-limitations">6. Residual limitations</h2>
+<p>These are accepted for Phase 1 and stated publicly rather than mitigated.</p>
+<ul>
+<li><strong>R-1 — Byte-span provenance is not structurally bound to adapter output.</strong> Control
+  Language v0 stores <code>evidence_span</code> as an observation-specific raw substring. Compilation
+  proves only that those bytes occur in the artifact and in the provider excerpt
+  (<code>touchstone/compiler.py:325</code>); source/adapter compatibility is validated separately
+  (<code>touchstone/compiler.py:379</code>). It does not prove the occurrence is unique, nor that it
+  denotes the field and typed value the deterministic adapter actually consumed. Duplicate
+  or decoy occurrences, formatting changes, and ordinary observation rollover can therefore
+  produce ambiguous provenance or unnecessary control-identity churn. Strict source schemas
+  and adapter allowlisting reduce evaluation risk but do not provide structural evidence
+  binding. <strong>A dedicated future item</strong> must add an adapter-bound structural locator
+  (preferably a JSON Pointer against an adapter-defined logical record) requiring exactly
+  one resolution of the expected type, agreement between the resolved value/date and the
+  adapter's typed observation, and storage of the resolved pointer, raw span, value, date
+  and evidence digest in <em>epoch provenance</em> rather than durable control identity — with
+  compiler, evaluator and verifier agreement and offline re-resolution.</li>
+<li><strong>R-2 — The confirmation window is empirical, not proven.</strong> Cross-capture confirmation
+  shows only that a row was identical <em>at</em> two capture instants (<code>touchstone/evaluate.py:361</code>);
+  a row revised and restored between them is indistinguishable from one never touched, and
+  nothing establishes that an older row is never revised later. <strong>The approved control set
+  declares no minimum row age at all</strong> — the retired hand-written controls used two business
+  days, derived from those same two captures, but the compiler did not propose it and
+  approval may not add it, so confirmation is now the only safeguard on this path. The
+  business-day count ignores exchange and bank holidays.</li>
+<li><strong>R-3 — Parser isolation bounds runtime, not compromise.</strong> Normalisation runs in a
+  spawned worker with a wall-clock timeout. There is no seccomp, container, namespace or
+  capability restriction, and the worker retains the privileges of the service account.
+  Critically, the worker's result is returned to the parent over a <code>multiprocessing</code>
+  connection (<code>touchstone/normalize/ustb.py:295</code>) whose receive path deserialises the
+  object the child sent. A worker that an adversary has genuinely compromised can therefore
+  act on the parent across that channel; the process boundary limits a <em>misbehaving</em> parser
+  and a runaway one, not a <em>controlled</em> one. Closing this requires a restricted transport
+  carrying only plain data, plus OS-level confinement.</li>
+<li><strong>R-4 — Evidence-store integrity is detection, not prevention, and nothing anchors it
+  externally.</strong> The hash-chained index detects modification of stored artifacts or entries.
+  An actor with write access who rewrites objects and recomputes the entire chain is not
+  detected. The transparency log is not an independent check on this: it is another local
+  JSON-lines file (<code>touchstone/translog.py:42</code>) with the same trust properties, and while
+  it can produce signed checkpoints, those are only returned to the caller — there is no
+  publication, distribution or external pinning path for them. The only genuinely external
+  record is what has been published onchain, and that is a root, not the evidence.</li>
+<li><strong>R-5 — Keys are separated but not custodied.</strong> <em>Revised 2026-08-15 by PLAN-T6.</em> The
+  three EVM role addresses are distinct and enforced wherever an EVM key is loaded or
+  used; the Ed25519 reporter is separated by construction but its <em>secret</em> is only proved
+  distinct from the publisher's where both sit on one host. So the original form of this
+  residual is narrowed rather than closed. What remains is
+  custody: both runtime keys are plain environment variables on their host, with no HSM,
+  KMS, passphrase at rest, threshold or multisig. Anything that can read the process
+  environment can publish. The mitigation is scope — the publisher key can only append
+  reports, never revoke, rotate or rewrite — and recovery is the deployer calling
+  <code>rotatePublisher</code>. The deployer key itself is a single key whose loss or theft is
+  unrecoverable, because the registry has no owner-rotation path. Compromise <em>detection</em>
+  does not exist: nothing watches for a publication from an unexpected publisher or a
+  report signed by a retired key. <strong>PLAN-T7 and PLAN-T8 have both closed without building it</strong>, so
+  no open item owns it; it is a standing residual. See
+  <code>docs/KEY-MANAGEMENT.md</code>.</li>
+<li><strong>R-6 — Verification bundles carry no <em>evidence</em> artifacts and no chain state.</strong> Narrowed
+  2026-08-17: bundle v4 carries the compilation artifacts each control cites <strong>and</strong> the
+  approval ledger, so provenance and the human approval decision are both checkable offline.
+  What a bundle still holds is the signed report, its canonical bytes, the control records,
+  the evidence <strong>references</strong> and the published key. An offline verifier can
+  therefore confirm the signature, recompute the control-set and evidence roots, and check
+  internal consistency — and nothing more. It contains no registry state, no transparency
+  log and no evidence-store index, so it cannot confirm the report was published onchain,
+  cannot verify the log's hash chain, and cannot replay normalisation or prove that a
+  reported row occurs inside an artifact it does not carry. <strong>Evidence remains digest-only</strong>
+  — that is the part v4 did not change, and the limitation the report's own caveats state.</li>
+<li><strong>R-7 — TLS is trusted without pinning.</strong> Evidence integrity in transit rests on the
+  platform certificate store.</li>
+<li><strong>R-9 — Control approval is unattributed.</strong> Approval is a field on the control record set
+  by whoever edits the control set (B14). There is no approver identity, no signature over
+  the approval decision, and no separation between the person proposing a control and the
+  person approving it. The compiler's confidence gate cannot substitute for this, because
+  the confidence value is supplied by the model itself (T12).</li>
+<li><strong>R-11 — Compilation is bound to evaluation. Closed 2026-08-16.</strong> These were two
+  disconnected paths: compilation validated a candidate and emitted a <code>proposed</code> record,
+  evaluation admitted any record whose <code>approval_state</code> read <code>approved</code>, and the
+  <code>compiler_provenance_digests</code> a report carried were checked by both the builder and the
+  offline verifier only as well-formed hexadecimal. Nothing required an evaluated control to
+  have come from a compilation, to match one, or to be reachable from any digest. The
+  compiler's validation was therefore advisory to whoever curated the control set.</li>
+</ul>
+<p>Three things closed it. <strong>The binding exists:</strong> <code>ControlRecord</code> carries
+  <code>compilation_sha256</code>, part of <code>canonical_bytes()</code> and so of the control-set root a
+  consumer contract pins. A proposal must carry none — the digest is over the artifact
+  containing the proposal — and approval attaches it. <strong>It is enforced:</strong> report
+  construction resolves each artifact, hashes it, finds the accepted candidate, and requires
+  the approved record to differ only in <code>approval_state</code> and <code>compilation_sha256</code>, naming
+  any other edited field. <strong>It is independently checkable:</strong> a v3 verification bundle
+  carries the artifacts themselves, and the offline verifier resolves them in memory, hashes
+  them against the digests they are filed under, requires the set to equal the report's
+  provenance exactly, and repeats the binding — with no filesystem and no access to the
+  publisher's ledger.</p>
+<p>The hand-written control set that predated this is retired. It cited real spans and
+  evaluated correctly, but nothing had compiled it, so a report claiming compiler provenance
+  for it claimed something untrue. The approved set is eight candidates a model proposed from
+  the issuer's own bytes; two further accepted candidates were declined by a human, recorded
+  with reasons in <code>data/compilations/APPROVALS.json</code>, and cannot be relabelled approved.</p>
+<p><strong>What remains is R-9, and it is the load-bearing gap now.</strong> The approval decision itself
+  is unattributed: the ledger records what was approved, when, and why a candidate was
+  declined, but not <em>by whom</em>, and nothing signs the decision. "AI proposes, deterministic
+  systems decide" now holds for the compile-to-evaluate path; who approves remains a
+  question this system does not answer.</p>
+<ul>
+<li><strong>R-10 — Time is taken from the host clock, with only a one-sided chain check.</strong>
+  Retrieval timestamps, freshness deadlines and the 24-hour confirmation separation all
+  derive from the local clock (B15). The chain catches one direction: the registry rejects
+  a future <code>observedAt</code> relative to <code>block.timestamp</code>
+  (<code>contracts/contracts/TouchstoneRegistry.sol:257</code>), and <code>AssetGate</code> measures observation
+  age against the same chain time. That check is one-sided and delay-sensitive: it rejects
+  only an <code>observedAt</code> still ahead of chain time when the transaction executes, so
+  publication delay masks a moderately fast clock. Source-asserted dates are not ignored
+  either — freshness requires <code>observed_on &lt;= now</code> (<code>touchstone/evaluate.py:332</code>) and value
+  rows dated after <code>now</code> cannot be selected (<code>touchstone/evaluate.py:361</code>) — so a slow clock
+  does not silently accept a future-dated row; it excludes that row and falls back to an
+  older qualifying one, or abstains when none exists. What is missing is two-sided
+  validation, any cross-check for purely offchain decisions, and a monotonic guard against
+  the clock moving backwards between epochs.</li>
+<li><strong>R-12 — Chain state is read from the endpoint it is written through.</strong> The publisher
+  reconciles against latest sequence, receipts, events and stored reports supplied by the
+  same single configured JSON-RPC endpoint used to submit transactions (B16). An endpoint
+  that answers dishonestly can report a publication that did not occur, or conceal one that
+  did, and every client-side consistency check would still agree. Endpoint pinning does not
+  address this; independent confirmation would require a second, independently operated
+  endpoint or a light-client proof. Neither exists in Phase 1.</li>
+<li><strong>R-8 — Source probes were run from a development machine.</strong> Repeated retrieval from the
+  eventual deployment host is unverified and remains parked behind the deployment gate.</li>
+</ul>
+<h2 id="7-explicitly-out-of-scope-for-phase-1">7. Explicitly out of scope for Phase 1</h2>
+<p>The Phase 3 formal threat model, independent smart-contract audit, external pipeline
+security review, incident-response runbook, multi-region deployment, supply-chain controls
+and reproducible builds are not part of this document and are not claimed. Multi-publisher
+quorum, challenge mechanics and any staking or slashing design are Phase 4 and do not
+exist.</p>
+    </article>
+    <aside class="doc-toc" aria-label="On this page">
+      <p class="foot-h">On this page</p>
+      <ol class="doc-toc-list">
+        <li class="toc-2"><a href="#1-what-touchstone-is-trusted-to-say">1. What Touchstone is trusted to say</a></li>
+        <li class="toc-2"><a href="#2-trust-boundaries">2. Trust boundaries</a></li>
+        <li class="toc-2"><a href="#3-threats-and-current-disposition">3. Threats and current disposition</a></li>
+        <li class="toc-3"><a href="#evidence-acquisition">Evidence acquisition</a></li>
+        <li class="toc-3"><a href="#compilation">Compilation</a></li>
+        <li class="toc-3"><a href="#evaluation-and-state">Evaluation and state</a></li>
+        <li class="toc-3"><a href="#publication">Publication</a></li>
+        <li class="toc-3"><a href="#operations-and-presentation">Operations and presentation</a></li>
+        <li class="toc-2"><a href="#4-state-semantics-that-this-model-depends-on">4. State semantics that this model depends on</a></li>
+        <li class="toc-2"><a href="#5-roadmap-requirement-traceability">5. Roadmap requirement traceability</a></li>
+        <li class="toc-3"><a href="#51-aug-16-security-requirements">5.1 Aug 16 security requirements</a></li>
+        <li class="toc-3"><a href="#52-immediate-hackathon-security-ladder">5.2 Immediate (hackathon) security ladder</a></li>
+        <li class="toc-2"><a href="#6-residual-limitations">6. Residual limitations</a></li>
+        <li class="toc-2"><a href="#7-explicitly-out-of-scope-for-phase-1">7. Explicitly out of scope for Phase 1</a></li>
+      </ol>
+    </aside>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

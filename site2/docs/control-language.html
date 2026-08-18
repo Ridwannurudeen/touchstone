@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The control language · Docs · Touchstone</title>
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products">Products</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap doc-layout">
+    <article class="doc-body">
+<h1 id="touchstone-control-language-v0">Touchstone Control Language v0</h1>
+<p>Control Language v0 represents an approved, evidence-bound claim that deterministic
+surveillance can evaluate. AI may propose a record, but schema validation, approval,
+and evaluation determine state. The record does not assert that an asset is safe,
+solvent, compliant, or suitable.</p>
+<h2 id="control-record">Control record</h2>
+<p>The canonical record has exactly these fields, in roadmap order:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>v0 type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>asset_key</code></td>
+<td>non-empty string</td>
+<td>Canonical identity of the observed asset.</td>
+</tr>
+<tr>
+<td><code>control_id</code></td>
+<td>non-empty string</td>
+<td>Stable identifier within the asset's control set.</td>
+</tr>
+<tr>
+<td><code>control_version</code></td>
+<td>positive integer</td>
+<td>Monotonic version of this control. Booleans are not integers.</td>
+</tr>
+<tr>
+<td><code>predicate_type</code></td>
+<td>non-empty string</td>
+<td>Bounded family of claim being evaluated.</td>
+</tr>
+<tr>
+<td><code>subject</code></td>
+<td>non-empty string</td>
+<td>Human-readable subject of the predicate.</td>
+</tr>
+<tr>
+<td><code>source_id</code></td>
+<td>non-empty string</td>
+<td>Stable identifier for the evidence source.</td>
+</tr>
+<tr>
+<td><code>source_authority_class</code></td>
+<td>non-empty string</td>
+<td>Evidence authority classification; for example, issuer disclosure is not independent attestation.</td>
+</tr>
+<tr>
+<td><code>evidence_span</code></td>
+<td>non-empty string</td>
+<td>Exact source-local span supporting the control.</td>
+</tr>
+<tr>
+<td><code>cadence</code></td>
+<td>non-empty string</td>
+<td>Declared publication cadence used by the approved policy.</td>
+</tr>
+<tr>
+<td><code>grace_period</code></td>
+<td>non-negative integer</td>
+<td>Whole calendar days added by the approved freshness policy. Booleans are not integers.</td>
+</tr>
+<tr>
+<td><code>observation_adapter</code></td>
+<td>non-empty string</td>
+<td>Deterministic adapter identifier.</td>
+</tr>
+<tr>
+<td><code>comparison_operator</code></td>
+<td>closed enum</td>
+<td>One of the five operators below.</td>
+</tr>
+<tr>
+<td><code>expected_value</code></td>
+<td>JSON value</td>
+<td>Expected operand. Nested arrays and string-keyed objects are allowed; NaN and infinities are rejected.</td>
+</tr>
+<tr>
+<td><code>effective_from</code></td>
+<td><code>YYYY-MM-DD</code></td>
+<td>First effective calendar date.</td>
+</tr>
+<tr>
+<td><code>effective_until</code></td>
+<td><code>YYYY-MM-DD</code> or null</td>
+<td>Last effective calendar date, not earlier than <code>effective_from</code>.</td>
+</tr>
+<tr>
+<td><code>compiler_confidence</code></td>
+<td>finite number from 0 through 1</td>
+<td>Compiler confidence; it does not bypass approval.</td>
+</tr>
+<tr>
+<td><code>approval_state</code></td>
+<td>non-empty string</td>
+<td>Workflow state assigned by the approval system.</td>
+</tr>
+<tr>
+<td><code>compilation_sha256</code></td>
+<td>64-char lowercase hex or null</td>
+<td>The compilation artifact this control came out of. Null on a proposal — the digest is over the artifact containing the proposal, so naming it would be a cycle. Attached at approval.</td>
+</tr>
+</tbody>
+</table>
+<p>The roadmap does not yet freeze vocabularies for predicate type, authority class,
+cadence, adapter, or approval state. V0 therefore validates those fields as non-empty
+strings and does not invent closed values for them.</p>
+<h2 id="approval-binds-a-control-to-its-compilation">Approval binds a control to its compilation</h2>
+<p>An approved control names the compilation artifact it came from, and that binding is
+checked rather than asserted. The artifact is resolved and hashed — a file is not its name —
+the accepted candidate under that <code>control_id</code> is found, and the approved record must equal
+it except in the two fields approval is permitted to change: <code>approval_state</code> and
+<code>compilation_sha256</code>. Any other difference is reported by field name, because "something
+differs" is not an auditable diagnosis.</p>
+<p>Approval is recorded in <code>data/compilations/APPROVALS.json</code>, which also records candidates
+that passed every deterministic gate and a human declined, with the reason. The ledger can
+only <em>point at</em> a control — the control is read from the artifact — so it cannot restate one
+into something the compiler never proposed, and a declined candidate cannot be relabelled
+approved.</p>
+<p>Enforcement lives at report construction, not in the evaluator. Evaluation is a pure
+function of controls and observations; the only route from a control to a published claim
+runs through the report builder, so the check belongs there. A verification bundle carries
+the artifacts themselves, letting an independent reader repeat the whole check offline with
+no filesystem and no access to the publisher's ledger.</p>
+<p>Construction is strict. A mapping must contain every field and no unknown fields.
+Dates and integer fields are type checked, and expected values are recursively checked
+as JSON data. Records are frozen. Nested expected values are made immutable on
+construction so later caller mutation cannot change identity.</p>
+<h2 id="operators">Operators</h2>
+<ul>
+<li><code>exists</code>: the addressed observation is present.</li>
+<li><code>fresh_within</code>: the dated observation is no older than the approved limit.</li>
+<li><code>eq</code>: observed and expected values are equal under the adapter's typed comparison.</li>
+<li><code>within_tolerance</code>: observed and expected numeric values differ by no more than an
+  approved tolerance encoded by the control family.</li>
+<li><code>non_decreasing</code>: the current comparable value is at least the prior comparable
+  value. This operator is valid only where the evidence supports monotonicity; it is
+  not valid for USCC NAV.</li>
+</ul>
+<p>Operator names form a closed allowlist. Adding an operator requires a control-language
+version change and evaluator support.</p>
+<h2 id="cross-capture-confirmation-of-value-rows">Cross-capture confirmation of value rows</h2>
+<p><strong>Confirmation is a source policy, not a property of an operator.</strong> It applies where a
+source publishes provisional records and revises them in place — <code>superstate-ustb-nav-daily</code>
+does exactly that, carrying the previous values forward under the current date and
+rewriting the row later. Reading the newest record there would attribute a value to a date
+the source has not finished restating.</p>
+<p>On that source, value operators (<code>exists</code>, <code>eq</code>, <code>within_tolerance</code>, <code>non_decreasing</code>) read
+one dated record and observe only a record <strong>confirmed unchanged across retained captures</strong>:
+the evaluator compares this epoch's record against the same dated record in a qualifying
+earlier capture and accepts it only when the whole normalized record is identical. A record
+revised between captures is skipped and an older unchanged record may be observed instead.
+The accepted record's date is reported as the evaluation's <code>observed_on</code>, and a report that
+carries such a value binds both captures through <code>capture_role</code> evidence references.</p>
+<h3 id="presence-on-non-provisional-sources">Presence on non-provisional sources</h3>
+<p><code>superstate-ustb-yield</code> and <code>superstate-ustb-holdings</code> publish scalars rather than a table
+of revisable rows, and the strict normalizer already establishes that a scalar is present
+and correctly typed in the capture being evaluated. There is nothing for an earlier capture
+to confirm. <code>exists</code> on these sources is therefore satisfied from the current capture alone,
+and requires no confirmation reference.</p>
+<p>An earlier version of this document classified <em>every</em> <code>exists</code> as requiring confirmation,
+and the evaluator implemented that by routing all non-freshness operators through the
+NAV-row rule. The effect was that a presence control on either of these sources could never
+be decided at all: the compiler proposed five such controls against real evidence and every
+one of them evaluated <code>UNEVALUABLE</code> forever.</p>
+<p>What a presence claim proves is deliberately narrow: <strong>the issuer returned this normalized
+field in these hash-bound captured bytes.</strong> It is not evidence that the value is correct,
+final, stable, or that it will be published again. Such a control is never <code>CONTRADICTED</code> —
+a missing required field fails normalization outright, so there is no observation to
+contradict.</p>
+<p>The addressable fields are a closed set per source, listed in <code>PRESENCE_FIELDS</code>
+(<code>touchstone/evaluate.py</code>). <code>holdings</code> is deliberately excluded: it is a collection, and
+whether <code>exists</code> means "present" or "non-empty" is undefined. That meaning will be decided
+explicitly or not at all. The compiler refuses any candidate the evaluator cannot decide, so
+an unreachable combination is rejected at compilation rather than accepted and left
+permanently unevaluable.</p>
+<p>A qualifying earlier capture is the newest retained capture of the same source retrieved
+at least 24 hours before the current one, so two captures taken minutes apart — including
+either side of midnight — never confirm each other. With no qualifying capture, every
+value operator returns <code>UNEVALUABLE</code>, so the first epoch a publisher ever runs abstains
+on value rather than reporting an unconfirmed one. The resulting asset state is
+<code>UNVERIFIABLE</code> when the remaining evidence is fresh; expired freshness still takes
+precedence and yields <code>STALE</code>.</p>
+<p><code>minimum_row_age_business_days</code> in <code>expected_value</code> is a cheap pre-filter in front of
+that comparison, not proof of settlement. Absent the key the window is zero, which admits
+any record that is not future-dated; a negative, boolean, or non-integer window is
+malformed and the control evaluates as <code>UNEVALUABLE</code> rather than falling back.</p>
+<p><strong>No approved USTB control currently declares one.</strong> The retired hand-written controls
+declared two business days — the smallest window under which no record changed between the
+2026-08-13 and 2026-08-14 captures retained in <code>fixtures/</code>. The compiler did not propose
+it, and approval may change only <code>approval_state</code> and <code>compilation_sha256</code>, so it cannot be
+added to an approved control. The approved set therefore rests on cross-capture confirmation
+alone, which still skips any record revised between the two captures. Restoring the floor
+means compiling a control that declares it. Two captures cannot establish that no older
+record is ever revised, and the count is weekday-only — exchange and bank holidays are not
+modelled.</p>
+<p><code>fresh_within</code> is deliberately unaffected: it reads the newest record because its subject
+is whether the source is still publishing, not what the record is worth.</p>
+<p>During compilation, a candidate's <code>evidence_span</code> is checked as a byte-exact substring of
+the artifact and of the excerpt shown to the model. That proves the cited bytes occur, but
+not that the occurrence is unique or that it denotes the field the adapter consumed;
+approved controls and offline verification do not repeat the check. That limitation, and
+the adapter-bound structural locator that would close it, are recorded as R-1 in
+<code>docs/THREAT-MODEL.md</code>.</p>
+<h2 id="canonical-representation-and-identity">Canonical representation and identity</h2>
+<p><code>ControlRecord.canonical_bytes()</code> produces UTF-8 JSON with lexicographically sorted
+object keys, compact separators, unescaped Unicode, and no NaN or infinity. Dates use
+ISO <code>YYYY-MM-DD</code>; enum fields use their string values. <code>content_hash</code> is the lowercase
+hexadecimal SHA-256 digest of those exact bytes.</p>
+<p>Object input order never affects canonical bytes or identity. Field order in the typed
+record remains the roadmap order for schema inspection, while serialization sorts keys
+to make hashing deterministic.</p>
+<p>Records are compared by <code>content_hash</code>. Python <code>hash()</code> is not supported when
+<code>expected_value</code> contains an object because object values are stored as immutable
+mappings; this is deliberate, and <code>content_hash</code> remains the stable identity mechanism.</p>
+<h2 id="evidence-store-policy">Evidence-store policy</h2>
+<p>The evidence store intentionally verifies the complete index chain and re-hashes every
+referenced object before each append. This gives the current small store a simple,
+strong integrity check, with O(n^2) total work as the index grows. Before asset count
+grows in Phase 2, the planned performance mode is incremental verification of the chain
+tail plus spot-checking stored objects; the complete verifier remains the audit path.</p>
+<p>The store accepts absolute <code>http://</code> and <code>https://</code> source URLs because it is a
+permissive persistence boundary, not a network client. All production fetchers enforce
+HTTPS and a per-source allowlist in the adapter layer introduced in task 3.</p>
+<h2 id="evaluation-results">Evaluation results</h2>
+<p>Evaluation results apply only to controls accepted by the approval gate:</p>
+<ul>
+<li><code>SATISFIED</code>: the current evidence supports the control predicate.</li>
+<li><code>CONTRADICTED</code>: current evidence is evaluable and conflicts with the predicate.</li>
+<li><code>UNEVALUABLE</code>: the system cannot evaluate the predicate from the available evidence.</li>
+</ul>
+<p>An empty result set is also unevaluable. Retrieval failure is not represented as a
+control result; it is the separate <code>SOURCE_ERROR</code> operational event.</p>
+<h2 id="asset-states">Asset states</h2>
+<ul>
+<li><code>CONFIRMED</code>: every supplied accepted-control evaluation is <code>SATISFIED</code>, and evidence
+  is within its deadline.</li>
+<li><code>STALE</code>: the evidence deadline has expired without a control contradiction.</li>
+<li><code>INCONSISTENT</code>: at least one accepted control is <code>CONTRADICTED</code>.</li>
+<li><code>UNVERIFIABLE</code>: evidence is current but at least one control is <code>UNEVALUABLE</code>, or no
+  evaluations are available outside source-error preservation.</li>
+</ul>
+<p><code>UNVERIFIABLE</code> is abstention, not a negative finding. <code>STALE</code> means the verification
+evidence expired, not that the issuer or asset failed.</p>
+<h2 id="operational-events">Operational events</h2>
+<ul>
+<li><code>RECONFIRMED</code>: a new evaluation supports the existing evidence-backed conclusion.</li>
+<li><code>EVIDENCE_CHANGED</code>: retrieved evidence bytes or observable values changed; the
+  evaluation results determine status.</li>
+<li><code>SOURCE_ERROR</code>: retrieval or source processing failed. It never creates an
+  inconsistency by itself.</li>
+<li><code>CORRECTION_PUBLISHED</code>: an append-only correction supersedes an earlier report; its
+  evaluation results determine status.</li>
+</ul>
+<p>Operational events and asset states are deliberately separate.</p>
+<h2 id="freshness-and-transition-precedence">Freshness and transition precedence</h2>
+<p>Freshness is a pure calculation with an explicit <code>now</code> calendar date. No control
+function reads the system clock. A deadline is inclusive: evidence is fresh when
+<code>now &lt;= evidence_deadline</code>. <code>is_fresh(observed_on, now=..., max_age=...)</code> additionally
+requires <code>observed_on &lt;= now</code> and a non-negative whole-day duration; its inclusive rule
+is <code>0 &lt;= now - observed_on &lt;= max_age</code>.</p>
+<p><code>transition_state(previous, event, evaluation_results, evidence_deadline, now)</code> applies
+this precedence:</p>
+<ol>
+<li>Any <code>CONTRADICTED</code> accepted control yields <code>INCONSISTENT</code>.</li>
+<li><code>SOURCE_ERROR</code> preserves the previous state while evidence remains fresh. Once the
+   deadline expires, it yields <code>STALE</code>.</li>
+<li>Any other event with expired evidence yields <code>STALE</code>.</li>
+<li>An empty result set or any <code>UNEVALUABLE</code> result yields <code>UNVERIFIABLE</code>.</li>
+<li>Otherwise, all supplied accepted controls are <code>SATISFIED</code>, yielding <code>CONFIRMED</code>.</li>
+</ol>
+<p>A contradiction has priority because it is an already obtained deterministic control
+finding; a concurrent or later source error does not erase it. With no contradiction,
+<code>SOURCE_ERROR</code> alone never directly flips a fresh status. This distinction prevents a
+transient outage from being described as issuer inconsistency.</p>
+    </article>
+    <aside class="doc-toc" aria-label="On this page">
+      <p class="foot-h">On this page</p>
+      <ol class="doc-toc-list">
+        <li class="toc-2"><a href="#control-record">Control record</a></li>
+        <li class="toc-2"><a href="#approval-binds-a-control-to-its-compilation">Approval binds a control to its compilation</a></li>
+        <li class="toc-2"><a href="#operators">Operators</a></li>
+        <li class="toc-2"><a href="#cross-capture-confirmation-of-value-rows">Cross-capture confirmation of value rows</a></li>
+        <li class="toc-3"><a href="#presence-on-non-provisional-sources">Presence on non-provisional sources</a></li>
+        <li class="toc-2"><a href="#canonical-representation-and-identity">Canonical representation and identity</a></li>
+        <li class="toc-2"><a href="#evidence-store-policy">Evidence-store policy</a></li>
+        <li class="toc-2"><a href="#evaluation-results">Evaluation results</a></li>
+        <li class="toc-2"><a href="#asset-states">Asset states</a></li>
+        <li class="toc-2"><a href="#operational-events">Operational events</a></li>
+        <li class="toc-2"><a href="#freshness-and-transition-precedence">Freshness and transition precedence</a></li>
+      </ol>
+    </aside>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

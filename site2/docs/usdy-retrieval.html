@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>USDY retrieval · Docs · Touchstone</title>
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products">Products</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap doc-layout">
+    <article class="doc-body">
+<h1 id="usdy-retrieval-measured-and-the-bounded-path-that-opens-it">USDY retrieval: measured, and the bounded path that opens it</h1>
+<p><code>manifests/sources/usdy.json</code> suspended this asset because one observation required pulling a
+260 MB archive. That is still true of the <strong>attestation</strong> archive. It was never true of USDY's
+daily portfolio data, and this document records what was measured on 2026-08-18 rather than
+what was assumed.</p>
+<h2 id="what-was-tested-and-what-each-attempt-actually-returned">What was tested, and what each attempt actually returned</h2>
+<table>
+<thead>
+<tr>
+<th>Attempt</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET https://ondo.finance/usdy</code></td>
+<td><strong>HTTP 200, 1,544,898 bytes.</strong> Bounded and well under the manifest's 4 MB ceiling.</td>
+</tr>
+<tr>
+<td>Dropbox folder link, <code>dl=1</code>, with <code>Range: bytes=0-1023</code></td>
+<td><strong>HTTP 200 — not 206.</strong> Dropbox ignored the range and returned <strong>260,640,295 bytes</strong>. Range-slicing the archive does not work.</td>
+</tr>
+<tr>
+<td>Dropbox folder page, <code>dl=0</code></td>
+<td>HTTP 200, 222,128 bytes, and <strong>no server-rendered listing</strong> — no member filenames, no <code>/scl/fi/</code> per-file links, no listing JSON. The folder index is fetched by client-side script.</td>
+</tr>
+</tbody>
+</table>
+<p>So two candidate shortcuts are closed, and closed by measurement:</p>
+<ul>
+<li><strong>Byte-range extraction of one PDF from the zip is impossible</strong> — the archive is generated on
+  demand and served without range support, so the central directory cannot be read cheaply.</li>
+<li><strong>Enumerating the folder to fetch a single member is impossible without executing the page's
+  scripts</strong> or calling Dropbox's private listing endpoint. A private endpoint is not an
+  ingestion contract and does not belong in an evidence pipeline.</li>
+</ul>
+<p>The archive stays exactly as the manifest describes it: unbounded, and unusable on a daily
+schedule.</p>
+<h2 id="the-part-that-was-wrong">The part that was wrong</h2>
+<p>The suspension treated USDY as a single source. It is two, with different cadences and very
+different retrieval costs, and only one of them is unbounded.</p>
+<p><code>https://ondo.finance/usdy</code> serves a <strong>structured portfolio dataset inline in the HTML</strong>, and it
+carries considerably more than USTB's sources do. Observed on 2026-08-18, as of <code>2026-08-14</code>:</p>
+<pre><code>asOfDate               2026-08-14
+collateralizationRatio 105.29
+outstandingValue       2136304243.05555
+total                  2154893984.54
+averageDuration        160.12986430539013
+averageYield           0.03709268004973276
+</code></pre>
+<p>alongside per-holding rows, each with <code>name</code>, <code>value</code>, <code>yield</code> and <code>maturityDays</code> — parsed
+cleanly in the probe, e.g. <code>Ondo Stocks issued USDY - USD Value</code> at <code>10830015.22</code>, yield <code>3.6</code>.
+The page also carries a dated series running to 1,082 date occurrences.</p>
+<h2 id="why-this-matters-beyond-unblocking-one-asset">Why this matters beyond unblocking one asset</h2>
+<p>Every control USTB currently ships is a <strong>presence or freshness</strong> check: a named field exists, a
+date is recent. That is honest but thin, and the audit said so.</p>
+<p>This source supports a <strong>coverage predicate</strong>: <code>total &gt;= outstandingValue</code>, reserves against
+liabilities, which the issuer itself summarises as <code>collateralizationRatio</code>. That is a claim
+about solvency rather than about publication, and it is the first evidence surface in this
+project that can carry one. On the measured figures the reserve exceeds the outstanding value by
+18,589,741.49.</p>
+<p>It should be approved with its limits stated: this is the <strong>issuer's own arithmetic on the
+issuer's own page</strong>, not an independent audit, and Touchstone verifying it proves the issuer
+published those figures and that they are internally consistent — never that the assets exist.
+The attestation archive is what would speak to that, and it remains out of daily reach.</p>
+<h2 id="what-this-changes-in-the-manifest">What this changes in the manifest</h2>
+<p><code>ondo-usdy-page</code> is described today only as <strong>link rediscovery</strong> for the archive, with
+<code>fixture_disposition: exempt</code> because the page carries a rotating credential. Both need to
+change: it is a data source in its own right, and a fixture can be committed if the Dropbox
+links are stripped, since the portfolio payload is not credential-bearing.</p>
+<p>The credential rule is unaffected and still binds — the rotating <code>rlkey</code> must never be
+persisted, and nothing here needs it.</p>
+<h2 id="what-is-still-genuinely-out-of-reach">What is still genuinely out of reach</h2>
+<p>Daily third-party attestations. They exist only inside the 260 MB archive, and no bounded route
+to a single member was found. USDY can therefore ship daily <strong>portfolio and coverage</strong> controls
+now, and cannot ship a daily <strong>attestation</strong> control at all. Saying otherwise on the dossier
+would be the exact failure this project exists to refuse.</p>
+    </article>
+    <aside class="doc-toc" aria-label="On this page">
+      <p class="foot-h">On this page</p>
+      <ol class="doc-toc-list">
+        <li class="toc-2"><a href="#what-was-tested-and-what-each-attempt-actually-returned">What was tested, and what each attempt actually returned</a></li>
+        <li class="toc-2"><a href="#the-part-that-was-wrong">The part that was wrong</a></li>
+        <li class="toc-2"><a href="#why-this-matters-beyond-unblocking-one-asset">Why this matters beyond unblocking one asset</a></li>
+        <li class="toc-2"><a href="#what-this-changes-in-the-manifest">What this changes in the manifest</a></li>
+        <li class="toc-2"><a href="#what-is-still-genuinely-out-of-reach">What is still genuinely out of reach</a></li>
+      </ol>
+    </aside>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

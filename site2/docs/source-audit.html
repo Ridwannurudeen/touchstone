@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Source audit · Docs · Touchstone</title>
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="/products">Products</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/verify">Verify</a>
+      <a href="/limitations">Limitations</a>
+    </nav>
+    <a class="nav-cta" href="/dossier">Read the dossier</a>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap doc-layout">
+    <article class="doc-body">
+<h1 id="touchstone-phase-0-source-audit">Touchstone — Phase 0 Source Audit</h1>
+<p><strong>Audit date:</strong> 2026-08-13
+<strong>Gate:</strong> an asset enters the build only with an attributable official source, repeatable
+no-login retrieval, ≥2 honest machine-observable controls, explicit cadence, hashable
+evidence, and a sprint-feasible adapter. Abort Touchstone entirely if fewer than two
+candidates pass.</p>
+<p>All probes below were executed live from this development machine with plain <code>curl</code>
+(realistic User-Agent, no cookies, no login). VPS re-verification is required at deploy
+time; it is recorded per asset as a residual check (R-8 in <code>docs/THREAT-MODEL.md</code>, which
+also records what retrieval and parsing do and do not defend against).</p>
+<hr />
+<h2 id="ustb-invescosuperstate-short-duration-us-government-securities-fund">USTB — Invesco/Superstate Short Duration U.S. Government Securities Fund</h2>
+<p><strong>Status: PASS (hero candidate) — verified live 2026-08-13 13:16 UTC</strong></p>
+<h3 id="sources-all-first-party-all-verified-this-session">Sources (all first-party, all verified this session)</h3>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>URL</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Daily NAV history (JSON)</td>
+<td><code>https://api.superstate.com/v1/funds/1/nav-daily</code></td>
+<td>HTTP 200, <code>application/json</code>, 224,837 bytes, no auth, no anti-bot; identical bytes on immediate re-fetch (repeatable)</td>
+</tr>
+<tr>
+<td>Yield (JSON)</td>
+<td><code>https://api.superstate.com/v1/funds/1/yield</code></td>
+<td>HTTP 200, 122 bytes: <code>as_of_date: 2026-08-11</code>, 30-day 0.03506, 7-day 0.03492, 1-day 0.03553</td>
+</tr>
+<tr>
+<td>Holdings (JSON)</td>
+<td><code>https://api.superstate.com/v2/funds/1/holdings</code></td>
+<td>HTTP 200, 5,396 bytes: <code>as_of_date: 07/24/2026</code>, full T-bill schedule (security, cost, maturity, yield, % of fund)</td>
+</tr>
+<tr>
+<td>API documentation</td>
+<td><code>https://docs.superstate.com/llms-full.txt</code> (full docs export)</td>
+<td>HTTP 200, text/markdown, 145,985 bytes — documents the endpoints above as public; Swagger at <code>api.superstate.com/swagger-ui/</code> (HTTP 200)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sample-observed-values-2026-08-13">Sample observed values (2026-08-13)</h3>
+<ul>
+<li>NAV/S: <strong>$11.17558800</strong>, AUM <strong>$958,406,746.95</strong>, outstanding shares <strong>85,758,954.871099</strong></li>
+<li>Full daily history included in one response (built-in historical versions).</li>
+</ul>
+<h3 id="official-onchain-surface-from-superstate-docs-onchain-reads-delegated-to-agent-c">Official onchain surface (from Superstate docs; onchain reads delegated to Agent C)</h3>
+<ul>
+<li>USTB Token Proxy (Ethereum): <code>0x43415eB6ff9DB7E26A15b704e7A3eDCe97d31C4e</code></li>
+<li>Superstate USTB Continuous Price Oracle: <code>0xe4fa682f94610ccd170680cc3b045d77d9e528a8</code></li>
+<li>Chainlink-compatible USTB Oracle: <code>0x289B5036cd942e619E1Ee48670F98d214E745AAC</code>
+  (docs: "has the daily USTB/USCC NAV/S price and can be used like any other Chainlink oracle")</li>
+<li>Docs state NAV/S updates continuously via oracle checkpoints; income accrues on market days.</li>
+</ul>
+<h3 id="honest-quirks-recorded">Honest quirks recorded</h3>
+<ul>
+<li><strong>The nav-daily tail is provisional and is revised in place — verified 2026-08-14 by
+  differing two retained artifacts.</strong> The 08-13 capture (<code>fixtures/ustb-nav.json</code>,
+  sha256 <code>4830bc34…</code>, 954 rows) carried 08/12 and 08/13 rows both holding the 08/11
+  values (NAV/S 11.17558800, AUM 958,406,746.95). The 08-14 live artifact
+  (sha256 <code>5b6a53e0…</code>, 955 rows, retrieved 17:08:12Z) shows both of those row-dates
+  rewritten — 08/12 → 11.17666400 / AUM 951,115,028.81, 08/13 → 11.17774800 / AUM
+  953,805,376.22 (<code>outstanding_shares</code> and <code>net_income_expenses</code> revised with them) —
+  and a new 08/14 row again carrying forward the prior day's values.
+  Consequences: (a) a row existing for today proves the <strong>feed is live</strong>, not that a
+  final NAV exists for that date; (b) evidence for a given row-date is <strong>mutable</strong>,
+  so an unchanged row-date is not an unchanged fact and re-fetching yields a different
+  artifact hash for reasons other than new data; (c) a single snapshot cannot
+  distinguish a carry-forward placeholder from a genuine unchanged-NAV day — only
+  cross-epoch comparison can. Any value claim keyed to the newest rows must be labelled
+  provisional, or restricted to rows older than the observed revision window (≥2
+  business days on the evidence to date).</li>
+<li>Holdings bytes were byte-identical across both captures (sha256 <code>0c42d794…</code>, 07/24
+  as-of) — the holdings endpoint is stable, only nav-daily mutates.</li>
+<li>Holdings lag NAV (07/24 vs 08/13 today): holdings freshness control needs a
+  generous grace period (~35-40 days) until cadence is observed longer.</li>
+<li><code>subscription_nav_per_share</code> is null in recent rows — not usable as a control.</li>
+</ul>
+<h3 id="proposed-controls-all-empirically-supported-today">Proposed controls (all empirically supported today)</h3>
+<blockquote>
+<p><strong>Historical.</strong> This section records what the 2026-08-13 probes supported, and the names
+below are the hand-written control set that was <strong>retired on 2026-08-16</strong>. No control in
+this list exists any longer. The live set is eight controls a model proposed from issuer
+bytes, each bound by digest to the compilation that accepted it and listed in
+<code>data/compilations/APPROVALS.json</code>. Kept unedited because it is the record of what the
+source audit found, not a description of the system.</p>
+</blockquote>
+<ol>
+<li><code>nav-row-freshness</code>: a nav-daily row exists for a date within N business days (grace for weekends/holidays).</li>
+<li><code>yield-freshness</code>: <code>as_of_date</code> within N business days.</li>
+<li><code>holdings-freshness</code>: <code>as_of_date</code> within ~40 days (provisional until cadence observed).</li>
+<li><code>nav-oracle-consistency</code>: API NAV/S vs onchain Chainlink oracle answer within tolerance (cross-source INCONSISTENT detector; pending Agent C oracle read).</li>
+<li><code>shares-supply-relationship</code>: API <code>outstanding_shares</code> vs onchain token supply drift tracking (exact relationship to be established conservatively — shares may span book-entry + multiple chains; observation-only until understood).</li>
+<li><code>aum-published</code>: AUM field present and parseable (observation, not judgment).</li>
+</ol>
+<h3 id="residual-checks-before-mainnet-claims">Residual checks before mainnet claims</h3>
+<ul>
+<li><strong>Defect found and remediated 2026-08-14:</strong> the control set read the newest nav-daily
+  row, so <code>aum-published</code> and <code>value-vs-expected</code> would have reported the provisional
+  carry-forward row's values as the epoch's observed values — attributing the prior day's
+  AUM to today. No live or operational report was published under those semantics (test
+  fixtures sign reports routinely). Both controls are now <code>control_version: 3</code> and
+  observe only a row <strong>confirmed unchanged across two retained captures ≥24h apart</strong>,
+  recording its <code>observed_on</code>; a first epoch with no predecessor abstains and the asset
+  reports <code>UNVERIFIABLE</code>. <strong>No approved control declares <code>minimum_row_age_business_days</code>.</strong> The retired
+  hand-written set used 2; the compiler did not propose it and approval may not add it,
+  so confirmation ≥24h apart is currently the only safeguard — and 24 hours can fall
+  entirely across a weekend, giving the issuer no business day in which to revise.
+  The floor still applies where a control declares one. The offline verifier rejects a value
+  with no evidence date, a value dated after the epoch, and a conclusive evaluation with no
+  date. It requires a confirmation capture <strong>for nav-daily only</strong>: confirmation is a source
+  policy, and the yield and holdings endpoints publish scalars with nothing for an earlier
+  capture to confirm.</li>
+</ul>
+<p><strong>Superseded 2026-08-16.</strong> <code>aum-published</code> and <code>value-vs-expected</code> no longer exist —
+  the hand-written set they belonged to was retired because nothing had compiled it, so a
+  report claiming compiler provenance for it claimed something untrue. The defect described
+  above is still closed: the replacement NAV value controls observe only a row confirmed
+  unchanged across two captures, and none of them was ever published under the old
+  newest-row semantics.
+  <strong>Residual limitation:</strong> the confirmation window is derived from two captures and
+  cannot prove that an older row is never revised; the business-day count ignores
+  holidays. Both are recorded in the report's published limitations.
+- Re-fetch repeatedly across days from the deployment VPS (scripted, part of sprint).
+- API terms-of-use review (docs present the API publicly; confirm no usage restriction).
+- Establish the exact outstanding-shares vs onchain-supply relationship before enabling control 5 beyond observation mode.</p>
+<hr />
+<h2 id="uscc-bitwisesuperstate-crypto-carry-fund-same-issuer-spare">USCC — Bitwise/Superstate Crypto Carry Fund (same-issuer spare)</h2>
+<p><strong>Status: PASS as spare — verified live 2026-08-13</strong></p>
+<ul>
+<li><code>https://api.superstate.com/v1/funds/2/nav-daily</code>: HTTP 200, 180,286 bytes, same schema.
+  2026-08-13: NAV/S $11.67389000, AUM $123,767,874.17, shares 10,602,110.707742.</li>
+<li>Same API family/adapter as USTB (near-zero marginal adapter cost).</li>
+<li>Docs: USCC NAV set once per business day at 4pm ET marks (daily cadence, not continuous);
+  NAV <strong>can decline</strong> (basis/mark-to-market) — monotonicity is NOT a valid control here.</li>
+<li>Weakness as a portfolio pick: same issuer as USTB — does not prove cross-issuer
+  repeatability; use only as fallback/fourth asset.</li>
+</ul>
+<hr />
+<h2 id="ousg-usdy-ondo-both-pass-verified-2026-08-13">OUSG / USDY (Ondo) — <strong>BOTH PASS</strong> (verified 2026-08-13)</h2>
+<blockquote>
+<p><strong>Superseded 2026-08-16.</strong> This section recorded USDY as selected for the sprint. Both
+assets are now cut: USDY because its retrieval is unbounded (a single 260 MB archive), and
+OUSG because the second-adapter metric was abandoned rather than chased. Phase 1 ships one
+USTB vertical. The Phase-0 findings below stand as the record of what was probed.</p>
+</blockquote>
+<p><strong>USDY — PASS, selected as second daily asset.</strong> 759 Ankura Trust daily attestation
+PDFs in a public Dropbox folder (links embedded in the server-rendered
+<code>ondo.finance/usdy</code>; <code>rlkey</code> param is the credential, <code>st</code> param droppable): cookieless
+zip download verified (root 260MB; <strong>2026 year-subfolder 35.9MB — fetch that</strong>, hash
+re-derived per run via the root listing). Filename pattern
+<code>YYYY/MM Monthname/Ondo USDY LLC_ATCAttest_YYMMDD.pdf</code> stable since 2023-09. Sample PDF
+(260807) fully text-extractable: Token Principal 2,134,875,462.46; Permitted Assets
+2,142,264,400.29; <strong>collateralization 1.003461 ≥ 1.000 — a real daily covenant test by
+a named third-party verification agent</strong> (the strongest single control in the
+portfolio). Cadence: business-day reports, 3-business-day publication lag (held on
+23/24 genuine timestamps AND observed live in-session: Mon 08/10 report appeared Thu
+08/13 13:32Z). Onchain <code>getPriceData()</code> cross-checks PDF Token Value (1.14266759 vs
+1.142013). <strong>TRAPS:</strong> (a) the USDY oracle SELF-ACCRUES daily incl. weekends
+(~+0.00010916/day) — "oracle changed" is NEVER a freshness signal; (b) no per-file
+URLs, no HTTP Range — daily check costs the year-zip pull; (c) <code>rlkey</code> can rotate —
+re-scrape ondo.finance/usdy for current links every run; (d) attestations cover Ondo
+USDY LLC only, not Ondo Global Markets (BVI) — dossier must state this; (e) 126/150
+2026 files carry a bulk-reupload mtime (2026-07-09) — mtimes unusable for lag except
+the 24 genuine ones; (f) one unexplained missing weekday 2026-03-31.</p>
+<p><strong>OUSG — PASS, second spare.</strong> OndoOracle <code>getAssetPrice(OUSG)</code> = 116.204547 (18-dec)
+cross-checks the SSR page value <code>$116.2045 +$0.0109</code> to 6 s.f. (delta matches prior
+business day 116.193670 exactly). Oracle steps ~+0.0107/business-day, FLAT on weekends
+(15 samples) — genuinely discrete updates, so staleness IS meaningful here (opposite
+of USDY). Portfolio table SSR'd with <code>As of</code> date (~1bd lag) incl. full holdings
+(State Street 40.06%, BUIDL 26.96%, BENJI 17.24%, FYOXX 15.01%…). <strong>TRAPS:</strong> hero
+widget SSRs zeros (anchor on the marketing block / <code>Portfolio Overview</code> text, never
+CSS hashes); official NAV-Consulting daily financials are login-gated (302→
+ServiceLogin — the dossier must say the NAV number is verifiable but the underlying
+financials are not); monotonicity is NOT an honest invariant (use business-day-aware
+"changed within window"). No JSON API exists for OUSG NAV. Legacy oracle
+<code>0x0502…6abe</code> is deprecated — never use. RPC notes: eth.drpc.org served archive
+calls; merkle.io/publicnode rate-limited historical sampling (429/403).</p>
+<p>Findings from the Ondo research agent will be recorded here.</p>
+<h2 id="benjifobxx-franklin-templeton-pass-verified-2026-08-13">BENJI/FOBXX (Franklin Templeton) — <strong>PASS</strong> (verified 2026-08-13)</h2>
+<ul>
+<li><strong>Daily NAV (T-1, business days):</strong> the fund page's own config names a same-origin
+  GraphQL endpoint <code>POST https://www.franklintempleton.com/api/pds/price-and-performance</code>
+  (GET returns 403; POST returns 200, JSON, no auth, no anti-bot block). <code>ProductLookup</code>
+  (ticker FOBXX) → fundid 29386; <code>PricesHistory</code> returned 159 business-day rows for 2026
+  (latest 2026-08-12: NAV $1.0000, navstd 1.00000000, daily liquidity 64.07%, weekly
+  71.57%). Liquidity ratios intermittently blank (08-03/04/06) — blank = no-data, never
+  a breach. 7-day yield: COULD NOT VERIFY (schema exists, returns empty for this fund).</li>
+<li><strong>Regulator second source (SEC EDGAR, all verified 200 no-login):</strong> ticker→CIK via
+  <code>company_tickers_mf.json</code> (CIK 1786958, S000067043); filings index
+  <code>data.sec.gov/submissions/CIK0001786958.json</code>; latest N-MFP3 filed 2026-08-06 for
+  period 2026-07-31: net assets <strong>$720,928,224.29</strong>, shares 720,931,891.09,
+  stablePricePerShare 1.0000, PwC as accountant. <strong>Liquidity corrected 2026-08-15:</strong> the
+  filing carries 22 dated rows, one per business day. 67.42%/74.62% are the <strong>2026-07-01</strong>
+  values; the <strong>2026-07-31</strong> period-end values are <strong>65.28%/74.55%</strong>. Quoting the first row
+  as the filing's figure was a date-attribution error.
+  Monthly cadence, ~4-6 day filing lag. <strong>This gives FOBXX a genuine two-source
+  cross-check (issuer API vs regulator filing) — the strongest evidence-class pairing
+  in the audit.</strong></li>
+<li><strong>Key caveat:</strong> the daily feed is an undocumented private endpoint FT could lock down
+  without notice; degradation path is monthly EDGAR (never total loss). Onchain: no NAV
+  oracle on any chain; supply fragmented across 9 networks + iBENJI class — onchain
+  supply observation is out of sprint scope for this asset (dossier discloses this
+  explicitly).</li>
+<li>Supported controls: daily NAV-peg (navstd == 1.00000000, row ≤ T-3bd), liquidity
+  floors (≥10%/≥30% when present), feed-liveness, monthly N-MFP filing appears ≤10bd
+  after month-end with stablePricePerShare 1.0000, FT-vs-SEC liquidity reconciliation,
+  ProductLookup schema-drift canary.</li>
+</ul>
+<h2 id="source-re-verification-2026-08-15-plan-t4-two-findings-that-change-the-plan">Source re-verification 2026-08-15 (PLAN-T4) — two findings that change the plan</h2>
+<p>Machine-readable manifests now live in <code>manifests/sources/</code>. Re-probing the portfolio while
+writing them produced two findings that supersede parts of the 2026-08-13 record.</p>
+<p><strong>🔴 FOBXX daily feed is now blocked.</strong> <code>POST https://www.franklintempleton.com/api/pds/price-and-performance</code>
+returns <strong>HTTP 403</strong> behind a Cloudflare interstitial — to a plain POST and to one carrying
+full browser headers including <code>Origin</code> and <code>Referer</code>. The public fund page on the same host
+also returns 403. The 08-13 audit recorded this endpoint returning HTTP 200 to POST, so
+either the vantage differs or Franklin has tightened access. <strong>The risk this audit already
+identified — an undocumented private endpoint the issuer could lock down without notice —
+has materialised.</strong> FOBXX's monthly regulator path is unaffected: the 2026-07-31 N-MFP3 was
+retrieved cleanly and is now a committed fixture. Its net assets 720,928,224.29 and series
+S000067043 match this audit; its liquidity figures <strong>corrected</strong> this audit, which had quoted
+the 2026-07-01 row as the period-end value.</p>
+<p><strong>🔴 USDY has no bounded retrieval.</strong> This audit recorded fetching a 2026 year-subfolder of
+about 35.9 MB instead of the 260 MB root archive. <strong>That is not reproducible.</strong> A HEAD
+against the folder URL with and without <code>subpath=%2F2026</code> returns the identical
+<code>Content-Disposition</code> filename and the identical <code>Original-Content-Length</code> of
+<strong>260,431,605</strong> — the <code>subpath</code> parameter is ignored. As things stand one daily observation
+costs a 260 MB download, which is not a bounded retrieval and must not be scheduled as one.
+A bounded mechanism has to be found and verified before PLAN-T10, or USDY's cost and cadence
+re-decided.</p>
+<p><strong>Unaffected:</strong> USDY link rediscovery works — <code>ondo.finance/usdy</code> returns HTTP 200 with both
+<code>rlkey</code> links present in the served HTML, confirming the rotating credential can be
+re-scraped each run rather than persisted. All three USTB endpoints remain reachable.</p>
+<p><strong>One correction found by probing:</strong> EDGAR serves the N-MFP3 as <code>text/xml</code>, not
+<code>application/xml</code>. Since PLAN-T5 will enforce MIME against the manifest, the declared value
+has been set to what the source actually sends.</p>
+<h2 id="paxg-paxos-fail-verified-2026-08-13-excluded-from-the-sprint">PAXG (Paxos) — <strong>FAIL</strong> (verified 2026-08-13; excluded from the sprint)</h2>
+<ul>
+<li>Attestation PDFs are real, text-extractable, and immutable once published (June 30
+  2026 report: KPMG, 452,151 PAXG vs 452,355 oz — coverage holds), and there is no
+  anti-bot or login. <strong>But there is no stable machine-readable contract:</strong> the
+  transparency page HTML contains zero PDF links; report URLs live only inside a
+  content-hashed Framer JS bundle that changes on every site redeploy; month labels
+  carry no year and no asset name — a <strong>USDG (different product) report was found in
+  the PAXG bundle</strong> — so nothing can be attributed without downloading and parsing each
+  PDF; Content-Type is inconsistent on the same CDN; no supply/reserve JSON exists
+  (docs.paxos.com lists only authenticated trading APIs). Onchain: no issuer-published
+  oracle (announced Chainlink PoR feed absent from Chainlink's directory).</li>
+<li>Roadmap abort rule applied: evidence discovery relies on reverse-engineering a
+  rebuildable front-end bundle = fragile; controls would claim more stability than the
+  source provides. PAXG is parked for Phase 2+ (revisit if Paxos publishes stable
+  report URLs or a data API).</li>
+</ul>
+<h2 id="onchain-observability-all-five-assets-verified-2026-08-13-13151330-utc">Onchain observability (all five assets) — VERIFIED 2026-08-13 13:15–13:30 UTC</h2>
+<p>All reads keyless via public JSON-RPC; every address from issuer-official sources; all
+values cross-confirmed on two endpoints. Full raw-hex working notes retained by auditor.</p>
+<p><strong>RPC reality (gating infrastructure finding):</strong> <code>eth.llamarpc.com</code> (HTTP 521) and
+<code>cloudflare-eth.com</code> (JSON errors) are UNUSABLE; <code>rpc.flashbots.net</code> rejects <code>eth_call</code>;
+<code>rpc.ankr.com/eth</code> is key-walled. <strong>Primary: <code>ethereum-rpc.publicnode.com</code></strong> (0.7–1.4s,
+30/30 burst calls OK) <strong>· Fallback: <code>eth.drpc.org</code></strong> (free tier, quota undisclosed). No
+rate-limit headers on either — implement retry-with-backoff; pin blockNumber into every
+eth_call (endpoints ran one block apart; cross-endpoint comparison only valid at a fixed
+block).</p>
+<table>
+<thead>
+<tr>
+<th>Asset</th>
+<th>Token (chain)</th>
+<th>Supply (decoded)</th>
+<th>Issuer-official oracle</th>
+<th>Oracle value @ read</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>USTB</td>
+<td><code>0x43415eB6…C4e</code> (ETH)</td>
+<td>68,913,599.947976 (6 dec)</td>
+<td>Chainlink-compat <code>0x289B…AAC</code> + Continuous <code>0xe4fa…8a8</code> (both in Superstate docs)</td>
+<td>$11.175588 (updated 08-12 13:13Z) / $11.177405 (current-second extrapolated)</td>
+</tr>
+<tr>
+<td>OUSG</td>
+<td><code>0x1B19…e92</code> (ETH)</td>
+<td>1,403,785.674966 (18 dec)</td>
+<td>OndoOracle <code>0x9Cad…094</code> — NOT Chainlink-shaped: <code>getAssetPrice(address)</code>, Sourcify-verified ABI; <strong>no timestamp in return</strong> (freshness needs underlying <code>0xadc4…df3</code>)</td>
+<td>$116.204547</td>
+</tr>
+<tr>
+<td>USDY</td>
+<td><code>0x96F6…85C</code> (ETH)</td>
+<td>970,805,366.407203 (18 dec)</td>
+<td>USDYOracleWrapper <code>0x87b1…F90</code>: <code>getPriceData()</code> → (price, ts)</td>
+<td>$1.14266759 @ 13:24:11Z</td>
+</tr>
+<tr>
+<td>PAXG</td>
+<td><code>0x4580…F78</code> (ETH; address only in issuer GitHub README — paxos.com page has NO address)</td>
+<td>436,225.095154 (18 dec)</td>
+<td><strong>NONE issuer-published</strong> (announced Chainlink PoR feed absent from Chainlink directory — COULD NOT VERIFY). Third-party Chainlink PAXG/USD <code>0x9944…8C3</code>: $4,393.54 (corroborated class only)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>BENJI</td>
+<td>Stellar primary (<code>BENJI</code> / issuer <code>GBHN…IW5</code>, first-party stellar.toml); ETH <code>0x3DDc…dc9</code></td>
+<td>Stellar authorized 485,686,460.099; ETH 48,005,967.446 — fragmented across 9 networks, no aggregate; separate iBENJI class (210.7M)</td>
+<td><strong>NONE on any chain</strong></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Empirical control confirmation (hero):</strong> USTB API NAV <code>11.17558800</code> vs Chainlink oracle
+<code>11.175588</code> (08-12 update) — independent sources agree to the digit.
+<code>nav-oracle-consistency</code> is real and live today. <strong>Corrected 2026-08-14:</strong> that API value
+was read from the then-newest 08/13 row, which the 08-14 capture revealed to be a
+provisional carry-forward of the 08/11 value — the revised 08/13 NAV is <code>11.17774800</code>.
+The agreement therefore holds between the oracle and the <strong>08/11 row</strong>, which was
+unchanged between the two retained captures, and the control must compare an oracle
+reading against a confirmed row of the matching date, not against the feed's tail. Note also that the two official oracles legitimately differ
+(checkpoint vs extrapolation) — the control must name which oracle is authoritative and
+use a tolerance.</p>
+<p><strong>Onchain ranking for a keyless daily monitor:</strong> USTB &gt; OUSG &gt; USDY &gt; PAXG (supply-only)</p>
+<blockquote>
+<p>BENJI (non-EVM primary, fragmented, no NAV oracle — gate behind an explicit
+scope decision; effectively disqualified for the sprint).</p>
+</blockquote>
+<p><strong>Adapter directives for the builder:</strong> never guess oracle selectors (both Ondo oracles
+revert on all Chainlink-style selectors — resolve ABIs via Sourcify v2 only; v1 is in
+brownout); store <code>decimals()</code> per contract (6/8/18 all occur); pin block numbers;
+key contracts by (chain, address) — Superstate reuses addresses across chains.</p>
+<hr />
+<h2 id="portfolio-selection-closed-2026-08-16">Portfolio selection — <strong>CLOSED 2026-08-16</strong></h2>
+<p><strong>Final for Phase 1: USTB alone.</strong> No second adapter, no contrast adapter. USDY is cut
+(unbounded retrieval), FOBXX is retained as a documented monthly contrast asset with no
+adapter, and OUSG is cut — the second-adapter metric is recorded as missed in <code>ROADMAP.md</code>
+rather than chased with a hurried asset. The build order in <code>docs/PHASE-1-PLAN.md</code> is
+authoritative.</p>
+<p>Everything below is the record of how the selection moved, retained because the reasoning is
+the audit trail. <strong>None of it describes an open decision.</strong></p>
+<h3 id="superseded-standing-as-of-2026-08-15-was-reopened-was-final-2026-08-13">Superseded: standing as of 2026-08-15 (was REOPENED; was FINAL 2026-08-13)</h3>
+<ul>
+<li><strong>Hero: USTB (Superstate/Invesco)</strong> — unchanged. Public documented JSON API, verified live
+  and bounded; dual issuer-official onchain oracles; digit-level API↔oracle agreement.</li>
+<li><strong>Second daily asset: VACANT.</strong> USDY held this slot and is <strong>suspended</strong> — its retrieval is
+  not bounded.</li>
+<li><strong>Contrast: FOBXX (Franklin BENJI) — monthly only.</strong> The SEC EDGAR N-MFP3 path is verified
+  and keeps FOBXX qualified as a monthly regulator-backed contrast. The daily issuer feed is
+  unreachable, so the daily-liveness and issuer-versus-regulator controls are <strong>blocked</strong>.</li>
+<li><strong>Candidate for the vacant slot: OUSG (Ondo)</strong> — bounded retrieval verified, cross-issuer
+  coverage preserved, <strong>not promoted</strong> pending an oracle cross-check that needs the full
+  oracle address. <em>(Cut 2026-08-16. The cross-check was never run: the calendar went to the
+  epoch-uniqueness defect and the compilation binding instead. There is no vacant slot —
+  Phase 1 ships one vertical.)</em></li>
+<li><strong>Spare: USCC (Superstate)</strong> — same issuer as the hero, so it cannot supply cross-issuer
+  proof.</li>
+</ul>
+<p>The 2026-08-13 selection, retained for the record and <strong>no longer current</strong>:</p>
+<ul>
+<li>~~Hero USTB · Second daily USDY · Contrast FOBXX with a daily feed · Spares OUSG, USCC.~~</li>
+<li><strong>Rejected: PAXG</strong> (FAIL — fragile bundle-scrape discovery, unattributable labels).</li>
+</ul>
+<p><strong>Gate state: REOPENED 2026-08-15.</strong> The 2026-08-13 gate passed on three assets. Two of
+those three no longer satisfy the roadmap's requirement of repeatable, bounded, non-manual
+retrieval:</p>
+<ul>
+<li><strong>USDY — SUSPENDED.</strong> Retrieval is not bounded. The archive is served only as a single
+  260,431,605-byte zip and the <code>subpath</code> parameter is ignored, so one daily observation would
+  cost a 260 MB download. PLAN-T10 is not viable as written.</li>
+<li><strong>FOBXX — DEMOTED to monthly regulator-backed contrast.</strong> The daily issuer feed returns
+  Cloudflare 403 from this environment, so daily-liveness and issuer-versus-regulator
+  reconciliation cannot be claimed. Its SEC path is verified and unaffected.</li>
+<li><strong>USTB — unaffected</strong>, all three endpoints reachable and bounded.</li>
+<li><strong>OUSG — opened as a candidate</strong> for the vacant second-daily slot, and it preserves
+  cross-issuer coverage since USTB is Superstate and OUSG is Ondo. Its page retrieval is
+  verified bounded at 732 KB. It is <strong>not promoted</strong>: the oracle cross-check is unverified
+  because this audit records the oracle address only in abbreviated form.</li>
+</ul>
+<p><strong>The second daily slot is currently unfilled.</strong> Portfolio selection is reopened rather than
+quietly preserved, because lowering the evidence standard to keep three assets is precisely
+what this audit's own abort rule forbids.</p>
+    </article>
+    <aside class="doc-toc" aria-label="On this page">
+      <p class="foot-h">On this page</p>
+      <ol class="doc-toc-list">
+        <li class="toc-2"><a href="#ustb-invescosuperstate-short-duration-us-government-securities-fund">USTB — Invesco/Superstate Short Duration U.S. Government Securities Fund</a></li>
+        <li class="toc-3"><a href="#sources-all-first-party-all-verified-this-session">Sources (all first-party, all verified this session)</a></li>
+        <li class="toc-3"><a href="#sample-observed-values-2026-08-13">Sample observed values (2026-08-13)</a></li>
+        <li class="toc-3"><a href="#official-onchain-surface-from-superstate-docs-onchain-reads-delegated-to-agent-c">Official onchain surface (from Superstate docs; onchain reads delegated to Agent C)</a></li>
+        <li class="toc-3"><a href="#honest-quirks-recorded">Honest quirks recorded</a></li>
+        <li class="toc-3"><a href="#proposed-controls-all-empirically-supported-today">Proposed controls (all empirically supported today)</a></li>
+        <li class="toc-3"><a href="#residual-checks-before-mainnet-claims">Residual checks before mainnet claims</a></li>
+        <li class="toc-2"><a href="#uscc-bitwisesuperstate-crypto-carry-fund-same-issuer-spare">USCC — Bitwise/Superstate Crypto Carry Fund (same-issuer spare)</a></li>
+        <li class="toc-2"><a href="#ousg-usdy-ondo-both-pass-verified-2026-08-13">OUSG / USDY (Ondo) — BOTH PASS (verified 2026-08-13)</a></li>
+        <li class="toc-2"><a href="#benjifobxx-franklin-templeton-pass-verified-2026-08-13">BENJI/FOBXX (Franklin Templeton) — PASS (verified 2026-08-13)</a></li>
+        <li class="toc-2"><a href="#source-re-verification-2026-08-15-plan-t4-two-findings-that-change-the-plan">Source re-verification 2026-08-15 (PLAN-T4) — two findings that change the plan</a></li>
+        <li class="toc-2"><a href="#paxg-paxos-fail-verified-2026-08-13-excluded-from-the-sprint">PAXG (Paxos) — FAIL (verified 2026-08-13; excluded from the sprint)</a></li>
+        <li class="toc-2"><a href="#onchain-observability-all-five-assets-verified-2026-08-13-13151330-utc">Onchain observability (all five assets) — VERIFIED 2026-08-13 13:15–13:30 UTC</a></li>
+        <li class="toc-2"><a href="#portfolio-selection-closed-2026-08-16">Portfolio selection — CLOSED 2026-08-16</a></li>
+        <li class="toc-3"><a href="#superseded-standing-as-of-2026-08-15-was-reopened-was-final-2026-08-13">Superseded: standing as of 2026-08-15 (was REOPENED; was FINAL 2026-08-13)</a></li>
+      </ol>
+    </aside>
+  </div>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col">
+        <p class="foot-h">Products</p>
+        <a href="/products/dossier">Dossier</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verifier</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/registry">Registry</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Developers</p>
+        <a href="/verify">Verify a report</a>
+        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
+        <a href="/products/registry">Registry contract</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Resources</p>
+        <a href="/coverage">Coverage</a>
+        <a href="/dossier">Published reports</a>
+        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Project</p>
+        <a href="/">Home</a>
+        <a href="/changelog">Changelog</a>
+        <a href="/limitations">Limitations</a>
+      </div>
+    </div>
+    <div class="foot-meta">
+      <p>Touchstone — disclosure evidence for tokenized funds.</p>
+      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
+      <p>This site runs no JavaScript and makes no external requests. Fonts are
+      self-hosted. What you see is static text over a signed bundle.</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
