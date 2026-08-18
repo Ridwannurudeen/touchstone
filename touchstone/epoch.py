@@ -15,13 +15,9 @@ from touchstone.controls import AssetState, ControlRecord, EvaluationResult
 from touchstone.evidence import read_object, CaptureRecord, EvidenceStore
 from touchstone.evaluate import default_controls, evaluate
 from touchstone.sources import (
-    DEFAULT_TIMEOUT_SECONDS,
-    USTB_SOURCE_BY_ID,
     USTB_SOURCES,
     FetchResult,
     LiveTransport,
-    SourceResponseError,
-    SourceTooLargeError,
     Transport,
     TransportResponse,
     fetch_source,
@@ -288,51 +284,23 @@ def _fetch_declared(
     transport: Transport,
     retrieved_at: datetime,
 ) -> FetchResult:
-    """Retrieve one source named by a descriptor.
+    """Retrieve one source named by a descriptor, through the one hardened path.
 
-    USTB sources stay on ``fetch_source``, which is the allowlist those tests and the
-    live path already prove. A second asset cannot be added to that allowlist without
-    editing ``sources.py``, which is owned elsewhere, so anything the USTB map does
-    not name is fetched from the descriptor's own manifest.
+    This used to branch: USTB went through ``fetch_source`` and everything else went
+    through a local routine that checked the status code and the byte cap and nothing
+    else. That second route skipped HTTPS enforcement, the exact-URL allowlist, the
+    single-redirect and same-host policy, the declared-MIME check and the refusal of a
+    compressed body — so the first asset was retrieved under strict rules and every asset
+    after it under loose ones. Adding an asset must not lower the bar for that asset.
+
+    ``fetch_source`` now takes the manifest, so there is one path and one set of checks.
     """
-    if manifest.source_id in USTB_SOURCE_BY_ID:
-        return fetch_source(
-            manifest.source_id,
-            store=store,
-            transport=transport,
-            retrieved_at=retrieved_at,
-        )
-    response = transport.get(
-        manifest.url,
-        timeout=DEFAULT_TIMEOUT_SECONDS,
-        max_bytes=manifest.max_bytes,
-    )
-    if not isinstance(response, TransportResponse):
-        raise TypeError("transport must return TransportResponse")
-    if not 200 <= response.status_code < 300:
-        raise SourceResponseError(
-            f"source returned HTTP status {response.status_code}"
-        )
-    if len(response.body) > manifest.max_bytes:
-        raise SourceTooLargeError(
-            f"response exceeds {manifest.max_bytes} byte limit for {manifest.source_id}"
-        )
-    content_type = response.headers.get("Content-Type", "application/json")
-    digest = store.store(
-        response.body,
-        source_id=manifest.source_id,
-        source_url=manifest.url,
+    return fetch_source(
+        manifest.source_id,
+        store=store,
+        transport=transport,
         retrieved_at=retrieved_at,
-        declared_mime=content_type,
-    )
-    return FetchResult(
-        source_id=manifest.source_id,
-        source_url=manifest.url,
-        retrieved_at=retrieved_at,
-        content_type=content_type,
-        byte_size=len(response.body),
-        evidence_sha256=digest,
-        redirect_count=0,
+        manifest=manifest,
     )
 
 

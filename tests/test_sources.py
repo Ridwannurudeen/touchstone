@@ -666,3 +666,84 @@ def test_the_prompt_does_not_hardcode_a_grace_policy() -> None:
             f"the prompt hardcodes {literal!r}; it should read the supplied source_manifest"
         )
     assert "source_manifest" in _PROMPT_TEMPLATE
+
+
+def _foreign_manifest(**changes):
+    """A manifest for an asset that is not USTB, built from a real one."""
+    return replace(USTB_SOURCES[0], source_id="probe-daily", **changes)
+
+
+def test_a_source_from_another_asset_gets_the_same_hardening(tmp_path: Path) -> None:
+    """A second asset must not be fetched under looser rules than the first.
+
+    When the engine became multi-asset, anything the USTB map did not name was fetched by a
+    separate routine that checked the status code and the byte cap and nothing else — no
+    HTTPS enforcement, no allowlist, no redirect policy, no declared-MIME check, no refusal
+    of a compressed body. The suite stayed green because every test drove USTB, which still
+    took the strict path. Adding an asset silently lowered the bar for that asset.
+
+    So this drives a manifest that is deliberately *not* USTB and asserts the strict checks
+    still bite. Each one below was unreachable for a non-USTB source before the paths merged.
+    """
+    store = EvidenceStore(tmp_path)
+
+    insecure = _foreign_manifest(url="http://probe.example/daily")
+    with pytest.raises(SourcePolicyError):
+        fetch_source(
+            "probe-daily",
+            store=store,
+            transport=FakeTransport({}),
+            retrieved_at=RETRIEVED_AT,
+            manifest=insecure,
+        )
+
+    wrong_mime = _foreign_manifest(url="https://probe.example/daily")
+    transport = FakeTransport(
+        {
+            "https://probe.example/daily": response(
+                b"{}", headers={"Content-Type": "text/html"}
+            )
+        }
+    )
+    with pytest.raises(SourceResponseError, match="text/html"):
+        fetch_source(
+            "probe-daily",
+            store=store,
+            transport=transport,
+            retrieved_at=RETRIEVED_AT,
+            manifest=wrong_mime,
+        )
+
+    compressed = _foreign_manifest(url="https://probe.example/daily")
+    transport = FakeTransport(
+        {
+            "https://probe.example/daily": response(
+                b"{}",
+                headers={"Content-Type": "application/json", "Content-Encoding": "gzip"},
+            )
+        }
+    )
+    with pytest.raises(SourceResponseError, match="identity"):
+        fetch_source(
+            "probe-daily",
+            store=store,
+            transport=transport,
+            retrieved_at=RETRIEVED_AT,
+            manifest=compressed,
+        )
+
+
+def test_a_supplied_manifest_must_name_the_source_it_is_passed_for(tmp_path: Path) -> None:
+    """The manifest parameter is a widening of the allowlist, not a hole in it.
+
+    Without this, a caller could fetch under one source_id while the bytes were stored and
+    attributed under another — the evidence would carry a name the manifest never described.
+    """
+    with pytest.raises(SourcePolicyError, match="names probe-daily"):
+        fetch_source(
+            "superstate-ustb-yield",
+            store=EvidenceStore(tmp_path),
+            transport=FakeTransport({}),
+            retrieved_at=RETRIEVED_AT,
+            manifest=_foreign_manifest(url="https://probe.example/daily"),
+        )

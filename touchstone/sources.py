@@ -185,11 +185,28 @@ def fetch_source(
     url: str | None = None,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     retrieved_at: datetime | None = None,
+    manifest: SourceManifest | None = None,
 ) -> FetchResult:
-    """Fetch one allowlisted USTB source and store its exact response bytes."""
-    manifest = USTB_SOURCE_BY_ID.get(source_id)
+    """Fetch one allowlisted source and store its exact response bytes.
+
+    ``manifest`` lets an asset other than USTB use this path. It exists because the
+    alternative was tried and was worse: when the engine became multi-asset, anything the
+    USTB map did not name was fetched by a second, simpler routine that checked only the
+    status code and the byte cap. That route skipped HTTPS enforcement, the exact-URL
+    allowlist, the single-redirect and same-host policy, the declared-MIME check and the
+    content-encoding refusal — so a second asset would have been retrieved under materially
+    weaker rules than the first, which is the opposite of what adding an asset should mean.
+
+    A supplied manifest is still an allowlist entry; it is the descriptor's own committed
+    manifest rather than a caller-invented one, and every check below applies to it
+    unchanged.
+    """
+    if manifest is None:
+        manifest = USTB_SOURCE_BY_ID.get(source_id)
     if manifest is None:
         raise SourcePolicyError(f"unknown source_id: {source_id}")
+    if manifest.source_id != source_id:
+        raise SourcePolicyError(f"manifest names {manifest.source_id}, not {source_id}")
     timeout = finite_positive(timeout, "timeout")
     # Rebound, not merely checked. The validated instant was discarded and the caller's
     # original object handed on to storage and the epoch, so a zone that answered the
