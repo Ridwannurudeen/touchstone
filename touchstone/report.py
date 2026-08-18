@@ -207,7 +207,7 @@ def build_observation_report(
     sequence: int,
     publisher_kid: str,
     previous_state: AssetState = AssetState.UNVERIFIABLE,
-    event: OperationalEvent = OperationalEvent.RECONFIRMED,
+    event: OperationalEvent | None = None,
     limitations: Iterable[str] = USTB_LIMITATIONS,
     correction_of: int | None = None,
     approval_ledger: bytes | None = None,
@@ -254,8 +254,25 @@ def build_observation_report(
         raise ValueError("correction_of must reference an earlier positive sequence")
     if not isinstance(previous_state, AssetState):
         raise TypeError("previous_state must be an AssetState")
+    # The default is sequence-aware because the old one was not, and the cost of that was a
+    # first publication on two public chains asserting it had reconfirmed a state nobody had
+    # ever observed. Twenty-six callers relied on the default; making it correct fixes them
+    # all rather than asking each to remember.
+    if event is None:
+        event = (
+            OperationalEvent.FIRST_OBSERVATION
+            if sequence == 1
+            else OperationalEvent.RECONFIRMED
+        )
     if not isinstance(event, OperationalEvent):
         raise TypeError("event must be an OperationalEvent")
+    # And an explicit claim is refused, not quietly corrected. A caller that names
+    # RECONFIRMED at sequence 1 is asserting a history that cannot exist, and silently
+    # rewriting it would hide the mistake instead of stopping it.
+    if sequence == 1 and event is OperationalEvent.RECONFIRMED:
+        raise ValueError(
+            "sequence 1 cannot be RECONFIRMED: a first publication has nothing to reconfirm"
+        )
 
     controls_by_id = {record.control_id: record for record in records}
     if len(controls_by_id) != len(records):

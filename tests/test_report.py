@@ -484,3 +484,52 @@ def test_no_limitation_calls_a_published_report_local_only() -> None:
     assert any("onchain NAV oracle" in text for text in USTB_LIMITATIONS), (
         "the claim the sentence actually makes was dropped rather than corrected"
     )
+
+
+def test_a_direct_caller_cannot_mint_a_reconfirmed_first_publication(
+    tmp_path: Path,
+) -> None:
+    """The daemon was fixed; the builder was not, and the builder is what mints reports.
+
+    `FIRST_OBSERVATION` was wired into the producer only, so the invariant held on the
+    production path and nowhere else — an audit pointed out that any direct caller could
+    still build the same false report the fix existed to prevent.
+
+    Both halves are pinned here. The default is sequence-aware, so the twenty-six callers
+    that never pass an event get the right one. And an explicit RECONFIRMED at sequence 1 is
+    refused rather than quietly rewritten, because silently correcting a caller's assertion
+    hides the mistake instead of stopping it.
+    """
+    from touchstone.controls import OperationalEvent
+
+    defaulted = build_observation_report(
+        _epoch(tmp_path),
+        historical_controls(),
+        epoch_id="ustb-2026-08-14",
+        sequence=1,
+        publisher_kid="ed25519:" + "11" * 32,
+        approval_ledger=historical_ledger_bytes(),
+    )
+    assert defaulted["state_transition"]["event"] == "FIRST_OBSERVATION"
+
+    with pytest.raises(ValueError, match="nothing to reconfirm"):
+        build_observation_report(
+            _epoch(tmp_path),
+            historical_controls(),
+            epoch_id="ustb-2026-08-14",
+            sequence=1,
+            publisher_kid="ed25519:" + "11" * 32,
+            event=OperationalEvent.RECONFIRMED,
+            approval_ledger=historical_ledger_bytes(),
+        )
+
+    # A later sequence still defaults to RECONFIRMED, which is what it means there.
+    later = build_observation_report(
+        _epoch(tmp_path),
+        historical_controls(),
+        epoch_id="ustb-2026-08-14",
+        sequence=2,
+        publisher_kid="ed25519:" + "11" * 32,
+        approval_ledger=historical_ledger_bytes(),
+    )
+    assert later["state_transition"]["event"] == "RECONFIRMED"
