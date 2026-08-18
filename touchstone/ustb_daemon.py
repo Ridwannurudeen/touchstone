@@ -30,9 +30,10 @@ from pathlib import Path
 import re
 
 from touchstone.approval import ledger_bytes, ledger_from_bytes
+from touchstone.assets import USTB, AssetDescriptor, USTB_ASSET_KEY
 from touchstone.controls import AssetState, OperationalEvent
-from touchstone.epoch import run_ustb_epoch
-from touchstone.evaluate import USTB_ASSET_KEY, default_ustb_controls
+from touchstone.epoch import run_epoch
+from touchstone.evaluate import default_controls
 from touchstone.evidence import EvidenceStore
 from touchstone.publish import asset_key_bytes  # noqa: F401 - re-exported for the CLI
 from touchstone.quantities import utc_instant
@@ -62,7 +63,9 @@ class EpochProductionError(RuntimeError):
     """An epoch could not be produced for a reason that is not a source outage."""
 
 
-def epoch_id_for(scheduled_at: datetime) -> str:
+def epoch_id_for(
+    scheduled_at: datetime, asset: AssetDescriptor | None = None
+) -> str:
     """The epoch a slot at this instant is a statement about.
 
     One derivation, used by the producer that names the report and by the slot runner that
@@ -70,8 +73,15 @@ def epoch_id_for(scheduled_at: datetime) -> str:
     of this would be a second answer to "which day is this", and the two would disagree on
     exactly the boundary the suppression exists for — which is how the asset key came to be
     hashed two different ways and query a registry key that had never existed.
+
+    The prefix comes from the descriptor. It used to be the literal ``ustb-``, which is
+    why a second asset could not name its own epoch without colliding with USTB's.
     """
-    return f"ustb-{utc_instant(scheduled_at, 'scheduled_at').date().isoformat()}"
+    asset = USTB if asset is None else asset
+    return (
+        f"{asset.epoch_id_prefix}-"
+        f"{utc_instant(scheduled_at, 'scheduled_at').date().isoformat()}"
+    )
 
 
 def make_producer(
@@ -83,6 +93,7 @@ def make_producer(
     transport: Transport | None = None,
     bundle_sink: Callable[[Mapping[str, object]], None] | None = None,
     approval_ledger: bytes | None = None,
+    asset: AssetDescriptor | None = None,
 ) -> Callable[[datetime], Mapping[str, object] | None]:
     """Build the ``produce`` callable the service's slot runner expects.
 
@@ -124,11 +135,12 @@ def make_producer(
     """
     live = LiveTransport() if transport is None else transport
     frozen_ledger = None if approval_ledger is None else bytes(approval_ledger)
+    descriptor = USTB if asset is None else asset
 
     def produce(scheduled_at: datetime) -> Mapping[str, object] | None:
         moment = utc_instant(scheduled_at, "scheduled_at")
         observed_on = moment.date()
-        epoch_id = epoch_id_for(moment)
+        epoch_id = epoch_id_for(moment, descriptor)
 
         # The approval ledger is read exactly once per slot, here, and the same bytes reach
         # the controls, the epoch's evaluation, the report's committed digest and the
@@ -137,10 +149,11 @@ def make_producer(
         # controls came from one ledger and the commitment named another, and every
         # individual check passed because each was consistent with the read next to it.
         ledger = ledger_bytes() if frozen_ledger is None else frozen_ledger
-        controls = default_ustb_controls(ledger_from_bytes(ledger))
+        controls = default_controls(descriptor, ledger_from_bytes(ledger))
 
         try:
-            epoch = run_ustb_epoch(
+            epoch = run_epoch(
+                descriptor,
                 transport=live,
                 store=store,
                 now=observed_on,
@@ -151,8 +164,13 @@ def make_producer(
             # The one failure that is emphatically *not* a statement about the asset. It is
             # raised as the service's own source type so the slot records an outage and
             # publishes nothing, rather than an epoch failure that reads like a finding.
+            label = (
+                "USTB"
+                if descriptor.asset_key == USTB.asset_key
+                else descriptor.display_name
+            )
             raise SourceUnavailable(
-                f"USTB evidence could not be retrieved: {error}"
+                f"{label} evidence could not be retrieved: {error}"
             ) from error
 
         report = build_observation_report(

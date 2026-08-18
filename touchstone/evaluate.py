@@ -8,6 +8,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from touchstone.approval import APPROVED_KEY, approved_control, load_approval_ledger
+from touchstone.assets import USTB, AssetDescriptor
 from touchstone.controls import (
     AssetState,
     ComparisonOperator,
@@ -28,8 +29,7 @@ from touchstone.normalize.ustb import (
     USTBYieldObservation,
 )
 
-
-USTB_ASSET_KEY = "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
+USTB_ASSET_KEY = USTB.asset_key
 
 # The newest nav-daily rows are provisional: the issuer publishes a row for the current
 # date carrying the previous values forward and rewrites it later. Value controls
@@ -102,7 +102,12 @@ _FRESHNESS_UNIT: Mapping[str, str] = {
 
 
 def supports(
-    source_id: str, operator: ComparisonOperator, expected_value: FrozenJSONValue
+    source_id: str,
+    operator: ComparisonOperator,
+    expected_value: FrozenJSONValue,
+    *,
+    presence_fields: Mapping[str, frozenset[str]] | None = None,
+    freshness_units: Mapping[str, str] | None = None,
 ) -> bool:
     """Whether the deterministic evaluator can reach a verdict on this combination.
 
@@ -150,7 +155,14 @@ def supports(
         # the control named and the window it got were different lengths.
         unit = _FRESHNESS_UNIT.get(source_id)
         if unit is None:
-            return False
+            # Shipped USTB sources live in `_FRESHNESS_UNIT`. A second asset names its
+            # unit on the descriptor; without that fallback every non-USTB freshness
+            # control would be permanently undecidable.
+            if not freshness_units:
+                return False
+            unit = freshness_units.get(source_id)
+            if unit is None:
+                return False
         windows = [
             expected_value[declared]
             for declared in ("business_days", "calendar_days")
@@ -164,8 +176,11 @@ def supports(
     if field is None:
         return False
     if source_id != USTB_NAV_SOURCE_ID:
-        return operator is ComparisonOperator.EXISTS and field in PRESENCE_FIELDS.get(
-            source_id, frozenset()
+        allowed = PRESENCE_FIELDS.get(source_id)
+        if allowed is None and presence_fields:
+            allowed = presence_fields.get(source_id, frozenset())
+        return operator is ComparisonOperator.EXISTS and field in (
+            allowed or frozenset()
         )
     if field not in NAV_FIELDS:
         return False
@@ -228,6 +243,28 @@ def business_day_deadline(observed_on: date, grace_business_days: int) -> date:
     return deadline
 
 
+def default_controls(
+    asset: AssetDescriptor | None = None,
+    ledger: Mapping[str, list] | None = None,
+) -> tuple[ControlRecord, ...]:
+    """The approved control set for one asset, resolved from one ledger snapshot.
+
+    The ledger can name more than one asset. Resolving every entry and then keeping
+    only this asset's is what stops a USTB report from evaluating a second asset's
+    controls — and the other way around. The ``approved_control(..., ledger=snapshot)``
+    call is the one-read property: each entry is resolved against the snapshot the
+    caller already held, never against a fresh read of the file.
+    """
+    asset = USTB if asset is None else asset
+    snapshot = load_approval_ledger() if ledger is None else ledger
+    resolved = tuple(
+        approved_control(entry, ledger=snapshot) for entry in snapshot[APPROVED_KEY]
+    )
+    return tuple(
+        control for control in resolved if control.asset_key == asset.asset_key
+    )
+
+
 def default_ustb_controls(
     ledger: Mapping[str, list] | None = None,
 ) -> tuple[ControlRecord, ...]:
@@ -250,22 +287,20 @@ def default_ustb_controls(
     verifier refused. Callers that will also commit a ledger digest must pass the same
     snapshot here.
     """
-    snapshot = load_approval_ledger() if ledger is None else ledger
-    return tuple(
-        approved_control(entry, ledger=snapshot) for entry in snapshot[APPROVED_KEY]
-    )
+    return default_controls(USTB, ledger)
 
 
-def evaluate_ustb(
+def evaluate(
+    asset: AssetDescriptor,
     controls: Iterable[ControlRecord],
-    observations: Mapping[str, USTBObservation],
+    observations: Mapping[str, object],
     *,
-    prior_observations: Mapping[str, USTBObservation],
+    prior_observations: Mapping[str, object],
     now: date,
     previous: AssetState = AssetState.UNVERIFIABLE,
     event: OperationalEvent = OperationalEvent.RECONFIRMED,
 ) -> USTBEvaluationReport:
-    """Evaluate approved USTB controls and apply frozen state-transition semantics.
+    """Evaluate approved controls for one asset and apply frozen state-transition semantics.
 
     ``prior_observations`` carries the qualifying earlier capture per source and is
     required, never defaulted: a caller with no qualifying predecessor passes ``{}`` and
@@ -282,7 +317,7 @@ def evaluate_ustb(
     if any(control.approval_state != "approved" for control in records):
         raise ValueError("only approved controls may be evaluated")
     for control in records:
-        _validate_control_binding(control)
+        _validate_control_binding(control, asset)
 
     # One reading of each mapping for the whole report. Asking per control meant the NAV
     # source was read three times, so a mapping that changed underneath produced a single
@@ -297,6 +332,7 @@ def evaluate_ustb(
             observed.get(control.source_id),
             prior.get(control.source_id),
             now,
+            asset,
         )
         for control in records
     )
@@ -333,23 +369,45 @@ def evaluate_ustb(
     )
 
 
-def _validate_control_binding(control: ControlRecord) -> None:
-    adapters = {
-        USTB_NAV_SOURCE_ID: "ustb-nav-daily",
-        USTB_YIELD_SOURCE_ID: "ustb-yield",
-        USTB_HOLDINGS_SOURCE_ID: "ustb-holdings",
-    }
-    if control.asset_key != USTB_ASSET_KEY:
+def evaluate_ustb(
+    controls: Iterable[ControlRecord],
+    observations: Mapping[str, USTBObservation],
+    *,
+    prior_observations: Mapping[str, USTBObservation],
+    now: date,
+    previous: AssetState = AssetState.UNVERIFIABLE,
+    event: OperationalEvent = OperationalEvent.RECONFIRMED,
+) -> USTBEvaluationReport:
+    """Evaluate approved USTB controls and apply frozen state-transition semantics.
+
+    ``prior_observations`` carries the qualifying earlier capture per source and is
+    required, never defaulted: a caller with no qualifying predecessor passes ``{}`` and
+    every value control abstains rather than silently claiming an unconfirmed row.
+    """
+    return evaluate(
+        USTB,
+        controls,
+        observations,
+        prior_observations=prior_observations,
+        now=now,
+        previous=previous,
+        event=event,
+    )
+
+
+def _validate_control_binding(control: ControlRecord, asset: AssetDescriptor) -> None:
+    if control.asset_key != asset.asset_key:
         raise ValueError("control asset_key does not identify USTB")
-    if control.observation_adapter != adapters.get(control.source_id):
+    if control.observation_adapter != asset.adapters.get(control.source_id):
         raise ValueError("control source and adapter do not match")
 
 
 def _evaluate_control(
     control: ControlRecord,
-    observation: USTBObservation | None,
-    prior_observation: USTBObservation | None,
+    observation: object | None,
+    prior_observation: object | None,
     now: date,
+    asset: AssetDescriptor,
 ) -> ControlEvaluation:
     if now < control.effective_from or (
         control.effective_until is not None and now > control.effective_until
@@ -367,7 +425,7 @@ def _evaluate_control(
         # Before the NAV route below, which returns None for any observation that is not a
         # NAV one and so silently made every non-freshness control on the other two sources
         # UNEVALUABLE forever.
-        return _evaluate_presence(control, observation)
+        return _evaluate_presence(control, observation, asset)
     row = _confirmed_nav_row(control, observation, prior_observation, now)
     if row is None:
         return ControlEvaluation(
@@ -403,7 +461,7 @@ def _evaluate_control(
 
 
 def _evaluate_presence(
-    control: ControlRecord, observation: USTBObservation
+    control: ControlRecord, observation: object, asset: AssetDescriptor
 ) -> ControlEvaluation:
     """A scalar the issuer published, in the bytes this epoch captured. Nothing more.
 
@@ -416,7 +474,11 @@ def _evaluate_presence(
     an observation about the asset that was never made.
     """
     if not supports(
-        control.source_id, control.comparison_operator, control.expected_value
+        control.source_id,
+        control.comparison_operator,
+        control.expected_value,
+        presence_fields=asset.presence_fields,
+        freshness_units=asset.freshness_units,
     ):
         return ControlEvaluation(
             control.control_id, EvaluationResult.UNEVALUABLE, None, None
@@ -440,7 +502,7 @@ def _evaluate_presence(
 
 
 def _evaluate_freshness(
-    control: ControlRecord, observation: USTBObservation, now: date
+    control: ControlRecord, observation: object, now: date
 ) -> ControlEvaluation:
     if isinstance(observation, USTBNavObservation):
         row = _latest_nav_row(observation)
@@ -457,8 +519,15 @@ def _evaluate_freshness(
         observed_on = observation.as_of_date
         deadline = observed_on + timedelta(days=control.grace_period)
     else:
-        observed_on = None
-        deadline = None
+        # A non-USTB adapter publishes an as-of date the same way holdings does.
+        # Calendar arithmetic, not business days: that is the unit the descriptor
+        # already declared for any source that is not in `_FRESHNESS_UNIT`.
+        observed_on = getattr(observation, "as_of_date", None)
+        if type(observed_on) is not date:
+            observed_on = None
+            deadline = None
+        else:
+            deadline = observed_on + timedelta(days=control.grace_period)
     result = (
         EvaluationResult.SATISFIED
         if observed_on is not None and observed_on <= now <= deadline

@@ -14,6 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from touchstone.assets import USTB, AssetDescriptor
 from touchstone.controls import ComparisonOperator, ControlRecord
 from touchstone.evaluate import supports
 from touchstone.evidence import EvidenceStore
@@ -39,7 +40,6 @@ MAX_PROVIDER_OUTPUT_BYTES = 1_048_576
 MAX_PROVIDER_OUTPUT_DEPTH = 32
 MAX_PROPOSALS = 32
 CONFIDENCE_THRESHOLD = 0.8
-USTB_ASSET_KEY = "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
 _OUTPUT_FIELDS = frozenset({"controls"})
 _INSTRUCTION_PATTERN = re.compile(
     r"\b(?:ignore|disregard|override|follow|execute|fetch|browse|visit|curl|wget)\b",
@@ -163,15 +163,10 @@ class ProviderResponse:
     raw_response: str
 
 
-ADAPTER_BY_SOURCE = {
-    "superstate-ustb-nav-daily": "ustb-nav-daily",
-    "superstate-ustb-yield": "ustb-yield",
-    "superstate-ustb-holdings": "ustb-holdings",
-}
-
-
 def request_bindings(
-    source_manifest: SourceManifest, retrieved_at: datetime
+    source_manifest: SourceManifest,
+    retrieved_at: datetime,
+    asset: AssetDescriptor | None = None,
 ) -> dict[str, object]:
     """The fields a candidate does not get to choose, stated rather than guessed.
 
@@ -179,12 +174,13 @@ def request_bindings(
     left to infer them produces candidates that are rejected for reasons it was never told.
     Naming them in the request is what makes the acceptance gate a check rather than a trap.
     """
+    asset = USTB if asset is None else asset
     return {
-        "asset_key": USTB_ASSET_KEY,
+        "asset_key": asset.asset_key,
         "source_id": source_manifest.source_id,
         "source_authority_class": source_manifest.authority_class,
         "cadence": source_manifest.cadence,
-        "observation_adapter": ADAPTER_BY_SOURCE.get(source_manifest.source_id),
+        "observation_adapter": asset.adapters.get(source_manifest.source_id),
         "predicate_type": "observation",
         "approval_state": "proposed",
         "effective_from": retrieved_at.date().isoformat(),
@@ -428,10 +424,12 @@ def compile_evidence(
     store: EvidenceStore,
     retrieved_at: datetime,
     excerpt_limit: int = DEFAULT_EXCERPT_LIMIT,
+    asset: AssetDescriptor | None = None,
 ) -> CompilationResult:
     """Compile one stored artifact, validate every proposal, and persist the record."""
     if not isinstance(source_manifest, SourceManifest):
         raise TypeError("source_manifest must be a SourceManifest")
+    asset = USTB if asset is None else asset
     # Normalised once and used everywhere below. The offset was previously read to
     # validate awareness and read again by each `astimezone`, so a `tzinfo` that answered
     # only the first read let the provenance record and the evidence match be resolved
@@ -449,7 +447,7 @@ def compile_evidence(
         store, evidence_sha256, source_manifest, retrieved_at
     )
     excerpt_bytes, excerpt = _bounded_utf8_excerpt(evidence, excerpt_limit)
-    bindings = request_bindings(source_manifest, retrieved_at)
+    bindings = request_bindings(source_manifest, retrieved_at, asset)
     prompt_hash = hashlib.sha256(
         _canonical_bytes(
             {
@@ -484,7 +482,7 @@ def compile_evidence(
         retrieved_at=retrieved_at,
     )
     outcomes = _validate_output(
-        raw_output, evidence, excerpt_bytes, source_manifest, provenance
+        raw_output, evidence, excerpt_bytes, source_manifest, provenance, asset
     )
     record = {
         "outcomes": [_outcome_mapping(outcome) for outcome in outcomes],
@@ -511,6 +509,7 @@ def _validate_output(
     excerpt: bytes,
     source_manifest: SourceManifest,
     provenance: CompilationProvenance,
+    asset: AssetDescriptor,
 ) -> tuple[CompilationOutcome, ...]:
     if len(raw_output.encode("utf-8")) > MAX_PROVIDER_OUTPUT_BYTES:
         return (
@@ -564,7 +563,7 @@ def _validate_output(
             control = ControlRecord.from_mapping(
                 {**proposal, "compilation_sha256": None}
             )
-            _validate_candidate_policy(control, source_manifest)
+            _validate_candidate_policy(control, source_manifest, asset)
             if control.evidence_span.encode("utf-8") not in evidence:
                 raise ValueError("evidence span is not byte-exact present in artifact")
             if control.evidence_span.encode("utf-8") not in excerpt:
@@ -602,7 +601,9 @@ def _validate_output(
 
 
 def _validate_candidate_policy(
-    control: ControlRecord, source_manifest: SourceManifest
+    control: ControlRecord,
+    source_manifest: SourceManifest,
+    asset: AssetDescriptor,
 ) -> None:
     if control.source_id != source_manifest.source_id:
         raise ValueError("control source_id does not match source manifest")
@@ -610,18 +611,13 @@ def _validate_candidate_policy(
         raise ValueError(
             "control source authority class does not match source manifest"
         )
-    if control.asset_key != USTB_ASSET_KEY:
+    if control.asset_key != asset.asset_key:
         raise ValueError("control asset_key does not identify USTB")
     if control.predicate_type != "observation":
         raise ValueError("predicate_type is not allowed")
     if control.approval_state != "proposed":
         raise ValueError("approval_state is not allowed for compiler candidates")
-    expected_adapters = {
-        "superstate-ustb-nav-daily": "ustb-nav-daily",
-        "superstate-ustb-yield": "ustb-yield",
-        "superstate-ustb-holdings": "ustb-holdings",
-    }
-    if control.observation_adapter != expected_adapters.get(source_manifest.source_id):
+    if control.observation_adapter != asset.adapters.get(source_manifest.source_id):
         raise ValueError("observation_adapter does not match source manifest")
     if control.cadence != source_manifest.cadence:
         raise ValueError("control cadence does not match source manifest")
@@ -667,7 +663,11 @@ def _validate_candidate_policy(
         )
 
     if not supports(
-        control.source_id, control.comparison_operator, control.expected_value
+        control.source_id,
+        control.comparison_operator,
+        control.expected_value,
+        presence_fields=asset.presence_fields,
+        freshness_units=asset.freshness_units,
     ):
         # The gate, not merely the prompt. A candidate the deterministic evaluator can
         # never reach a verdict on is worthless however well it cites its evidence, and

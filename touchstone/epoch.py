@@ -10,19 +10,18 @@ import json
 from pathlib import Path
 import tempfile
 
+from touchstone.assets import USTB, AssetDescriptor
 from touchstone.controls import AssetState, ControlRecord, EvaluationResult
 from touchstone.evidence import read_object, CaptureRecord, EvidenceStore
-from touchstone.evaluate import USTB_ASSET_KEY, default_ustb_controls, evaluate_ustb
-from touchstone.normalize.ustb import (
-    USTB_NAV_SOURCE_ID,
-    USTBObservation,
-    normalize_ustb_payload,
-)
+from touchstone.evaluate import default_controls, evaluate
 from touchstone.sources import (
+    DEFAULT_TIMEOUT_SECONDS,
     USTB_SOURCE_BY_ID,
     USTB_SOURCES,
     FetchResult,
     LiveTransport,
+    SourceResponseError,
+    SourceTooLargeError,
     Transport,
     TransportResponse,
     fetch_source,
@@ -163,7 +162,8 @@ class FixtureTransport:
         )
 
 
-def run_ustb_epoch(
+def run_epoch(
+    asset: AssetDescriptor,
     *,
     transport: Transport,
     store: EvidenceStore,
@@ -171,53 +171,55 @@ def run_ustb_epoch(
     retrieved_at: datetime,
     controls: Sequence[ControlRecord] | None = None,
 ) -> USTBEpochReport:
-    """Fetch, store, isolate-normalize, evaluate, and transition one USTB epoch.
+    """Fetch, store, isolate-normalize, evaluate, and transition one epoch.
 
-    The NAV predecessor is resolved before this epoch's own capture is appended, so the
-    current fetch can never confirm itself.
+    The confirmation predecessor is resolved before this epoch's own capture is appended,
+    so the current fetch can never confirm itself.
 
     ``controls`` exists so a caller that has already read the approval ledger can evaluate
     that exact snapshot rather than making this function read it again. Two reads of one
     file are two answers, and the report built from them committed to one ledger while its
     controls came from another.
     """
-    nav_manifest = USTB_SOURCE_BY_ID[USTB_NAV_SOURCE_ID]
-    confirmation = store.confirmation_capture(USTB_NAV_SOURCE_ID, before=retrieved_at)
-    prior_observations: dict[str, USTBObservation] = {}
+    confirmation_source = asset.sources[0].source_id
+    confirmation_manifest = asset.source_by_id[confirmation_source]
+    confirmation = store.confirmation_capture(confirmation_source, before=retrieved_at)
+    prior_observations: dict[str, object] = {}
     if confirmation is not None:
-        prior_observations[USTB_NAV_SOURCE_ID] = normalize_ustb_payload(
-            USTB_NAV_SOURCE_ID,
+        prior_observations[confirmation_source] = asset.normalize(
+            confirmation_source,
             read_object(store, confirmation.sha256),
-            max_bytes=nav_manifest.max_bytes,
+            max_bytes=confirmation_manifest.max_bytes,
             isolated=True,
         )
 
     fetches: list[FetchResult] = []
-    observations: dict[str, USTBObservation] = {}
-    for manifest in USTB_SOURCES:
-        fetched = fetch_source(
-            manifest.source_id,
+    observations: dict[str, object] = {}
+    for manifest in asset.sources:
+        fetched = _fetch_declared(
+            manifest,
             store=store,
             transport=transport,
             retrieved_at=retrieved_at,
         )
         fetches.append(fetched)
         raw = read_object(store, fetched.evidence_sha256)
-        observations[manifest.source_id] = normalize_ustb_payload(
+        observations[manifest.source_id] = asset.normalize(
             manifest.source_id,
             raw,
             max_bytes=manifest.max_bytes,
             isolated=True,
         )
 
-    evaluation = evaluate_ustb(
-        default_ustb_controls() if controls is None else controls,
+    evaluation = evaluate(
+        asset,
+        default_controls(asset) if controls is None else controls,
         observations,
         prior_observations=prior_observations,
         now=now,
     )
     return USTBEpochReport(
-        asset_key=USTB_ASSET_KEY,
+        asset_key=asset.asset_key,
         now=now,
         state=evaluation.state,
         evidence_deadline=evaluation.evidence_deadline,
@@ -251,7 +253,90 @@ def run_ustb_epoch(
     )
 
 
-def _observation_date(observation: USTBObservation) -> date:
+def run_ustb_epoch(
+    *,
+    transport: Transport,
+    store: EvidenceStore,
+    now: date,
+    retrieved_at: datetime,
+    controls: Sequence[ControlRecord] | None = None,
+) -> USTBEpochReport:
+    """Fetch, store, isolate-normalize, evaluate, and transition one USTB epoch.
+
+    The NAV predecessor is resolved before this epoch's own capture is appended, so the
+    current fetch can never confirm itself.
+
+    ``controls`` exists so a caller that has already read the approval ledger can evaluate
+    that exact snapshot rather than making this function read it again. Two reads of one
+    file are two answers, and the report built from them committed to one ledger while its
+    controls came from another.
+    """
+    return run_epoch(
+        USTB,
+        transport=transport,
+        store=store,
+        now=now,
+        retrieved_at=retrieved_at,
+        controls=controls,
+    )
+
+
+def _fetch_declared(
+    manifest,
+    *,
+    store: EvidenceStore,
+    transport: Transport,
+    retrieved_at: datetime,
+) -> FetchResult:
+    """Retrieve one source named by a descriptor.
+
+    USTB sources stay on ``fetch_source``, which is the allowlist those tests and the
+    live path already prove. A second asset cannot be added to that allowlist without
+    editing ``sources.py``, which is owned elsewhere, so anything the USTB map does
+    not name is fetched from the descriptor's own manifest.
+    """
+    if manifest.source_id in USTB_SOURCE_BY_ID:
+        return fetch_source(
+            manifest.source_id,
+            store=store,
+            transport=transport,
+            retrieved_at=retrieved_at,
+        )
+    response = transport.get(
+        manifest.url,
+        timeout=DEFAULT_TIMEOUT_SECONDS,
+        max_bytes=manifest.max_bytes,
+    )
+    if not isinstance(response, TransportResponse):
+        raise TypeError("transport must return TransportResponse")
+    if not 200 <= response.status_code < 300:
+        raise SourceResponseError(
+            f"source returned HTTP status {response.status_code}"
+        )
+    if len(response.body) > manifest.max_bytes:
+        raise SourceTooLargeError(
+            f"response exceeds {manifest.max_bytes} byte limit for {manifest.source_id}"
+        )
+    content_type = response.headers.get("Content-Type", "application/json")
+    digest = store.store(
+        response.body,
+        source_id=manifest.source_id,
+        source_url=manifest.url,
+        retrieved_at=retrieved_at,
+        declared_mime=content_type,
+    )
+    return FetchResult(
+        source_id=manifest.source_id,
+        source_url=manifest.url,
+        retrieved_at=retrieved_at,
+        content_type=content_type,
+        byte_size=len(response.body),
+        evidence_sha256=digest,
+        redirect_count=0,
+    )
+
+
+def _observation_date(observation: object) -> date:
     rows = getattr(observation, "rows", None)
     if isinstance(rows, tuple) and rows:
         return max(row.observed_on for row in rows)
