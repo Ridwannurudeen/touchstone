@@ -44,3 +44,12 @@ manifests/sources/** -text
 deployments/manifest.schema.json -text
 contracts/solidity.json -text
 contracts/package-lock.json -text
+
+# systemd units are consumed by Linux, and a unit checked out with CRLF carries a trailing
+# carriage return on every value. `ExecStart=/opt/.../python ...` is a command that does not
+# exist, so the unit fails at start with a path error naming a binary that looks correct. This
+# is the third place in this repository where line endings were load-bearing; the first two
+# were caught after the fact, and this one was caught by git's own warning on the way in.
+deploy/systemd/** text eol=lf
+# The nginx vhost is read by the same kind of consumer for the same reason.
+deploy/nginx/** text eol=lf
