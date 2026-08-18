@@ -11,6 +11,7 @@ require("@nomicfoundation/hardhat-toolbox");
 // The deployer key is read from the environment and is never written here. It belongs to
 // the owner and does not live on the publishing host: see docs/KEY-MANAGEMENT.md.
 const XLAYER_TESTNET_RPC = "https://testrpc.xlayer.tech/terigon";
+const XLAYER_MAINNET_RPC = "https://rpc.xlayer.tech";
 const deployerKey = process.env.TOUCHSTONE_DEPLOYER_PRIVATE_KEY;
 
 // The local chain starts at the retrieval instant of the committed 2026-08-14 capture.
@@ -42,6 +43,16 @@ module.exports = {
       chainId: 1952,
       // Absent rather than empty when the key is unset, so an accidental invocation fails
       // with "no signer" instead of selecting whatever default hardhat would supply.
+      accounts: deployerKey ? [deployerKey] : [],
+    },
+    // `deploy.js` has always known xlayer-mainnet is chain 196; hardhat did not, so the
+    // network could be named but never reached. `chainId` is declared here as well as
+    // confirmed at runtime: hardhat refuses to send if the endpoint disagrees with this
+    // number, which is one more check between a typo'd RPC and a real transaction. The
+    // deployer key is still absent unless the environment supplies it.
+    xLayerMainnet: {
+      url: XLAYER_MAINNET_RPC,
+      chainId: 196,
       accounts: deployerKey ? [deployerKey] : [],
     },
   },

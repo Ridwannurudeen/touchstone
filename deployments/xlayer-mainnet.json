@@ -1,0 +1,23 @@
+{
+  "manifest_version": 1,
+  "network": "xlayer-mainnet",
+  "chain_id": 196,
+  "rpc_url": "https://rpc.xlayer.tech",
+  "registry_address": "0xc9d58e4496bF061C3177301Ff02518eBB70AD30d",
+  "registry_runtime_bytecode_sha256": "0db939799044b236b76aff1993cb871f3fba8346cba176895d2e94673157f86a",
+  "publisher_address": "0x86A100BDdF8754c95fec97BeC96dBFd64Be44710",
+  "publisher_identity_address": "0x86A100BDdF8754c95fec97BeC96dBFd64Be44710",
+  "deployer_address": "0xAa1C01C6FcDcc268DbF93C861D26C44a27C35436",
+  "operations_address": "0xF901f538d17ED060018F043bCAA1d7f0977Fa65D",
+  "confirmations": 3,
+  "deployment_block": 68291416,
+  "deployment_state": "active",
+  "reporting_keys": [
+    {
+      "kid": "ed25519:394ee022b83de4783cd49f60cc4842b48d108f6a339b73272739490cb9a581fd",
+      "public_key": "0959d043538a483024722ced848e52ae5dcaf56661e598dc850a9541028b9dba",
+      "state": "active"
+    }
+  ],
+  "max_fee_wei": 200000000000000
+}
