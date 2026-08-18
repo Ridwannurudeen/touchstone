@@ -39,7 +39,12 @@ from touchstone.epoch import (  # noqa: E402
     USTBEpochReport,
 )
 from touchstone.evaluate import default_ustb_controls  # noqa: E402
-from touchstone.report import build_observation_report  # noqa: E402
+from touchstone.report import (  # noqa: E402
+    build_observation_report,
+    evidence_references,
+)
+from touchstone.signing import Ed25519Signer  # noqa: E402
+from touchstone.verify import create_bundle, verify_bundle  # noqa: E402
 
 
 def _date(value: str | None) -> date | None:
@@ -84,6 +89,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--out", required=True, help="where to write the corrected report"
+    )
+    parser.add_argument(
+        "--sign",
+        action="store_true",
+        help="sign the correction and write a verified bundle beside it",
     )
     args = parser.parse_args()
 
@@ -171,8 +181,38 @@ def main() -> int:
     removed = [t for t in original["limitations"] if t not in report["limitations"]]
     added = [t for t in report["limitations"] if t not in original["limitations"]]
 
-    Path(args.out).write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    out = Path(args.out)
+    signed = None
+    if args.sign:
+        # Only after the reconstruction has been proven faithful. Signing first would create a
+        # signature over bytes nobody had checked, and a signature is the one thing here that
+        # cannot be taken back.
+        signer = Ed25519Signer.from_env()
+        if signer.kid != original["publisher_kid"]:
+            print(
+                f"REFUSING: signing key is {signer.kid}, but the report being corrected was "
+                f"signed by {original['publisher_kid']}. A correction signed by a different "
+                "key is a different claim, not a correction.",
+                file=sys.stderr,
+            )
+            return 1
+        signed = signer.sign_report(report)
+        made = create_bundle(
+            signed,
+            signer.public_key_record(),
+            controls,
+            evidence_references(epoch),
+            approval_ledger=ledger,
+        )
+        # Built is not the same claim as verifiable, and only one of them is publishable.
+        verify_bundle(made)
+        out.with_name(out.stem + "-bundle.json").write_text(
+            json.dumps(made, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+
+    out.write_text(
+        json.dumps(signed if signed else report, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
 
     print(
@@ -190,7 +230,15 @@ def main() -> int:
         print(f"  limitation removed: {text}")
     for text in added:
         print(f"  limitation added  : {text}")
-    print(f"\nwritten to {args.out}. Nothing is signed and nothing is published.")
+    if signed is not None:
+        print(f"\nsigned by {original['publisher_kid']}")
+        print(f"  report {out}")
+        print(
+            f"  bundle {out.with_name(out.stem + '-bundle.json')}  (verified offline)"
+        )
+        print("Nothing is published. That is a separate, owner-approved transaction.")
+    else:
+        print(f"\nwritten to {args.out}. Nothing is signed and nothing is published.")
     return 0
 
 
