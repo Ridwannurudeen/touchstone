@@ -116,11 +116,18 @@ So the honest fallback today, in front of a person, is:
 
 ## 4. What cannot be performed yet, and why
 
-**Act 1 as written cannot be performed.** The judge cannot open a hero
-dossier. PLAN-T9 is unbuilt (`docs/PHASE-1-PLAN.md`). There is no
-wallet-free page, no compile button, and no span highlighter. Explorer
-links for a publication that does not exist must be absent, not
-fabricated (`docs/THREAT-MODEL.md` T26).
+**Act 1 as written still cannot be performed, but less of it than this
+section used to claim.** ⚠️ It read "the judge cannot open a hero dossier,
+PLAN-T9 is unbuilt" until 2026-08-18, by which point the dossier had been
+live for days and the table in §3 above said so — a self-contradiction
+inside one document, which is the exact defect this project treats as
+disqualifying.
+
+What is true: the dossier **is** live at
+https://touchstone.gudman.xyz/dossier/ustb-2026-08-17. What is still
+missing is the interaction — no compile button, no span highlighter, no
+wallet-free run. The page renders a published report; it does not let a
+judge drive the compiler.
 
 The compiler itself exists, as a command, not a UI:
 
@@ -142,12 +149,18 @@ Re-compiling live is not the approved control set. The eight accepted
 controls are already bound to the artifacts under `data/compilations/`.
 A new compile produces new digests.
 
-**Act 2 as written cannot be performed.** `AssetGate` has never been
-deployed to a persistent chain. There is no gate to show
-`REQUIRES_REFRESH`, and no transaction for a judge to open on a public
-explorer. The testnet registry has no report, so
-`getLatestReport` is the zero sequence and a gate, were one deployed,
-would return `unknown asset`.
+**Act 2 as written cannot be performed, for a different reason than this
+section used to give.** ⚠️ It read "`AssetGate` has never been deployed to
+a persistent chain … the testnet registry has no report" until
+2026-08-18. Both were false by then: the gate is live on testnet at
+`0xAac48DC261B04737FDCB101D5049395121034a83` and the testnet registry
+holds three reports.
+
+The real obstacle is the ending. Act 2 finishes with the gate flipping to
+`ACCEPTED`, and no report has ever reached `CONFIRMED`, so the gate
+correctly returns `(false, "status not allowed")`. Performing that act
+would require either a confirmed report or a control set changed for the
+camera. The second is forbidden; the first has not happened yet.
 
 **A live testnet epoch is not this demo.** It is the canary in
 `docs/CANARY-G1B.md`, owner-gated, and it will publish whatever
