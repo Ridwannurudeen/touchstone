@@ -27,9 +27,16 @@ honest state, and a runbook that invented them would be worse than one that admi
 
 | Network | State |
 |---|---|
-| X Layer **testnet** (chain 1952) | **ACTIVE** — registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` (block 38489602), deployed 2026-08-17 under a recorded owner approval. Manifest `deployments/xlayer-testnet-2.json`, `deployment_state: active`, publisher authorized. **Holds one report**: USTB sequence 1 |
-| X Layer testnet — **predecessor** | **SUPERSEDED** — registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` (block 38369203) predates the `epochKey` change and cannot enforce one report per epoch. Its manifest declares `deployment_state: superseded` and the service refuses it before reading any key. It published nothing, verified by a full log scan from its deployment block to head |
-| X Layer **mainnet** (chain 196) | `not_deployed` — owner-gated, and additionally blocked until the deployer and publisher keys sit on separate hosts (`docs/DEPLOYMENT-G1-EXECUTED.md`) |
+| X Layer **testnet** (chain 1952) | **ACTIVE** — registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` (block 38489602), deployed 2026-08-17 under a recorded owner approval. Manifest `deployments/xlayer-testnet-2.json`, `deployment_state: active`, publisher authorized. **Holds three reports**: USTB sequences 1–3, `latestSequence` 3 |
+| X Layer testnet — **predecessor** | **SUPERSEDED** — registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` **on chain 1952** (block 38369203) predates the `epochKey` change and cannot enforce one report per epoch. Its manifest declares `deployment_state: superseded` and the service refuses it before reading any key. It published nothing, verified by a full log scan from its deployment block to head. **This address is not unique to it — see the collision note below** |
+| X Layer **mainnet** (chain 196) | **ACTIVE** — registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` (block 68291416), deployed 2026-08-18 under a recorded owner approval. Manifest `deployments/xlayer-mainnet.json`, `deployment_state: active`, publisher authorized. **Holds two reports**: USTB sequences 1–2, `latestSequence` 2. Its workspace is `touchstone-workspace-mainnet/ustb`, separate from testnet's. **The key separation recorded in `docs/DEPLOYMENT-G1-EXECUTED.md` §"Deviation" is still not real** — both keys remain on one laptop, and that document said mainnet must not proceed until it was. It proceeded anyway, under owner direction, with the exposure disclosed rather than resolved |
+
+> **Address collision — read before pointing any tool at `0xc9d58e…D30d`.** The same deployer at
+> nonce 0 produced the same contract address on both chains, so this one address is the
+> **superseded** testnet predecessor on chain 1952 *and* the **live** mainnet registry on chain
+> 196. An address alone does not identify a deployment here; the chain id is the only on-chain
+> discriminator. A tool that resolves this address without pinning the chain will read a dead
+> registry and a production one as if they were the same thing.
 
 Testnet publisher `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710`, authorized on the active
 registry with its identity mapped to itself. The live manifest is
@@ -40,15 +47,38 @@ registry's manifest `deployments/xlayer-testnet.json` is retained; its note dist
 fields read from the chain from the ones that are reconstructed configuration.
 
 **The canary ran on 2026-08-17 at 16:49 UTC, under its own owner authorisation, and it is the
-first report Touchstone has ever published.** USTB `latestSequence` is **1**: sequence 1, epoch
-`ustb-2026-08-17`, block 38526525, tx `0x5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869`, 256,988 gas. Every other asset key is still zero.
+first report Touchstone has ever published.** Every published report to date, on both chains:
 
-**Its state is `UNVERIFIABLE`, and that is the correct answer rather than a failure.** A value
-control observes only a row confirmed by a capture at least 24 hours older, and on a first run
-there is no such capture. The system declined to claim more than its evidence supported. A
-second epoch after 2026-08-18 16:49 UTC, against the same workspace, is what can produce a
-confirmed state — and it must be the same workspace, because that is where the earlier capture
-lives.
+| Chain | Seq | Epoch | State | Event | Block | Transaction |
+|---|---|---|---|---|---|---|
+| 1952 | 1 | `ustb-2026-08-17` | `UNVERIFIABLE` | `RECONFIRMED` † | 38526525 | `0x5107140c…` |
+| 1952 | 2 | `ustb-2026-08-18` | `UNVERIFIABLE` | `RECONFIRMED` | 38611710 | `0x6a2832db…` |
+| 1952 | 3 | `ustb-2026-08-17` | `UNVERIFIABLE` | `CORRECTION_PUBLISHED` | 38617112 | `0x1cdf45d0…` |
+| 196 | 1 | `ustb-2026-08-18` | `UNVERIFIABLE` | `RECONFIRMED` † | 68292878 | `0xfa4b7992…` |
+| 196 | 2 | `ustb-2026-08-18` | `UNVERIFIABLE` | `CORRECTION_PUBLISHED` | 68307118 | `0x363539ad…` |
+
+† **Wrong in the signed bytes, and corrected rather than edited.** A first publication has
+nothing to reconfirm, so `RECONFIRMED` on sequence 1 asserted a history that did not exist; the
+same reports also carried a limitation reading "This local-only report" while sitting on a public
+chain. Signed bytes cannot be edited, so each was restated through `publishCorrection`. Sequence
+2 on chain 1952 is a genuine reconfirmation and was left alone.
+
+Each correction reproduces its original's `control_set_root`, `evidence_root` and
+`approval_ledger_sha256` exactly — `scripts/build_correction.py` refuses to sign otherwise — and
+`epochSequence` still points at each epoch's *first* publication, so a correction restates an
+epoch without opening one. Verified from chain after publication: `latestSequence` 3 and 2, both
+`Corrected` events naming sequence 1, both transparency logs re-verifying end to end.
+
+Every other asset key is still zero on both chains.
+
+**The state is `UNVERIFIABLE` throughout, and that is the correct answer rather than a failure.**
+A value control observes only a row confirmed by a capture at least 24 hours older. On a first
+run there is no such capture. On chain 1952 sequence 2 there was one, but the run went out at
+16:28:07 UTC against a 16:48:32 UTC capture — **twenty minutes inside the 24-hour interval,
+because the operator read a local-time clock as UTC** — so `ustb-nav-per-share-present` was
+`UNEVALUABLE` and the state held. The confirmation window is a real gate, and it refused a run
+that was short by twenty minutes. The next attempt must be at or after 16:48:32 UTC against the
+same workspace, because that is where the earlier capture lives.
 
 The superseded predecessor is refused before any key is read, because its manifest declares
 `deployment_state: superseded`. That refusal is what stops a publication reaching it; its
