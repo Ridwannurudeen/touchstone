@@ -298,6 +298,85 @@ describe("AssetGate", function () {
       .withArgs(ASSET_KEY, caller.address);
   });
 
+  it("returns opposite policy decisions from reports published in the same block", async function () {
+    const { publisher, registry } = await loadFixture(deployRegistryFixture);
+    const freshnessKey = ethers.keccak256(
+      ethers.toUtf8Bytes(
+        "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:disclosure-freshness:1"
+      )
+    );
+    const settlementKey = ethers.keccak256(
+      ethers.toUtf8Bytes(
+        "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:nav-settlement:1"
+      )
+    );
+    const freshnessRoot = ethers.keccak256(
+      ethers.toUtf8Bytes("disclosure-freshness-v1")
+    );
+    const settlementRoot = ethers.keccak256(
+      ethers.toUtf8Bytes("nav-settlement-v1")
+    );
+    const freshnessGate = await deployGate(registry, {
+      requiredPublisher: publisher.address,
+      requiredControlSetRoot: freshnessRoot,
+    });
+    const settlementGate = await deployGate(registry, {
+      requiredPublisher: publisher.address,
+      requiredControlSetRoot: settlementRoot,
+    });
+    const observedAt = BigInt(await time.latest());
+    const firstNonce = await publisher.getNonce("pending");
+
+    await ethers.provider.send("evm_setAutomine", [false]);
+    let freshnessTransaction;
+    let settlementTransaction;
+    try {
+      freshnessTransaction = await registry
+        .connect(publisher)
+        .publish(
+          freshnessKey,
+          freshnessRoot,
+          EVIDENCE_ROOT,
+          ethers.keccak256(ethers.toUtf8Bytes("policy-epoch:freshness")),
+          0,
+          observedAt,
+          observedAt + 10_000n,
+          1,
+          `${REPORT_URI}/freshness`,
+          { nonce: firstNonce }
+        );
+      settlementTransaction = await registry
+        .connect(publisher)
+        .publish(
+          settlementKey,
+          settlementRoot,
+          EVIDENCE_ROOT,
+          ethers.keccak256(ethers.toUtf8Bytes("policy-epoch:settlement")),
+          3,
+          observedAt,
+          observedAt + 10_000n,
+          1,
+          `${REPORT_URI}/settlement`,
+          { nonce: firstNonce + 1 }
+        );
+      await ethers.provider.send("evm_mine");
+    } finally {
+      await ethers.provider.send("evm_setAutomine", [true]);
+    }
+    const freshnessReceipt = await freshnessTransaction.wait();
+    const settlementReceipt = await settlementTransaction.wait();
+
+    expect(freshnessReceipt.blockNumber).to.equal(settlementReceipt.blockNumber);
+    expect(await freshnessGate.check(freshnessKey)).to.deep.equal([
+      true,
+      "allowed",
+    ]);
+    expect(await settlementGate.check(settlementKey)).to.deep.equal([
+      false,
+      "status not allowed",
+    ]);
+  });
+
   const refusalCases = [
     ["unknown asset", async () => ({})],
     [

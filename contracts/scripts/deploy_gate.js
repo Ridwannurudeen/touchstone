@@ -13,10 +13,9 @@
 // asset, which is the opposite of what a gate is for, and it would be the same mistake as
 // choosing a control set because it produces a green result.
 //
-// `requiredControlSetRoot` is zero, which `AssetGate.sol:72` treats as "do not check". The
-// approved control set changed on 2026-08-18 and will change again; a gate pinned to a root
-// the project intends to retire would be immediately wrong, and the root is immutable once
-// constructed. Publisher lineage and freshness are still enforced.
+// `requiredControlSetRoot` is explicit and nonzero. A gate pinned to zero opts out of the
+// approved control-set binding, which would let a consumer claim policy protection without
+// naming the policy root it actually requires. The root is immutable once constructed.
 
 const { ethers, network } = require("hardhat");
 
@@ -35,6 +34,15 @@ async function main() {
   const publisher = ethers.getAddress(required("TOUCHSTONE_PUBLISHER_ADDRESS"));
   const assetKey = required("TOUCHSTONE_ASSET_KEY");
   const maxObservationAge = BigInt(required("TOUCHSTONE_MAX_OBSERVATION_AGE"));
+  const requiredControlSetRoot = required("TOUCHSTONE_REQUIRED_CONTROL_SET_ROOT");
+  if (!ethers.isHexString(requiredControlSetRoot, 32)) {
+    throw new Error(
+      "TOUCHSTONE_REQUIRED_CONTROL_SET_ROOT must be a 32-byte hexadecimal value",
+    );
+  }
+  if (requiredControlSetRoot.toLowerCase() === ethers.ZeroHash) {
+    throw new Error("TOUCHSTONE_REQUIRED_CONTROL_SET_ROOT must be nonzero");
+  }
 
   const provider = ethers.provider;
   const chainId = (await provider.getNetwork()).chainId;
@@ -58,7 +66,7 @@ async function main() {
   console.log(`allowedStatuses    ${CONFIRMED} (CONFIRMED only)`);
   console.log(`maxObservationAge  ${maxObservationAge}s`);
   console.log(`requiredPublisher  ${publisher}`);
-  console.log(`requiredControlSetRoot  ${ethers.ZeroHash} (unpinned)\n`);
+  console.log(`requiredControlSetRoot  ${requiredControlSetRoot}\n`);
 
   const factory = await ethers.getContractFactory("AssetGate");
   const gate = await factory.deploy(
@@ -66,7 +74,7 @@ async function main() {
     CONFIRMED,
     maxObservationAge,
     publisher,
-    ethers.ZeroHash,
+    requiredControlSetRoot,
   );
   await gate.waitForDeployment();
   const address = await gate.getAddress();
