@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control Language — Touchstone</title>
+<meta name="description" content="A Touchstone control is a machine-checkable claim compiled from an issuer's own words: a cited byte span, an operator, an expected value and an effective period. Approval changes exactly two fields and is EIP-712 signed.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/products/control-language">
+<meta property="og:title" content="Touchstone Control Language">
+<meta property="og:description" content="How a disclosure sentence becomes a control an engine can evaluate — cited, approved under signature, and never silently edited.">
+<meta property="og:url" content="https://touchstone.gudman.xyz/products/control-language">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  .stat-row .st-n { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+{{> header}}
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Products · Control Language</p>
+      <h1>The unit of verification</h1>
+      <p class="t-lead prose">A control is a machine-checkable claim compiled from the
+      issuer's own words. It names its subject, cites the exact bytes it came from, and
+      states a predicate an engine can evaluate without judgment. A model proposes; a human
+      approves or declines under signature; the engine evaluates. Below is a control from the
+      approved set, dissected.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">Anatomy</p>
+      <h2>Every field, and why it is there</h2>
+      <p class="prose secondary">This control is one of the
+      {{fact:counts.controls_approved}} in the current approved set. Its fields are the
+      complete instruction the evaluator follows — there is no other configuration, and
+      nothing about it is interpreted at run time.</p>
+
+      <article class="card anatomy">
+        <header class="control-head">
+          <h3 class="control-id">ustb-nav-daily-freshness</h3>
+          <span class="chip chip-satisfied"><i class="dot" aria-hidden="true"></i>APPROVED</span>
+        </header>
+
+        <dl class="fields fields--gloss">
+          <div>
+            <dt>Subject</dt>
+            <dd>Superstate USTB daily NAV feed publishes a NAV row dated within the last two
+            business days</dd>
+            <dd class="gloss">One sentence stating what is checked, in language a risk
+            officer can argue with. Written by the compiler, approved by a human.</dd>
+          </div>
+          <div>
+            <dt>Cited span</dt>
+            <dd>The byte-exact quotation from the issuer's own document that the compiler
+            drew this control from</dd>
+            <dd class="gloss">Compile-time evidence, not this epoch's observation. It travels
+            verbatim inside the control record in every
+            <a href="/products/verifier">verification bundle</a>, so the claim can always be
+            traced back to the sentence that produced it.</dd>
+          </div>
+          <div>
+            <dt>Source</dt>
+            <dd><code>superstate-ustb-nav-daily · issuer-api</code></dd>
+            <dd class="gloss">Where evidence comes from, and what kind of authority it is. An
+            issuer API proves publication, not truth, and the authority class is recorded so
+            nobody has to guess which was meant.</dd>
+          </div>
+          <div>
+            <dt>Adapter</dt>
+            <dd><code>ustb-nav-daily</code></dd>
+            <dd class="gloss">The deterministic code path that retrieves and normalises
+            evidence for this control. Same bytes in, same observation out.</dd>
+          </div>
+          <div>
+            <dt>Operator</dt>
+            <dd><code>fresh_within</code></dd>
+            <dd class="gloss">The comparison the evaluator applies. The operator set is
+            small and fixed; a control cannot smuggle in new semantics.</dd>
+          </div>
+          <div>
+            <dt>Expected value</dt>
+            <dd><code>{{fact:story.settlement_floor_business_days}} business days</code></dd>
+            <dd class="gloss">What the operator compares against — here the issuer's own
+            declared publication policy, not a threshold Touchstone invented.</dd>
+          </div>
+          <div>
+            <dt>Cadence</dt>
+            <dd><code>business-daily</code>, with a recorded grace period</dd>
+            <dd class="gloss">How often evidence is expected, and how many periods may lapse
+            before absence counts against the asset rather than being treated as noise.</dd>
+          </div>
+          <div>
+            <dt>Effective period</dt>
+            <dd>In force from a recorded date, with no end date set</dd>
+            <dd class="gloss">A control applies to observations inside its effective period
+            only. Retiring one means ending it, not deleting it — so an old report stays
+            readable against the rules it was actually judged under.</dd>
+          </div>
+          <div>
+            <dt>Approval state</dt>
+            <dd><code>approved</code>, EIP-712 signed by
+            <span class="mono wrap-code">{{fact:approval.approver}}</span></dd>
+            <dd class="gloss">Approval changes exactly two fields — the approval state and
+            the compilation digest. Nothing else about a control can be edited by a human,
+            which is why a bad proposal has to be declined rather than repaired.</dd>
+          </div>
+          <div>
+            <dt>Content hash</dt>
+            <dd>SHA-256 over the control's canonical bytes</dd>
+            <dd class="gloss">The signed report references the control by this hash. Change
+            one byte of the control and the hash changes, so no report can silently point at
+            a different rule than the one it names.</dd>
+          </div>
+          <div>
+            <dt>Compilation</dt>
+            <dd>The artifact the control was accepted in</dd>
+            <dd class="gloss">The control is read from that artifact; the approval ledger can
+            only point at it, never restate it. The artifact also carries the model, prompt
+            and provider-response digests behind the proposal.</dd>
+          </div>
+        </dl>
+      </article>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">Pipeline</p>
+      <h2>From proposal to published verdict</h2>
+      <ol class="steps">
+        <li>
+          <span class="num" aria-hidden="true">1</span>
+          <div>
+            <h3>Proposed</h3>
+            <p>A model reads the issuer's published documents and proposes candidate
+            controls. Each cites the exact bytes it was drawn from and carries the compiler's
+            own confidence, alongside the prompt and response digests that produced it.</p>
+          </div>
+        </li>
+        <li>
+          <span class="num" aria-hidden="true">2</span>
+          <div>
+            <h3>Gated</h3>
+            <p>Deterministic checks screen every candidate before a human sees it. A
+            candidate below the confidence floor is abstained from — recorded in the
+            compilation artifact, never shown as approvable.</p>
+          </div>
+        </li>
+        <li>
+          <span class="num" aria-hidden="true">3</span>
+          <div>
+            <h3>Approved or declined, under signature</h3>
+            <p>A human decides each surviving candidate. Approval may change only the
+            approval state and the compilation digest. Since ledger version 2 every decision
+            — approvals and declines alike — carries the approver's EIP-712 signature over
+            the exact proposal it decides, so the identity behind the human boundary is
+            recoverable by anyone holding the bytes.</p>
+          </div>
+        </li>
+        <li>
+          <span class="num" aria-hidden="true">4</span>
+          <div>
+            <h3>Evaluated</h3>
+            <p>Each epoch the engine retrieves fresh evidence and evaluates every approved
+            control in force. A control the evidence cannot answer is reported unevaluable,
+            not skipped — an abstention is a result, and it is what keeps a thin evidence day
+            from reading as a clean one.</p>
+          </div>
+        </li>
+        <li>
+          <span class="num" aria-hidden="true">5</span>
+          <div>
+            <h3>Published</h3>
+            <p>Results are bound into a report by content hash, control-set root and evidence
+            root, signed with Ed25519, and published to the registries on X&nbsp;Layer
+            mainnet and testnet — where a <a href="/products/asset-gate">gate</a> can act on
+            them.</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">The approval ledger</p>
+      <h2>What was turned down is part of the record</h2>
+      <div class="stat-row">
+        <div class="stat">
+          <p class="st-n">{{fact:counts.controls_approved}}</p>
+          <p class="st-l">controls approved and in force</p>
+        </div>
+        <div class="stat">
+          <p class="st-n">{{fact:counts.controls_declined}}</p>
+          <p class="st-l">candidates declined, with reasons</p>
+        </div>
+        <div class="stat">
+          <p class="st-n">100%</p>
+          <p class="st-l">of decisions carry the approver's signature</p>
+        </div>
+      </div>
+
+      <div class="prose" style="margin-top: var(--s6)">
+        <p>A control set that silently omits what a human turned down cannot be audited for
+        why. So the ledger keeps both, and the declines are the more revealing half: most of
+        them are not invalid candidates at all.</p>
+      </div>
+
+      <div class="grid-2">
+        <article class="card">
+          <header class="control-head">
+            <h3 class="control-id">ustb-outstanding-shares-present</h3>
+            <span class="declined-tag">Declined</span>
+          </header>
+          <p class="control-subject">&ldquo;Compiler confidence is 0.80 against a gate of
+          &lt; 0.80, so it clears by zero margin. That is not a deterministic invalidity and
+          the candidate is well formed, but zero margin is not the evidence quality a first
+          approved set should rest on when ustb-nav-per-share-present already covers the NAV
+          value claim.&rdquo;</p>
+        </article>
+        <article class="card">
+          <header class="control-head">
+            <h3 class="control-id">ustb-yield-seven-day-present</h3>
+            <span class="declined-tag">Declined</span>
+          </header>
+          <p class="control-subject">&ldquo;Valid, but a third presence check on the same
+          yield document is additional scalar coverage rather than breadth.
+          ustb-yield-one-day-present is the representative field; approving all three would
+          present duplication as product scope.&rdquo;</p>
+        </article>
+      </div>
+
+      <div class="note">
+        <p>Reasons are quoted from the approval ledger itself, which is published inside
+        every verification bundle and hashed into every signed report. The current ledger
+        digest is <span class="mono wrap-code">{{fact:derived.ledger_sha256}}</span>, and the
+        decisions in it were signed on {{fact:approval.signed_on}} — dated when the
+        signatures were made, never backdated to the decisions they attest.</p>
+      </div>
+
+      <div class="cta-row">
+        <a class="cta" href="/dossier">See the controls as evaluated</a>
+        <a class="cta-ghost" href="/verify">Check the ledger yourself</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+{{> footer}}
+</body>
+</html>

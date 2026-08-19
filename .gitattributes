@@ -53,3 +53,8 @@ contracts/package-lock.json -text
 deploy/systemd/** text eol=lf
 # The nginx vhost is read by the same kind of consumer for the same reason.
 deploy/nginx/** text eol=lf
+
+# The vendored ethers build is content the /app page names by exact version and readers may
+# hash against the upstream release. Byte identity beats normalisation for the same reason
+# as every rule above; the license text travels with it.
+site2/assets/vendor/** -text

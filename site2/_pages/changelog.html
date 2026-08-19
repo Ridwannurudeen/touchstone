@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changelog · Touchstone</title>
+<meta name="description" content="Real dated events: controls taking effect, coverage triage, approvals, the first publication, and the control-set revision.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/changelog">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+{{> header}}
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Changelog</p>
+      <h1>Real events, real dates</h1>
+      <p class="t-lead prose">Every entry below is a dated fact backed by the
+      published data: the approval ledger, the signed bundle, or the asset
+      manifests. Nothing aspirational appears here.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <ol class="timeline">
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-19</p>
+          <div class="tl-body">
+            <h3>The site becomes a product, and gains its Terminal</h3>
+            <p>Every page is now rendered from one canonical data source — four external
+            audits in a row had caught hand-typed facts gone stale, so the counts,
+            addresses and sequences on this site are generated, not maintained. The
+            <a href="/app">Policy Terminal</a> reads both registries live, runs gate
+            checks, simulates and executes guarded actions through a connected wallet,
+            and verifies a signed bundle locally in the browser.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-19</p>
+          <div class="tl-body">
+            <h3>Every approval decision is now signed</h3>
+            <p>The approval ledger moved to version 2: each of its {{fact:counts.controls_approved}}
+            approvals and {{fact:counts.controls_declined}} declines carries the approver's
+            EIP-712 signature over the exact compiler proposal it decides, verified on every
+            load, declined entries included. Signatures are timestamped at signing —
+            {{fact:approval.signed_on}} — never backdated to the decisions they attest.
+            Reports published earlier commit to the version-1 unsigned ledger and their
+            bundles verify unchanged, forever.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-19</p>
+          <div class="tl-body">
+            <h3>First CONFIRMED states, and Registry v2 holds its first attestations</h3>
+            <p>The NAV this system refused on {{fact:asset.refused_on}} survived its
+            qualifying interval unchanged and became the first <strong>CONFIRMED</strong>
+            state — {{fact:counts.confirmed_reports}} reports across both chains, including
+            both policy verdicts under their own registry keys. Registry v2 went live on
+            testnet and mainnet the same day and holds all four policy attestations,
+            relayer-submitted with the publisher recovered on chain from EIP-712
+            signatures. The consumer gate that had refused the asset flipped to
+            <span class="mono">(true, "allowed")</span> with no control changed, and
+            permitted/refused GuardedAction pairs put both outcomes on chain.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-18</p>
+          <div class="tl-body">
+            <h2>Two corrections published, one on each chain</h2>
+            <p>Sequence&nbsp;1 on both chains was signed carrying an operational event
+            of <code>RECONFIRMED</code>. A first publication has nothing to reconfirm,
+            so that asserted a history which did not exist. The same reports also
+            carried a limitation reading &ldquo;This local-only report&rdquo; while
+            sitting on a public chain. Both statements were wrong in the signed bytes,
+            and signed bytes cannot be edited.</p>
+            <p>They were restated through the registry&rsquo;s
+            <code>publishCorrection</code> entry point: <strong>testnet sequence 3</strong>
+            (block 38617112) and <strong>mainnet sequence 2</strong> (block 68307118).
+            A correction restates; it does not re-decide. Each reproduces its
+            original&rsquo;s <code>control_set_root</code>, <code>evidence_root</code> and
+            approval-ledger digest exactly &mdash; the builder refuses to sign one that
+            cannot &mdash; and the reported state stays <code>UNVERIFIABLE</code> on both.
+            The limitation count is unchanged, because a correction that quietly dropped
+            a caveat would be using an honesty mechanism to say less.</p>
+            <p><code>epochSequence</code> still points at each epoch&rsquo;s <em>first</em>
+            publication, so a correction restates an epoch without opening one. One
+            consequence is worth stating plainly: on testnet the <em>latest</em> report is
+            now sequence&nbsp;3, which is an <em>older</em> epoch than sequence&nbsp;2.
+            That is what append-only correction looks like.</p>
+            <p>Testnet sequence&nbsp;2 was left alone. Its <code>RECONFIRMED</code> is
+            genuine.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-18</p>
+          <div class="tl-body">
+            <h2>Two retrieval routes re-measured</h2>
+            <p>FOBXX&rsquo;s regulator route was re-verified live and is bounded:
+            <code>data.sec.gov</code> returns HTTP&nbsp;200 in 29,354 bytes with 68
+            N-MFP3 filings, the latest filed 2026-08-06 for period 2026-07-31. Its
+            status had been reported as unavailable because the <em>daily issuer
+            feed</em> returns 403, which was allowed to describe the whole asset.
+            FOBXX carries monthly controls on filed evidence.</p>
+            <p>USDY&rsquo;s suspension was found to rest on the same mistake &mdash;
+            it was treated as one source when it is two, and only the attestation
+            archive is the 260&nbsp;MB one. A bounded daily page was measured at
+            1,544,898 bytes. It is <strong>not approved</strong>: the issuer&rsquo;s
+            published <code>collateralizationRatio</code> of 105.29 does not
+            reconcile with its own published <code>total</code> and
+            <code>outstandingValue</code>, which give 100.87%. That discrepancy was
+            found in audit, after this project had already written that the figures
+            were internally consistent. They are not, and no control can be written
+            on them until the field definitions come from the issuer.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-18</p>
+          <div class="tl-body">
+            <h2>Control set revised</h2>
+            <p>A five-control set was approved for USTB, with five candidates
+            declined. It applies only to sequences published after sequence 1.
+            Sequence 1 remains bound to the eight-control approval ledger it was
+            signed under — its digest is inside the signed report, and this site
+            never renders sequence 1 against the newer set.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-17</p>
+          <div class="tl-body">
+            <h2>First publication</h2>
+            <p>USTB sequence 1, epoch
+            <a href="/dossier/ustb-2026-08-17"><code>ustb-2026-08-17</code></a>,
+            published to the registry on X&nbsp;Layer testnet at block 38526525.
+            The reported state is UNVERIFIABLE: five of eight controls
+            satisfied, three unevaluable. Observed at
+            <span class="mono">2026-08-17T16:48:32.075003Z</span>.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-16</p>
+          <div class="tl-body">
+            <h2>Eight controls approved for USTB</h2>
+            <p>A human approved the eight-control set proposed from Superstate's
+            own documents. Two candidates —
+            <code>holdings-line-items-present</code> and
+            <code>ustb-fund-identifier-stable</code> — were declined, with the
+            reasons recorded verbatim in the approval ledger.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-15</p>
+          <div class="tl-body">
+            <h2>Coverage triage</h2>
+            <p>USDY suspended: its only attestation source is a 260,431,605-byte
+            archive with no bounded retrieval, so it cannot be scheduled. FOBXX
+            demoted: the daily issuer feed is unreachable from a production
+            host, so no daily-liveness or issuer-versus-regulator control may be
+            claimed until repeatable access is verified. OUSG opened as the
+            candidate second daily asset.</p>
+          </div>
+        </li>
+        <li class="tl-item">
+          <p class="tl-date mono">2026-08-14</p>
+          <div class="tl-body">
+            <h2>USTB controls take effect</h2>
+            <p>All eight USTB controls carry
+            <code>effective_from 2026-08-14</code>. From this date the controls
+            are in force; no end date is set.</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="cta-band">
+    <div class="wrap">
+      <h2>The record behind the dates</h2>
+      <p class="t-lead">Each event above is checkable against the signed bundle
+      and the coverage page.</p>
+      <div class="cta-row">
+        <a class="cta" href="/dossier/ustb-2026-08-17">Read the report</a>
+        <a class="cta-ghost" href="/coverage">See coverage</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+{{> footer}}
+
+</body>
+</html>

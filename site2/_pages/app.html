@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en" class="mode-dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Policy Terminal — Touchstone</title>
+<meta name="description" content="Read live RWA policy verdicts from X Layer, simulate and execute gate-guarded actions, and verify a signed bundle locally in your browser. Nothing is prerendered; every panel names the block and endpoint it read.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/app">
+<meta property="og:title" content="Touchstone Policy Terminal">
+<meta property="og:description" content="Live RWA policy verdicts from X Layer mainnet and testnet — read, simulate, execute, verify.">
+<meta property="og:url" content="https://touchstone.gudman.xyz/app">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  body.mode-dark { background: var(--term-ground); color: var(--term-ink); }
+  .mode-dark .site-head { background: var(--term-panel); border-bottom: 1px solid var(--term-rule); }
+  .mode-dark .site-nav a, .mode-dark .wordmark { color: var(--term-ink); }
+  .mode-dark .site-foot { border-top: 1px solid var(--term-rule); }
+  .term-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s5); margin-top: var(--s6); }
+  @media (max-width: 900px) { .term-grid { grid-template-columns: 1fr; } }
+  .term-controls { display: flex; flex-wrap: wrap; gap: var(--s3); align-items: center; margin-top: var(--s5); }
+  .verify-drop {
+    border: 2px dashed var(--term-rule);
+    border-radius: 13px;
+    padding: var(--s6);
+    text-align: center;
+    color: var(--term-muted);
+    margin-top: var(--s4);
+  }
+  .term-h { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: var(--t-micro); letter-spacing: 0.14em; color: var(--term-muted); text-transform: uppercase; margin: 0 0 var(--s3); }
+</style>
+</head>
+<body class="mode-dark">
+{{> header}}
+
+<main id="main">
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow" style="color:var(--copper-lit)">Policy Terminal</p>
+      <h1>The registry, read live</h1>
+      <p class="t-lead" style="color:var(--term-muted); max-width: 62ch">Every value on this
+      page is read from X&nbsp;Layer at the moment you ask, and every panel names the block
+      and endpoint it read. Reads need no wallet. Connecting one lets you simulate and
+      execute the same gate-guarded actions the contracts enforce on everyone.</p>
+
+      <div class="term-controls">
+        <label class="term-h" for="net-select" style="margin:0">Network</label>
+        <select id="net-select" class="term-select">
+          <option value="mainnet">X Layer mainnet · 196</option>
+          <option value="testnet">X Layer testnet · 1952</option>
+        </select>
+        <label class="term-h" for="key-select" style="margin:0">Key</label>
+        <select id="key-select" class="term-select"></select>
+        <button id="btn-refresh" class="term-btn term-btn--ghost" type="button">Re-read</button>
+      </div>
+
+      <div class="term-grid">
+        <div>
+          <p class="term-h">Latest report — live</p>
+          <div id="report-panel" class="term-panel" aria-live="polite"></div>
+        </div>
+        <div>
+          <p class="term-h">Gate decision — live</p>
+          <div id="gate-panel" class="term-panel" aria-live="polite"></div>
+          <p class="term-h" style="margin-top:var(--s5)">Guarded action</p>
+          <div class="term-panel">
+            <div class="term-controls" style="margin-top:0">
+              <select id="action-select" class="term-select"></select>
+              <button id="btn-connect" class="term-btn" type="button">Connect wallet</button>
+              <button id="btn-simulate" class="term-btn term-btn--ghost" type="button" disabled>Simulate</button>
+              <button id="btn-execute" class="term-btn term-btn--ghost" type="button" disabled>Execute</button>
+            </div>
+            <div id="wallet-state" aria-live="polite"></div>
+            <div id="action-panel" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="term-grid">
+        <div>
+          <p class="term-h">Verify a bundle — locally, in this tab</p>
+          <div class="term-panel">
+            <p style="font-size:var(--t-small); color:var(--term-muted)">Drop any Touchstone
+            verification bundle here. Checks run in your browser and nothing is uploaded:
+            the Ed25519 report signature, the approval-ledger digest and (for version-2
+            ledgers) every approver signature, the policy-manifest digest, each compilation
+            artifact's hash, and the Registry&nbsp;v2 attestation where the bundle carries
+            one. The panel also states what it does <em>not</em> check.</p>
+            <div id="verify-drop" class="verify-drop">
+              drop a bundle .json here, or
+              <label style="text-decoration:underline; cursor:pointer">choose a file<input id="verify-file" type="file" accept=".json,application/json" style="display:none"></label>
+            </div>
+            <div id="verify-panel" aria-live="polite"></div>
+          </div>
+        </div>
+        <div>
+          <p class="term-h">Your wallet's guarded executions</p>
+          <div class="term-panel">
+            <p style="font-size:var(--t-small); color:var(--term-muted)">Scans the most
+            recent ~4,500 blocks for <span class="mono">ActionExecuted</span> events whose
+            indexed caller is your connected address. Older history stays on the explorer.</p>
+            <div class="term-controls" style="margin-top:0">
+              <button id="btn-decisions" class="term-btn term-btn--ghost" type="button" disabled>Scan</button>
+            </div>
+            <div id="decisions-panel" aria-live="polite"></div>
+          </div>
+          <p class="term-h" style="margin-top:var(--s5)">What this page is</p>
+          <div class="term-panel">
+            <p style="font-size:var(--t-small); color:var(--term-muted); margin:0">This is
+            the one scripted page on the site. Its code is served from this host
+            (<a href="/assets/app.js">app.js</a>, <a href="/assets/vendor/ethers-6.17.0.umd.min.js">ethers 6.17.0</a>, MIT),
+            it talks only to X&nbsp;Layer RPC endpoints, and it holds no keys and no state.
+            The static proof pages — <a href="/dossier">dossier</a>, <a href="/verify">verify</a>,
+            <a href="/judge">judge</a> — work with JavaScript disabled entirely.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script type="application/json" id="terminal-config">
+{
+  "networks": {
+    "mainnet": {
+      "name": "X Layer mainnet",
+      "chainId": 196,
+      "rpc": ["https://xlayerrpc.okx.com", "https://rpc.xlayer.tech"],
+      "explorer": "{{fact:mainnet.explorer}}",
+      "registryV1": "{{fact:mainnet.registry_v1}}",
+      "registryV2": "{{fact:mainnet.registry_v2}}",
+      "keys": {
+        "freshness": {
+          "label": "USTB · policy disclosure-freshness:1",
+          "key": "0x{{fact:keys.freshness}}",
+          "registry": "v2",
+          "gate": "{{fact:mainnet.gate_freshness}}",
+          "bundle": "/data/ustb-2026-08-19-1-policy-disclosure-freshness-1.json"
+        },
+        "nav": {
+          "label": "USTB · policy nav-settlement:1",
+          "key": "0x{{fact:keys.nav}}",
+          "registry": "v2",
+          "gate": null,
+          "bundle": "/data/ustb-2026-08-19-1-policy-nav-settlement-1.json"
+        },
+        "asset": {
+          "label": "USTB · asset-wide verdict",
+          "key": "0x{{fact:keys.asset}}",
+          "registry": "v1",
+          "gate": null,
+          "bundle": "/data/ustb-2026-08-19-3.json"
+        }
+      },
+      "actions": {
+        "permitted": {
+          "label": "GuardedAction · freshness-pinned (permitted while CONFIRMED)",
+          "address": "{{fact:mainnet.guarded_permitted}}",
+          "kind": "guarded"
+        },
+        "refused": {
+          "label": "GuardedAction · never-reported key (always refused)",
+          "address": "{{fact:mainnet.guarded_refused}}",
+          "kind": "guarded"
+        }
+      }
+    },
+    "testnet": {
+      "name": "X Layer testnet",
+      "chainId": 1952,
+      "rpc": ["https://xlayertestrpc.okx.com/terigon", "https://testrpc.xlayer.tech/terigon"],
+      "explorer": "{{fact:testnet.explorer}}",
+      "registryV1": "{{fact:testnet.registry_v1}}",
+      "registryV2": "{{fact:testnet.registry_v2}}",
+      "keys": {
+        "freshness": {
+          "label": "USTB · policy disclosure-freshness:1",
+          "key": "0x{{fact:keys.freshness}}",
+          "registry": "v2",
+          "gate": "{{fact:testnet.gate_freshness}}",
+          "bundle": "/data/ustb-2026-08-19-1-policy-disclosure-freshness-1.json"
+        },
+        "nav": {
+          "label": "USTB · policy nav-settlement:1",
+          "key": "0x{{fact:keys.nav}}",
+          "registry": "v2",
+          "gate": null,
+          "bundle": "/data/ustb-2026-08-19-1-policy-nav-settlement-1.json"
+        },
+        "asset": {
+          "label": "USTB · asset-wide verdict",
+          "key": "0x{{fact:keys.asset}}",
+          "registry": "v1",
+          "gate": "{{fact:testnet.gate_v1}}",
+          "bundle": "/data/ustb-2026-08-19-4.json"
+        }
+      },
+      "actions": {
+        "permitted": {
+          "label": "GuardedAction · freshness-pinned (permitted while CONFIRMED)",
+          "address": "{{fact:testnet.guarded_permitted}}",
+          "kind": "guarded"
+        },
+        "refused": {
+          "label": "GuardedAction · never-reported key (always refused)",
+          "address": "{{fact:testnet.guarded_refused}}",
+          "kind": "guarded"
+        }
+      }
+    }
+  }
+}
+</script>
+<script src="/assets/vendor/ethers-6.17.0.umd.min.js"></script>
+<script src="/assets/app.js"></script>
+
+{{> footer}}
+</body>
+</html>

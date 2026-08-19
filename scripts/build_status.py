@@ -35,6 +35,41 @@ from touchstone.assets import USTB  # noqa: E402
 from touchstone.workspace import Workspace  # noqa: E402
 
 TEMPLATE = ROOT / "site2" / "_docs-template.html"
+PARTIALS = ROOT / "site2" / "_partials"
+FACTS = ROOT / "site2" / "_data" / "facts.json"
+
+
+def _chrome(page: str) -> str:
+    """Render the shared header/footer and fact tokens the template now carries.
+
+    Deliberately re-implemented from the committed files rather than importing the site
+    builder: that builder recomputes derived facts through a subprocess, and this script
+    runs unattended on the host every five minutes — a page of status must not gain a
+    dependency that can fail for reasons unrelated to status.
+    """
+    for path in sorted(PARTIALS.glob("*.html")):
+        page = page.replace(
+            "{{> " + path.stem + "}}", path.read_text(encoding="utf-8").rstrip("\n")
+        )
+    flat: dict[str, str] = {}
+
+    def flatten(value: object, prefix: str) -> None:
+        if isinstance(value, dict):
+            for key, inner in value.items():
+                flatten(inner, f"{prefix}{key}.")
+        else:
+            flat[prefix.rstrip(".")] = str(value)
+
+    flatten(json.loads(FACTS.read_text(encoding="utf-8")), "")
+    for key, value in flat.items():
+        page = page.replace("{{fact:" + key + "}}", value)
+    if "{{" in page:
+        offset = page.index("{{")
+        raise SystemExit(
+            f"status template holds an unrendered token near {page[offset : offset + 50]!r}"
+        )
+    return page
+
 
 # What each transition means, in the reader's terms rather than the enum's. `PAYLOAD_CHANGED`
 # gets the longest gloss because it is the one a reader is most likely to over-read: the bytes
@@ -172,7 +207,7 @@ sentence as current.</p>
 service's configuration; the gate result is a separate fact about the testnet consumer
 contract. Neither implies the other.</p>
 """
-    page = TEMPLATE.read_text(encoding="utf-8")
+    page = _chrome(TEMPLATE.read_text(encoding="utf-8"))
     page = page.replace("<!--DOC_TITLE-->", "Status")
     page = page.replace("<!--DOC_BODY-->", body)
     return page.replace(

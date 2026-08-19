@@ -268,8 +268,12 @@ Touchstone is.
 - **Compliance, suitability, credit.** Touchstone does not rate. It does
   not recommend. It does not decide listings.
 - **Safety of an asset or of a consumer protocol.** `AssetGate` reacts
-  to verification freshness. A permissive policy admits stale state. The
-  gate is live on X Layer testnet at `0xAac48DC261B04737FDCB101D5049395121034a83`, where it currently refuses USTB; it is not deployed on mainnet, and no third party consumes it.
+  to verification freshness. A permissive policy admits stale state. Gates are live on
+  both chains — the original testnet gate at
+  `0xAac48DC261B04737FDCB101D5049395121034a83` (which refused USTB for two days and has
+  admitted it since the first CONFIRMED state on 2026-08-19) and policy-pinned gates on
+  testnet and mainnet — but every deployed consumer is this project's own; no third
+  party consumes any of them yet.
 - **Independent attestation, audit, or formal verification of
   Touchstone itself.** The Phase 3 formal threat model, independent
   contract audit, and external pipeline review are not claimed. This

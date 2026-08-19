@@ -216,8 +216,16 @@ def main(argv: list[str] | None = None) -> int:
             arguments.paths
             # OPERATIONS is rendered to the public site, so a stale header there is a
             # public claim like any other — an external audit found it contradicting
-            # the live services while this scan looked only at README and site2.
-            or (Path("README.md"), Path("docs/OPERATIONS.md"), Path("site2"))
+            # the live services while this scan looked only at README and site2. The SDK
+            # README joined the list the same way: it told public-repo readers that v2
+            # was not deployed while the SDK's own address table carried both v2
+            # deployments, and this gate never looked at it.
+            or (
+                Path("README.md"),
+                Path("docs/OPERATIONS.md"),
+                Path("sdk/README.md"),
+                Path("site2"),
+            )
         )
     )
     try:

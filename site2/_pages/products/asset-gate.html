@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AssetGate — Touchstone</title>
+<meta name="description" content="AssetGate is the consumer contract that turns a Touchstone policy verdict into an on-chain permission: check(key) returns (allowed, reason), with every pin fixed at construction. Live on X Layer mainnet and testnet.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/products/asset-gate">
+<meta property="og:title" content="Touchstone AssetGate">
+<meta property="og:description" content="One question, answered on chain: may this action proceed on this asset's evidence? Live gates and guarded actions on X Layer mainnet and testnet.">
+<meta property="og:url" content="https://touchstone.gudman.xyz/products/asset-gate">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  pre.code-block { border: 0; box-shadow: none; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s5); }
+  .gate-call--ok { border-left-color: var(--st-satisfied); }
+  .gate-true { color: var(--st-satisfied); font-weight: 600; }
+  .net-block + .net-block { margin-top: var(--s6); }
+  .net-h {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--t-micro);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-500);
+    margin: 0;
+  }
+  .reason-str { white-space: nowrap; }
+  .check-order { counter-reset: gatecheck; list-style: none; margin: var(--s6) 0 0; padding: 0; max-width: 74ch; }
+  .check-order li {
+    counter-increment: gatecheck;
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: var(--s4);
+    padding: var(--s4) 0;
+    border-top: 1px solid var(--rule-soft);
+  }
+  .check-order li:first-child { border-top: 0; }
+  .check-order li::before {
+    content: counter(gatecheck, decimal-leading-zero);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--t-mono);
+    color: var(--ink-400);
+    padding-top: 3px;
+  }
+  .check-order p { margin: 0; font-size: var(--t-small); color: var(--ink-500); }
+  .check-order strong { display: block; color: var(--ink-900); font-weight: 600; }
+</style>
+</head>
+<body>
+{{> header}}
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Products · AssetGate</p>
+      <h1>The contract that acts only when the evidence holds</h1>
+      <p class="t-lead prose">AssetGate answers one question on chain:
+      <code>check(key)</code> returns <code>(allowed, reason)</code>. Every condition it
+      applies — which statuses count, how old an observation may be, which publisher, which
+      control set — is fixed in the constructor and cannot be widened afterwards. A consumer
+      contract calls it before it acts; when the answer is no, the action reverts with the
+      gate's own reason string.</p>
+      <div class="chip-row">
+        <span class="chip chip-live"><i class="dot" aria-hidden="true"></i>LIVE · MAINNET {{fact:mainnet.chain_id}}</span>
+        <span class="chip chip-live"><i class="dot" aria-hidden="true"></i>LIVE · TESTNET {{fact:testnet.chain_id}}</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">Live decision</p>
+      <h2>What the mainnet gate answers today</h2>
+      <div class="gate-call gate-call--ok">
+        <p class="gate-label mono">{{fact:mainnet.gate_freshness}} · chain {{fact:mainnet.chain_id}}</p>
+        <p class="gate-line mono">check(0x{{fact:keys.freshness}})</p>
+        <p class="gate-result mono"><span class="gate-true">true</span>, <span class="gate-reason">&ldquo;allowed&rdquo;</span></p>
+      </div>
+      <p class="prose secondary">The <strong>{{fact:policies.freshness_id}}</strong> verdict
+      is CONFIRMED, the observation is inside the window the gate was constructed with, the
+      publisher matches the lineage it requires, and the control-set root is the one it pins.
+      All five conditions hold, so the gate permits — which is why the guarded consumer bound
+      to that key was able to execute on chain, and the one bound to an unpublished key was
+      not.</p>
+      <p class="prose secondary">State of record {{fact:site.updated}}. Reports expire at end
+      of day UTC. When the current report passes its <code>validUntil</code>, this same call
+      answers <code>(false, &ldquo;observation too old&rdquo;)</code> until the next daily
+      window publishes a new one — the gate treats an expired report as unreported rather
+      than as last-known-good, which is the entire point of publishing an expiry.</p>
+      <div class="cta-row">
+        <a class="cta" href="/app">Run this check live</a>
+        <a class="cta-ghost" href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.gate_freshness}}">View the gate on the explorer</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">AssetGate v1 · live</p>
+      <h2>The five conditions, in the order they are applied</h2>
+      <p class="prose secondary">The gate reads the latest report for the key and returns on
+      the first condition that fails, with the reason string exactly as written below. It
+      never interprets a state charitably and it never falls back.</p>
+
+      <ol class="check-order">
+        <li>
+          <div>
+            <strong>The key is known</strong>
+            <p>A key with no report has sequence zero. The gate answers
+            <code class="reason-str">&ldquo;unknown asset&rdquo;</code> — not a default, not
+            an empty result a caller might mistake for a permission.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <strong>The status is one it accepts</strong>
+            <p>The allowed statuses are a bit mask fixed at construction; the deployed gates
+            accept <strong>CONFIRMED only</strong>. Anything else —&nbsp;STALE, INCONSISTENT,
+            UNVERIFIABLE&nbsp;— returns
+            <code class="reason-str">&ldquo;status not allowed&rdquo;</code>. The constructor
+            rejects an empty mask and any mask with bits outside the four statuses.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <strong>The observation is current</strong>
+            <p>Three tests share one reason string. The report must not be observed in the
+            future, the current time must not be past the report's own
+            <code>validUntil</code>, and the elapsed time since observation must not exceed
+            the <code>maxObservationAge</code> the gate was constructed with. Any of the
+            three returns
+            <code class="reason-str">&ldquo;observation too old&rdquo;</code>.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <strong>The publisher is the right one</strong>
+            <p>With a required publisher pinned, the report's publisher must share that
+            publisher's registry identity — which is what makes a key rotation survivable and
+            a substituted signer not. With no publisher pinned, the report's publisher must
+            at least be authorized on the registry. Otherwise
+            <code class="reason-str">&ldquo;wrong publisher&rdquo;</code>.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <strong>The control set is the agreed one</strong>
+            <p>The report commits to the exact set of approved controls it was evaluated
+            under. The gate pins that root, so a quietly weakened control set cannot pass as
+            the one that was agreed to:
+            <code class="reason-str">&ldquo;control-set mismatch&rdquo;</code>.</p>
+          </div>
+        </li>
+      </ol>
+      <p class="t-small secondary under-table">All five pass and the gate returns
+      <code>(true, &ldquo;allowed&rdquo;)</code>. The same logic is available as a
+      state-changing call, <code>demand(key)</code>, which reverts with the reason instead of
+      returning it — for consumers that would rather fail the transaction than branch.</p>
+      <p class="t-small secondary under-table">The live pins, read from chain: the mainnet
+      freshness gate holds <span class="mono">maxObservationAge {{fact:mainnet.gate_freshness_max_age}}s</span>
+      and control-set root <span class="mono">0x{{fact:mainnet.gate_freshness_root}}</span>;
+      the testnet freshness gate holds {{fact:testnet.gate_freshness_max_age}}s and the same
+      root; the first-generation testnet gate holds {{fact:testnet.gate_v1_max_age}}s and a
+      <strong>zero</strong> control-set root &mdash; the opt-out its own successors now refuse
+      at the constructor, kept on chain as the reason the rule exists.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">v1 and v2</p>
+      <h2>Two generations of the same contract</h2>
+      <p class="prose secondary">AssetGate v1 is the deployed generation, reading a
+      first-generation registry with five conditions and five pins. AssetGateV2 reads a v2
+      registry, adds four conditions and three more pins, and refuses at construction to be
+      deployed with any of them left blank. It is built and tested, and deploys at the next
+      publication window.</p>
+
+      <div class="table-scroll">
+        <table>
+          <caption class="sr">AssetGate v1 and AssetGateV2 compared, pin by pin</caption>
+          <thead>
+            <tr>
+              <th scope="col">Pin</th>
+              <th scope="col">AssetGate v1</th>
+              <th scope="col">AssetGateV2</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>registry</strong></td>
+              <td>Immutable. Must be a contract, not an address with no code.</td>
+              <td>Same, against a v2 registry.</td>
+            </tr>
+            <tr>
+              <td><strong>allowedStatuses</strong></td>
+              <td>CONFIRMED only on the live gates. Empty or out-of-range masks are rejected.</td>
+              <td>Identical.</td>
+            </tr>
+            <tr>
+              <td><strong>maxObservationAge</strong></td>
+              <td>Immutable ceiling on evidence age, applied alongside the report's own expiry.</td>
+              <td>Identical.</td>
+            </tr>
+            <tr>
+              <td><strong>requiredPublisher</strong></td>
+              <td>Publisher lineage, or any authorized publisher when left unset.</td>
+              <td>Identical.</td>
+            </tr>
+            <tr>
+              <td><strong>requiredControlSetRoot</strong></td>
+              <td>Enforced when nonzero; zero opts out of the binding.</td>
+              <td><strong>Must be nonzero.</strong> The constructor reverts on zero, so a gate cannot claim policy protection it does not require.</td>
+            </tr>
+            <tr>
+              <td><strong>expectedPolicyId</strong></td>
+              <td>—</td>
+              <td><strong>Must be nonzero.</strong> The report's policy identity must match exactly, so a verdict for one policy cannot answer for another.</td>
+            </tr>
+            <tr>
+              <td><strong>expectedPolicyRoot</strong></td>
+              <td>—</td>
+              <td><strong>Must be nonzero.</strong> Pins the exact policy manifest digest the protection was agreed against.</td>
+            </tr>
+            <tr>
+              <td><strong>expectedApprovalDigest</strong></td>
+              <td>—</td>
+              <td><strong>Must be nonzero.</strong> Pins the human approval ledger behind the control set, so a publisher cannot swap the human decision while every other pin stays identical.</td>
+            </tr>
+            <tr>
+              <td><strong>report digest</strong></td>
+              <td>—</td>
+              <td>A stored report with a zero digest is refused before any other check.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <caption class="sr">Every reason string a gate can return</caption>
+          <thead>
+            <tr>
+              <th scope="col">Reason</th>
+              <th scope="col">Meaning</th>
+              <th scope="col">Generation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono reason-str">unknown asset</td><td>No report has ever been published under this key.</td><td>v1 · v2</td></tr>
+            <tr><td class="mono reason-str">invalid report digest</td><td>The stored report carries no report digest to verify against.</td><td>v2</td></tr>
+            <tr><td class="mono reason-str">policy-id mismatch</td><td>The verdict answers a different policy than this gate protects.</td><td>v2</td></tr>
+            <tr><td class="mono reason-str">policy-root mismatch</td><td>The policy text behind the verdict is not the manifest this gate pinned.</td><td>v2</td></tr>
+            <tr><td class="mono reason-str">status not allowed</td><td>The state is not in the gate's accepted mask.</td><td>v1 · v2</td></tr>
+            <tr><td class="mono reason-str">observation too old</td><td>Observed in the future, past its own expiry, or older than the pinned ceiling.</td><td>v1 · v2</td></tr>
+            <tr><td class="mono reason-str">wrong publisher</td><td>The report's publisher is outside the required lineage.</td><td>v1 · v2</td></tr>
+            <tr><td class="mono reason-str">control-set mismatch</td><td>The report was evaluated under a different set of approved controls.</td><td>v1 · v2</td></tr>
+            <tr><td class="mono reason-str">approval mismatch</td><td>The control set carries a different human approval ledger than the pinned one.</td><td>v2</td></tr>
+            <tr><td class="mono reason-str">allowed</td><td>Every condition held. The consumer may act.</td><td>v1 · v2</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">Enforcement on chain</p>
+      <h2>One gate, one permitted action, one refused action</h2>
+      <p class="prose secondary">Each chain carries a matched pair of guarded consumers
+      sharing one gate. The first is bound to a policy key whose verdict is CONFIRMED, so its
+      action executes and its counter moves. The second is bound to a key derived from an
+      identifier no report has ever been published under, so the gate answers
+      <code>(false, &ldquo;unknown asset&rdquo;)</code> and the action reverts. The refusal
+      was sent as a real transaction with a fixed gas limit rather than simulated, because a
+      refusal that only ever happens in an <code>eth_call</code> is a refusal nobody can point
+      at. Both outcomes were read back from receipts.</p>
+
+      <div class="net-block">
+        <p class="net-h">X Layer mainnet · chain {{fact:mainnet.chain_id}}</p>
+        <div class="table-scroll">
+          <table>
+            <caption class="sr">Gate and guarded consumers on X Layer mainnet</caption>
+            <thead>
+              <tr>
+                <th scope="col">Contract</th>
+                <th scope="col">Address</th>
+                <th scope="col">Outcome</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>AssetGate</strong><span class="td-sub">pinned to {{fact:policies.freshness_id}}</span></td>
+                <td class="mono"><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.gate_freshness}}">{{fact:mainnet.gate_freshness}}</a></td>
+                <td>first answered <span class="mono">(true, &ldquo;allowed&rdquo;)</span> on {{fact:asset.first_confirmed_on}} · block {{fact:mainnet.gate_freshness_block}}</td>
+              </tr>
+              <tr>
+                <td><strong>GuardedAction</strong><span class="td-sub">permitted key</span></td>
+                <td class="mono"><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.guarded_permitted}}">{{fact:mainnet.guarded_permitted}}</a></td>
+                <td>executed</td>
+              </tr>
+              <tr>
+                <td><strong>GuardedAction</strong><span class="td-sub">never-published key</span></td>
+                <td class="mono"><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.guarded_refused}}">{{fact:mainnet.guarded_refused}}</a></td>
+                <td>reverted, counter unchanged</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="net-block">
+        <p class="net-h">X Layer testnet · chain {{fact:testnet.chain_id}}</p>
+        <div class="table-scroll">
+          <table>
+            <caption class="sr">Gates and guarded consumers on X Layer testnet</caption>
+            <thead>
+              <tr>
+                <th scope="col">Contract</th>
+                <th scope="col">Address</th>
+                <th scope="col">Outcome</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>AssetGate</strong><span class="td-sub">pinned to {{fact:policies.freshness_id}}</span></td>
+                <td class="mono"><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.gate_freshness}}">{{fact:testnet.gate_freshness}}</a></td>
+                <td>guards the pair below</td>
+              </tr>
+              <tr>
+                <td><strong>AssetGate</strong><span class="td-sub">pinned to the {{fact:asset.id}} asset key</span></td>
+                <td class="mono"><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.gate_v1}}">{{fact:testnet.gate_v1}}</a></td>
+                <td>the first gate deployed against the registry</td>
+              </tr>
+              <tr>
+                <td><strong>GuardedAction</strong><span class="td-sub">permitted key</span></td>
+                <td class="mono"><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.guarded_permitted}}">{{fact:testnet.guarded_permitted}}</a></td>
+                <td>executed</td>
+              </tr>
+              <tr>
+                <td><strong>GuardedAction</strong><span class="td-sub">never-published key</span></td>
+                <td class="mono"><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.guarded_refused}}">{{fact:testnet.guarded_refused}}</a></td>
+                <td>reverted, counter unchanged</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="t-small secondary under-table">{{fact:counts.enforcement_txs}} enforcement
+      transactions across the {{fact:counts.networks}} chains. Both addresses in each pair
+      also exist on the other network as different contracts — read every row with its chain
+      id attached.</p>
+      <p class="t-small secondary under-table">The receipts themselves: mainnet
+      <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.guarded_permitted_tx}}">permitted execution</a> &middot;
+      <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.guarded_refused_tx}}">refused execution (status&nbsp;0)</a>;
+      testnet
+      <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.guarded_permitted_tx}}">permitted</a> &middot;
+      <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.guarded_refused_tx}}">refused (status&nbsp;0)</a>.
+      The refusals were sent with a fixed gas limit precisely so they would exist as
+      transactions a reader can cite, not only as reverted simulations.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">Integration</p>
+      <h2>Two functions, and your action is policy-gated</h2>
+      <p class="prose secondary">Consumers depend on the interface, not on a generation. Both
+      gates answer the same selector, so a contract written against
+      <code>ITouchstoneGate</code> keeps working when its gate is upgraded from a v1 registry
+      to a v2 one — no consumer redeployment, which is the point of having an interface at
+      all.</p>
+
+      <p class="code-block-label">ITouchstoneGate.sol</p>
+      <pre class="code-block"><code><span class="c-comment">// SPDX-License-Identifier: Apache-2.0</span>
+pragma solidity ^0.8.24;
+
+interface <span class="c-key">ITouchstoneGate</span> {
+    function check(
+        bytes32 assetKey
+    ) external view returns (bool allowed, string memory reason);
+}</code></pre>
+
+      <p class="code-block-label">THE CONSUMER PATTERN</p>
+      <pre class="code-block"><code><span class="c-comment">// The gate and the key are immutable: a consumer cannot be re-pointed</span>
+<span class="c-comment">// at a friendlier gate after it has been trusted.</span>
+ITouchstoneGate public immutable gate;
+bytes32 public immutable assetKey;
+
+function execute() external {
+    (bool allowed, string memory reason) = gate.check(assetKey);
+    if (!allowed) revert <span class="c-key">ActionRefused</span>(assetKey, reason);
+
+    uint256 nextAction = actionCount + 1;
+    actionCount = nextAction;
+    emit ActionExecuted(assetKey, msg.sender, nextAction);
+}</code></pre>
+
+      <p class="prose secondary">The refusal carries the gate's own reason string up to the
+      caller, so an integrator sees <em>why</em> the action was refused rather than a bare
+      revert — and the same string is what the Policy Terminal shows before you ever send a
+      transaction.</p>
+      <div class="cta-row">
+        <a class="cta" href="/app">Launch Terminal</a>
+        <a class="cta-ghost" href="/developers">Start Building</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">What a gate does not do</p>
+      <h2>The limits, stated plainly</h2>
+      <div class="prose">
+        <p>A gate reads a registry; it does not audit an issuer. It can prove that a verdict
+        was published by the required publisher, under the pinned control set, inside the
+        freshness window — and nothing about whether the issuer's underlying figures are
+        true. That distinction is the product, not a caveat around it.</p>
+        <p>Every pin is immutable by construction. Widening a gate means deploying a new one
+        and pointing consumers at it, in public, rather than quietly relaxing a threshold —
+        which also means a gate deployed against a control set that is still moving would be
+        wrong the day it shipped.</p>
+      </div>
+      <div class="cta-row">
+        <a class="cta-ghost" href="/products/registry">How the registry records verdicts</a>
+        <a class="cta-ghost" href="/security">Trust center</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+{{> footer}}
+</body>
+</html>

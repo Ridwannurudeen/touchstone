@@ -268,6 +268,52 @@ overwrite that lost two testnet policy bundles.
 
 ---
 
+## G. Audit #4 (2026-08-19, website vs RedStone-level) — execution record
+
+The fourth external report audited the public website: "an unusually polished technical
+dossier" that needed to become a product site, with a P0/P1/P2 ladder ending in a live
+Policy Terminal at the center and the dossier moved into the proof layer behind it.
+
+**Review note:** Codex reached its usage limit mid-evening on 2026-08-19 and is unavailable
+until 2026-08-21; this batch's design review ran against the second reviewer only, and the
+whole batch queues for Codex re-review when it returns.
+
+Executed (agent):
+- Pages are now **generated from one canonical data source** (P0.11): `scripts/build_site.py`
+  renders `site2/_pages/` sources with shared header/footer partials and `{{fact:*}}` tokens
+  from `site2/_data/facts.json` (chain facts, committed and chain-verified) plus facts derived
+  from the tree; CI refuses a rendered page that does not match its source. `build_docs.py`
+  and `build_status.py` consume the same partials, because the docs template's own footer had
+  gone stale exactly the way every hand-typed fact here has.
+- Every address and transaction on the site was **re-verified from chain** before it became a
+  fact: contracts classified at the deployer's CREATE addresses on both chains, publication
+  transactions recovered from the workspaces' transparency logs, v2 attestations and
+  permit/refuse executions recovered by bounded log scans (the public endpoints cap
+  `eth_getLogs` at 100 blocks; a silent-empty retry wrapper produced a zero-event run first,
+  and was replaced with one that raises).
+- **Policy Terminal** at `/app` (P1.1–5): live reads of both registries on both chains, gate
+  checks with exact on-chain reasons, wallet connect (EIP-1193; OKX Wallet when present),
+  chain switching, simulate and execute of guarded actions, a local in-browser bundle
+  verifier (Ed25519 via WebCrypto, approver and v2-attestation recovery via a self-hosted
+  ethers build) that states what it does not check, and a per-wallet execution history scan.
+  The nginx CSP stays `script-src 'none'` everywhere except the `/app` route, whose policy
+  names exactly the X Layer RPC hosts the page may reach.
+- Full information-architecture rebuild (P0.1–7, 10): new nav (Products / Solutions / Assets
+  / Developers / Security · Launch Terminal), outcome-led homepage per the audit's blueprint,
+  product stack, solutions personas, assets pages, developers and security pages, judge page
+  cut to the five things, verify page in three tabs, dossier with network/registry/correction
+  badges and explorer links, Open Graph and JSON-LD metadata, sitemap and robots.
+- Chain-aware bundle filenames (P0.8) had landed in the pipeline the same evening.
+
+Owner-gated from this audit: OKLink source verification (API key) and "verified contract"
+badges; an external integration; OKX.AI service listing; institutional/company pages; brand
+clearance. Deliberately deferred with reasons: the Next.js/Astro rebuild (§15 — the audit
+itself licenses keeping the lightweight static architecture with the Terminal as an island;
+a framework migration days before the deadline is how judges meet a broken site) and the
+six illustration systems (P2, after the deploys).
+
+---
+
 ## E. What I would decline to build, on the merits
 
 - **Chasing the 200,000 USDT Launch Grant.** It needs 10M USDT of genuine OKX DEX interface

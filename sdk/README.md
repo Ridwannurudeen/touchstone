@@ -1,9 +1,9 @@
 # Touchstone SDK
 
 The SDK is the small external-consumer surface for Touchstone policy gates and Registry v2
-events. It does not claim that v2 is deployed: the checked-in deployment table records the
-two legacy registry addresses and leaves `v2RegistryAddress` null until an owner-approved
-deployment exists.
+events. The checked-in deployment table carries the live addresses for both chains — the
+legacy registries and, since 2026-08-19, the Registry v2 deployments the owner approved —
+so a consumer reads real contracts out of the box.
 
 ## Five-minute integration
 

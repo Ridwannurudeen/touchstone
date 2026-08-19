@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registry — Touchstone</title>
+<meta name="description" content="Two registry generations live on X Layer mainnet and testnet: v1 publisher-authenticated commitments, v2 EIP-712 attested reports a relayer can submit. Addresses, sequences, events and the policy-key model.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/products/registry">
+<meta property="og:title" content="Touchstone Registry">
+<meta property="og:description" content="Sequenced, signed RWA policy verdicts on X Layer — v1 publisher-authenticated, v2 EIP-712 attested. Live on both chains.">
+<meta property="og:url" content="https://touchstone.gudman.xyz/products/registry">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  pre.code-block { border: 0; box-shadow: none; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s5); }
+  .net-block + .net-block { margin-top: var(--s6); }
+  .net-h {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--t-micro);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-500);
+    margin: 0;
+  }
+  .field-name { white-space: nowrap; }
+</style>
+</head>
+<body>
+{{> header}}
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Products · Registry</p>
+      <h1>Every policy verdict, sequenced on X&nbsp;Layer</h1>
+      <p class="t-lead prose">The registry is where a Touchstone verdict becomes something a
+      contract can act on. A report lands at a sequence number under an asset or policy key,
+      carries the roots it was evaluated under, and stays there. Two generations run side by
+      side on both chains: v1 authenticates the publisher by transaction sender, v2 verifies
+      an EIP-712 attestation on chain so a relayer can pay the gas without being the
+      reporting authority.</p>
+      <div class="chip-row">
+        <span class="chip chip-live"><i class="dot" aria-hidden="true"></i>X LAYER MAINNET · {{fact:mainnet.chain_id}}</span>
+        <span class="chip chip-live"><i class="dot" aria-hidden="true"></i>X LAYER TESTNET · {{fact:testnet.chain_id}}</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="trust-strip">
+    <div class="wrap">
+      <div class="trust-cells">
+        <div class="trust-cell">
+          <p class="tc-k">PUBLICATIONS</p>
+          <p><strong>{{fact:counts.reports_published}}</strong> reports on chain</p>
+        </div>
+        <div class="trust-cell">
+          <p class="tc-k">CONFIRMED</p>
+          <p><strong>{{fact:counts.confirmed_reports}}</strong> reached CONFIRMED</p>
+        </div>
+        <div class="trust-cell">
+          <p class="tc-k">V2 ATTESTATIONS</p>
+          <p><strong>{{fact:counts.v2_attestations}}</strong> relayer-submitted</p>
+        </div>
+        <div class="trust-cell">
+          <p class="tc-k">NETWORKS</p>
+          <p><strong>{{fact:counts.networks}}</strong> chains, same code</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">Two generations</p>
+      <h2>What each registry guarantees</h2>
+      <p class="prose secondary">Both are live on both chains. A consumer picks the
+      generation whose authentication model it needs; the report semantics — statuses,
+      epochs, sequences, corrections — are the same in each.</p>
+
+      <div class="grid-2">
+        <article class="card">
+          <h3>Registry v1 <span class="badge">legacy</span></h3>
+          <p>Publisher-authenticated. Only an authorized address may call
+          <code>publish</code>, and the contract records <code>msg.sender</code> as the
+          report's publisher — the transaction sender <em>is</em> the reporting authority.
+          The stored report commits to a control-set root, an evidence root, an epoch key, a
+          status, an observation window and a report URI.</p>
+          <p>The whole asset lineage lives here: the daily USTB reports on both chains, the
+          two corrections, and the first CONFIRMED states.</p>
+        </article>
+        <article class="card">
+          <h3>Registry v2 <span class="badge badge-v2">EIP-712</span></h3>
+          <p>Attestation-authenticated. <code>publish</code> takes a report struct plus a
+          65-byte signature; the contract rebuilds the EIP-712 digest, recovers the signer,
+          and refuses unless the recovered address equals the <code>publisher</code> named
+          inside the struct — and unless that publisher is authorized. Anyone may send the
+          transaction.</p>
+          <p>It also chains: each report names the previous sequence's report digest as its
+          <code>parentDigest</code>, so a gap in the lineage is a revert rather than a
+          silence.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">Deployments</p>
+      <h2>Addresses, by chain</h2>
+      <p class="prose secondary">The deployer's nonce sequence replays across chains, so
+      several of these addresses exist on <em>both</em> networks as entirely different
+      contracts. Read each table as a whole: the chain id is the only discriminator, and an
+      address alone identifies nothing here.</p>
+
+      <div class="net-block">
+        <p class="net-h">X Layer mainnet · chain {{fact:mainnet.chain_id}}</p>
+        <div class="table-scroll">
+          <table>
+            <caption class="sr">Touchstone contracts on X Layer mainnet</caption>
+            <thead>
+              <tr>
+                <th scope="col">Contract</th>
+                <th scope="col">Address</th>
+                <th scope="col">Deployed at block</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Registry v1</strong><span class="td-sub">publisher-authenticated; holds the asset lineage</span></td>
+                <td class="mono"><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.registry_v1}}">{{fact:mainnet.registry_v1}}</a></td>
+                <td class="mono">{{fact:mainnet.registry_v1_block}}</td>
+              </tr>
+              <tr>
+                <td><strong>Registry v2</strong><span class="td-sub">EIP-712 attested; holds the policy keys</span></td>
+                <td class="mono"><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.registry_v2}}">{{fact:mainnet.registry_v2}}</a></td>
+                <td class="mono"><a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.registry_v2_deploy_tx}}">{{fact:mainnet.registry_v2_block}}</a></td>
+              </tr>
+              <tr>
+                <td><strong>Publisher</strong><span class="td-sub">authorized on both generations</span></td>
+                <td class="mono"><a href="{{fact:mainnet.explorer}}/address/{{fact:roles.publisher}}">{{fact:roles.publisher}}</a></td>
+                <td class="mono">—</td>
+              </tr>
+              <tr>
+                <td><strong>Relayer</strong><span class="td-sub">sends v2 transactions; signs nothing else</span></td>
+                <td class="mono"><a href="{{fact:mainnet.explorer}}/address/{{fact:roles.relayer}}">{{fact:roles.relayer}}</a></td>
+                <td class="mono">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="net-block">
+        <p class="net-h">X Layer testnet · chain {{fact:testnet.chain_id}}</p>
+        <div class="table-scroll">
+          <table>
+            <caption class="sr">Touchstone contracts on X Layer testnet</caption>
+            <thead>
+              <tr>
+                <th scope="col">Contract</th>
+                <th scope="col">Address</th>
+                <th scope="col">Deployed at block</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Registry v1</strong><span class="td-sub">publisher-authenticated; holds the asset lineage</span></td>
+                <td class="mono"><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.registry_v1}}">{{fact:testnet.registry_v1}}</a></td>
+                <td class="mono">{{fact:testnet.registry_v1_block}}</td>
+              </tr>
+              <tr>
+                <td><strong>Registry v2</strong><span class="td-sub">EIP-712 attested; holds the policy keys</span></td>
+                <td class="mono"><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.registry_v2}}">{{fact:testnet.registry_v2}}</a></td>
+                <td class="mono"><a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.registry_v2_deploy_tx}}">{{fact:testnet.registry_v2_block}}</a></td>
+              </tr>
+              <tr>
+                <td><strong>Publisher</strong><span class="td-sub">authorized on both generations</span></td>
+                <td class="mono"><a href="{{fact:testnet.explorer}}/address/{{fact:roles.publisher}}">{{fact:roles.publisher}}</a></td>
+                <td class="mono">—</td>
+              </tr>
+              <tr>
+                <td><strong>Relayer</strong><span class="td-sub">sends v2 transactions; signs nothing else</span></td>
+                <td class="mono"><a href="{{fact:testnet.explorer}}/address/{{fact:roles.relayer}}">{{fact:roles.relayer}}</a></td>
+                <td class="mono">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="note">
+        <p>Each registry address above is also live on the other chain as a different
+        contract: a registry generation on one network is a superseded registry, a gate or a
+        guarded consumer on the other. The publisher and relayer are the same identities
+        across both chains, but a tool that resolves a Touchstone <em>contract</em> address
+        without pinning the chain id will read the wrong contract and get a plausible
+        answer.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">State</p>
+      <h2>What each key holds right now</h2>
+      <p class="prose secondary">One asset key and two policy keys per chain. The asset key
+      carries the daily USTB lineage; each policy key carries one policy's verdict. Every
+      sequence below links to the transaction that put it on chain.</p>
+
+      <div class="table-scroll">
+        <table>
+          <caption class="sr">Registry keys and their latest sequence on each chain</caption>
+          <thead>
+            <tr>
+              <th scope="col">Key</th>
+              <th scope="col">Mainnet · latest sequence</th>
+              <th scope="col">Testnet · latest sequence</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>{{fact:asset.id}} asset</strong><span class="td-sub">the whole-asset disclosure state</span></td>
+              <td class="mono"><a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.asset_3_tx}}">{{fact:mainnet.seq_asset_v1}}</a> · CONFIRMED</td>
+              <td class="mono"><a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.asset_4_tx}}">{{fact:testnet.seq_asset_v1}}</a> · CONFIRMED</td>
+            </tr>
+            <tr>
+              <td><strong>{{fact:policies.freshness_id}}</strong><span class="td-sub">is the disclosure current enough to act on?</span></td>
+              <td class="mono"><a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.freshness_1_tx}}">{{fact:mainnet.seq_freshness_v2}}</a> · CONFIRMED</td>
+              <td class="mono"><a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.freshness_1_tx}}">{{fact:testnet.seq_freshness_v2}}</a> · CONFIRMED</td>
+            </tr>
+            <tr>
+              <td><strong>{{fact:policies.nav_id}}</strong><span class="td-sub">has the NAV actually settled?</span></td>
+              <td class="mono"><a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.nav_1_tx}}">{{fact:mainnet.seq_nav_v2}}</a> · CONFIRMED</td>
+              <td class="mono"><a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.nav_1_tx}}">{{fact:testnet.seq_nav_v2}}</a> · CONFIRMED</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="t-small secondary under-table">State of record {{fact:site.updated}}. The
+      asset lineage — including both corrections — lives in v1. The two policy verdicts were
+      published first to v1 and then attested into v2, which is where the
+      {{fact:counts.v2_attestations}} relayer-submitted EIP-712 attestations across the two
+      chains sit. Reports expire at end of day UTC and are re-published at the next daily
+      window: freshness is the product, so a verdict that has aged out reads as expired
+      rather than as last-known-good. The <a href="/app">Policy Terminal</a> reads all three
+      keys live.</p>
+      <p class="t-small secondary under-table">The four v2 attestations, by receipt:
+      mainnet <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.freshness_v2_tx}}">{{fact:policies.freshness_id}}</a>
+      &middot; <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.nav_v2_tx}}">{{fact:policies.nav_id}}</a>;
+      testnet <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.freshness_v2_tx}}">{{fact:policies.freshness_id}}</a>
+      &middot; <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.nav_v2_tx}}">{{fact:policies.nav_id}}</a>.
+      On chain each carries a <span class="mono">policyId</span> distinct from its registry
+      key &mdash; <span class="mono">keccak256("&lt;policy-id&gt;:&lt;version&gt;")</span>:
+      <span class="mono">0x{{fact:keys.freshness_policy_id}}</span> for
+      {{fact:policies.freshness_id}} and
+      <span class="mono">0x{{fact:keys.nav_policy_id}}</span> for {{fact:policies.nav_id}}.</p>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">Policy keys</p>
+      <h2>A policy publishes under its own key</h2>
+      <div class="prose">
+        <p>An asset-wide state answers &ldquo;is this asset's disclosure sound?&rdquo;. That
+        is rarely the question a lending market has. A policy is a versioned subset of approved
+        controls that answers one consumer question, and it publishes under a key derived
+        from the asset and the policy identity — so a consumer subscribes to exactly the
+        question it cares about and never inherits the others.</p>
+      </div>
+
+      <p class="code-block-label">DERIVATION</p>
+      <pre class="code-block"><code><span class="c-comment"># the asset key, then the policy id and its version</span>
+policyKey = keccak256(<span class="c-string">"{{fact:asset.asset_key_text}}#policy:{{fact:policies.freshness_id}}"</span>)
+          = <span class="c-key">0x{{fact:keys.freshness}}</span>
+
+<span class="c-comment"># the asset key itself is the same derivation without the policy suffix</span>
+assetKey  = keccak256(<span class="c-string">"{{fact:asset.asset_key_text}}"</span>)
+          = <span class="c-key">0x{{fact:keys.asset}}</span></code></pre>
+
+      <div class="table-scroll">
+        <table>
+          <caption class="sr">Published policies, their registry keys and manifest digests</caption>
+          <thead>
+            <tr>
+              <th scope="col">Policy</th>
+              <th scope="col">Registry key</th>
+              <th scope="col">Policy manifest digest</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>{{fact:policies.freshness_id}}</strong><span class="td-sub">disclosure freshness</span></td>
+              <td class="mono wrap-code">0x{{fact:keys.freshness}}</td>
+              <td class="mono wrap-code">{{fact:policies.freshness_digest}}</td>
+            </tr>
+            <tr>
+              <td><strong>{{fact:policies.nav_id}}</strong><span class="td-sub">NAV settlement</span></td>
+              <td class="mono wrap-code">0x{{fact:keys.nav}}</td>
+              <td class="mono wrap-code">{{fact:policies.nav_digest}}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="t-small secondary under-table">The manifest digest travels on chain as the
+      report's <code>policyRoot</code>, so a gate can pin the exact policy text its
+      protection was agreed against. The manifests themselves ship inside every
+      <a href="/products/verifier">verification bundle</a>.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">The attested struct</p>
+      <h2>What a v2 publisher signs</h2>
+      <p class="prose secondary">The EIP-712 <code>Attestation</code> type covers every field
+      below under the domain <code>Touchstone Registry</code>, version <code>2</code>, bound
+      to the chain id and the registry address. The contract recomputes this digest from the
+      struct it was handed — a field changed in transit changes the digest, the recovered
+      signer stops matching, and the publication reverts.</p>
+
+      <div class="table-scroll">
+        <table>
+          <caption class="sr">Fields covered by the Registry v2 attestation</caption>
+          <thead>
+            <tr>
+              <th scope="col">Field</th>
+              <th scope="col">What it binds</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="mono field-name">assetKey</td><td>The asset or policy key the report is filed under.</td></tr>
+            <tr><td class="mono field-name">reportDigest</td><td>SHA-256 over the canonical report bytes the Ed25519 envelope signed. Rejected if zero.</td></tr>
+            <tr><td class="mono field-name">policyId</td><td>The policy identity, hashed from its id and version. Rejected if zero.</td></tr>
+            <tr><td class="mono field-name">policyRoot</td><td>The digest of the policy manifest the verdict was produced under.</td></tr>
+            <tr><td class="mono field-name">controlSetRoot</td><td>The exact set of approved controls that were evaluated.</td></tr>
+            <tr><td class="mono field-name">evidenceRoot</td><td>The ordered chain of evidence captures behind the result.</td></tr>
+            <tr><td class="mono field-name">approvalDigest</td><td>The approval ledger the control set was approved under. Rejected if zero.</td></tr>
+            <tr><td class="mono field-name">epochKey</td><td>The period the report is a statement about. One report per epoch, enforced by the contract.</td></tr>
+            <tr><td class="mono field-name">status</td><td>CONFIRMED · STALE · INCONSISTENT · UNVERIFIABLE.</td></tr>
+            <tr><td class="mono field-name">observedAt</td><td>When the evidence was observed. A future observation reverts.</td></tr>
+            <tr><td class="mono field-name">validUntil</td><td>When the report stops being current. Must not precede the observation.</td></tr>
+            <tr><td class="mono field-name">publisher</td><td>The reporting authority. The recovered signer must equal this address.</td></tr>
+            <tr><td class="mono field-name">sequence</td><td>Must be exactly the key's latest sequence plus one.</td></tr>
+            <tr><td class="mono field-name">parentDigest</td><td>The previous sequence's report digest — zero only at sequence one.</td></tr>
+            <tr><td class="mono field-name">correctionOf</td><td>The sequence being restated. Zero for an ordinary publication, so a correction's signature can never be replayed as one.</td></tr>
+            <tr><td class="mono field-name">reportURI</td><td>Where the full signed report and its bundle can be fetched. Rejected if empty.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="t-small secondary under-table">Fourteen of these are stored on chain and
+      returned by <code>getLatestReport</code>. <code>correctionOf</code> is covered by the
+      signature and recorded separately in <code>correctionTarget</code>, which is what
+      distinguishes a correction from a fresh publication.</p>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">Relayer design</p>
+      <h2>Whoever pays the gas is not the authority</h2>
+      <div class="split">
+        <div class="prose">
+          <p>In v1 the two roles are the same address: the publisher signs the transaction,
+          so the publisher must hold gas, must be online at the publication window, and must
+          be exposed to every operational hazard that comes with a hot funded key.</p>
+          <p>v2 separates them. The publisher signs an EIP-712 attestation offline. A
+          dedicated relayer — an identity the publication path refuses to run without, and
+          which must differ from the owner, the publisher and every funding identity — sends
+          the transaction and pays the fee. The contract still recovers the publisher from
+          the signature, rejects a malleable high-<code>s</code> signature outright, and
+          checks that recovered publisher against its authorization set.</p>
+          <p>The practical consequence: gas custody, transaction submission and reporting
+          authority can be operated by three different parties, and a compromised relayer can
+          spend gas but cannot publish anything.</p>
+        </div>
+        <aside class="strip-card">
+          <p class="strip-title">Roles</p>
+          <dl class="fields">
+            <div>
+              <dt>Publisher</dt>
+              <dd class="mono wrap-code">{{fact:roles.publisher}}</dd>
+            </div>
+            <div>
+              <dt>Relayer</dt>
+              <dd class="mono wrap-code">{{fact:roles.relayer}}</dd>
+            </div>
+            <div>
+              <dt>Owner</dt>
+              <dd class="mono wrap-code">{{fact:roles.deployer}}</dd>
+            </div>
+            <div>
+              <dt>Reporting key</dt>
+              <dd class="mono wrap-code">{{fact:roles.reporter_kid}}</dd>
+            </div>
+          </dl>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">Events</p>
+      <h2>Two events, indexed for consumers</h2>
+      <p class="prose secondary">Both generations emit <code>Published</code> and
+      <code>Corrected</code>, and both index the same three topics — asset key, sequence and
+      publisher — so an indexer can filter one key's history without scanning bodies. What
+      travels in the body differs by generation.</p>
+
+      <div class="grid-2">
+        <article class="card">
+          <h3>Registry v1</h3>
+          <p class="control-subject">Indexed: <code>assetKey</code>, <code>sequence</code>,
+          <code>publisher</code>.</p>
+          <p>The body carries the report itself in the clear: control-set root, evidence
+          root, epoch key, status, observation window and report URI.
+          <code>Corrected</code> adds the corrected sequence.</p>
+        </article>
+        <article class="card">
+          <h3>Registry v2 <span class="badge badge-v2">v2</span></h3>
+          <p class="control-subject">Indexed: <code>assetKey</code>, <code>sequence</code>,
+          <code>publisher</code>.</p>
+          <p>The body carries the commitments a consumer verifies against: report digest,
+          policy id, approval digest and parent digest. The full report reads back from
+          <code>getReport</code>, and the chain of parents makes a skipped sequence
+          detectable from events alone. <code>Corrected</code> adds the corrected
+          sequence.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">Corrections</p>
+      <h2>A correction is a restatement, never an edit</h2>
+      <div class="prose">
+        <p>Nothing already published is mutable. To correct a report, a publisher files a new
+        report at the next sequence and names the sequence it restates. The contract requires
+        that the correction carry <em>the same epoch key</em> as the report it corrects, so a
+        correction can only restate a period that already exists — it cannot open a new one,
+        and a second daily report can never be filed as a &ldquo;correction&rdquo; of an unrelated day.
+        The epoch index keeps pointing at each epoch's first publication.</p>
+        <p>This has a consequence readers should expect rather than be surprised by: because
+        the correction takes the next sequence number, the <em>latest</em> report on a key can
+        describe an <em>earlier</em> epoch than the report before it. That is exactly what the
+        testnet asset lineage shows — a correction restating the first day was published after
+        the following day's report had already landed. Reading &ldquo;latest&rdquo; is not the same
+        as reading &ldquo;most recent period&rdquo;, and any consumer that cares about the distinction should
+        read the epoch key.</p>
+        <p>Both corrections on chain reproduce their original's control-set root, evidence
+        root and approval-ledger digest exactly; the tool that builds a correction refuses to
+        sign one that does not. A correction restates what a report said, never what it was
+        evaluated against.</p>
+      </div>
+      <div class="cta-row">
+        <a class="cta-ghost" href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.asset_3_tx}}">View the testnet correction</a>
+        <a class="cta-ghost" href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.asset_2_tx}}">View the mainnet correction</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">Build on it</p>
+      <h2>Read the registry from your own code</h2>
+      <div class="prose">
+        <p>The TypeScript SDK in the repository wraps both generations: deployment addresses
+        by chain, the policy-key derivation shown above, a gate client, a guarded-action
+        client and a <code>Published</code> event indexer. The full quick start, the ABI
+        surface and every network address live on the developer page.</p>
+      </div>
+      <div class="cta-row">
+        <a class="cta" href="/developers">Start Building</a>
+        <a class="cta-ghost" href="/app">Launch Terminal</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+{{> footer}}
+</body>
+</html>

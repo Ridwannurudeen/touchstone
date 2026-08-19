@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Products — Touchstone</title>
+<meta name="description" content="The Touchstone Stack: Policy Intelligence compiles cited controls from issuer disclosures, Onchain Enforcement answers permit-or-block in a transaction on X Layer, and Verification &amp; Proof lets anyone check the result without trusting this site.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/products">
+<meta property="og:title" content="The Touchstone Stack">
+<meta property="og:description" content="Three layers: compile disclosures into cited policy, enforce the verdict onchain, and verify the whole record independently.">
+<meta property="og:url" content="https://touchstone.gudman.xyz/products">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  /* Page-scoped only: the stack cards carry more structured furniture than the shared
+     .stack-card gives them — an index, a problem line, a status line, a proof line and a
+     single CTA. None of these names are used elsewhere. */
+  .sc-num {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--t-micro);
+    letter-spacing: 0.14em;
+    color: var(--ink-400);
+    margin: 0 0 var(--s3);
+  }
+  .sc-side h3 { font-size: 1.5rem; margin-bottom: var(--s3); }
+  .sc-side .chip { margin-top: var(--s4); }
+  .sc-problem { color: var(--ink-700); margin: 0 0 var(--s5); }
+  .sc-h {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--t-micro);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-400);
+    margin: var(--s5) 0 var(--s2);
+  }
+  .sc-h:first-child { margin-top: 0; }
+  .sc-fact { font-size: var(--t-small); color: var(--ink-500); margin: 0; }
+  .sc-fact strong { color: var(--ink-900); font-weight: 600; }
+  .sc-fact .mono { overflow-wrap: anywhere; }
+  .sc-note {
+    background: var(--paper-sunk);
+    border: 1px solid var(--rule-soft);
+    border-radius: 9px;
+    padding: var(--s3) var(--s4);
+    font-size: var(--t-small);
+    color: var(--ink-500);
+    margin-top: var(--s4);
+  }
+  .sc-go { display: inline-block; margin-top: var(--s5); font-size: var(--t-small); font-weight: 600; }
+  .layer-links {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: var(--s5);
+    margin-top: var(--s6);
+  }
+  .layer-links p { font-size: var(--t-small); color: var(--ink-500); margin: var(--s2) 0 0; }
+  .layer-links h3 { font-size: 1rem; margin: 0; }
+</style>
+</head>
+<body>
+{{> header}}
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Products</p>
+      <h1>The Touchstone Stack</h1>
+      <p class="t-lead prose">Three layers turn an issuer's published disclosures into an
+      answer a contract can act on: compile the documents into cited, approved policy;
+      publish and enforce the verdict on X&nbsp;Layer; and let anyone re-check the whole
+      record on their own machine.</p>
+      <div class="cta-row">
+        <a class="cta" href="/app">Launch Terminal</a>
+        <a class="cta-ghost" href="/developers">Start Building</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="trust-strip">
+    <div class="wrap">
+      <div class="trust-cells">
+        <div class="trust-cell">
+          <p class="tc-k">NETWORKS</p>
+          <p><strong>X&nbsp;Layer mainnet + testnet</strong> — chain id {{fact:mainnet.chain_id}} and {{fact:testnet.chain_id}}</p>
+        </div>
+        <div class="trust-cell">
+          <p class="tc-k">REPORTS PUBLISHED</p>
+          <p><strong>{{fact:counts.reports_published}}</strong> — {{fact:counts.confirmed_reports}} confirmed</p>
+        </div>
+        <div class="trust-cell">
+          <p class="tc-k">V2 ATTESTATIONS</p>
+          <p><strong>{{fact:counts.v2_attestations}}</strong> — EIP-712, relayer-submitted</p>
+        </div>
+        <div class="trust-cell">
+          <p class="tc-k">ENFORCEMENT TRANSACTIONS</p>
+          <p><strong>{{fact:counts.enforcement_txs}}</strong> — permits and refusals, both onchain</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">The stack</p>
+      <h2>Three products, one record</h2>
+      <p class="prose">Each layer stands on its own and each one hands the next a value it
+      can check. Every claim below names the artifact that proves it.</p>
+
+      <div class="stack-grid">
+
+        <article class="stack-card">
+          <div class="sc-side">
+            <p class="sc-num">01</p>
+            <h3>Policy Intelligence</h3>
+            <p class="sc-meta">For issuers, risk teams and data operators.</p>
+            <span class="chip chip-live"><i class="dot" aria-hidden="true"></i>LIVE</span>
+          </div>
+          <div>
+            <p class="sc-problem">Disclosures arrive as prose, on a schedule the reader does
+            not control, and they change. A risk team re-reads them by hand and writes the
+            conclusion into a spreadsheet; nothing downstream can tell which sentence the
+            conclusion came from, or whether that sentence still says the same thing.</p>
+
+            <p class="sc-h">Includes</p>
+            <ul class="sc-includes">
+              <li><strong>AI Control Compiler</strong> — proposes candidate controls that cite
+              byte-exact spans of the issuer's own documents. A human approves or declines each
+              one, and the decision is recorded as an EIP-712 signature, not a checkbox.
+              <a href="/products/control-language">Control language →</a></li>
+              <li><strong>Evidence Monitor</strong> — scheduled captures of every source,
+              digest-addressed, so a later edit to a page shows up as a different digest
+              instead of disappearing into the same URL.</li>
+              <li><strong>Policy Profiles</strong> — versioned subsets of the approved controls,
+              each published under its own registry key: <span class="mono">{{fact:policies.freshness_id}}</span>
+              and <span class="mono">{{fact:policies.nav_id}}</span>.</li>
+              <li><strong>Source &amp; provenance engine</strong> — every result traces back to
+              the retrieval that produced it: which source, captured when, at which content
+              digest, and which control the bytes were cited for.</li>
+            </ul>
+
+            <p class="sc-outcome">Turn changing disclosures into versioned, cited and
+            machine-checkable policy.</p>
+
+            <p class="sc-h">Live today</p>
+            <p class="sc-fact">{{fact:counts.controls_approved}} controls approved and
+            {{fact:counts.controls_declined}} declined against {{fact:counts.evidence_sources}}
+            monitored evidence sources, published as versioned policy profiles.</p>
+
+            <p class="sc-h">Proof point</p>
+            <p class="sc-fact">Every decision in the approval ledger carries the approver's
+            recoverable signature — approver <span class="mono">{{fact:approval.approver}}</span>,
+            ledger digest <span class="mono">0x{{fact:derived.ledger_sha256}}</span>. Recover the
+            address from the signature and you have named the human who said yes.</p>
+
+            <a class="sc-go" href="/products/control-language">See how a control is compiled and cited →</a>
+          </div>
+        </article>
+
+        <article class="stack-card">
+          <div class="sc-side">
+            <p class="sc-num">02</p>
+            <h3>Onchain Enforcement</h3>
+            <p class="sc-meta">For lending protocols, vaults, marketplaces and wallets.</p>
+            <span class="chip chip-live"><i class="dot" aria-hidden="true"></i>LIVE · BOTH CHAINS</span>
+          </div>
+          <div>
+            <p class="sc-problem">A protocol that wants to accept a tokenized fund has no way,
+            inside a transaction, to ask whether the evidence behind it is current. So it either
+            trusts an off-chain process it cannot see, or it declines the asset entirely.</p>
+
+            <p class="sc-h">Includes</p>
+            <ul class="sc-includes">
+              <li><strong>Registry v2</strong> — EIP-712-attested reports that a relayer can
+              submit without being the reporting authority, so publication cannot be stopped by
+              one hot key. <a href="/products/registry">Registry →</a></li>
+              <li><strong>Registry v1</strong> — publisher-authenticated commitments, still live
+              and still read on both chains; a later report corrects an earlier one by naming it,
+              never by overwriting it.</li>
+              <li><strong>AssetGate policy gates</strong> — one immutable question,
+              <span class="mono">check(assetKey) → (allowed, reason)</span>, with the policy id,
+              policy root, control-set root, approval digest, publisher and freshness bound at
+              construction. Nobody can widen the gate afterwards. Reports expire at end of day
+              UTC and re-publish at the daily window, so a record that stops arriving withdraws
+              the gate's answer by itself. <a href="/products/asset-gate">AssetGate →</a></li>
+              <li><strong>GuardedAction decision receipts</strong> — permitted and refused, both
+              as real transactions. A refusal leaves the same kind of evidence a pass does, with
+              the contract's own reason string attached.</li>
+            </ul>
+
+            <p class="sc-outcome">Permit, block or suspend an action from a current policy
+            verdict.</p>
+
+            <p class="sc-h">Live today</p>
+            <p class="sc-fact">Both registries and the policy gates run on X&nbsp;Layer mainnet
+            and testnet. Registry&nbsp;v2 on mainnet is
+            <a class="mono" href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.registry_v2}}">{{fact:mainnet.registry_v2}}</a>;
+            on testnet it is
+            <a class="mono" href="{{fact:testnet.explorer}}/address/{{fact:testnet.registry_v2}}">{{fact:testnet.registry_v2}}</a>.</p>
+
+            <p class="sc-h">Proof point</p>
+            <p class="sc-fact">{{fact:counts.enforcement_txs}} enforcement transactions across
+            both chains, permits and refusals alike. The mainnet gate at
+            <a class="mono" href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.gate_freshness}}">{{fact:mainnet.gate_freshness}}</a>
+            first answered <strong>allowed</strong> for the disclosure-freshness policy on {{fact:asset.first_confirmed_on}}; verdicts expire at end of day UTC and renew at the daily window &mdash; <a href="/app">check it live</a>.</p>
+
+            <p class="sc-note">A hardened <span class="mono">AssetGateV2</span> and an
+            <span class="mono">RWAAdmissionController</span> — propose an asset, activate it only
+            if the gate passes, and recompute suspension on every call rather than storing a flag —
+            are built and tested, and deploy at the next publication window.</p>
+
+            <a class="sc-go" href="/products/asset-gate">See the gate's pins and its two receipts →</a>
+          </div>
+        </article>
+
+        <article class="stack-card">
+          <div class="sc-side">
+            <p class="sc-num">03</p>
+            <h3>Verification &amp; Proof</h3>
+            <p class="sc-meta">For auditors, institutions and independent reviewers.</p>
+            <span class="chip chip-live"><i class="dot" aria-hidden="true"></i>LIVE</span>
+          </div>
+          <div>
+            <p class="sc-problem">A claim you can only read on the publisher's website is a
+            claim you have to take on trust. An auditor needs to recompute the result from the
+            bytes, on their own machine, and get the same answer or a specific disagreement.</p>
+
+            <p class="sc-h">Includes</p>
+            <ul class="sc-includes">
+              <li><strong>Signed bundles</strong> — the report, its control results, the evidence
+              digests, the approval ledger and the registry attestation, in one downloadable
+              file under one signature.</li>
+              <li><strong>In-browser verifier</strong> — the Policy Terminal's verify panel runs
+              the checks locally in your tab. Nothing is uploaded, and the panel states what it
+              does <em>not</em> check. <a href="/app">Open the Terminal →</a></li>
+              <li><strong>CLI and manual recipes</strong> — the same checks from a shell, or
+              step by step, so a reviewer can follow them without running our code.
+              <a href="/products/verifier">Verification bundles →</a></li>
+              <li><strong>Correction history</strong> — supersession is explicit and sequenced:
+              a correction names the report it corrects, and the corrected report stays
+              published and checkable.</li>
+            </ul>
+
+            <p class="sc-outcome">Verify the report independently without trusting the
+            website.</p>
+
+            <p class="sc-h">Live today</p>
+            <p class="sc-fact">{{fact:counts.reports_published}} reports published across
+            {{fact:counts.networks}} chains, {{fact:counts.confirmed_reports}} of them confirmed,
+            with the signed bundles retained alongside them.</p>
+
+            <p class="sc-h">Proof point</p>
+            <p class="sc-fact">{{fact:counts.bundles_downloadable}} downloadable bundles — and
+            every published claim on this site is rendered from one canonical data source at
+            build time, so a page cannot drift from the record it describes.</p>
+
+            <a class="sc-go" href="/products/verifier">Verify a bundle yourself →</a>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">The three layers on one value</p>
+      <h2>Refused when provisional. Confirmed when earned.</h2>
+      <p class="prose">A NAV value was provisional. Touchstone refused it. The same value later
+      survived the required evidence interval, became confirmed, and changed the behavior of a
+      consumer contract — without any control being weakened.</p>
+      <div class="case-line">
+        <div class="case-step cs-refused">
+          <p class="cs-t">{{fact:story.refusal_date}}</p>
+          <h3>Policy Intelligence held the line</h3>
+          <p>The compiled controls required a settlement interval the evidence had not yet
+          cleared, so the NAV policy did not confirm.</p>
+        </div>
+        <div class="case-step">
+          <p class="cs-t">+{{fact:story.confirmation_interval_hours}}H</p>
+          <h3>The evidence interval elapsed</h3>
+          <p>The same value, unchanged, cleared the
+          {{fact:story.settlement_floor_business_days}}-business-day settlement floor the
+          issuer's own disclosure sets.</p>
+        </div>
+        <div class="case-step cs-confirmed">
+          <p class="cs-t">{{fact:story.confirmation_date}}</p>
+          <h3>Onchain Enforcement changed its answer</h3>
+          <p>NAV {{fact:asset.confirmed_nav}} as of {{fact:asset.confirmed_nav_date}} published
+          under <span class="mono">{{fact:policies.nav_id}}</span>, attested in
+          Registry&nbsp;v2 on both chains.</p>
+        </div>
+        <div class="case-step">
+          <p class="cs-t">ANY TIME</p>
+          <h3>Verification &amp; Proof, on your machine</h3>
+          <p>The bundle for that report downloads and verifies locally — signature, digests,
+          approval ledger and attestation.</p>
+        </div>
+      </div>
+      <div class="cta-row">
+        <a class="cta" href="/app">Watch the gate answer live</a>
+        <a class="cta-ghost" href="/judge">The 90-second proof</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">Component pages</p>
+      <h2>Go one level deeper</h2>
+      <div class="layer-links">
+        <div>
+          <h3><a href="/products/registry">Registry</a></h3>
+          <p>v1 and v2, addresses by chain, sequences, the report fields and the correction
+          model.</p>
+        </div>
+        <div>
+          <h3><a href="/products/asset-gate">AssetGate</a></h3>
+          <p>What each pin binds, the live gate decisions, and the permit and refuse
+          transactions.</p>
+        </div>
+        <div>
+          <h3><a href="/products/control-language">Control Language</a></h3>
+          <p>How a control names its subject, cites its bytes and states a predicate an engine
+          can settle.</p>
+        </div>
+        <div>
+          <h3><a href="/products/verifier">Verification Bundles</a></h3>
+          <p>What a bundle contains, what each check proves, and what verification does not
+          cover.</p>
+        </div>
+        <div>
+          <h3><a href="/app">Policy Terminal</a></h3>
+          <p>Live registry reads, gate checks, wallet simulate and execute, and local bundle
+          verification.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-band">
+    <div class="wrap">
+      <h2>Ask the stack a live question</h2>
+      <p class="t-lead">Read the current report from X&nbsp;Layer, watch the gate answer, and
+      run a guarded action against it — or wire the same call into your own contract.</p>
+      <div class="cta-row">
+        <a class="cta" href="/app">Launch Terminal</a>
+        <a class="cta-ghost" href="/developers">Start Building</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+{{> footer}}
+</body>
+</html>

@@ -1,0 +1,206 @@
+{
+  "approval": {
+    "approved_control_ids": [
+      "ustb-holdings-as-of-date-present",
+      "ustb-nav-daily-freshness",
+      "ustb-nav-per-share-present",
+      "ustb-yield-as-of-date-fresh",
+      "ustb-yield-one-day-present"
+    ],
+    "approved_count": 5,
+    "declined_count": 5,
+    "ledger_sha256": "4f2c7dd5ea0cd09c3b0e9d51445873c65b882a1b3b3265c15979b598dab91dd1"
+  },
+  "bundles": [
+    {
+      "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+      "control_count": 8,
+      "evidence_root": "70b317e70d2f46d9120c80772b52f1984815810e8d2f24632baea9ccced53b8b",
+      "path": "site2/data/ustb-2026-08-17-1.json",
+      "policy": null,
+      "sequence": 1,
+      "sha256": "914ea892e181d7bad2583da5c1f377b3f1ee9bf197c5a799b8d5f8cc10bfc955",
+      "state": "UNVERIFIABLE"
+    },
+    {
+      "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+      "control_count": 8,
+      "evidence_root": "70b317e70d2f46d9120c80772b52f1984815810e8d2f24632baea9ccced53b8b",
+      "path": "site2/data/ustb-2026-08-17-3.json",
+      "policy": null,
+      "sequence": 3,
+      "sha256": "0d37c5d6bb2196d6ffe033b3acdff7858a39b2abe290aa84d2af6ef29e64a347",
+      "state": "UNVERIFIABLE"
+    },
+    {
+      "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+      "control_count": 5,
+      "evidence_root": "f574b09dcb8f24f593cecec4c90c542813140022d33ae131c13c6f57065c31cf",
+      "path": "site2/data/ustb-2026-08-18-1-mainnet.json",
+      "policy": null,
+      "sequence": 1,
+      "sha256": "77c0002eefaaf42189e0a80600fc932b7417266d99908591840ab4e56c574700",
+      "state": "UNVERIFIABLE"
+    },
+    {
+      "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+      "control_count": 5,
+      "evidence_root": "f574b09dcb8f24f593cecec4c90c542813140022d33ae131c13c6f57065c31cf",
+      "path": "site2/data/ustb-2026-08-18-2-mainnet.json",
+      "policy": null,
+      "sequence": 2,
+      "sha256": "fd1a148bc0f3ba671af41e7df4c841db8506e0e38fe1305e976dc9f15d0c6890",
+      "state": "UNVERIFIABLE"
+    },
+    {
+      "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+      "control_count": 5,
+      "evidence_root": "510d17b078537145fb9af9e6eff7f823e0a7e7b422a0c97560547489f75c7d93",
+      "path": "site2/data/ustb-2026-08-18-2.json",
+      "policy": null,
+      "sequence": 2,
+      "sha256": "2a71c56e06f60450b7beec2bdc6fd64b6e1823a86fe0d470738708b945bbf804",
+      "state": "UNVERIFIABLE"
+    },
+    {
+      "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:disclosure-freshness:1",
+      "control_count": 4,
+      "evidence_root": "f3c8c6d79dadfdae75006ac0e449771b73a90329bbe7979824ab34898c2cbb3b",
+      "path": "site2/data/ustb-2026-08-19-1-policy-disclosure-freshness-1.json",
+      "policy": {
+        "control_ids": [
+          "ustb-holdings-as-of-date-present",
+          "ustb-nav-daily-freshness",
+          "ustb-yield-as-of-date-fresh",
+          "ustb-yield-one-day-present"
+        ],
+        "policy_digest": "d6932d093d253bc2b891c920a7ff5626f627e2d141edcbd2b7b48bb60cca44d9",
+        "policy_id": "disclosure-freshness",
+        "policy_version": 1
+      },
+      "sequence": 1,
+      "sha256": "81a0803fe06726d9b4809c689e796ddfca355eb505468f5ac842cb5030a44281",
+      "state": "CONFIRMED"
+    },
+    {
+      "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:nav-settlement:1",
+      "control_count": 2,
+      "evidence_root": "f3c8c6d79dadfdae75006ac0e449771b73a90329bbe7979824ab34898c2cbb3b",
+      "path": "site2/data/ustb-2026-08-19-1-policy-nav-settlement-1.json",
+      "policy": {
+        "control_ids": [
+          "ustb-nav-daily-freshness",
+          "ustb-nav-per-share-present"
+        ],
+        "policy_digest": "25dcda427509b1fe77f7ffeed2f7d74a83c76f2bc9bd6d8735aeadec8b50ebd2",
+        "policy_id": "nav-settlement",
+        "policy_version": 1
+      },
+      "sequence": 1,
+      "sha256": "24871bd2e251d6b14661fe00085b2b88d0eca38d35ca6c6bf21f29fb7e03f860",
+      "state": "CONFIRMED"
+    },
+    {
+      "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+      "control_count": 5,
+      "evidence_root": "f3c8c6d79dadfdae75006ac0e449771b73a90329bbe7979824ab34898c2cbb3b",
+      "path": "site2/data/ustb-2026-08-19-3.json",
+      "policy": null,
+      "sequence": 3,
+      "sha256": "ef8dff1cb8d2131e92f748681ff5dc55251788319a09e651396259e5606c2541",
+      "state": "CONFIRMED"
+    },
+    {
+      "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+      "control_count": 5,
+      "evidence_root": "d4357c3ff62527c453e676bcd66ecaf532172538ca2364bfe9f462d4b6503560",
+      "path": "site2/data/ustb-2026-08-19-4.json",
+      "policy": null,
+      "sequence": 4,
+      "sha256": "421d1d64b2a1726e19f4e2d41ea4c8f55cda17eeb8a724a85d341c47d4b250b3",
+      "state": "CONFIRMED"
+    }
+  ],
+  "chain": {
+    "available": false,
+    "source": null
+  },
+  "deployments": [
+    {
+      "chain_id": 196,
+      "deployment_state": "active",
+      "network": "xlayer-mainnet",
+      "registry_address": "0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C",
+      "source": "deployments/xlayer-mainnet-v2.json"
+    },
+    {
+      "chain_id": 196,
+      "deployment_state": "active",
+      "network": "xlayer-mainnet",
+      "registry_address": "0xc9d58e4496bF061C3177301Ff02518eBB70AD30d",
+      "source": "deployments/xlayer-mainnet.json"
+    },
+    {
+      "chain_id": 1952,
+      "deployment_state": "active",
+      "network": "xlayer-testnet",
+      "registry_address": "0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C",
+      "source": "deployments/xlayer-testnet-2.json"
+    },
+    {
+      "chain_id": 1952,
+      "deployment_state": "active",
+      "network": "xlayer-testnet",
+      "registry_address": "0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720",
+      "source": "deployments/xlayer-testnet-v2.json"
+    },
+    {
+      "chain_id": 1952,
+      "deployment_state": "superseded",
+      "network": "xlayer-testnet",
+      "registry_address": "0xc9d58e4496bF061C3177301Ff02518eBB70AD30d",
+      "source": "deployments/xlayer-testnet.json"
+    }
+  ],
+  "documentation": {
+    "published_count": 7
+  },
+  "policies": [
+    {
+      "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+      "control_ids": [
+        "ustb-holdings-as-of-date-present",
+        "ustb-nav-daily-freshness",
+        "ustb-yield-as-of-date-fresh",
+        "ustb-yield-one-day-present"
+      ],
+      "digest": "d6932d093d253bc2b891c920a7ff5626f627e2d141edcbd2b7b48bb60cca44d9",
+      "policy_id": "disclosure-freshness",
+      "policy_version": 1,
+      "title": "Disclosure freshness"
+    },
+    {
+      "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+      "control_ids": [
+        "ustb-nav-daily-freshness",
+        "ustb-nav-per-share-present"
+      ],
+      "digest": "25dcda427509b1fe77f7ffeed2f7d74a83c76f2bc9bd6d8735aeadec8b50ebd2",
+      "policy_id": "nav-settlement",
+      "policy_version": 1,
+      "title": "NAV settlement"
+    }
+  ],
+  "reports": {
+    "artifact_count": 9,
+    "confirmed_policy_bundle_count": 2,
+    "latest_state": "CONFIRMED",
+    "retained_verified_policy_bundle_count": 2,
+    "states": [
+      "CONFIRMED",
+      "UNVERIFIABLE"
+    ]
+  },
+  "transparency_logs": [],
+  "version": "touchstone.project-state.v1"
+}

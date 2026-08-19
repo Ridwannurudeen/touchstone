@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The 90-second proof — Touchstone</title>
+<meta name="description" content="One NAV value: published provisionally, refused, then confirmed once the evidence qualified — and a consumer contract that changed behaviour with no control weakened.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/judge">
+<meta property="og:title" content="The 90-second proof — Touchstone">
+<meta property="og:description" content="Refused on {{fact:asset.refused_on}}, confirmed on {{fact:asset.first_confirmed_on}}, enforced on chain. The same controls throughout.">
+<meta property="og:url" content="https://touchstone.gudman.xyz/judge">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  .case-hero .case-line { margin-top: var(--s7); }
+  .case-hero .case-step h3 { font-size: 1.0625rem; }
+  .case-hero .case-step { padding-bottom: var(--s5); }
+  .case-hero ol.case-line { list-style: none; padding-left: 0; }
+  .proof-line {
+    border-left: 3px solid var(--copper);
+    padding-left: var(--s4);
+    margin-top: var(--s6);
+    max-width: 74ch;
+    font-size: var(--t-small);
+  }
+  .proof-line code { overflow-wrap: anywhere; }
+  .addr-table td code { overflow-wrap: anywhere; }
+  .closing-note { margin-top: var(--s6); color: var(--ink-400); font-size: var(--t-small); }
+</style>
+</head>
+<body>
+{{> header}}
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">The 90-second proof</p>
+      <h1>A value was provisional. Touchstone refused it. Then the evidence earned it.</h1>
+      <p class="t-lead prose">Five things, in order: the problem, how a control gets written,
+      what happened to one NAV figure, the contracts you can call right now, and the file to
+      take away.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">01 · The problem</p>
+      <h2>Nothing on chain can read a disclosure.</h2>
+      <div class="prose">
+        <p class="t-lead">Fund disclosures are prose on a web page, written for people. The
+        values inside them are revised after publication, and nothing announces which figure
+        moved or when. A contract can read neither the prose nor the revision, so today it
+        either trusts a feed it cannot inspect or does nothing at all.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">02 · The AI control compilation</p>
+      <h2>The model proposes. It never decides, and it never runs.</h2>
+      <div class="prose">
+        <p>A language model reads the issuer's disclosure and proposes candidate controls.
+        Every candidate must cite the byte-exact span of the source it depends on — not a
+        summary of it, the bytes — and is compiled into deterministic code that is evaluated
+        afterwards with no model in the loop. A human approves or declines each candidate one
+        at a time: {{fact:counts.controls_approved}} approved,
+        {{fact:counts.controls_declined}} declined. The model has no path to approve its own
+        proposal, move a threshold, or re-run an evaluation it did not like.</p>
+      </div>
+      <p class="proof-line"><strong>Proof:</strong> every decision now carries the approver's
+      EIP-712 signature — approver <code>{{fact:approval.approver}}</code>, signed
+      {{fact:approval.signed_on}}, ledger digest
+      <code>{{fact:derived.ledger_sha256}}</code>. The signed ledger ships in the repository
+      as <code>data/compilations/APPROVALS.json</code>; reports published from the next window
+      bind it, and <a href="/verify">the verify page</a> shows how the recovery is done.</p>
+    </div>
+  </section>
+
+  <section class="section case-hero">
+    <div class="wrap">
+      <p class="eyebrow">03 · What actually happened</p>
+      <h2>Refused {{fact:asset.refused_on}}. Confirmed {{fact:asset.first_confirmed_on}}.
+      Same controls both days.</h2>
+      <p class="t-lead prose">{{fact:asset.id}} — {{fact:asset.name}}.</p>
+
+      <ol class="case-line">
+        <li class="case-step">
+          <p class="cs-t">{{fact:asset.confirmed_nav_date}}</p>
+          <h3>Provisional NAV published</h3>
+          <p>The issuer published a NAV per share. Seen once, it is a claim, not a settled
+          value.</p>
+        </li>
+        <li class="case-step cs-refused">
+          <p class="cs-t">{{fact:asset.refused_on}}</p>
+          <h3>Refused</h3>
+          <p>The settlement policy would not confirm a figure the evidence had carried only
+          once. The report published as <span class="mono">UNVERIFIABLE</span>.</p>
+        </li>
+        <li class="case-step">
+          <p class="cs-t">+{{fact:story.confirmation_interval_hours}} hours</p>
+          <h3>Unchanged across qualifying captures</h3>
+          <p>The same figure reappeared, unrevised, in later captures that met the
+          confirmation interval. Nobody re-argued the case.</p>
+        </li>
+        <li class="case-step cs-confirmed">
+          <p class="cs-t">{{fact:asset.first_confirmed_on}}</p>
+          <h3>Confirmed with NAV {{fact:asset.confirmed_nav}}</h3>
+          <p>Published to both registries as <span class="mono">CONFIRMED</span> — policy
+          <span class="mono">{{fact:policies.nav_id}}</span>, sequence
+          {{fact:mainnet.seq_nav_v2}} on each chain.</p>
+        </li>
+        <li class="case-step">
+          <p class="cs-t">consequence</p>
+          <h3>The gate flipped</h3>
+          <p><span class="mono">check(key)</span> answers
+          <span class="mono">(true,&nbsp;"allowed")</span> with no control changed and no
+          threshold moved — and {{fact:counts.enforcement_txs}} permit/refuse transactions
+          across both chains stand as the consequence.</p>
+        </li>
+      </ol>
+
+      <div class="split">
+        <div class="strip-card" data-policy-panel="freshness" data-policy-id="disclosure-freshness" data-policy-version="1" data-policy-state="CONFIRMED">
+          <p class="strip-title mono">{{fact:policies.freshness_id}}</p>
+          <p class="strip-label"><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>CONFIRMED</span></p>
+        </div>
+        <div class="strip-card" data-policy-panel="settlement" data-policy-id="nav-settlement" data-policy-version="1" data-policy-state="CONFIRMED">
+          <p class="strip-title mono">{{fact:policies.nav_id}}</p>
+          <p class="strip-label"><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>CONFIRMED</span></p>
+        </div>
+      </div>
+
+      <p class="proof-line">The refused report and the confirmed report commit to the
+      <strong>same approval-ledger digest</strong>. Nothing in the control set was edited to
+      produce the second answer — open both bundles from <a href="/dossier">the archive</a>
+      and compare that one field: <span class="mono">{{fact:bundles.shared_ledger_digest}}</span> in both the refused and the confirmed report.</p>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">04 · The live permit / refuse action</p>
+      <h2>Two contracts per chain. One executes, one reverts, both are real.</h2>
+      <div class="prose">
+        <p>Each <span class="mono">GuardedAction</span> asks the gate before it does anything.
+        One is pinned to a key that is currently <span class="mono">CONFIRMED</span> and
+        executes; the other is pinned to a key that was never reported and reverts — not a
+        drawing of a refusal, a reverted transaction on a public chain.
+        {{fact:counts.enforcement_txs}} of them are mined across the
+        {{fact:counts.networks}} networks.</p>
+      </div>
+
+      <div class="cta-row">
+        <a class="cta" href="/app">Run the same check the contracts run</a>
+      </div>
+
+      <div class="table-scroll addr-table">
+        <table>
+          <caption class="sr">GuardedAction contracts by network</caption>
+          <thead>
+            <tr>
+              <th scope="col">Network</th>
+              <th scope="col">Permitted while CONFIRMED</th>
+              <th scope="col">Refused — never-reported key</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>X&nbsp;Layer mainnet</strong><span class="td-sub">chain id {{fact:mainnet.chain_id}}</span></td>
+              <td><code><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.guarded_permitted}}">{{fact:mainnet.guarded_permitted}}</a></code></td>
+              <td><code><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.guarded_refused}}">{{fact:mainnet.guarded_refused}}</a></code></td>
+            </tr>
+            <tr>
+              <td><strong>X&nbsp;Layer testnet</strong><span class="td-sub">chain id {{fact:testnet.chain_id}}</span></td>
+              <td><code><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.guarded_permitted}}">{{fact:testnet.guarded_permitted}}</a></code></td>
+              <td><code><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.guarded_refused}}">{{fact:testnet.guarded_refused}}</a></code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="t-small secondary under-table">The gate answering for these is
+      <code>{{fact:mainnet.gate_freshness}}</code> on mainnet and
+      <code>{{fact:testnet.gate_freshness}}</code> on testnet. Reads need no wallet;
+      connecting one lets you simulate and execute the same calls.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">05 · What to take away</p>
+      <h2>The confirmed policy bundle. It verifies offline, forever.</h2>
+      <div class="prose">
+        <p>One file carries the signed report, the controls it evaluated, the approval ledger
+        it was signed under, the compilation artifacts and the evidence digests. Check it on a
+        machine that has never heard of this site.</p>
+      </div>
+      <div class="cta-row">
+        <a class="cta" href="/data/ustb-2026-08-19-1-policy-nav-settlement-1.json">Download the confirmed NAV-settlement bundle</a>
+        <a class="cta-ghost" href="/verify">How to verify it</a>
+      </div>
+      <p class="t-small secondary under-cta">Policy
+      <span class="mono">{{fact:policies.nav_id}}</span>, state
+      <span class="mono">CONFIRMED</span>, published {{fact:asset.first_confirmed_on}}.
+      {{fact:counts.bundles_downloadable}} bundles are downloadable from
+      <a href="/dossier">the archive</a>; {{fact:counts.reports_published}} reports have been
+      published across the {{fact:counts.networks}} chains,
+      {{fact:counts.confirmed_reports}} of them confirmed.</p>
+      <p class="closing-note">This page is a static rendering; the Terminal reads the same
+      facts live at <a href="/app">/app</a>.</p>
+    </div>
+  </section>
+
+</main>
+
+{{> footer}}
+</body>
+</html>

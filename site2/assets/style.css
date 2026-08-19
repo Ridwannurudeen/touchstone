@@ -1,7 +1,9 @@
 /* Touchstone — "Assay Light"
    Light-ground enterprise minimalism: near-white surfaces, near-black ink,
    one copper accent used sparingly, data rendered large.
-   Zero JavaScript anywhere; everything interactive is native HTML/CSS. */
+   Marketing and proof pages run zero JavaScript; everything interactive there is
+   native HTML/CSS. The one exception is the Policy Terminal (/app), a self-hosted
+   scripted island styled by the dark-terminal mode at the end of this file. */
 
 @font-face {
   font-family: "Inter";
@@ -1385,3 +1387,321 @@ blockquote cite {
   color: var(--ink-900);
 }
 .policy-panel + .policy-panel { border-top: 1px solid var(--rule); }
+
+/* ================================================================
+   Extension layer — 2026-08-19 product-site rebuild.
+   Three visual modes: the editorial light ground above, the dark
+   data terminal below (.mode-dark), and the proof surface.
+   ================================================================ */
+
+:root {
+  --term-ground: #0C1113;
+  --term-panel:  #12181B;
+  --term-rule:   #232B2F;
+  --term-ink:    #D7DCDF;
+  --term-muted:  #8C949B;
+  --copper-lit:  #C97845;   /* copper for dark ground, AA against --term-ground */
+  --st-confirmed-lit: #4CAF7D;
+  --st-blocked-lit:   #E06A55;
+  --st-pending-lit:   #D2A24C;
+}
+
+/* ---------- announcement bar ---------- */
+
+.announce {
+  background: var(--ink-900);
+  color: #E9E6E2;
+  font-size: var(--t-small);
+  text-align: center;
+  padding: 0.5rem 1rem;
+}
+.announce a { color: var(--copper-lit); text-decoration-color: rgba(201,120,69,.5); }
+
+/* ---------- mobile navigation (checkbox, no script) ---------- */
+
+.nav-open { position: absolute; opacity: 0; pointer-events: none; }
+.nav-burger { display: none; }
+.nav-cta--menu { display: none; }
+
+@media (max-width: 860px) {
+  .nav-burger {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 10px;
+    margin-left: auto;
+    cursor: pointer;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+  }
+  .burger-bar { width: 18px; height: 2px; background: var(--ink-900); border-radius: 1px; }
+  .head-row > .nav-cta { display: none; }
+  .site-nav {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    gap: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--rule);
+    padding: var(--s3) var(--s5) var(--s5);
+    z-index: 40;
+  }
+  .site-nav a { padding: var(--s3) 0; border-bottom: 1px solid var(--rule-soft); }
+  .nav-open:checked ~ .site-nav { display: flex; }
+  .nav-cta--menu { display: inline-block; margin-top: var(--s4); text-align: center; }
+  .site-head { position: relative; }
+}
+
+/* ---------- trust strip ---------- */
+
+.trust-strip {
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface);
+}
+.trust-cells {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--s5);
+  padding: var(--s5) 0;
+}
+.trust-cell .tc-k {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: var(--t-micro);
+  letter-spacing: 0.12em;
+  color: var(--ink-400);
+  margin: 0 0 var(--s2);
+}
+.trust-cell p { margin: 0; font-size: var(--t-small); color: var(--ink-700); }
+.trust-cell strong { color: var(--ink-900); }
+
+/* ---------- persona / use-case cards ---------- */
+
+.persona-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--s5);
+  margin-top: var(--s6);
+}
+.persona {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 13px;
+  padding: var(--s5);
+  box-shadow: var(--card-shadow);
+  display: flex;
+  flex-direction: column;
+}
+.persona .p-for {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: var(--t-micro);
+  letter-spacing: 0.12em;
+  color: var(--copper-ink);
+  margin: 0 0 var(--s3);
+  text-transform: uppercase;
+}
+.persona h3 { margin-bottom: var(--s3); }
+.persona p { font-size: var(--t-small); }
+.persona .p-cta { margin-top: auto; padding-top: var(--s4); font-size: var(--t-small); }
+
+/* ---------- stack modules (product stack) ---------- */
+
+.stack-grid { display: grid; gap: var(--s5); margin-top: var(--s6); }
+.stack-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 13px;
+  padding: var(--s6);
+  box-shadow: var(--card-shadow);
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) 2fr;
+  gap: var(--s6);
+}
+.stack-card .sc-meta { font-size: var(--t-small); color: var(--ink-500); }
+.stack-card .sc-includes { margin: var(--s3) 0 0; padding: 0; list-style: none; font-size: var(--t-small); }
+.stack-card .sc-includes li { padding: 3px 0; border-bottom: 1px solid var(--rule-soft); }
+.stack-card .sc-outcome {
+  border-left: 3px solid var(--copper);
+  padding-left: var(--s4);
+  color: var(--ink-900);
+  font-size: var(--t-body);
+}
+@media (max-width: 760px) { .stack-card { grid-template-columns: 1fr; } }
+
+/* ---------- horizontal case-study timeline ---------- */
+
+.case-line {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0;
+  margin-top: var(--s6);
+  border-top: 2px solid var(--rule);
+}
+.case-step { padding: var(--s5) var(--s4) 0 0; position: relative; }
+.case-step::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 3px solid var(--ink-400);
+}
+.case-step.cs-refused::before   { border-color: var(--st-inconsistent); }
+.case-step.cs-confirmed::before { border-color: var(--st-satisfied); }
+.case-step .cs-t {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: var(--t-micro);
+  letter-spacing: 0.08em;
+  color: var(--ink-400);
+  margin-bottom: var(--s2);
+}
+.case-step h3 { font-size: 1rem; margin-bottom: var(--s2); }
+.case-step p { font-size: var(--t-small); margin: 0; }
+
+/* ---------- code blocks ---------- */
+
+.code-block {
+  background: var(--term-ground);
+  color: var(--term-ink);
+  border-radius: 11px;
+  padding: var(--s5);
+  overflow-x: auto;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: var(--t-mono);
+  line-height: 1.65;
+  margin: var(--s5) 0;
+}
+.code-block .c-comment { color: var(--term-muted); }
+.code-block .c-key     { color: var(--copper-lit); }
+.code-block .c-string  { color: #9CC5A5; }
+.code-block-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: var(--t-micro);
+  letter-spacing: 0.12em;
+  color: var(--ink-400);
+  margin-bottom: calc(var(--s3) * -0.5);
+}
+
+/* ---------- dark terminal mode (the /app island and dark sections) ---------- */
+
+.mode-dark {
+  background: var(--term-ground);
+  color: var(--term-ink);
+}
+.mode-dark h1, .mode-dark h2, .mode-dark h3, .mode-dark h4 { color: #F1F3F4; }
+.mode-dark a { color: var(--term-ink); text-decoration-color: var(--term-rule); }
+.mode-dark a:hover { text-decoration-color: var(--term-muted); }
+.term-panel {
+  background: var(--term-panel);
+  border: 1px solid var(--term-rule);
+  border-radius: 13px;
+  padding: var(--s5);
+}
+.term-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--term-rule);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: var(--t-mono);
+}
+.term-row:last-child { border-bottom: 0; }
+.term-row .tr-k { color: var(--term-muted); }
+.term-row .tr-v { color: var(--term-ink); text-align: right; overflow-wrap: anywhere; }
+.term-ok      { color: var(--st-confirmed-lit); }
+.term-blocked { color: var(--st-blocked-lit); }
+.term-pending { color: var(--st-pending-lit); }
+.term-btn {
+  display: inline-block;
+  background: var(--copper-lit);
+  color: #16100B;
+  border: 0;
+  border-radius: 9px;
+  padding: 0.6rem 1.1rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.term-btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+.term-btn--ghost {
+  background: transparent;
+  color: var(--term-ink);
+  border: 1px solid var(--term-rule);
+}
+.term-select {
+  background: var(--term-panel);
+  color: var(--term-ink);
+  border: 1px solid var(--term-rule);
+  border-radius: 9px;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  font-size: var(--t-small);
+}
+
+/* ---------- badges ---------- */
+
+.badge {
+  display: inline-block;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: var(--t-micro);
+  letter-spacing: 0.08em;
+  border-radius: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--rule);
+  color: var(--ink-500);
+  vertical-align: middle;
+}
+.badge-v2      { border-color: var(--copper); color: var(--copper-ink); }
+.badge-latest  { border-color: var(--st-satisfied); color: var(--st-satisfied); }
+.badge-correction { border-color: var(--st-stale); color: var(--st-stale); }
+
+/* ---------- CSS-only tabs (radio pattern; verify page) ---------- */
+
+.tabs { margin-top: var(--s5); }
+.tabs > input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+.tab-labels { display: flex; gap: var(--s2); border-bottom: 1px solid var(--rule); }
+.tab-labels label {
+  padding: var(--s3) var(--s4);
+  font-size: var(--t-small);
+  color: var(--ink-500);
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 9px 9px 0 0;
+}
+.tab-panel { display: none; padding-top: var(--s5); }
+#tab-1:checked ~ .tab-labels label[for="tab-1"],
+#tab-2:checked ~ .tab-labels label[for="tab-2"],
+#tab-3:checked ~ .tab-labels label[for="tab-3"] {
+  color: var(--ink-900);
+  border-color: var(--rule);
+  background: var(--surface);
+}
+#tab-1:checked ~ .tab-panel-1 { display: block; }
+#tab-2:checked ~ .tab-panel-2 { display: block; }
+#tab-3:checked ~ .tab-panel-3 { display: block; }
+
+/* ---------- big number stats (security / proof pages) ---------- */
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--s5);
+  margin-top: var(--s6);
+}
+.stat .st-n {
+  font-size: var(--t-metric);
+  font-weight: 640;
+  color: var(--ink-900);
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  margin: 0;
+}
+.stat .st-l { font-size: var(--t-small); color: var(--ink-500); margin: var(--s2) 0 0; }

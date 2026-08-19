@@ -13,13 +13,17 @@
 <header class="site-head">
   <div class="wrap head-row">
     <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
+    <input type="checkbox" id="nav-open" class="nav-open" aria-hidden="true" tabindex="-1">
+    <label for="nav-open" class="nav-burger" aria-hidden="true"><span class="burger-bar"></span><span class="burger-bar"></span><span class="burger-bar"></span></label>
     <nav class="site-nav" aria-label="Site">
       <a href="/products">Products</a>
-      <a href="/coverage">Coverage</a>
-      <a href="/verify">Verify</a>
-      <a href="/limitations">Limitations</a>
+      <a href="/solutions">Solutions</a>
+      <a href="/assets-covered">Assets</a>
+      <a href="/developers">Developers</a>
+      <a href="/security">Security</a>
+      <a class="nav-cta nav-cta--menu" href="/app">Launch Terminal</a>
     </nav>
-    <a class="nav-cta" href="/dossier">Read the dossier</a>
+    <a class="nav-cta" href="/app">Launch Terminal</a>
   </div>
 </header>
 
@@ -622,37 +626,42 @@ Sept 1 operations plan.</p>
     <div class="foot-grid">
       <div class="foot-col">
         <p class="foot-h">Products</p>
-        <a href="/products/dossier">Dossier</a>
-        <a href="/products/control-language">Control Language</a>
-        <a href="/products/verifier">Verifier</a>
-        <a href="/products/asset-gate">AssetGate<span class="foot-flag">testnet only</span></a>
+        <a href="/app">Policy Terminal</a>
         <a href="/products/registry">Registry</a>
+        <a href="/products/asset-gate">AssetGate</a>
+        <a href="/products/control-language">Control Language</a>
+        <a href="/products/verifier">Verification Bundles</a>
       </div>
       <div class="foot-col">
         <p class="foot-h">Developers</p>
+        <a href="/developers">Quick start</a>
+        <a href="/developers#addresses">Network addresses</a>
         <a href="/verify">Verify a report</a>
-        <a href="/data/ustb-2026-08-17-1.json">Signed bundle</a>
-        <a href="/products/registry">Registry contract</a>
-      </div>
-      <div class="foot-col">
-        <p class="foot-h">Resources</p>
-        <a href="/coverage">Coverage</a>
         <a href="/status">Status</a>
-        <a href="/dossier">Published reports</a>
-        <a href="/dossier/ustb-2026-08-17">ustb-2026-08-17</a>
       </div>
       <div class="foot-col">
-        <p class="foot-h">Project</p>
-        <a href="/">Home</a>
+        <p class="foot-h">Proof</p>
+        <a href="/dossier">Published reports</a>
+        <a href="/judge">The 90-second proof</a>
         <a href="/changelog">Changelog</a>
+        <a href="/docs">Documentation</a>
+      </div>
+      <div class="foot-col">
+        <p class="foot-h">Security</p>
+        <a href="/security">Trust center</a>
+        <a href="/docs/threat-model">Threat model</a>
         <a href="/limitations">Limitations</a>
+        <a href="/docs/source-audit">Source audit</a>
       </div>
     </div>
     <div class="foot-meta">
-      <p>Touchstone — disclosure evidence for tokenized funds.</p>
-      <p class="mono">registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952 · X Layer testnet</p>
-      <p>This site runs no JavaScript and makes no external requests. Fonts are
-      self-hosted. What you see is static text over a signed bundle.</p>
+      <p>Touchstone — RWA policy infrastructure for X&nbsp;Layer.</p>
+      <p class="mono">mainnet · registry v2 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · registry v1 0xc9d58e4496bF061C3177301Ff02518eBB70AD30d · chain id 196</p>
+      <p class="mono">testnet · registry v2 0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720 · registry v1 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952</p>
+      <p>These pages run no JavaScript and make no external requests; fonts are self-hosted.
+      The one scripted page is the <a href="/app">Policy Terminal</a>, whose code is served
+      from this host and talks only to X&nbsp;Layer RPC endpoints. Every number and address
+      on this site is rendered from one canonical data source at build time.</p>
     </div>
   </div>
 </footer>

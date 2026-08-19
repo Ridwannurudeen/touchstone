@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dossier — Touchstone</title>
+<meta name="description" content="The proof archive: every report Touchstone has published across X Layer mainnet and testnet, newest first, with its network, registry version, sequence, state and signed bundle.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/dossier">
+<meta property="og:title" content="Dossier — Touchstone">
+<meta property="og:description" content="Every report Touchstone has published across X Layer mainnet and testnet, newest first, with network, registry version, state and signed bundle.">
+<meta property="og:url" content="https://touchstone.gudman.xyz/dossier">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  .d-badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .d-proof { font-size: var(--t-small); }
+  .d-proof a { display: inline-block; }
+  .d-none { color: var(--ink-400); }
+  .d-deploys { margin-top: var(--s7); max-width: 78ch; }
+  .d-deploys > div {
+    display: grid;
+    gap: 2px;
+    padding: 14px 0;
+    border-top: 1px solid var(--rule-soft);
+  }
+  @media (min-width: 640px) { .d-deploys > div { grid-template-columns: 210px minmax(0, 1fr); gap: 2px var(--s5); } }
+  .d-deploys > div:first-child { border-top: 0; padding-top: 0; }
+  .d-deploys dt {
+    font-size: var(--t-micro);
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-500);
+    padding-top: 3px;
+  }
+  .d-deploys dd { margin: 0; min-width: 0; font-size: var(--t-small); overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+{{> header}}
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Proof archive</p>
+      <h1>Dossier</h1>
+      <p class="t-lead prose">Every report Touchstone has published, newest first:
+      {{fact:counts.reports_published}} across X&nbsp;Layer mainnet and testnet, of which
+      {{fact:counts.confirmed_reports}} read CONFIRMED and {{fact:counts.v2_attestations}} are
+      EIP-712 attestations a relayer submitted to registry v2. Each row names the chain it
+      lives on, the registry that holds it, and the signed bundle you can check offline.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="table-scroll">
+        <table>
+          <caption class="sr">Published reports, newest first</caption>
+          <thead>
+            <tr>
+              <th scope="col">Report</th>
+              <th scope="col">Network</th>
+              <th scope="col">Registry</th>
+              <th scope="col">Seq</th>
+              <th scope="col">State</th>
+              <th scope="col">Proof</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>ustb-2026-08-19</code><span class="td-sub">policy · {{fact:policies.nav_id}}</span></td>
+              <td><span class="badge">mainnet</span></td>
+              <td><span class="badge badge-v2">v2</span></td>
+              <td class="mono">{{fact:mainnet.seq_nav_v2}}</td>
+              <td><div class="d-badges"><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>CONFIRMED</span><span class="badge badge-latest">LATEST</span></div></td>
+              <td class="d-proof"><a href="/data/ustb-2026-08-19-1-policy-nav-settlement-1.json">Bundle</a> &middot; <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.nav_1_tx}}">Tx</a> &middot; <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.nav_v2_tx}}">v2 attestation</a></td>
+            </tr>
+            <tr>
+              <td><code>ustb-2026-08-19</code><span class="td-sub">policy · {{fact:policies.freshness_id}}</span></td>
+              <td><span class="badge">mainnet</span></td>
+              <td><span class="badge badge-v2">v2</span></td>
+              <td class="mono">{{fact:mainnet.seq_freshness_v2}}</td>
+              <td><div class="d-badges"><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>CONFIRMED</span><span class="badge badge-latest">LATEST</span></div></td>
+              <td class="d-proof"><a href="/data/ustb-2026-08-19-1-policy-disclosure-freshness-1.json">Bundle</a> &middot; <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.freshness_1_tx}}">Tx</a> &middot; <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.freshness_v2_tx}}">v2 attestation</a></td>
+            </tr>
+            <tr>
+              <td><code>ustb-2026-08-19</code><span class="td-sub">asset key</span></td>
+              <td><span class="badge">mainnet</span></td>
+              <td><span class="badge">v1</span></td>
+              <td class="mono">{{fact:mainnet.seq_asset_v1}}</td>
+              <td><div class="d-badges"><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>CONFIRMED</span><span class="badge badge-latest">LATEST</span></div></td>
+              <td class="d-proof"><a href="/data/ustb-2026-08-19-3.json">Bundle</a> &middot; <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.asset_3_tx}}">Tx</a></td>
+            </tr>
+            <tr>
+              <td><code>ustb-2026-08-19</code><span class="td-sub">policy · {{fact:policies.nav_id}}</span></td>
+              <td><span class="badge">testnet</span></td>
+              <td><span class="badge badge-v2">v2</span></td>
+              <td class="mono">{{fact:testnet.seq_nav_v2}}</td>
+              <td><div class="d-badges"><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>CONFIRMED</span><span class="badge badge-latest">LATEST</span></div></td>
+              <td class="d-proof d-none">No bundle file — see the note below. &middot; <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.nav_1_tx}}">Tx</a> &middot; <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.nav_v2_tx}}">v2 attestation</a></td>
+            </tr>
+            <tr>
+              <td><code>ustb-2026-08-19</code><span class="td-sub">policy · {{fact:policies.freshness_id}}</span></td>
+              <td><span class="badge">testnet</span></td>
+              <td><span class="badge badge-v2">v2</span></td>
+              <td class="mono">{{fact:testnet.seq_freshness_v2}}</td>
+              <td><div class="d-badges"><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>CONFIRMED</span><span class="badge badge-latest">LATEST</span></div></td>
+              <td class="d-proof d-none">No bundle file — see the note below. &middot; <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.freshness_1_tx}}">Tx</a> &middot; <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.freshness_v2_tx}}">v2 attestation</a></td>
+            </tr>
+            <tr>
+              <td><code>ustb-2026-08-19</code><span class="td-sub">asset key</span></td>
+              <td><span class="badge">testnet</span></td>
+              <td><span class="badge">v1</span></td>
+              <td class="mono">{{fact:testnet.seq_asset_v1}}</td>
+              <td><div class="d-badges"><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>CONFIRMED</span><span class="badge badge-latest">LATEST</span></div></td>
+              <td class="d-proof"><a href="/data/ustb-2026-08-19-4.json">Bundle</a> &middot; <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.asset_4_tx}}">Tx</a></td>
+            </tr>
+            <tr>
+              <td><code>ustb-2026-08-17</code><span class="td-sub">asset key</span></td>
+              <td><span class="badge">testnet</span></td>
+              <td><span class="badge">v1</span></td>
+              <td class="mono">3</td>
+              <td><div class="d-badges"><span class="chip chip-unverifiable"><i class="dot" aria-hidden="true"></i>UNVERIFIABLE</span><span class="badge badge-correction">CORRECTS 1</span></div></td>
+              <td class="d-proof"><a href="/data/ustb-2026-08-17-3.json">Bundle</a> &middot; <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.asset_3_tx}}">Tx</a></td>
+            </tr>
+            <tr>
+              <td><code>ustb-2026-08-18</code><span class="td-sub">asset key</span></td>
+              <td><span class="badge">mainnet</span></td>
+              <td><span class="badge">v1</span></td>
+              <td class="mono">2</td>
+              <td><div class="d-badges"><span class="chip chip-unverifiable"><i class="dot" aria-hidden="true"></i>UNVERIFIABLE</span><span class="badge badge-correction">CORRECTS 1</span></div></td>
+              <td class="d-proof"><a href="/data/ustb-2026-08-18-2-mainnet.json">Bundle</a> &middot; <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.asset_2_tx}}">Tx</a></td>
+            </tr>
+            <tr>
+              <td><code>ustb-2026-08-18</code><span class="td-sub">asset key</span></td>
+              <td><span class="badge">testnet</span></td>
+              <td><span class="badge">v1</span></td>
+              <td class="mono">2</td>
+              <td><div class="d-badges"><span class="chip chip-unverifiable"><i class="dot" aria-hidden="true"></i>UNVERIFIABLE</span></div></td>
+              <td class="d-proof"><a href="/data/ustb-2026-08-18-2.json">Bundle</a> &middot; <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.asset_2_tx}}">Tx</a></td>
+            </tr>
+            <tr>
+              <td><code>ustb-2026-08-18</code><span class="td-sub">asset key</span></td>
+              <td><span class="badge">mainnet</span></td>
+              <td><span class="badge">v1</span></td>
+              <td class="mono">1</td>
+              <td><div class="d-badges"><span class="chip chip-unverifiable"><i class="dot" aria-hidden="true"></i>UNVERIFIABLE</span></div></td>
+              <td class="d-proof"><a href="/data/ustb-2026-08-18-1-mainnet.json">Bundle</a> &middot; <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.asset_1_tx}}">Tx</a></td>
+            </tr>
+            <tr>
+              <td><code>ustb-2026-08-17</code><span class="td-sub">asset key · first publication</span></td>
+              <td><span class="badge">testnet</span></td>
+              <td><span class="badge">v1</span></td>
+              <td class="mono">1</td>
+              <td><div class="d-badges"><span class="chip chip-unverifiable"><i class="dot" aria-hidden="true"></i>UNVERIFIABLE</span></div></td>
+              <td class="d-proof"><a href="/data/ustb-2026-08-17-1.json">Bundle</a> ·
+              <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.first_publication_tx}}">Transaction</a><span class="td-sub">block {{fact:testnet.first_publication_block}}</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="under-table prose secondary">{{fact:counts.bundles_downloadable}} of the
+      {{fact:counts.reports_published}} published reports have a downloadable bundle here. Two
+      testnet policy bundles were lost to a same-name overwrite before bundle filenames became
+      chain-aware; their signed reports remain in the transparency logs and their attestations
+      remain on chain, where the terminal reads them.</p>
+
+      <div class="note">
+        <p><strong>A report is bound to the control set it was signed under.</strong> The
+        earliest sequences were evaluated under an earlier, larger control set, and the digest of that
+        approval ledger sits inside the signed report. The current approved set is
+        {{fact:counts.controls_approved}} controls under ledger
+        0x{{fact:approval.ledger_sha256}}, signed by {{fact:approval.approver}} on
+        {{fact:approval.signed_on}}; it applies only to sequences published after it.</p>
+        <p>A report may also name an earlier sequence it corrects. A correction supersedes that
+        sequence without rewriting it, so the corrected report keeps the epoch it observed —
+        which is why the highest sequence on a chain can carry an older epoch than the one
+        before it.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <h2>Registry v2 deployments</h2>
+      <p class="prose secondary">The attested reports above live in these contracts. Both were
+      deployed by {{fact:roles.deployer}}, and both accept EIP-712 reports submitted by the
+      relayer {{fact:roles.relayer}} on behalf of the reporting authority.</p>
+      <dl class="d-deploys">
+        <div>
+          <dt>Mainnet · {{fact:mainnet.chain_id}}</dt>
+          <dd><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.registry_v2}}">{{fact:mainnet.registry_v2}}</a>
+          — block {{fact:mainnet.registry_v2_block}} ·
+          <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.registry_v2_deploy_tx}}">deployment transaction</a></dd>
+        </div>
+        <div>
+          <dt>Testnet · {{fact:testnet.chain_id}}</dt>
+          <dd><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.registry_v2}}">{{fact:testnet.registry_v2}}</a>
+          — block {{fact:testnet.registry_v2_block}} ·
+          <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.registry_v2_deploy_tx}}">deployment transaction</a></dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="cta-band">
+    <div class="wrap">
+      <h2>Check it, don't trust it</h2>
+      <p class="t-lead">Every digest on this site can be recomputed from a bundle, offline, on
+      your own machine — and every state can be re-read from the registry in your browser. The
+      newest confirmed bundle is
+      <a href="/data/ustb-2026-08-19-1-policy-nav-settlement-1.json">ustb-2026-08-19-1-policy-nav-settlement-1.json</a>.</p>
+      <div class="cta-row">
+        <a class="cta" href="/app">Launch Terminal</a>
+        <a class="cta-ghost" href="/verify">Verify a report</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+{{> footer}}
+</body>
+</html>

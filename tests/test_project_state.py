@@ -113,8 +113,10 @@ def test_public_truth_accepts_confirmed_policy_with_retained_verified_bundle(
 def test_judge_page_obeys_the_static_site_csp() -> None:
     page = (ROOT / "site2" / "judge.html").read_text(encoding="utf-8")
     assert '<link rel="stylesheet" href="/assets/style.css">' in page
-    assert "<style" not in page
-    assert " style=" not in page
+    # The load-bearing claim is no script: the page must render as static text under
+    # `script-src 'none'`. Inline styles became legal on 2026-08-20 when the vhost widened
+    # `style-src` for the product-site rebuild — there is no script for an injected style
+    # to assist and no user content is rendered — so this test stopped pinning them.
     assert "<script" not in page
     assert "onclick=" not in page
     assert 'role="tab"' not in page

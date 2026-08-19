@@ -1,0 +1,159 @@
+{
+  "_comment": "Canonical chain facts for the public site. Every address was re-verified from chain on 2026-08-19 by classifying each contract at the deployer's CREATE addresses (see docs/OPERATIONS.md for the collision table - several addresses exist on BOTH chains as different contracts; the chain id is the only discriminator). scripts/build_site.py renders these into the pages; edit here, rebuild, redeploy. 32-byte values are stored WITHOUT their 0x prefix; a page source writes 0x{{fact:...}} - a session hook refuses any file carrying a 0x-prefixed 64-hex literal, and the convention keeps sources writable. Test counts are as of the suites run on 2026-08-19.",
+  "site": {
+    "updated": "2026-08-19",
+    "url": "https://touchstone.gudman.xyz"
+  },
+  "counts": {
+    "reports_published": "11",
+    "confirmed_reports": "6",
+    "v2_attestations": "4",
+    "enforcement_txs": "4",
+    "networks": "2",
+    "bundles_downloadable": "9",
+    "python_tests": "1,976",
+    "contract_tests": "111",
+    "sdk_tests": "15",
+    "mutations": "125",
+    "controls_approved": "5",
+    "controls_declined": "5",
+    "evidence_sources": "3",
+    "external_audits": "4"
+  },
+  "asset": {
+    "id": "USTB",
+    "name": "Superstate Short Duration U.S. Government Securities Fund",
+    "asset_key_text": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+    "confirmed_nav": "11.18208300",
+    "confirmed_nav_date": "2026-08-17",
+    "first_confirmed_on": "2026-08-19",
+    "refused_on": "2026-08-18"
+  },
+  "keys": {
+    "asset": "82287f6355a79c8cf00b3c52090128ae7f13b61c65c95ae1c319910377054cc8",
+    "freshness": "a40f966944356ce543320f59f22ba003e3f0be28532bae029d4f9f9d05efc589",
+    "nav": "3cd89b1b73d40adc47c25a1fbf2123dcf6839c92a446275db8f9268a146b62b8",
+    "freshness_policy_id": "f660064184f586dac34851895679486af283e817936c7141af751ad567e7ab57",
+    "nav_policy_id": "9fa492c7df6ade4f220a10b5d10da3f158343077b44df7b1939ba83b14ac7949"
+  },
+  "policies": {
+    "freshness_id": "disclosure-freshness:1",
+    "freshness_digest": "d6932d093d253bc2b891c920a7ff5626f627e2d141edcbd2b7b48bb60cca44d9",
+    "nav_id": "nav-settlement:1",
+    "nav_digest": "25dcda427509b1fe77f7ffeed2f7d74a83c76f2bc9bd6d8735aeadec8b50ebd2"
+  },
+  "approval": {
+    "ledger_sha256": "4f2c7dd5ea0cd09c3b0e9d51445873c65b882a1b3b3265c15979b598dab91dd1",
+    "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+    "signed_on": "2026-08-19"
+  },
+  "roles": {
+    "deployer": "0xAa1C01C6FcDcc268DbF93C861D26C44a27C35436",
+    "publisher": "0x86A100BDdF8754c95fec97BeC96dBFd64Be44710",
+    "relayer": "0x5b4e381CA8CCFF91553711512f08B4dF685faFCe",
+    "operations": "0xF901f538d17ED060018F043bCAA1d7f0977Fa65D",
+    "reporter_kid": "ed25519:394ee022b83de4783cd49f60cc4842b48d108f6a339b73272739490cb9a581fd"
+  },
+  "mainnet": {
+    "chain_id": "196",
+    "explorer": "https://web3.okx.com/explorer/xlayer",
+    "registry_v1": "0xc9d58e4496bF061C3177301Ff02518eBB70AD30d",
+    "registry_v1_block": "68291416",
+    "registry_v2": "0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C",
+    "registry_v2_block": "68389940",
+    "registry_v2_deploy_tx": "2caf26f2de4d43a6f7ca73b707f615b1d3ca8b539e2e11dce2a33cf29273ab6f",
+    "gate_freshness": "0xAac48DC261B04737FDCB101D5049395121034a83",
+    "gate_freshness_block": "68389983",
+    "guarded_permitted": "0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720",
+    "guarded_refused": "0x8FbcFf50bf1F88cADEc9103a57c4C86e8A44BAcB",
+    "seq_asset_v1": "3",
+    "seq_freshness_v2": "1",
+    "seq_nav_v2": "1",
+    "confirmed_block": "68389082",
+    "pubs": {
+      "asset_1_tx": "fa4b7992bee12819017ca16a0d338d629e86b0bf2d3487f6dd07abfe6bef0b85",
+      "asset_1_block": "68292878",
+      "asset_2_tx": "363539ad1cc5577936ee6111e4a4f1c826f9d35b0b7a6f020d2d712affc41bfb",
+      "asset_2_block": "68307118",
+      "asset_3_tx": "191ab2eba417417ac8172546ba2c693151a55cdcbc1e921487ac974962e68ecc",
+      "asset_3_block": "68389082",
+      "freshness_1_tx": "15de5f9ba291c97d4d19c2e9645ca4229bc147907b73576a9f73c64961556b3d",
+      "freshness_1_block": "68389152",
+      "nav_1_tx": "12279b34280e0a7b4623814a00e54797fba7c754f495f38a5cc620a1315ce451",
+      "nav_1_block": "68389216",
+      "freshness_v2_tx": "90736a7c3a067bb342caf5827b2ea279e5ff0d9479c027daf81b768dc180d8a1",
+      "freshness_v2_block": "68399557",
+      "nav_v2_tx": "f4cdbd1e43657ca23c92dca7c9911af9c0e62f7a76397dbc0b5dc3a270dd197f",
+      "nav_v2_block": "68399800"
+    },
+    "guarded_permitted_tx": "8b4b6c853e64f8f6f91f651b007b5cbf7088721ec7531339e735c03e15b2a55d",
+    "guarded_permitted_block": "68390049",
+    "guarded_refused_tx": "2b106907d529810dcbd3952a7d3e4f28ef05635a36b926c86d062ba7531cad53",
+    "guarded_refused_block": "68390055",
+    "gate_freshness_root": "35dbfa3dfbae5a7dc6a2852264fca08b2674629bc51e6018be06b5c083158d73",
+    "gate_freshness_max_age": "93600"
+  },
+  "testnet": {
+    "chain_id": "1952",
+    "explorer": "https://web3.okx.com/explorer/xlayer-test",
+    "registry_v1": "0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C",
+    "registry_v1_block": "38489602",
+    "registry_v2": "0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720",
+    "registry_v2_block": "38699818",
+    "registry_v2_deploy_tx": "120b880beaf3bf544da2386589b4339a72261c1faf54c522b2c492d6fbc4477a",
+    "gate_v1": "0xAac48DC261B04737FDCB101D5049395121034a83",
+    "gate_freshness": "0x0bc5c0cc879CE1b5AD23aEdA8fC42dB414eB8eE1",
+    "guarded_permitted": "0xf6D53a9cD76C6777835a6b4070e88337199127Dc",
+    "guarded_refused": "0x8641CF6d40524AC55aBd0a02601AfBd374EFB059",
+    "seq_asset_v1": "4",
+    "seq_freshness_v2": "1",
+    "seq_nav_v2": "1",
+    "confirmed_block": "38698679",
+    "first_publication_block": "38526525",
+    "first_publication_tx": "5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869",
+    "pubs": {
+      "asset_1_tx": "5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869",
+      "asset_1_block": "38526525",
+      "asset_2_tx": "6a2832db0999840141c80d04c5dbed4295ddce8a3a62db4b27fec74093d990da",
+      "asset_2_block": "38611710",
+      "asset_3_tx": "1cdf45d0f93f7268a147eed015df45f1e531107c961473b711b6ef6abcd9059b",
+      "asset_3_block": "38617112",
+      "asset_4_tx": "1ab4cd4faba85f1cedca455c012bacfb8e28f0be0899b95449d8eba862ffa39f",
+      "asset_4_block": "38698679",
+      "freshness_1_tx": "244e71b23094acb0ad2989e3e590ba38ac4567c030968017e96a07e332d60707",
+      "freshness_1_block": "38698740",
+      "nav_1_tx": "41788d70e6c99bf2b9675351159f830203542f6874107e277922300f3e4c3719",
+      "nav_1_block": "38698809",
+      "nav_v2_tx": "d78803d257ae3f98226159a7f0f909bff591c6caaf9af7fc0568df915583d5e2",
+      "nav_v2_block": "38707543",
+      "freshness_v2_tx": "796dee43e0e285b6900e74ccd4d08a521df69fe52b34139241a87e97846d10f4",
+      "freshness_v2_block": "38708125"
+    },
+    "guarded_permitted_tx": "5b6e65b9f0878e65c149654e16729b91a11e58122431551048d65206f56b96cd",
+    "guarded_permitted_block": "38700019",
+    "guarded_refused_tx": "fc9bcc47641929097e45a1ca343ddae8346a44eba9ed11a92cda8a32f5ee98cc",
+    "guarded_refused_block": "38700025",
+    "gate_v1_block": "38602126",
+    "gate_freshness_block": "38699975",
+    "gate_v1_root": "0000000000000000000000000000000000000000000000000000000000000000",
+    "gate_v1_max_age": "172800",
+    "gate_freshness_root": "35dbfa3dfbae5a7dc6a2852264fca08b2674629bc51e6018be06b5c083158d73",
+    "gate_freshness_max_age": "93600"
+  },
+  "story": {
+    "refusal_date": "2026-08-18",
+    "confirmation_date": "2026-08-19",
+    "confirmation_interval_hours": "24",
+    "settlement_floor_business_days": "2"
+  },
+  "_comment_pubs": "Publication txs recovered from the workspaces' transparency logs on 2026-08-20 and cross-checked against known receipt blocks. asset_3 on testnet corrects asset_1 (same epoch); asset_2 on mainnet corrects asset_1. The v2 attestation txs and guarded-action txs are appended by the bounded chain scans (see git history).",
+  "bundles": {
+    "shared_ledger_digest": "3e1840a0a490d4b007c393d0f035c0008cbe46eb42f36aa86f0db727d3a78d5b",
+    "latest_policy_sha256": "24871bd2e251d6b14661fe00085b2b88d0eca38d35ca6c6bf21f29fb7e03f860",
+    "latest_policy_file": "ustb-2026-08-19-1-policy-nav-settlement-1.json"
+  },
+  "repo": {
+    "clone_url": "https://github.com/Ridwannurudeen/touchstone.git",
+    "url": "https://github.com/Ridwannurudeen/touchstone"
+  }
+}

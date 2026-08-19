@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verification Bundles — Touchstone</title>
+<meta name="description" content="Every Touchstone verdict ships as a self-contained bundle: the signed report, its canonical bytes, the signed approval ledger, compilations, policy manifest and evidence digests. Verify it in the browser, from the CLI, or by hand.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/products/verifier">
+<meta property="og:title" content="Touchstone Verification Bundles">
+<meta property="og:description" content="A verdict you can recompute yourself — signature, roots, approvals and policy manifest, verified locally with no trust in this site.">
+<meta property="og:url" content="https://touchstone.gudman.xyz/products/verifier">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  pre.code-block { border: 0; box-shadow: none; }
+  .path-grid { display: grid; grid-template-columns: 1fr; gap: var(--s5); margin-top: var(--s6); }
+  @media (min-width: 900px) { .path-grid { grid-template-columns: repeat(3, 1fr); } }
+  .path-card {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 13px;
+    box-shadow: var(--card-shadow);
+    padding: var(--s6);
+    display: flex;
+    flex-direction: column;
+  }
+  .path-card h3 { margin-bottom: var(--s3); }
+  .path-card p { font-size: var(--t-small); color: var(--ink-500); }
+  .path-card .p-cta { margin-top: auto; padding-top: var(--s4); font-size: var(--t-small); font-weight: 600; }
+  .sect-name { white-space: nowrap; }
+</style>
+</head>
+<body>
+{{> header}}
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Products · Verification Bundles</p>
+      <h1>A verdict you can recompute yourself</h1>
+      <p class="t-lead prose">Every published verdict ships as one self-contained bundle: the
+      signed report, the exact bytes that were signed, the approval ledger behind its control
+      set, the compilation artifacts the controls came from, the policy manifest it answers,
+      and a digest for every piece of evidence. Nothing in it depends on this site being
+      honest — recompute it on your own machine and the answer is the same or it is
+      wrong.</p>
+    </div>
+  </section>
+
+  <section class="trust-strip">
+    <div class="wrap">
+      <div class="trust-cells">
+        <div class="trust-cell">
+          <p class="tc-k">BUNDLES</p>
+          <p><strong>{{fact:counts.bundles_downloadable}}</strong> downloadable</p>
+        </div>
+        <div class="trust-cell">
+          <p class="tc-k">FORMAT</p>
+          <p><strong>bundle v5</strong>, one file per verdict</p>
+        </div>
+        <div class="trust-cell">
+          <p class="tc-k">NETWORK ACCESS</p>
+          <p><strong>none required</strong> to verify</p>
+        </div>
+        <div class="trust-cell">
+          <p class="tc-k">REPORTING KEY</p>
+          <p><strong>Ed25519</strong>, carried in the bundle</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">Contents</p>
+      <h2>What travels inside a bundle</h2>
+      <p class="prose secondary">Each section is an input to a check, not a summary of one.
+      Together they are everything needed to reproduce the verdict from first principles.</p>
+
+      <div class="grid-2">
+        <article class="use-card">
+          <h3><code class="sect-name">signed_report</code></h3>
+          <p>The report with its Ed25519 signature and the key id it was signed under. The
+          canonical bytes travel alongside as <code>report_canonical</code>, so the signature
+          is checked against exactly what was signed rather than against a re-serialisation
+          that might differ by a byte.</p>
+        </article>
+        <article class="use-card">
+          <h3><code class="sect-name">approval_ledger</code></h3>
+          <p>Every control a human approved and every candidate a human declined, with
+          reasons. As of ledger version 2 each decision also carries the approver's EIP-712
+          signature over the exact proposal it decides, so the identity behind a decision is
+          recoverable from the bundle alone. Its digest must match the one inside the signed
+          report.</p>
+        </article>
+        <article class="use-card">
+          <h3><code class="sect-name">compilations</code></h3>
+          <p>The compilation artifacts, keyed by their own digest. Each control names the
+          artifact it was accepted in — including the model, prompt and provider response
+          digests behind the proposal — and the report's provenance digests must be exactly
+          this set.</p>
+        </article>
+        <article class="use-card">
+          <h3><code class="sect-name">control_records</code></h3>
+          <p>The approved controls in full: subject, cited span, operator, expected value,
+          cadence, effective period, approval state. Rehashing each record's canonical bytes
+          must reproduce the content hash the report references it by.</p>
+        </article>
+        <article class="use-card">
+          <h3><code class="sect-name">policy_manifest</code></h3>
+          <p>The policy this verdict answers — its id, version, the consumer question in
+          plain language, and the control ids it draws on. Its digest is the
+          <code>policyRoot</code> a gate pins on chain.</p>
+        </article>
+        <article class="use-card">
+          <h3><code class="sect-name">evidence_digests</code></h3>
+          <p>The digest of every evidence capture the engine retrieved, with source id, role
+          and retrieval time. These chain into the report's evidence root in a
+          domain-separated order.</p>
+        </article>
+        <article class="use-card">
+          <h3><code class="sect-name">published_key</code></h3>
+          <p>The Ed25519 public key and its key id. The report names the same key id as its
+          publisher, so lineage checks need no external lookup — and a bundle from any date
+          still verifies years later.</p>
+        </article>
+        <article class="use-card">
+          <h3><code class="sect-name">registry_v2_attestation</code> <span class="badge badge-v2">where present</span></h3>
+          <p>The publisher's EIP-712 attestation as submitted to a v2 registry. When a bundle
+          carries one, verification additionally recovers the attesting address and checks
+          that every attested field matches the signed report — the same digest the registry
+          contract recomputes on chain.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">Three ways</p>
+      <h2>Verify it however you work</h2>
+      <div class="path-grid">
+        <article class="path-card">
+          <h3>In the browser</h3>
+          <p>Drop a bundle into the Policy Terminal. It checks the signature, the canonical
+          bytes, the ledger digest and every approver signature, the policy manifest digest,
+          the compilation artifacts and any v2 attestation — locally, with no upload, and it
+          names the checks it did <em>not</em> run rather than implying a clean sweep.</p>
+          <p class="p-cta"><a href="/app">Open the Policy Terminal &rarr;</a></p>
+        </article>
+        <article class="path-card">
+          <h3>From the CLI</h3>
+          <p>One command, no network access, standard library plus a signature package. It
+          prints a single line naming the asset key, epoch, sequence and state — or fails
+          with the first check that did not hold.</p>
+          <p class="p-cta"><a href="/developers">Set it up &rarr;</a></p>
+        </article>
+        <article class="path-card">
+          <h3>By hand</h3>
+          <p>Short recipes that recompute each commitment separately: the signature, the
+          ledger digest, the compilation artifacts, every control content hash and both
+          roots. For an auditor who would rather trust their own code.</p>
+          <p class="p-cta"><a href="/verify">Read the recipes &rarr;</a></p>
+        </article>
+      </div>
+
+      <p class="code-block-label">CLI</p>
+      <pre class="code-block"><code>python -m touchstone.verify bundle.json
+
+<span class="c-comment"># PASS: &lt;asset key&gt; epoch=&lt;epoch id&gt; sequence=&lt;n&gt; state=&lt;state&gt;</span>
+<span class="c-comment"># FAIL: &lt;the first check that did not hold&gt;</span></code></pre>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">Corrections</p>
+      <h2>What a correction does to verification</h2>
+      <div class="prose">
+        <p>A correction never edits a published report — it restates an epoch at a new
+        sequence and names the sequence it corrects. Both bundles remain valid and both keep
+        verifying: the original proves what was signed then, the correction proves what was
+        signed after. Verification tells you a bundle is authentic, not that it is current.</p>
+        <p>Two things keep that from being a loophole. The tool that builds a correction
+        refuses to sign one unless it reproduces the original's control-set root, evidence
+        root and approval-ledger digest exactly — so a correction can restate a conclusion
+        but never quietly swap the inputs it was judged against. And currency is answered by
+        the report itself: every report carries a <code>validUntil</code>, and the on-chain
+        record says which sequence corrects which, so a consumer that wants &ldquo;the current
+        verdict&rdquo; reads the chain rather than the file it happens to hold.</p>
+      </div>
+      <div class="cta-row">
+        <a class="cta-ghost" href="/dossier">Browse the published bundles</a>
+        <a class="cta-ghost" href="/products/registry">How corrections are recorded</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">Limits</p>
+      <h2>What the checks do not cover</h2>
+      <div class="prose">
+        <p>The bundle carries evidence digests, not the evidence artifacts themselves, so the
+        checks confirm which captures were used without replaying retrieval or
+        normalisation. And no check proves an issuer's figures are true — only that they were
+        published, evaluated against a cited predicate by an approved control, and signed.
+        The limitations that apply to a specific report travel inside its signed bytes, where
+        removing one would break the signature.</p>
+        <p>These pages run no JavaScript, enforced at the server with
+        <code>script-src 'none'</code>; the one scripted page is the Policy Terminal, whose
+        code is served from this host. Nothing here computes an answer on your behalf: every
+        check runs on your machine or not at all.</p>
+      </div>
+      <div class="cta-row">
+        <a class="cta" href="/verify">Verify a report</a>
+        <a class="cta-ghost" href="/limitations">Read the limitations</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+{{> footer}}
+</body>
+</html>

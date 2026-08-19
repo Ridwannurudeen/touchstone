@@ -22,6 +22,8 @@ from pathlib import Path
 
 import markdown
 
+import build_site
+
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site2"
 TEMPLATE = SITE / "_docs-template.html"
@@ -116,8 +118,32 @@ def _demote_after_first(body: str) -> str:
     return "".join(parts)
 
 
+def _chrome(page: str) -> str:
+    """Render the shared header/footer and fact tokens the site builder owns.
+
+    The template used to carry its own copy of both, and the copy went stale exactly the
+    way every hand-typed fact on this site has: the live docs footer said "testnet only"
+    while mainnet had been publishing for a day.
+    """
+    partials = {
+        path.stem: path.read_text(encoding="utf-8").rstrip("\n")
+        for path in sorted((SITE / "_partials").glob("*.html"))
+    }
+    facts = build_site.load_facts()
+    for name, content in partials.items():
+        page = page.replace("{{> " + name + "}}", content)
+    for key, value in facts.items():
+        page = page.replace("{{fact:" + key + "}}", value)
+    if "{{" in page:
+        offset = page.index("{{")
+        raise SystemExit(
+            f"docs template holds an unrendered token near {page[offset : offset + 50]!r}"
+        )
+    return page
+
+
 def _fill(title: str, body: str, headings: list[tuple[int, str, str]]) -> str:
-    page = TEMPLATE.read_text(encoding="utf-8")
+    page = _chrome(TEMPLATE.read_text(encoding="utf-8"))
     page = page.replace("<!--DOC_TITLE-->", html.escape(title))
     page = page.replace("<!--DOC_BODY-->", body)
     return page.replace("<!--DOC_NAV-->", _nav(headings))

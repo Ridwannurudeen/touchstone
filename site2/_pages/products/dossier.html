@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dossier — Touchstone</title>
+<meta name="description" content="The dossier is Touchstone's proof archive: every verdict published to X Layer, each with the signed report, the control results behind it, and a bundle you can verify offline.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/products/dossier">
+<meta property="og:title" content="The Touchstone Dossier">
+<meta property="og:description" content="Every published verdict, its evidence, and the bundle that proves it — across X Layer mainnet and testnet.">
+<meta property="og:url" content="https://touchstone.gudman.xyz/products/dossier">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  .stat-row .st-n { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+{{> header}}
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow">Products · Dossier</p>
+      <h1>The proof archive</h1>
+      <p class="t-lead prose">Everything Touchstone has ever concluded is here, in the form
+      it was concluded in: a signed report per epoch per key, the result of every control
+      that was evaluated — including the ones the evidence could not answer — and a bundle
+      that lets a reader recompute the whole verdict without trusting this site. The archive
+      is the audit trail a risk committee asks for, and it grows by one entry per key per
+      day.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="stat-row">
+        <div class="stat">
+          <p class="st-n">{{fact:counts.reports_published}}</p>
+          <p class="st-l">reports published on chain</p>
+        </div>
+        <div class="stat">
+          <p class="st-n">{{fact:counts.confirmed_reports}}</p>
+          <p class="st-l">reached CONFIRMED</p>
+        </div>
+        <div class="stat">
+          <p class="st-n">{{fact:counts.bundles_downloadable}}</p>
+          <p class="st-l">downloadable verification bundles</p>
+        </div>
+        <div class="stat">
+          <p class="st-n">{{fact:counts.networks}}</p>
+          <p class="st-l">chains carrying the same record</p>
+        </div>
+      </div>
+      <div class="cta-row">
+        <a class="cta" href="/dossier">Browse the archive</a>
+        <a class="cta-ghost" href="/verify">Verify a report</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">Current state</p>
+      <h2>Where the record stands</h2>
+      <p class="prose secondary">One asset and two policies, published to both chains. State
+      of record {{fact:site.updated}}; reports expire at end of day UTC and the next daily
+      window republishes, so this table is a snapshot of a record that keeps moving.</p>
+
+      <div class="table-scroll">
+        <table>
+          <caption class="sr">Latest published state by key and chain</caption>
+          <thead>
+            <tr>
+              <th scope="col">Key</th>
+              <th scope="col">X Layer mainnet · {{fact:mainnet.chain_id}}</th>
+              <th scope="col">X Layer testnet · {{fact:testnet.chain_id}}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>{{fact:asset.id}}</strong><span class="td-sub">{{fact:asset.name}}</span></td>
+              <td>sequence <span class="mono">{{fact:mainnet.seq_asset_v1}}</span> · <span class="chip chip-satisfied"><i class="dot" aria-hidden="true"></i>CONFIRMED</span></td>
+              <td>sequence <span class="mono">{{fact:testnet.seq_asset_v1}}</span> · <span class="chip chip-satisfied"><i class="dot" aria-hidden="true"></i>CONFIRMED</span></td>
+            </tr>
+            <tr>
+              <td><strong>{{fact:policies.freshness_id}}</strong><span class="td-sub">is the disclosure current enough to act on?</span></td>
+              <td>sequence <span class="mono">{{fact:mainnet.seq_freshness_v2}}</span> · <span class="chip chip-satisfied"><i class="dot" aria-hidden="true"></i>CONFIRMED</span></td>
+              <td>sequence <span class="mono">{{fact:testnet.seq_freshness_v2}}</span> · <span class="chip chip-satisfied"><i class="dot" aria-hidden="true"></i>CONFIRMED</span></td>
+            </tr>
+            <tr>
+              <td><strong>{{fact:policies.nav_id}}</strong><span class="td-sub">has the NAV actually settled?</span></td>
+              <td>sequence <span class="mono">{{fact:mainnet.seq_nav_v2}}</span> · <span class="chip chip-satisfied"><i class="dot" aria-hidden="true"></i>CONFIRMED</span></td>
+              <td>sequence <span class="mono">{{fact:testnet.seq_nav_v2}}</span> · <span class="chip chip-satisfied"><i class="dot" aria-hidden="true"></i>CONFIRMED</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="t-small secondary under-table">{{fact:counts.bundles_downloadable}} of the
+      {{fact:counts.reports_published}} publications have a downloadable bundle. Two testnet
+      policy bundle files were overwritten by same-named mainnet files during the first
+      two-chain run; their full signed reports remain embedded in the append-only
+      transparency logs, and the naming is being made chain-aware rather than the logs being
+      rewritten.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">The arc worth reading</p>
+      <h2>Refused when provisional. Confirmed when earned.</h2>
+      <p class="prose secondary">The archive's most useful entry is not a pass. It is the
+      same NAV value appearing twice: refused on the first sighting, confirmed once it had
+      survived the evidence interval unchanged — and a consumer contract's behaviour changing
+      as a result, without any control being weakened to make it happen.</p>
+
+      <div class="case-line">
+        <div class="case-step cs-refused">
+          <p class="cs-t">{{fact:asset.refused_on}}</p>
+          <h3>Refused</h3>
+          <p>The NAV row was present and plausible, but no capture at least
+          {{fact:story.confirmation_interval_hours}} hours older confirmed it. The value
+          control abstained and the state held short of CONFIRMED.</p>
+        </div>
+        <div class="case-step cs-confirmed">
+          <p class="cs-t">{{fact:asset.first_confirmed_on}}</p>
+          <h3>Confirmed</h3>
+          <p>The same NAV, <span class="mono">{{fact:asset.confirmed_nav}}</span> for the row
+          dated {{fact:asset.confirmed_nav_date}}, settled unchanged across two captures.
+          Both chains reached CONFIRMED.</p>
+        </div>
+        <div class="case-step">
+          <p class="cs-t">{{fact:asset.first_confirmed_on}}</p>
+          <h3>Enforced</h3>
+          <p>With the policy verdict CONFIRMED, the guarded consumer bound to that key
+          executed on chain — and the consumer bound to a key with no report still
+          reverted.</p>
+        </div>
+      </div>
+      <p class="t-small secondary under-table">The refusal and the confirmation are one
+      mechanism, not two outcomes. A system that could not produce the first has no business
+      being believed about the second.</p>
+    </div>
+  </section>
+
+  <section class="section section--sunk">
+    <div class="wrap">
+      <p class="eyebrow">What each entry carries</p>
+      <h2>Enough to check it without us</h2>
+      <div class="grid-2">
+        <article class="use-card">
+          <h3>Identity and sequence</h3>
+          <p>The epoch the report speaks for, the asset or policy key it was filed under, and
+          the sequence it occupies on chain — the same three values the registry indexes its
+          events by.</p>
+        </article>
+        <article class="use-card">
+          <h3>State, with its transition</h3>
+          <p>The reported state and how it got there: what the previous state was, what event
+          moved it, and the deadline any pending evidence was measured against.</p>
+        </article>
+        <article class="use-card">
+          <h3>Every control result</h3>
+          <p>Each control by id and content hash, with its result, the observed value and the
+          row it belongs to. A control the evidence could not answer is present as
+          unevaluable, never dropped to keep the page tidy.</p>
+        </article>
+        <article class="use-card">
+          <h3>Commitments</h3>
+          <p>A control-set root, an evidence root, the approval-ledger digest, the policy
+          digest and the compilation digests — every one recomputable from the bundle
+          alone.</p>
+        </article>
+        <article class="use-card">
+          <h3>Validity</h3>
+          <p>The observation time and the expiry. After that expiry a consumer treating the
+          report as current would be wrong, and the report says so in its own signed
+          bytes.</p>
+        </article>
+        <article class="use-card">
+          <h3>Limitations, inside the signature</h3>
+          <p>The limitation strings travel inside the canonical report bytes. Removing one
+          changes the signature, which is the only way to make a caveat as durable as the
+          claim it qualifies.</p>
+        </article>
+      </div>
+      <div class="cta-row">
+        <a class="cta-ghost" href="/products/verifier">What a bundle contains</a>
+        <a class="cta-ghost" href="/limitations">Read the limitations</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <p class="eyebrow">Corrections</p>
+      <h2>Named, never silent</h2>
+      <div class="prose">
+        <p>Two corrections sit in this archive, and they are there because signed bytes
+        cannot be edited. A correction is a new report at a new sequence that names the
+        sequence it restates; the original stays on chain, both remain verifiable, and the
+        registry records which supersedes which. Each correction reproduces its original's
+        control-set root, evidence root and approval-ledger digest exactly — restating a
+        conclusion is allowed, quietly changing what it was judged against is not.</p>
+        <p>Reading an archive like this takes one habit: the newest entry on a key is not
+        necessarily the newest period, because a correction takes the next sequence while
+        restating an earlier epoch. Every entry names its epoch for exactly that reason.</p>
+      </div>
+      <div class="cta-row">
+        <a class="cta" href="/dossier">Browse the archive</a>
+        <a class="cta-ghost" href="/app">Read the registry live</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+{{> footer}}
+</body>
+</html>
