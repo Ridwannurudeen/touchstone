@@ -128,6 +128,25 @@ replays across chains, so: `0x0dAb4A5B…352C` is the **v1 registry on 1952** an
 **GuardedAction on 196**; and `0xc9d58e…D30d` remains superseded-on-1952 / v1-live-on-196.
 An address means nothing here without a chain id. Ever.
 
+## 1c. 2026-08-19: workspace split resolved
+
+The VPS publishing workspace is now the canonical mainnet history. Executed with backups on
+both sides first (`pre-migration-20260819T172940Z-*` local and on the host):
+
+1. observer stopped; its accumulated tree preserved whole at
+   `/var/lib/touchstone/xlayer-mainnet/ustb-observer-history` — two independent evidence hash
+   chains are never concatenated;
+2. the local published-history workspace copied to `/var/lib/touchstone/xlayer-mainnet/ustb`,
+   ownership restored to the split-identity layout (root `2750 touchstone`, evidence
+   `2770 touchstone-observer`);
+3. observer restarted against the canonical store — capturing fresh evidence into the same
+   index the publisher would confirm against, which is the point of sharing it.
+
+If the publisher unit is ever enabled on the host, it now publishes from the history that
+backs the public reports. Known, documented gap: the canonical log lacks mainnet sequence 3
+and the two policy records, which live interleaved in the local testnet workspace log per
+§1b; the chain is authoritative and unaffected.
+
 ## 1b. Incident 2026-08-19: mainnet publications journaled into the testnet workspace
 
 The first CONFIRMED states published to both chains on 2026-08-19 — testnet asset sequence 4
