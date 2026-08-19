@@ -1,0 +1,6 @@
+{
+  "asset": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+  "policy_key": "0xa40f966944356ce543320f59f22ba003e3f0be28532bae029d4f9f9d05efc589",
+  "allowed": false,
+  "reason": "status not allowed"
+}

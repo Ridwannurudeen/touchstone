@@ -1,0 +1,29 @@
+{
+  "name": "@touchstone/sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "solidity"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check:example": "tsc --ignoreConfig --noEmit --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --skipLibCheck examples/check-and-act.ts",
+    "test": "npm run build && npm run check:example && node --test test/*.test.mjs",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "ethers": "6.17.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}
