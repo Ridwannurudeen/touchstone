@@ -55,9 +55,14 @@ async function main() {
     registryVersion === "2" ? required("TOUCHSTONE_EXPECTED_POLICY_ID") : null;
   const expectedPolicyRoot =
     registryVersion === "2" ? required("TOUCHSTONE_EXPECTED_POLICY_ROOT") : null;
+  const expectedApprovalDigest =
+    registryVersion === "2"
+      ? required("TOUCHSTONE_EXPECTED_APPROVAL_DIGEST")
+      : null;
   for (const [name, value] of [
     ["TOUCHSTONE_EXPECTED_POLICY_ID", expectedPolicyId],
     ["TOUCHSTONE_EXPECTED_POLICY_ROOT", expectedPolicyRoot],
+    ["TOUCHSTONE_EXPECTED_APPROVAL_DIGEST", expectedApprovalDigest],
   ]) {
     if (value !== null && !ethers.isHexString(value, 32)) {
       throw new Error(`${name} must be a 32-byte hexadecimal value`);
@@ -103,6 +108,7 @@ async function main() {
     publisher,
     ...(registryVersion === "2" ? [expectedPolicyId, expectedPolicyRoot] : []),
     requiredControlSetRoot,
+    ...(registryVersion === "2" ? [expectedApprovalDigest] : []),
   ];
   const factory = await ethers.getContractFactory(contractName);
   const gate = await factory.deploy(...constructorArguments);

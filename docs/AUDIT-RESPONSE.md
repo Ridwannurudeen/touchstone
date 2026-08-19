@@ -17,6 +17,28 @@ defects the audit noted in passing.
 
 ---
 
+## Status update — 2026-08-19 evening
+
+The second external re-audit examined `fb7806e` and scored 8.0/10; five commits landed after
+its snapshot. Deltas against its verdicts, each verifiable from chain or repo:
+
+| Its verdict | Now |
+|---|---|
+| "No truthful live accepted policy; both panels UNVERIFIABLE" | **CLOSED.** First CONFIRMED states published 2026-08-19: asset + both policies, both chains. NAV 11.18208300 — refused on the 18th, confirmed on the 19th. Bundles retained under `site2/data/`. |
+| "Registry V2 not deployed; SDK addresses null" | **CLOSED.** Deployed both chains (testnet blk 38699818, mainnet blk 68389940), manifests committed, SDK addresses filled. **V2 holds no publications yet** — first v2 publication planned at the next epoch window. |
+| "Demonstration ends only in refusal" | **CLOSED.** GuardedAction permit/refuse pairs on chain, both networks: testnet `0x5b6e65b9…`(1)/`0xfc9bcc47…`(0), mainnet `0x8b4b6c85…`(1)/`0x2b106907…`(0). |
+| "AssetGateV2 does not enforce nonzero control-set root" | **CLOSED.** Contract-level `InvalidControlSetRoot`; tested. |
+| "Approval digest never checked by the consumer" | **CLOSED.** `expectedApprovalDigest` immutable pin, `approval mismatch` refusal; tested. |
+| "GuardedAction imports the concrete V1 gate" | **CLOSED.** Depends on `ITouchstoneGate`; works against either generation. |
+| "main unprotected" | **CLOSED.** Required status check `required`, no force-push, no deletion. |
+| "GitHub About overclaims 'signed onchain attestation'" | **CLOSED.** Narrowed to publisher-authenticated commitment + offline-verifiable report. |
+| "Dossier lists one report; four reports lack public bundles" | **CLOSED with one stated gap.** All 11 reports listed; 9 bundles public and verified; the 2 testnet policy bundle *files* were overwritten by same-named mainnet ones (their signed reports remain in the transparency logs) — stated on the dossier, not hidden. |
+| "Homepage count, OPERATIONS header, submission draft, judge 'Interactive' label stale" | **CLOSED**, this commit. |
+| "Approvals ledger unsigned legacy data" | **OPEN — owner.** Signing exists; a new dated approval release signed by the owner's key is required. Backdating is refused on principle. |
+| "Every publication hand-started; publisher disabled" | **OPEN — owner** (`DEPLOY-SERVICE.md` §3c). Workspace migration is done, so enabling is safe when decided. |
+| "No external consumer / Builder Code / rebrand" | **OPEN — owner.** |
+| "Truth gate scope insufficient" | **PARTIAL.** OPERATIONS.md added to the scan this commit; chain-snapshot-in-CI still open. |
+
 ## Status key
 
 | | |

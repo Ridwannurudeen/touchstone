@@ -120,6 +120,7 @@ describe("AssetGateV2", function () {
       overrides.expectedPolicyId ?? POLICY_ID,
       overrides.expectedPolicyRoot ?? POLICY_ROOT,
       overrides.requiredControlSetRoot || CONTROL_ROOT,
+      overrides.expectedApprovalDigest || APPROVAL_DIGEST,
     ]);
     await gate.waitForDeployment();
     return gate;
@@ -136,15 +137,40 @@ describe("AssetGateV2", function () {
       POLICY_ID,
       POLICY_ROOT,
       CONTROL_ROOT,
+      APPROVAL_DIGEST,
     ];
     const gate = await deployGate(registry);
 
     expect(await gate.expectedPolicyId()).to.equal(POLICY_ID);
     expect(await gate.expectedPolicyRoot()).to.equal(POLICY_ROOT);
+    expect(await gate.expectedApprovalDigest()).to.equal(APPROVAL_DIGEST);
     await expect(Gate.deploy(...arguments_.with(4, ethers.ZeroHash)))
       .to.be.revertedWithCustomError(Gate, "InvalidPolicyId");
     await expect(Gate.deploy(...arguments_.with(5, ethers.ZeroHash)))
       .to.be.revertedWithCustomError(Gate, "InvalidPolicyRoot");
+    // The two pins an audit found enforceable only in the deploy script. A gate
+    // instantiated around that script must not be able to opt out of either.
+    await expect(Gate.deploy(...arguments_.with(6, ethers.ZeroHash)))
+      .to.be.revertedWithCustomError(Gate, "InvalidControlSetRoot");
+    await expect(Gate.deploy(...arguments_.with(7, ethers.ZeroHash)))
+      .to.be.revertedWithCustomError(Gate, "InvalidApprovalDigest");
+  });
+
+  it("refuses a report whose approval digest is not the pinned one", async function () {
+    const { registry, publisher } = await loadFixture(deployRegistryFixture);
+    const gate = await deployGate(registry);
+    await publish(
+      registry,
+      publisher,
+      await report(publisher, {
+        approvalDigest: ethers.keccak256(
+          ethers.toUtf8Bytes("a different human decision")
+        ),
+      })
+    );
+    const [allowed, reason] = await gate.check(ASSET_KEY);
+    expect(allowed).to.equal(false);
+    expect(reason).to.equal("approval mismatch");
   });
 
   it("accepts a new canonical report digest under the pinned policy", async function () {

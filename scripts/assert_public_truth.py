@@ -200,7 +200,13 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     paths = tuple(
         (arguments.root / path if not path.is_absolute() else path)
-        for path in (arguments.paths or (Path("README.md"), Path("site2")))
+        for path in (
+            arguments.paths
+            # OPERATIONS is rendered to the public site, so a stale header there is a
+            # public claim like any other — an external audit found it contradicting
+            # the live services while this scan looked only at README and site2.
+            or (Path("README.md"), Path("docs/OPERATIONS.md"), Path("site2"))
+        )
     )
     try:
         state = json.loads(arguments.state.read_text(encoding="utf-8"))

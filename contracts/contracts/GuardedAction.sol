@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.24;
 
-import {AssetGate} from "./AssetGate.sol";
+import {ITouchstoneGate} from "./ITouchstoneGate.sol";
 
 contract GuardedAction {
     error InvalidGate(address gate);
@@ -14,11 +14,11 @@ contract GuardedAction {
         uint256 actionNumber
     );
 
-    AssetGate public immutable gate;
+    ITouchstoneGate public immutable gate;
     bytes32 public immutable assetKey;
     uint256 public actionCount;
 
-    constructor(AssetGate gate_, bytes32 assetKey_) {
+    constructor(ITouchstoneGate gate_, bytes32 assetKey_) {
         if (address(gate_) == address(0) || address(gate_).code.length == 0) {
             revert InvalidGate(address(gate_));
         }

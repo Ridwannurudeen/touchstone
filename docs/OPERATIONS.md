@@ -21,7 +21,7 @@ honest state, and a runbook that invented them would be worse than one that admi
 | Backup | `touchstone/backup.py` | `scripts/backup_workspace.py` | daily |
 | Restore | `touchstone/backup.py` | `scripts/restore_workspace.py` | rehearsal only |
 
-**Host:** `not_configured`. **Supervisor units:** `not_configured` — packaging is PLAN-T13.
+**Host:** `75.119.153.252`, shared, under the disclosed custody deviation. **Supervisor units:** `touchstone-observer@` active since 2026-08-18 and `touchstone-status@` on a five-minute timer; `touchstone-publisher@` installed and **deliberately not enabled** — see `docs/DEPLOY-SERVICE.md` §3c.
 
 **Deployment:**
 

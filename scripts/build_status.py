@@ -147,6 +147,14 @@ response bytes, and records what changed. It signs nothing and publishes nothing
 declared expiry against the clock. It is not a status the daemon stored about itself: a
 process that has stopped running cannot write down that it stopped.</p>
 
+<h2 id="window">The measured window</h2>
+<p>Publication history is derived from the transparency logs and the operations journal,
+never from memory: the committed snapshot at
+<code>docs/OPERATIONS-METRICS-2026-08-19.json</code> records completed, missed and corrected
+slots for the measured window it names. <strong>No uptime percentage is claimed</strong> —
+every publication so far was operator-initiated, and a claim of continuity would exceed the
+evidence. The observer's capture cadence above is the only continuously scheduled process.</p>
+
 <h2 id="reading">How to read a stale page</h2>
 <p><strong>An old timestamp above is not proof that the daemon is down.</strong> It proves
 that this page was not regenerated. Those are different failures: one is about the publisher,
@@ -172,7 +180,7 @@ contract. Neither implies the other.</p>
         '      <ol class="doc-toc-list">'
         '<li class="toc-2"><a href="#watching">The sources</a></li>'
         '<li class="toc-2"><a href="#daemon">The publishing daemon</a></li>'
-        '<li class="toc-2"><a href="#reading">How to read a stale page</a></li>'
+        '<li class="toc-2"><a href="#window">The measured window</a></li><li class="toc-2"><a href="#reading">How to read a stale page</a></li>'
         "</ol>",
     )
 

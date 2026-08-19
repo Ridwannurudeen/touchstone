@@ -27,7 +27,7 @@ observed.
 | Documentation site | **LIVE** — https://touchstone.gudman.xyz/docs — 2,009 lines of the project's committed documentation |
 | X / social handles | **`@touch__stone`** — created by the owner 2026-08-18. The owner reports the @XLayerOfficial post as published; it is not machine-verifiable from this repository, and its URL belongs in the submission form. The rules require the account be *kept active*, which cannot be backdated. |
 | Domain | `gudman.xyz` subdomain, TLS via Let's Encrypt, certificate to 2026-11-16 |
-| Repository | `github.com/Ridwannurudeen/touchstone` — **private until after the 2026-08-21 deadline, by owner decision on 2026-08-18.** The reason is disclosure timing, not concealment: the approach is novel and the owner does not want it copied inside the submission window. Judging happens after the deadline, so the code is readable when it is read. Anyone following the link before then gets a 404, which is an accepted cost. |
+| Repository | `github.com/Ridwannurudeen/touchstone` — **PUBLIC since 2026-08-19**, `main` protected by the CI aggregate check. The private-until-deadline plan was superseded by the owner's decision to open it early. |
 | Submission venue | **OKX AI Season Hackathon**, X Layer. Google Form, deadline **2026-08-21 23:59 UTC**. |
 | Contact | `unknown` — not recorded in the tracked tree. |
 
@@ -108,7 +108,7 @@ chain E2E, and a mutation harness. The workflow is given no project
 secret. Branch protection that would make the aggregate job mandatory
 is `unknown` from this tree; the workflow file itself says that on a
 private repository without GitHub Pro the protection APIs refuse.
-The verified local result is 1,877 passed / 1 skipped, 82 contract tests,
+The verified result is 1,971 passed / 1 skipped locally with public CI green on the same commit class, 102 contract tests,
 and 125/125 mutants killed; a public Actions run remains open.
 
 **Release builder.** `scripts/build_release.py` writes an unsigned JSON
