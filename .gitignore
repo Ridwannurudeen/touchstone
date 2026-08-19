@@ -33,6 +33,11 @@ runtime/
 # binding against it — so a control set is only checkable if these travel with the source.
 !data/compilations/
 
+# Policy manifests are signed release inputs, not runtime observations. They must ship so
+# clean clones and public CI evaluate the same predeclared policies as local workspaces.
+!data/policies/
+!data/policies/*.json
+
 # Editors and operating systems
 .idea/
 .vscode/

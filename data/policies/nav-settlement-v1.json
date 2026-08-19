@@ -1,0 +1,12 @@
+{
+  "version": "touchstone.policy-manifest.v1",
+  "policy_id": "nav-settlement",
+  "policy_version": 1,
+  "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+  "title": "NAV settlement",
+  "consumer_question": "Has the net asset value this asset would be lent against actually settled? A collateral desk cannot price against a figure the issuer may restate tomorrow, so this policy requires a NAV row confirmed unchanged by a capture at least a day older and at least two business days settled. It deliberately asks for more than disclosure freshness, and will refuse when freshness alone would pass.",
+  "controls": [
+    "ustb-nav-daily-freshness",
+    "ustb-nav-per-share-present"
+  ]
+}

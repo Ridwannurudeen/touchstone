@@ -1,0 +1,14 @@
+{
+  "version": "touchstone.policy-manifest.v1",
+  "policy_id": "disclosure-freshness",
+  "policy_version": 1,
+  "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+  "title": "Disclosure freshness",
+  "consumer_question": "Is the issuer still publishing the disclosures it says it publishes, on the cadence it declares? A listing monitor or a dashboard needs to know that the issuer has not gone quiet. It does not need a settled valuation, and should not be told nothing merely because one has not settled yet.",
+  "controls": [
+    "ustb-holdings-as-of-date-present",
+    "ustb-nav-daily-freshness",
+    "ustb-yield-as-of-date-fresh",
+    "ustb-yield-one-day-present"
+  ]
+}
