@@ -46,28 +46,26 @@
 
       <aside class="verdict-card" aria-label="Latest published report">
         <div class="vc-head">
-          <span class="chip chip-unverifiable"><i class="dot" aria-hidden="true"></i>UNVERIFIABLE</span>
-          <span class="vc-tag">USTB · testnet sequence 3</span>
+          <span class="chip chip-live"><i class="dot" aria-hidden="true"></i>CONFIRMED</span>
+          <span class="vc-tag">USTB · testnet sequence 4 · mainnet sequence 3</span>
         </div>
-        <p class="vc-controls">5 of 8 controls satisfied · 3 unevaluable</p>
+        <p class="vc-controls">All 5 approved controls satisfied — the first confirmed state,
+        2026-08-19</p>
         <ol class="dots" aria-label="Per-control results, in report order">
-          <li class="d-s"><span class="sr">holdings-as-of-date-present: satisfied</span></li>
-          <li class="d-u"><span class="sr">ustb-aum-published: unevaluable</span></li>
-          <li class="d-s"><span class="sr">ustb-nav-date-freshness: satisfied</span></li>
-          <li class="d-u"><span class="sr">ustb-nav-per-share-published: unevaluable</span></li>
-          <li class="d-s"><span class="sr">ustb-one-day-yield-present: satisfied</span></li>
-          <li class="d-u"><span class="sr">ustb-outstanding-shares-published: unevaluable</span></li>
-          <li class="d-s"><span class="sr">ustb-seven-day-yield-present: satisfied</span></li>
-          <li class="d-s"><span class="sr">ustb-thirty-day-yield-present: satisfied</span></li>
+          <li class="d-s"><span class="sr">ustb-holdings-as-of-date-present: satisfied</span></li>
+          <li class="d-s"><span class="sr">ustb-nav-daily-freshness: satisfied</span></li>
+          <li class="d-s"><span class="sr">ustb-nav-per-share-present: satisfied</span></li>
+          <li class="d-s"><span class="sr">ustb-yield-as-of-date-fresh: satisfied</span></li>
+          <li class="d-s"><span class="sr">ustb-yield-one-day-present: satisfied</span></li>
         </ol>
-        <p class="vc-meta mono">observed 2026-08-17T16:48:32.075003Z</p>
-        <p class="vc-meta mono">block 38617112 · X Layer testnet</p>
-        <p class="vc-meta">Sequence 3 <strong>restates sequence 1</strong> under the same
-        roots. Sequence 1 was signed with an operational event a first publication cannot
-        have, and signed bytes are not editable, so it was corrected rather than replaced.</p>
-        <p class="vc-meta vc-mainnet mono">and on <strong>X&nbsp;Layer mainnet</strong>,
-        sequence 2 · <strong>UNVERIFIABLE</strong> · block 68307118</p>
-        <a class="vc-link" href="/dossier/ustb-2026-08-17">Read the full report</a>
+        <p class="vc-meta mono">NAV 11.18208300 — the row this system refused on the 18th,
+        confirmed on the 19th once a second capture a day later carried it unchanged</p>
+        <p class="vc-meta mono">testnet block 38698679 · mainnet block 68389082</p>
+        <p class="vc-meta">Two policy verdicts publish beside it under their own registry
+        keys, both <strong>CONFIRMED</strong>: disclosure-freshness:1 and nav-settlement:1.
+        The consumer gate that refused this asset for two days now returns
+        <span class="mono">(true, "allowed")</span> — no control was changed.</p>
+        <a class="vc-link" href="/judge">Walk the proof</a>
       </aside>
     </div>
   </section>

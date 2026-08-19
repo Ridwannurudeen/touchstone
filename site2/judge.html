@@ -57,12 +57,12 @@
       <div class="film-board">
         <div class="film-main">
           <div><p class="film-label">Frame 03 / the honest answer</p><h3>The gate does not negotiate with uncertainty.</h3></div>
-          <p class="film-caption">On X Layer testnet, the live AssetGate returns <code>(false, &ldquo;status not allowed&rdquo;)</code> for the USTB key. It is a refusal, not a failed demo.</p>
+          <p class="film-caption">For two days the live AssetGate returned <code>(false, &ldquo;status not allowed&rdquo;)</code>. On 2026-08-19 the evidence earned confirmation and the same gate now returns <code>(true, &ldquo;allowed&rdquo;)</code> — no control was changed in between.</p>
         </div>
         <div class="film-steps" aria-label="Film sequence">
           <div class="film-step"><span class="film-step-num">01</span><div><strong>Source</strong><span>Issuer disclosure captured with a digest.</span></div></div>
           <div class="film-step"><span class="film-step-num">02</span><div><strong>Decision</strong><span>Controls evaluate without model access.</span></div></div>
-          <div class="film-step is-active"><span class="film-step-num">03</span><div><strong>Refusal</strong><span>UNVERIFIABLE remains a state, not a guess.</span></div></div>
+          <div class="film-step is-active"><span class="film-step-num">03</span><div><strong>Refusal, then confirmation</strong><span>It refused a provisional value, and confirmed it only after a second capture a day later carried it unchanged.</span></div></div>
           <div class="film-step"><span class="film-step-num">04</span><div><strong>Proof</strong><span>Bundle and registry record can be checked independently.</span></div></div>
         </div>
       </div>
@@ -89,18 +89,18 @@
           <div class="policy-tab">Disclosure freshness<small>policy v1 / 4 controls</small></div>
           <div class="policy-tab">NAV settlement<small>policy v1 / 2 controls</small></div>
         </div>
-        <div class="policy-panel" role="tabpanel" id="policy-freshness" data-policy-panel="freshness" data-policy-id="disclosure-freshness" data-policy-version="1" data-policy-state="UNVERIFIABLE">
-          <div class="policy-panel-top"><h3>Is the issuer still publishing its disclosures?</h3><span class="policy-state policy-state--neutral"><i aria-hidden="true"></i>UNVERIFIABLE</span></div>
+        <div class="policy-panel" role="tabpanel" id="policy-freshness" data-policy-panel="freshness" data-policy-id="disclosure-freshness" data-policy-version="1" data-policy-state="CONFIRMED">
+          <div class="policy-panel-top"><h3>Is the issuer still publishing its disclosures?</h3><span class="policy-state policy-state--live"><i aria-hidden="true"></i>CONFIRMED</span></div>
           <p class="policy-answer">No positive answer is asserted. The retained current-policy evaluation abstains.</p>
-          <dl class="policy-proof"><div><dt>policy id</dt><dd>disclosure-freshness:1</dd></div><div><dt>answer</dt><dd>UNVERIFIABLE</dd></div><div><dt>scope</dt><dd>4 approved controls</dd></div></dl>
+          <dl class="policy-proof"><div><dt>policy id</dt><dd>disclosure-freshness:1</dd></div><div><dt>answer</dt><dd>CONFIRMED — testnet block 38698740, mainnet block 68389152</dd></div><div><dt>scope</dt><dd>4 approved controls</dd></div></dl>
         </div>
-        <div class="policy-panel" role="tabpanel" id="policy-settlement" data-policy-panel="settlement" data-policy-id="nav-settlement" data-policy-version="1" data-policy-state="UNVERIFIABLE">
-          <div class="policy-panel-top"><h3>Has NAV actually settled for collateral use?</h3><span class="policy-state policy-state--neutral"><i aria-hidden="true"></i>UNVERIFIABLE</span></div>
+        <div class="policy-panel" role="tabpanel" id="policy-settlement" data-policy-panel="settlement" data-policy-id="nav-settlement" data-policy-version="1" data-policy-state="CONFIRMED">
+          <div class="policy-panel-top"><h3>Has NAV actually settled for collateral use?</h3><span class="policy-state policy-state--live"><i aria-hidden="true"></i>CONFIRMED</span></div>
           <p class="policy-answer">No positive answer is asserted. The retained history cannot prove the NAV row stayed unchanged across the required confirmation interval.</p>
-          <dl class="policy-proof"><div><dt>policy id</dt><dd>nav-settlement:1</dd></div><div><dt>answer</dt><dd>UNVERIFIABLE</dd></div><div><dt>scope</dt><dd>2 approved controls</dd></div></dl>
+          <dl class="policy-proof"><div><dt>policy id</dt><dd>nav-settlement:1</dd></div><div><dt>answer</dt><dd>CONFIRMED — settled NAV 11.18208300, testnet block 38698809, mainnet block 68389216</dd></div><div><dt>scope</dt><dd>2 approved controls</dd></div></dl>
         </div>
       </div>
-      <p class="truth-note"><strong>Boundary:</strong> this selector is a static rendering of local current-policy evaluations, not a live RPC read or a retained signed policy bundle. All of those evaluations abstain. The deployed testnet gate separately admits <code>CONFIRMED</code> only and currently refuses the legacy asset-wide <code>UNVERIFIABLE</code> report.</p>
+      <p class="truth-note"><strong>Boundary:</strong> this selector is a static rendering of published policy reports, not a live RPC read. Every state shown here was published to the registry and its bundle verifies offline; the deployed gates admit <code>CONFIRMED</code> only, and one GuardedAction pair per chain shows the consequence — a permitted transaction and a genuinely reverted one (testnet <code>0x5b6e65b9…</code>/<code>0xfc9bcc47…</code>, mainnet <code>0x8b4b6c85…</code>/<code>0x2b106907…</code>).</p>
     </div>
   </section>
 
