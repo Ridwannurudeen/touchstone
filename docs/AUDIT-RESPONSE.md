@@ -246,6 +246,28 @@ mechanically, and for not trusting my own "I checked it" on this class of defect
 
 ---
 
+## F. Audit #3 (2026-08-19) — the required completion sequence, tracked
+
+The third external report examined the project after the first CONFIRMED states but before
+that evening's signing and v2 publications, so two of its five "must complete" items were
+done before it arrived. Status of its required sequence:
+
+| # | Audit #3 item | Status |
+|---|---|---|
+| 1 | Create a new signed approval release | **DONE before the audit landed** — `APPROVALS-SIGNED-2026-08-19.json`, 10 EIP-712 decisions, one recovered approver. Then improved past the ask: the signatures are embedded in the ledger itself (version 2), so `approval_ledger_sha256` — the digest reports already bind and RegistryV2 already stores — now names signed decisions with no schema change. Every v2 entry must be signed and is bound to the exact compiler proposal it decides, declined entries included |
+| 2 | Produce new bundles binding the new approval digest | **READY, gated on the next epoch** — the pipeline binds the current ledger digest at report build; the next slot (2026-08-20, after the 86,400 s confirmation age) produces them. Publishing a same-day "correction" to rebind the digest was rejected: tonight's reports were true when signed, and a correction that restates a correct report manufactures an error |
+| 3 | Publish all three reports through Registry V2 | **UNBLOCKED** — the v2 path was policy-only (`attestation_from_report` refused asset-wide reports); asset-wide semantics are now defined and tested: zero policy identity, legal only as a pair, unpinnable by construction because AssetGateV2 refuses zero pins. Publication follows item 2 |
+| 4 | Redeploy hardened AssetGateV2 | **WAITING on items 2–3 by design** — the gate pins the approval digest exactly, and the only digest worth pinning is the signed ledger's. Pinning today's on-chain reports would pin the unsigned artifact the audits called weak |
+| 5 | Deploy the meaningful consumer | **BUILT** — `RWAAdmissionController`: proposer-bound gate per asset, activation only on the gate's word, suspension computed on every read and every privileged action rather than stored, admission history permanent. Nine tests cover the audit's four demonstration scenarios plus suspension-recovery with no state mutation. Deployment follows item 4 |
+| 6 | Verify source on OKLink | **OWNER-GATED** — `@okxweb3/hardhat-explorer-verify` wired and proven to reach the API; it requires an OKLink API key, which is an account credential only the owner can create. Trap recorded: the plugin's built-in network list carries chain 195, the deprecated testnet; chain 1952 needs a custom entry |
+
+Also from audit #3, fixed same evening: three public surfaces still carried pre-CONFIRMED
+text, and the truth gate learned all six phrases it had missed (its stale-phrase list grows
+in one direction only). Bundle filenames now lead with the chain id, closing the same-name
+overwrite that lost two testnet policy bundles.
+
+---
+
 ## E. What I would decline to build, on the merits
 
 - **Chasing the 200,000 USDT Launch Grant.** It needs 10M USDT of genuine OKX DEX interface

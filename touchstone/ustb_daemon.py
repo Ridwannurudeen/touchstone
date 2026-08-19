@@ -263,7 +263,10 @@ def write_bundle(
 
     Named from the report it describes rather than the wall clock, so the same report always
     lands on the same path and a retried slot overwrites its own file instead of accumulating
-    near-duplicates nobody can tell apart. Written to a temporary name and replaced, because
+    near-duplicates nobody can tell apart. The chain is part of the name: two workspaces
+    publishing the same epoch on different chains used to render identical names, and on
+    2026-08-19 the second sink overwrote the first — two verified testnet policy bundles
+    were lost to files that verified perfectly and described the other chain. Written to a temporary name and replaced, because
     a bundle truncated by a crash mid-write is a file that looks present and fails
     verification — worse than an absent one, which at least reads as absent.
 
@@ -289,13 +292,8 @@ def write_bundle(
             raise EpochProductionError(
                 f"sequence must be a positive integer to name a bundle: {sequence!r}"
             )
-        policy = report.get("policy")
-        suffix = ""
-        if isinstance(policy, Mapping):
-            suffix = f"-policy-{_path_component(policy['policy_id'])}-{policy['policy_version']}"
-        name = f"{_path_component(report['epoch_id'])}-{sequence}{suffix}.json"
         target.mkdir(parents=True, exist_ok=True)
-        destination = target / name
+        destination = target / _bundle_name(report)
         staging = destination.with_suffix(".json.partial")
         staging.write_text(
             json.dumps(bundle, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -303,6 +301,36 @@ def write_bundle(
         os.replace(staging, destination)
 
     return sink
+
+
+def _bundle_name(report: Mapping[str, object]) -> str:
+    """The one filename a report's bundle lives under, for the writer and the guard alike.
+
+    Derived in exactly one place because the two callers must agree: a writer and a
+    recovery guard that render names independently can drift, and the guard then refuses
+    a bundle that is sitting right there under the name the writer chose.
+
+    The chain leads the name. Two workspaces publishing the same epoch on different chains
+    used to render identical names, and on 2026-08-19 the second sink overwrote the first —
+    two verified testnet policy bundles were lost to files that verified perfectly and
+    described the other chain. Refused rather than defaulted when the asset key names no
+    chain, because a chainless name is that collision again.
+    """
+    asset_key = report.get("asset_key")
+    chain = (
+        asset_key.split(":", 2)[1]
+        if isinstance(asset_key, str) and asset_key.count(":") >= 2
+        else ""
+    )
+    if not chain.isdigit():
+        raise EpochProductionError(
+            f"asset_key must name an eip155 chain to name a bundle: {asset_key!r}"
+        )
+    policy = report.get("policy")
+    suffix = ""
+    if isinstance(policy, Mapping):
+        suffix = f"-policy-{_path_component(policy['policy_id'])}-{policy['policy_version']}"
+    return f"eip155-{chain}-{_path_component(report['epoch_id'])}-{report['sequence']}{suffix}.json"
 
 
 def _path_component(epoch_id: object) -> str:
@@ -381,12 +409,7 @@ def require_verifying_bundle(
 
     def guard(operation: object) -> None:
         report = operation.signed_report["report"]  # type: ignore[attr-defined,index]
-        policy = report.get("policy")
-        suffix = ""
-        if isinstance(policy, Mapping):
-            suffix = f"-policy-{_path_component(policy['policy_id'])}-{policy['policy_version']}"
-        name = f"{_path_component(report['epoch_id'])}-{report['sequence']}{suffix}.json"
-        path = target / name
+        path = target / _bundle_name(report)
         try:
             raw = path.read_text(encoding="utf-8")
         except OSError as error:

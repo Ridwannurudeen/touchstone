@@ -111,11 +111,19 @@ def attestation_from_report(
     if not isinstance(report, Mapping):
         raise RegistryV2Error("report must be a mapping")
     policy = report.get("policy")
-    if not isinstance(policy, Mapping):
-        raise RegistryV2Error("Registry v2 requires a policy-bound report")
-    policy_id = policy.get("policy_id")
-    policy_version = policy.get("policy_version")
-    policy_root = policy.get("policy_digest")
+    if isinstance(policy, Mapping):
+        policy_id = policy_id_digest(policy.get("policy_id"), policy.get("policy_version"))
+        policy_root = policy.get("policy_digest")
+    elif policy is None:
+        # An asset-wide verdict publishes under the plain asset key with zero policy
+        # identity. Zero is not a policy that was satisfied: AssetGateV2 refuses to be
+        # constructed around a zero policy id or root, so no consumer can pin an
+        # asset-wide report as a policy pass — the zeros say "this verdict names no
+        # policy subset" and can say nothing else.
+        policy_id = "00" * 32
+        policy_root = "00" * 32
+    else:
+        raise RegistryV2Error("report policy must be a policy record or null")
     asset_key = report.get("asset_key")
     epoch_id = report.get("epoch_id")
     state = report.get("state")
@@ -128,7 +136,7 @@ def attestation_from_report(
     value = {
         "asset_key": registry_asset_key(asset_key),
         "report_digest": report_digest(report),
-        "policy_id": policy_id_digest(policy_id, policy_version),
+        "policy_id": policy_id,
         "policy_root": policy_root,
         "control_set_root": report.get("control_set_root"),
         "evidence_root": report.get("evidence_root"),
@@ -379,12 +387,18 @@ def _validate_fields(value: Mapping[str, object], *, include_signature: bool) ->
     for field in (
         "asset_key",
         "report_digest",
-        "policy_id",
         "approval_digest",
         "epoch_key",
     ):
         if value[field] == "0" * 64:
             raise RegistryV2Error(f"{field} must not be zero")
+    # Zero policy identity is the asset-wide shape, and it is legal only as a pair: a
+    # zero id under a nonzero root, or the reverse, is neither an asset-wide verdict
+    # nor a policy-bound one, and names nothing.
+    if (value["policy_id"] == "0" * 64) != (value["policy_root"] == "0" * 64):
+        raise RegistryV2Error(
+            "policy_id and policy_root must be zero together or nonzero together"
+        )
     if not isinstance(value["publisher"], str) or _ADDRESS.fullmatch(value["publisher"]) is None:
         raise RegistryV2Error("publisher must be an Ethereum address")
     if type(value["status"]) is not int or not 0 <= value["status"] <= 3:

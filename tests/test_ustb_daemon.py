@@ -660,7 +660,7 @@ def test_an_unattended_run_writes_a_bundle_that_verifies(tmp_path: Path) -> None
 
     written = sorted(workspace.bundles.glob("*.json"))
     assert len(written) == 1, f"expected exactly one bundle, got {written}"
-    assert written[0].name == "ustb-2026-08-14-1.json"
+    assert written[0].name == "eip155-1-ustb-2026-08-14-1.json"
     # Partial files must never survive a completed write.
     assert not list(workspace.bundles.glob("*.partial"))
 
@@ -716,7 +716,15 @@ def test_a_bundle_filename_cannot_escape_its_directory(
     caller happens to be wired to it today.
     """
     sink = write_bundle(tmp_path / "bundles")
-    bundle = {"signed_report": {"report": {"epoch_id": epoch_id, "sequence": 1}}}
+    bundle = {
+        "signed_report": {
+            "report": {
+                "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+                "epoch_id": epoch_id,
+                "sequence": 1,
+            }
+        }
+    }
 
     with pytest.raises(EpochProductionError, match="not usable as a filename"):
         sink(bundle)
@@ -844,12 +852,45 @@ def test_a_bundle_is_never_named_after_a_windows_device(
     because appending `-{sequence}` cannot turn a non-device into a device.
     """
     sink = write_bundle(tmp_path / "bundles")
-    bundle = {"signed_report": {"report": {"epoch_id": epoch_id, "sequence": 1}}}
+    bundle = {
+        "signed_report": {
+            "report": {
+                "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+                "epoch_id": epoch_id,
+                "sequence": 1,
+            }
+        }
+    }
 
     with pytest.raises(EpochProductionError, match="[Ww]indows device"):
         sink(bundle)
 
     assert not list(tmp_path.rglob("*.json"))
+
+
+def test_bundles_for_the_same_epoch_on_two_chains_never_share_a_name(
+    tmp_path: Path,
+) -> None:
+    """The 2026-08-19 loss: two workspaces, one epoch, identical names, one file."""
+    sink = write_bundle(tmp_path / "bundles")
+    for chain in (1952, 196):
+        sink(
+            {
+                "signed_report": {
+                    "report": {
+                        "asset_key": f"eip155:{chain}:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+                        "epoch_id": "ustb-2026-08-19",
+                        "sequence": 1,
+                    }
+                }
+            }
+        )
+
+    names = sorted(path.name for path in (tmp_path / "bundles").glob("*.json"))
+    assert names == [
+        "eip155-1952-ustb-2026-08-19-1.json",
+        "eip155-196-ustb-2026-08-19-1.json",
+    ]
 
 
 @pytest.mark.parametrize("sequence", ["1", "../1", 0, -1, 1.0, True, None])
@@ -860,7 +901,11 @@ def test_a_bundle_sequence_must_be_a_positive_integer(
     sink = write_bundle(tmp_path / "bundles")
     bundle = {
         "signed_report": {
-            "report": {"epoch_id": "ustb-2026-08-14", "sequence": sequence}
+            "report": {
+                "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+                "epoch_id": "ustb-2026-08-14",
+                "sequence": sequence,
+            }
         }
     }
 
@@ -950,7 +995,14 @@ def test_recovery_refuses_to_republish_a_report_with_no_bundle(tmp_path: Path) -
     """
     guard = require_verifying_bundle(tmp_path / "bundles")
     operation = _pending(
-        {"report": {"epoch_id": "ustb-2026-08-14", "sequence": 1}, "signature": "x"}
+        {
+            "report": {
+                "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+                "epoch_id": "ustb-2026-08-14",
+                "sequence": 1,
+            },
+            "signature": "x",
+        }
     )
 
     with pytest.raises(EpochProductionError, match="no readable verification bundle"):

@@ -220,10 +220,42 @@ def test_policy_report_derives_every_attestation_field() -> None:
     assert derived["valid_until"] == 1_787_220_000
 
 
-def test_asset_wide_report_cannot_be_presented_as_policy_bound_v2() -> None:
-    with pytest.raises(RegistryV2Error, match="policy-bound"):
+def test_an_asset_wide_report_derives_zero_policy_identity() -> None:
+    report = {
+        "asset_key": "eip155:1:0x" + "ab" * 20,
+        "approval_ledger_sha256": "56" * 32,
+        "control_set_root": "66" * 32,
+        "epoch_id": "2026-08-19",
+        "evidence_root": "77" * 32,
+        "observed_at": "2026-08-19T10:00:00Z",
+        "policy": None,
+        "sequence": 1,
+        "state": "UNVERIFIABLE",
+        "valid_until": "2026-08-20T10:00:00Z",
+    }
+
+    derived = attestation_from_report(
+        report,
+        publisher=PUBLISHER,
+        parent_digest="00" * 32,
+        correction_of=0,
+        report_uri="ipfs://touchstone-v2",
+        chain_id=196,
+        verifying_contract=CONTRACT,
+    )
+
+    # Zero policy identity is unpinnable by construction: AssetGateV2 refuses a zero
+    # policy id or root, so these zeros cannot be presented as a satisfied policy.
+    assert derived["policy_id"] == "00" * 32
+    assert derived["policy_root"] == "00" * 32
+    assert derived["asset_key"] == registry_asset_key(report["asset_key"])
+    assert derived["report_digest"] == report_digest(report)
+
+
+def test_a_policy_field_that_is_neither_record_nor_null_is_refused() -> None:
+    with pytest.raises(RegistryV2Error, match="policy record or null"):
         attestation_from_report(
-            {"policy": None},
+            {"policy": "nav-settlement"},
             publisher=PUBLISHER,
             parent_digest="00" * 32,
             correction_of=0,

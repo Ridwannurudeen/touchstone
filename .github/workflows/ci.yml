@@ -163,8 +163,8 @@ jobs:
           # Exact, not minimum: a dropped test file would keep a >= guard green. The cost
           # is bumping this on every contract-suite change -- forgetting the bump fails CI
           # loudly with both numbers, which is this line working, not breaking.
-          if [ "${passing:-0}" -ne 102 ]; then
-            echo "expected exactly 102 passing contract tests, got ${passing:-0}"
+          if [ "${passing:-0}" -ne 111 ]; then
+            echo "expected exactly 111 passing contract tests, got ${passing:-0}"
             echo "if this change is intended, update the number here in the same commit"
             exit 1
           fi

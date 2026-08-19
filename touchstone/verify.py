@@ -264,9 +264,14 @@ def create_registry_v2_bundle(
     registry_v2_attestation: Mapping[str, object],
     compilations: Mapping[str, bytes] | None = None,
     approval_ledger: bytes | None = None,
-    policy_manifest: bytes,
+    policy_manifest: bytes | None,
 ) -> dict[str, object]:
-    """Create a policy-bound bundle carrying a separate Registry v2 attestation."""
+    """Create a bundle carrying a separate Registry v2 attestation.
+
+    ``policy_manifest`` stays keyword-required so a policy bundle cannot silently omit
+    its manifest; an asset-wide report passes ``None`` explicitly, and `create_bundle`
+    refuses either combination the other way round.
+    """
     if not isinstance(registry_v2_attestation, Mapping):
         raise TypeError("registry_v2_attestation must be a mapping")
     bundle = create_bundle(
@@ -383,11 +388,11 @@ def _verify_registry_v2_binding(
     )
     verify_v2_attestation(attestation)
     policy = report.get("policy")
-    if policy is None:
-        raise VerificationError(
-            "a Registry v2 bundle must carry a policy-bound report"
-        )
-    _exact_mapping(policy, _POLICY_FIELDS, "report.policy")
+    # An asset-wide report is null policy, and `attestation_from_report` derives zero
+    # policy identity for it below — so the field comparison refuses an attestation that
+    # dresses an asset-wide verdict in any nonzero policy, and the reverse.
+    if policy is not None:
+        _exact_mapping(policy, _POLICY_FIELDS, "report.policy")
     try:
         expected = attestation_from_report(
             report,
