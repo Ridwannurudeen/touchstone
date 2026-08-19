@@ -36,6 +36,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from touchstone.deployment import DeploymentError, DeploymentManifest  # noqa: E402
+from touchstone.approval import load_approval_ledger  # noqa: E402
+from touchstone.assets import USTB  # noqa: E402
 from touchstone.incidents import (  # noqa: E402
     EPOCH_FAILED,
     PUBLICATION_UNRESOLVED,
@@ -62,8 +64,11 @@ from touchstone.publish import (  # noqa: E402
     TransportUnavailable,
     epoch_key_bytes,
 )
+from touchstone.rpc_quorum import QuorumRPC  # noqa: E402
 from touchstone.controls import AssetState  # noqa: E402
 from touchstone.evidence import EvidenceStore  # noqa: E402
+from touchstone.evaluate import default_controls  # noqa: E402
+from touchstone.policy import PolicyError, load as load_policy  # noqa: E402
 from touchstone.schedule import ScheduleOutcome, run_schedule  # noqa: E402
 from touchstone.ustb_daemon import (  # noqa: E402
     asset_key_bytes,
@@ -760,6 +765,141 @@ class Service:
             )
 
 
+class BatchService:
+    """Publish one asset-wide report and its policy reports under one slot lock."""
+
+    def __init__(self, services: tuple[Service, ...]) -> None:
+        if not services:
+            raise ValueError("a batch service needs at least one service")
+        self.services = services
+        self.asset_key = services[0].asset_key
+        self.lock_path = services[0].lock_path
+        self.__held = None
+
+    @property
+    def _held(self):
+        return self.__held
+
+    @_held.setter
+    def _held(self, held) -> None:
+        self.__held = held
+        for service in self.services:
+            service._held = held
+
+    def resolve_startup(self) -> SlotOutcome | None:
+        outcomes = [service.resolve_startup() for service in self.services]
+        return next((outcome for outcome in outcomes if outcome is not None), None)
+
+    def beat(self) -> None:
+        for service in self.services:
+            service.beat()
+
+    def note_attempt(self, scheduled_at: datetime) -> None:
+        for service in self.services:
+            service.note_attempt(scheduled_at)
+
+    def backup_if_due(self, scheduled_at: datetime) -> None:
+        for service in self.services:
+            service.backup_if_due(scheduled_at)
+
+    def record_escaped_failure(
+        self, scheduled_at: datetime, error: BaseException
+    ) -> None:
+        for service in self.services:
+            service.record_escaped_failure(scheduled_at, error)
+
+    def record_clock_error(self, scheduled_at: datetime, error: BaseException) -> None:
+        for service in self.services:
+            service.record_clock_error(scheduled_at, error)
+
+    def record_outage(self, first_missed: datetime, count: int) -> None:
+        for service in self.services:
+            service.record_outage(first_missed, count)
+
+    def run_slot(
+        self,
+        scheduled_at: datetime,
+        produce: Callable[[datetime], object | None],
+        *,
+        report_uri: Callable[[Mapping[str, object]], str],
+        epoch_of: Callable[[datetime], str] | None = None,
+    ) -> SlotOutcome:
+        """Capture once, then let each child service own its durable publication."""
+        if epoch_of is not None:
+            settled = []
+            for service in self.services:
+                try:
+                    service._resolve_outstanding()
+                except Exception as error:  # noqa: BLE001 - the slot cannot proceed
+                    return self._record_batch_incident(
+                        PUBLICATION_UNRESOLVED,
+                        f"an earlier publication is still unresolved: {error}",
+                        scheduled_at,
+                    )
+                outcome = service._epoch_already_published(scheduled_at, epoch_of)
+                if outcome is not None:
+                    settled.append(outcome)
+            if len(settled) == len(self.services):
+                return settled[0]
+
+        try:
+            produced = produce(scheduled_at)
+        except SourceUnavailable as error:
+            return self._record_batch_incident(SOURCE_UNAVAILABLE, str(error), scheduled_at)
+        except Exception as error:  # noqa: BLE001 - a capture failure is an incident
+            return self._record_batch_incident(EPOCH_FAILED, str(error), scheduled_at)
+
+        from touchstone.ustb_daemon import ProducedReports
+
+        if not isinstance(produced, ProducedReports):
+            return self._record_batch_incident(
+                EPOCH_FAILED,
+                "the policy producer did not return its complete report batch",
+                scheduled_at,
+            )
+        by_asset = {
+            report.get("report", {}).get("asset_key"): report
+            for report in produced.reports
+            if isinstance(report, Mapping) and isinstance(report.get("report"), Mapping)
+        }
+        expected_assets = {service.asset_key for service in self.services}
+        if len(by_asset) != len(produced.reports) or set(by_asset) != expected_assets:
+            return self._record_batch_incident(
+                EPOCH_FAILED,
+                "the policy producer returned an incomplete or mismatched report batch",
+                scheduled_at,
+            )
+        outcomes = []
+        for service in self.services:
+            signed_report = by_asset.get(service.asset_key)
+            outcomes.append(
+                service.run_slot(
+                    scheduled_at,
+                    lambda _at, signed_report=signed_report: signed_report,
+                    report_uri=report_uri,
+                    epoch_of=epoch_of,
+                )
+            )
+        first_failure = next((outcome for outcome in outcomes if not outcome.published), None)
+        if first_failure is not None:
+            return first_failure
+        return SlotOutcome(
+            scheduled_at=scheduled_at,
+            published=True,
+            incident_id=None,
+            detail=f"published {len(outcomes)} reports",
+        )
+
+    def _record_batch_incident(
+        self, kind: str, detail: str, scheduled_at: datetime
+    ) -> SlotOutcome:
+        outcomes = [
+            service._record_incident(kind, detail, scheduled_at)
+            for service in self.services
+        ]
+        return outcomes[0]
+
+
 def serve(
     service: Service,
     produce: Callable[[datetime], Mapping[str, object] | None],
@@ -886,7 +1026,15 @@ def build_service(manifest_path: str, workspace: str, *, asset_key: str) -> Serv
     """Wire the durable pieces from a committed deployment manifest."""
     manifest = DeploymentManifest.load(manifest_path)
     assert_role_separation()
-    backend = SignedRegistryBackend(manifest, PublisherKey.from_env(manifest))
+    quorum = QuorumRPC.from_env()
+    if quorum is None:
+        backend = SignedRegistryBackend(manifest, PublisherKey.from_env(manifest))
+    else:
+        backend = SignedRegistryBackend(
+            manifest,
+            PublisherKey.from_env(manifest),
+            quorum=quorum,
+        )
     root = Workspace(workspace)
     client = PublisherClient(
         backend,
@@ -957,6 +1105,24 @@ def _serve_ustb(service: Service, arguments) -> int:
         )
         return 1
 
+    policy_paths = tuple(arguments.policy_manifest or ())
+    policy_workspace_paths = tuple(arguments.policy_workspace or ())
+    try:
+        ledger = load_approval_ledger()
+        policies = tuple(
+            load_policy(path, approved=default_controls(USTB, ledger))
+            for path in policy_paths
+        )
+        for policy in policies:
+            if policy.asset_key != arguments.asset_key:
+                raise PolicyError(
+                    f"policy {policy.policy_id} is bound to {policy.asset_key}, not "
+                    f"{arguments.asset_key}"
+                )
+    except (PolicyError, OSError, ValueError) as error:
+        print(f"SERVICE FAIL: {error}", file=sys.stderr)
+        return 1
+
     workspace = Workspace(arguments.workspace)
     store = EvidenceStore(workspace.evidence)
     key_bytes = asset_key_bytes(arguments.asset_key)
@@ -971,9 +1137,43 @@ def _serve_ustb(service: Service, arguments) -> int:
         state = service.operations.load_state(arguments.asset_key)
         return AssetState.UNVERIFIABLE if state is None else state.projected(on)
 
-    outcome = serve(
-        service,
-        make_producer(
+    if policies:
+        policy_services = tuple(
+            build_service(arguments.manifest, workspace_path, asset_key=policy.key)
+            for policy, workspace_path in zip(policies, policy_workspace_paths)
+        )
+        for policy_service in policy_services:
+            policy_service.before_publish = require_verifying_bundle(workspace.bundles)
+        services = (service, *policy_services)
+        service_by_key = {item.asset_key: item for item in services}
+        manifests = {
+            (policy.policy_id, policy.version): Path(path).read_bytes()
+            for policy, path in zip(policies, policy_paths)
+        }
+
+        def next_sequence_for(key: str) -> int:
+            return service.client.backend.latest_sequence(asset_key_bytes(key)) + 1
+
+        def previous_state_for(key: str, on: date) -> AssetState:
+            state = service_by_key[key].operations.load_state(key)
+            return AssetState.UNVERIFIABLE if state is None else state.projected(on)
+
+        served_service: Service | BatchService = BatchService(services)
+        producer = make_producer(
+            store=store,
+            signer=signer,
+            next_sequence=next_sequence,
+            previous_state=previous_state,
+            next_sequence_for=next_sequence_for,
+            previous_state_for=previous_state_for,
+            policies=policies,
+            policy_manifests=manifests,
+            transport=transport,
+            bundle_sink=write_bundle(workspace.bundles),
+        )
+    else:
+        served_service = service
+        producer = make_producer(
             store=store,
             signer=signer,
             next_sequence=next_sequence,
@@ -983,7 +1183,11 @@ def _serve_ustb(service: Service, arguments) -> int:
             # workspace's other durable state. Without this the service published reports a
             # reader had no way to check, which is the one claim the project rests on.
             bundle_sink=write_bundle(workspace.bundles),
-        ),
+        )
+
+    outcome = serve(
+        served_service,
+        producer,
         report_uri=report_uri,
         interval_seconds=arguments.interval_seconds,
         max_runs=arguments.max_runs,
@@ -1011,6 +1215,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--asset-key", required=True)
+    parser.add_argument(
+        "--policy-manifest",
+        action="append",
+        default=[],
+        help="policy manifest; repeat with --policy-workspace for policy publication",
+    )
+    parser.add_argument(
+        "--policy-workspace",
+        action="append",
+        default=[],
+        help="durable workspace for the matching policy manifest",
+    )
     parser.add_argument(
         "--resolve-only",
         action="store_true",
@@ -1048,6 +1264,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--fixture-capture is meaningless without --fixtures")
     if arguments.fixtures and not arguments.fixture_capture:
         parser.error("--fixtures requires --fixture-capture")
+    if arguments.policy_workspace and not arguments.policy_manifest:
+        parser.error("--policy-workspace requires --policy-manifest")
+    if len(arguments.policy_manifest) != len(arguments.policy_workspace):
+        parser.error("each --policy-manifest requires one --policy-workspace")
     # Before anything reads a key or touches the network. `build_service` constructs the
     # publisher, which reads TOUCHSTONE_PUBLISHER_PRIVATE_KEY — so the fixture-mode refusal
     # that lived inside `_serve_ustb` was never reached on a host without that key, and the

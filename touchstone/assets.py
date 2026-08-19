@@ -15,8 +15,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 
+from touchstone.normalize.fobxx import normalize_fobxx_payload
 from touchstone.normalize.ustb import normalize_ustb_payload
-from touchstone.sources import SourceManifest, USTB_SOURCES
+from touchstone.sources import FOBXX_SOURCES, SourceManifest, USTB_SOURCES
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +26,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 # the two copies were what made "the engine is single-asset" a fact rather than a
 # temporary convenience.
 USTB_ASSET_KEY = "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
+FOBXX_ASSET_KEY = "sec:cik:0001786958:series:S000067043"
 
 # The names the control language records. They are not the adapter implementations —
 # those live in ``normalize`` — they are the strings a compiled control must carry
@@ -34,6 +36,12 @@ USTB_ADAPTERS: Mapping[str, str] = MappingProxyType(
         "superstate-ustb-nav-daily": "ustb-nav-daily",
         "superstate-ustb-yield": "ustb-yield",
         "superstate-ustb-holdings": "ustb-holdings",
+    }
+)
+FOBXX_ADAPTERS: Mapping[str, str] = MappingProxyType(
+    {
+        "sec-edgar-fobxx-submissions": "fobxx-sec-submissions",
+        "sec-edgar-fobxx-nmfp3": "fobxx-nmfp3",
     }
 )
 
@@ -90,8 +98,22 @@ USTB = AssetDescriptor(
     normalize=normalize_ustb_payload,
 )
 
+FOBXX = AssetDescriptor(
+    asset_key=FOBXX_ASSET_KEY,
+    display_name="Franklin OnChain U.S. Government Money Fund (FOBXX)",
+    source_manifest=_REPO_ROOT / "manifests" / "sources" / "fobxx.json",
+    sources=FOBXX_SOURCES,
+    adapters=FOBXX_ADAPTERS,
+    epoch_id_prefix="fobxx",
+    normalize=normalize_fobxx_payload,
+    freshness_units={
+        "sec-edgar-fobxx-submissions": "business_days",
+        "sec-edgar-fobxx-nmfp3": "business_days",
+    },
+)
+
 ASSET_BY_KEY: Mapping[str, AssetDescriptor] = MappingProxyType(
-    {USTB.asset_key: USTB}
+    {USTB.asset_key: USTB, FOBXX.asset_key: FOBXX}
 )
 
 

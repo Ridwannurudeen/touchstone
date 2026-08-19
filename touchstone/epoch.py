@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import json
@@ -14,6 +14,7 @@ from touchstone.assets import USTB, AssetDescriptor
 from touchstone.controls import AssetState, ControlRecord, EvaluationResult
 from touchstone.evidence import read_object, CaptureRecord, EvidenceStore
 from touchstone.evaluate import default_controls, evaluate
+from touchstone.policy import Policy, select
 from touchstone.sources import (
     USTB_SOURCES,
     FetchResult,
@@ -177,6 +178,30 @@ def run_epoch(
     file are two answers, and the report built from them committed to one ledger while its
     controls came from another.
     """
+    return run_epoch_reports(
+        asset,
+        transport=transport,
+        store=store,
+        now=now,
+        retrieved_at=retrieved_at,
+        controls=controls,
+    )[0]
+
+
+def run_epoch_reports(
+    asset: AssetDescriptor,
+    *,
+    transport: Transport,
+    store: EvidenceStore,
+    now: date,
+    retrieved_at: datetime,
+    controls: Sequence[ControlRecord] | None = None,
+    policies: Sequence[Policy] = (),
+    previous_states: Mapping[str, AssetState] | None = None,
+) -> tuple[USTBEpochReport, ...]:
+    """Capture one epoch and evaluate the asset-wide view plus predeclared policies."""
+    records = tuple(default_controls(asset) if controls is None else controls)
+    prior_states = {} if previous_states is None else dict(previous_states)
     confirmation_source = asset.sources[0].source_id
     confirmation_manifest = asset.source_by_id[confirmation_source]
     confirmation = store.confirmation_capture(confirmation_source, before=retrieved_at)
@@ -207,46 +232,59 @@ def run_epoch(
             isolated=True,
         )
 
-    evaluation = evaluate(
-        asset,
-        default_controls(asset) if controls is None else controls,
-        observations,
-        prior_observations=prior_observations,
-        now=now,
+    source_reports = tuple(
+        EpochSourceReport(
+            source_id=fetched.source_id,
+            source_url=fetched.source_url,
+            content_type=fetched.content_type,
+            byte_size=fetched.byte_size,
+            evidence_sha256=fetched.evidence_sha256,
+            retrieved_at=fetched.retrieved_at,
+            observed_on=_observation_date(observations[fetched.source_id]),
+        )
+        for fetched in fetches
     )
-    return USTBEpochReport(
-        asset_key=asset.asset_key,
-        now=now,
-        state=evaluation.state,
-        evidence_deadline=evaluation.evidence_deadline,
-        confirmation=confirmation,
-        sources=tuple(
-            EpochSourceReport(
-                source_id=fetched.source_id,
-                source_url=fetched.source_url,
-                content_type=fetched.content_type,
-                byte_size=fetched.byte_size,
-                evidence_sha256=fetched.evidence_sha256,
-                retrieved_at=fetched.retrieved_at,
-                observed_on=_observation_date(observations[fetched.source_id]),
-            )
-            for fetched in fetches
-        ),
-        evaluations=tuple(
-            EpochControlReport(
-                control_id=item.control_id,
-                result=item.result,
-                observed_value=(
-                    str(item.observed_value)
-                    if item.observed_value is not None
-                    else None
-                ),
-                evidence_deadline=item.evidence_deadline,
-                observed_on=item.observed_on,
-            )
-            for item in evaluation.evaluations
-        ),
-    )
+
+    def build_epoch(selected: Sequence[ControlRecord], key: str) -> USTBEpochReport:
+        evaluation = evaluate(
+            asset,
+            selected,
+            observations,
+            prior_observations=prior_observations,
+            now=now,
+            previous=prior_states.get(key, AssetState.UNVERIFIABLE),
+        )
+        return USTBEpochReport(
+            asset_key=asset.asset_key,
+            now=now,
+            state=evaluation.state,
+            evidence_deadline=evaluation.evidence_deadline,
+            confirmation=confirmation,
+            sources=source_reports,
+            evaluations=tuple(
+                EpochControlReport(
+                    control_id=item.control_id,
+                    result=item.result,
+                    observed_value=(
+                        str(item.observed_value)
+                        if item.observed_value is not None
+                        else None
+                    ),
+                    evidence_deadline=item.evidence_deadline,
+                    observed_on=item.observed_on,
+                )
+                for item in evaluation.evaluations
+            ),
+        )
+
+    reports = [build_epoch(records, asset.asset_key)]
+    for policy in policies:
+        if not isinstance(policy, Policy):
+            raise TypeError("each policy must be a Policy")
+        if policy.asset_key != asset.asset_key:
+            raise ValueError("policy asset_key does not identify the evaluated asset")
+        reports.append(build_epoch(select(policy, records), policy.key))
+    return tuple(reports)
 
 
 def run_ustb_epoch(
@@ -274,6 +312,29 @@ def run_ustb_epoch(
         now=now,
         retrieved_at=retrieved_at,
         controls=controls,
+    )
+
+
+def run_ustb_epoch_reports(
+    *,
+    transport: Transport,
+    store: EvidenceStore,
+    now: date,
+    retrieved_at: datetime,
+    controls: Sequence[ControlRecord] | None = None,
+    policies: Sequence[Policy] = (),
+    previous_states: Mapping[str, AssetState] | None = None,
+) -> tuple[USTBEpochReport, ...]:
+    """Capture one USTB epoch and return the asset and policy evaluations."""
+    return run_epoch_reports(
+        USTB,
+        transport=transport,
+        store=store,
+        now=now,
+        retrieved_at=retrieved_at,
+        controls=controls,
+        policies=policies,
+        previous_states=previous_states,
     )
 
 

@@ -22,7 +22,8 @@ refuses an out-of-order sequence — so the next one is asked for rather than re
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime
 import json
 import os
@@ -32,9 +33,10 @@ import re
 from touchstone.approval import ledger_bytes, ledger_from_bytes
 from touchstone.assets import USTB, AssetDescriptor, USTB_ASSET_KEY
 from touchstone.controls import AssetState, OperationalEvent
-from touchstone.epoch import run_epoch
+from touchstone.epoch import run_epoch_reports
 from touchstone.evaluate import default_controls
 from touchstone.evidence import EvidenceStore
+from touchstone.policy import Policy
 from touchstone.publish import asset_key_bytes  # noqa: F401 - re-exported for the CLI
 from touchstone.quantities import utc_instant
 from touchstone.report import build_observation_report, evidence_references
@@ -61,6 +63,11 @@ _WINDOWS_DEVICES = frozenset(
 
 class EpochProductionError(RuntimeError):
     """An epoch could not be produced for a reason that is not a source outage."""
+
+
+@dataclass(frozen=True, slots=True)
+class ProducedReports:
+    reports: tuple[Mapping[str, object], ...]
 
 
 def epoch_id_for(
@@ -94,7 +101,11 @@ def make_producer(
     bundle_sink: Callable[[Mapping[str, object]], None] | None = None,
     approval_ledger: bytes | None = None,
     asset: AssetDescriptor | None = None,
-) -> Callable[[datetime], Mapping[str, object] | None]:
+    policies: Sequence[Policy] = (),
+    policy_manifests: Mapping[tuple[str, int], bytes] | None = None,
+    next_sequence_for: Callable[[str], int] | None = None,
+    previous_state_for: Callable[[str, date], AssetState] | None = None,
+) -> Callable[[datetime], Mapping[str, object] | ProducedReports | None]:
     """Build the ``produce`` callable the service's slot runner expects.
 
     The dependencies are injected rather than constructed here so the whole path can be
@@ -152,13 +163,26 @@ def make_producer(
         controls = default_controls(descriptor, ledger_from_bytes(ledger))
 
         try:
-            epoch = run_epoch(
+            prior_states = {
+                descriptor.asset_key: previous_state(observed_on),
+                **(
+                    {
+                        policy.key: previous_state_for(policy.key, observed_on)
+                        for policy in policies
+                    }
+                    if previous_state_for is not None
+                    else {}
+                ),
+            }
+            epochs = run_epoch_reports(
                 descriptor,
                 transport=live,
                 store=store,
                 now=observed_on,
                 retrieved_at=moment,
                 controls=controls,
+                policies=policies,
+                previous_states=prior_states,
             )
         except SourceFetchError as error:
             # The one failure that is emphatically *not* a statement about the asset. It is
@@ -176,46 +200,58 @@ def make_producer(
         # Asked once and reused: `next_sequence` reads the chain, and calling it twice
         # could straddle another publication and describe a different report than the one
         # being built.
-        sequence = next_sequence()
-
-        report = build_observation_report(
-            epoch,
-            controls,
-            epoch_id=epoch_id,
-            sequence=sequence,
-            publisher_kid=signer.kid,
-            previous_state=previous_state(observed_on),
-            # Sequence 1 is the first report for this asset on this registry, which is
-            # precisely what the event describes. The previous state is UNVERIFIABLE either
-            # way, so the state cannot distinguish a first run from a genuine reconfirmation
-            # of an unverified asset — only the sequence can.
-            event=(
-                OperationalEvent.FIRST_OBSERVATION
-                if sequence == 1
-                else OperationalEvent.RECONFIRMED
-            ),
-            approval_ledger=ledger,
-        )
-        signed = signer.sign_report(report)
-        if bundle_sink is not None:
-            # Deliberately before the return, so the report the service is about to publish
-            # is one that could be bundled. A bundle failure after publication would leave
-            # an unverifiable report permanently on chain, correctable only by a new one.
-            bundle = create_bundle(
-                signed,
-                signer.public_key_record(),
-                controls,
-                evidence_references(epoch),
-                approval_ledger=ledger,
+        signed_reports: list[Mapping[str, object]] = []
+        for index, epoch in enumerate(epochs):
+            policy = None if index == 0 else policies[index - 1]
+            key = descriptor.asset_key if policy is None else policy.key
+            sequence = (
+                next_sequence_for(key) if next_sequence_for is not None else next_sequence()
             )
-            # And verified, not merely built. `create_bundle` checks the fields it derives,
-            # but it does not run the verifier: it will happily snapshot a report whose
-            # signature does not check out, because signature verification lives in
-            # `verify_bundle`. Building successfully was therefore never the same claim as
-            # "a reader can verify this", which is the only claim worth publishing behind.
-            verify_bundle(bundle)
-            bundle_sink(bundle)
-        return signed
+            prior_state = (
+                previous_state(observed_on)
+                if previous_state_for is None or policy is None
+                else previous_state_for(key, observed_on)
+            )
+            report = build_observation_report(
+                epoch,
+                controls if policy is None else tuple(
+                    control for control in controls if control.control_id in policy.control_ids
+                ),
+                epoch_id=epoch_id,
+                sequence=sequence,
+                publisher_kid=signer.kid,
+                previous_state=prior_state,
+                event=(
+                    OperationalEvent.FIRST_OBSERVATION
+                    if sequence == 1
+                    else OperationalEvent.RECONFIRMED
+                ),
+                approval_ledger=ledger,
+                policy=policy,
+            )
+            signed = signer.sign_report(report)
+            if bundle_sink is not None:
+                manifest = (
+                    None
+                    if policy is None or policy_manifests is None
+                    else policy_manifests.get((policy.policy_id, policy.version))
+                )
+                bundle = create_bundle(
+                    signed,
+                    signer.public_key_record(),
+                    controls if policy is None else tuple(
+                        control for control in controls if control.control_id in policy.control_ids
+                    ),
+                    evidence_references(epoch),
+                    approval_ledger=ledger,
+                    policy_manifest=manifest,
+                )
+                verify_bundle(bundle)
+                bundle_sink(bundle)
+            signed_reports.append(signed)
+        if policies:
+            return ProducedReports(tuple(signed_reports))
+        return signed_reports[0]
 
     return produce
 
@@ -253,7 +289,11 @@ def write_bundle(
             raise EpochProductionError(
                 f"sequence must be a positive integer to name a bundle: {sequence!r}"
             )
-        name = f"{_path_component(report['epoch_id'])}-{sequence}.json"
+        policy = report.get("policy")
+        suffix = ""
+        if isinstance(policy, Mapping):
+            suffix = f"-policy-{_path_component(policy['policy_id'])}-{policy['policy_version']}"
+        name = f"{_path_component(report['epoch_id'])}-{sequence}{suffix}.json"
         target.mkdir(parents=True, exist_ok=True)
         destination = target / name
         staging = destination.with_suffix(".json.partial")
@@ -308,6 +348,12 @@ def report_uri(signed_report: Mapping[str, object]) -> str:
     report = signed_report["report"]
     if not isinstance(report, Mapping):
         raise EpochProductionError("a signed report must carry its report")
+    policy = report.get("policy")
+    if isinstance(policy, Mapping):
+        return (
+            f"urn:touchstone:ustb:policy:{policy['policy_id']}:{policy['policy_version']}"
+            f":{report['epoch_id']}:{report['sequence']}"
+        )
     return f"urn:touchstone:ustb:{report['epoch_id']}:{report['sequence']}"
 
 
@@ -335,7 +381,11 @@ def require_verifying_bundle(
 
     def guard(operation: object) -> None:
         report = operation.signed_report["report"]  # type: ignore[attr-defined,index]
-        name = f"{_path_component(report['epoch_id'])}-{report['sequence']}.json"
+        policy = report.get("policy")
+        suffix = ""
+        if isinstance(policy, Mapping):
+            suffix = f"-policy-{_path_component(policy['policy_id'])}-{policy['policy_version']}"
+        name = f"{_path_component(report['epoch_id'])}-{report['sequence']}{suffix}.json"
         path = target / name
         try:
             raw = path.read_text(encoding="utf-8")

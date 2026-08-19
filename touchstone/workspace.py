@@ -48,6 +48,10 @@ class Workspace:
         return self.root / "pending.json"
 
     @property
+    def registry_v2_pending_journal(self) -> Path:
+        return self.root / "pending-v2.json"
+
+    @property
     def observation_log(self) -> Path:
         """The watcher's append-only record of what it saw.
 

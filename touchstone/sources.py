@@ -82,6 +82,32 @@ USTB_SOURCE_BY_ID: Mapping[str, SourceManifest] = MappingProxyType(
     {source.source_id: source for source in USTB_SOURCES}
 )
 
+FOBXX_SOURCES = (
+    SourceManifest(
+        source_id="sec-edgar-fobxx-submissions",
+        url="https://data.sec.gov/submissions/CIK0001786958.json",
+        expected_mime="application/json",
+        authority_class="regulator-filing",
+        cadence="updated-as-filed",
+        max_bytes=8_388_608,
+        grace_period=10,
+        grace_unit="business_days",
+    ),
+    SourceManifest(
+        source_id="sec-edgar-fobxx-nmfp3",
+        url="https://www.sec.gov/Archives/edgar/data/1786958/000207169126017542/primary_doc.xml",
+        expected_mime="text/xml",
+        authority_class="regulator-filing",
+        cadence="monthly",
+        max_bytes=4_194_304,
+        grace_period=10,
+        grace_unit="business_days",
+    ),
+)
+FOBXX_SOURCE_BY_ID: Mapping[str, SourceManifest] = MappingProxyType(
+    {source.source_id: source for source in FOBXX_SOURCES}
+)
+
 
 @dataclass(frozen=True, slots=True)
 class TransportResponse:
@@ -202,7 +228,7 @@ def fetch_source(
     unchanged.
     """
     if manifest is None:
-        manifest = USTB_SOURCE_BY_ID.get(source_id)
+        manifest = USTB_SOURCE_BY_ID.get(source_id) or FOBXX_SOURCE_BY_ID.get(source_id)
     if manifest is None:
         raise SourcePolicyError(f"unknown source_id: {source_id}")
     if manifest.source_id != source_id:

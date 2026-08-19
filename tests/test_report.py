@@ -14,6 +14,7 @@ from touchstone.epoch import (
 from touchstone.evidence import EvidenceStore
 from historical_pack import historical_controls, historical_ledger_bytes
 from touchstone.report import (
+    REPORT_VERSION,
     USTB_LIMITATIONS,
     build_observation_report,
     control_set_root,
@@ -263,7 +264,7 @@ def test_a_control_edited_after_approval_cannot_be_reported(tmp_path: Path) -> N
 
 def test_report_fixture_helper_is_canonical_json_compatible(tmp_path: Path) -> None:
     report = _report(tmp_path)
-    assert report["version"] == "touchstone.observation-report.v4"
+    assert report["version"] == REPORT_VERSION
     assert all(len(digest) == 64 for digest in report["compiler_provenance_digests"])
 
 

@@ -41,6 +41,7 @@ from touchstone.controls import AssetState
 from touchstone.deployment import DeploymentManifest, runtime_bytecode_sha256
 from touchstone.keyring import PublisherKey, decoded_transaction
 from touchstone.quantities import finite_positive
+from touchstone.rpc_quorum import QuorumError, QuorumRPC
 from touchstone.signing import (
     canonical_json_bytes,
     frozen_snapshot,
@@ -395,6 +396,7 @@ class SignedRegistryBackend:
         publisher_key: PublisherKey,
         *,
         request_timeout: float = 30.0,
+        quorum: QuorumRPC | None = None,
     ) -> None:
         if not manifest.is_active:
             # Here rather than in each entry point. The unattended service checked this and
@@ -432,6 +434,7 @@ class SignedRegistryBackend:
         self.contract = self.web3.eth.contract(
             address=manifest.registry_address, abi=REGISTRY_ABI
         )
+        self.quorum = quorum
         self._preflight: PreflightReport | None = None
 
     def preflight(self) -> PreflightReport:
@@ -467,6 +470,8 @@ class SignedRegistryBackend:
                 f"{manifest.registry_address} holds runtime bytecode {digest}, manifest "
                 f"declares {manifest.registry_runtime_bytecode_sha256}"
             )
+        if self.quorum is not None:
+            self._quorum_preflight(code)
         try:
             registry_chain_id = int(self.contract.functions.expectedChainId().call())
             owner = Web3.to_checksum_address(self.contract.functions.owner().call())
@@ -534,7 +539,15 @@ class SignedRegistryBackend:
         # bounded retry does not catch — so a transient fault before anything was signed
         # ended the slot instead of being retried, which is what criterion 8 forbids.
         try:
+            if self.quorum is not None:
+                return int(
+                    self._quorum_function(
+                        self.contract.functions.latestSequence(asset_key), "uint64"
+                    )
+                )
             return int(self.contract.functions.latestSequence(asset_key).call())
+        except QuorumError as error:
+            raise PreflightFailed(f"quorum sequence read failed: {error}") from error
         except (Web3RPCError, OSError) as error:
             raise TransportUnavailable(
                 f"registry did not answer a sequence read: {error}"
@@ -569,9 +582,18 @@ class SignedRegistryBackend:
         """
         self._ensure_preflight()
         try:
+            if self.quorum is not None:
+                return int(
+                    self._quorum_function(
+                        self.contract.functions.epochSequence(asset_key, epoch_key),
+                        "uint64",
+                    )
+                )
             return int(
                 self.contract.functions.epochSequence(asset_key, epoch_key).call()
             )
+        except QuorumError as error:
+            raise PreflightFailed(f"quorum epoch read failed: {error}") from error
         except (Web3RPCError, OSError) as error:
             raise TransportUnavailable(
                 f"registry did not answer an epoch read: {error}"
@@ -853,6 +875,93 @@ class SignedRegistryBackend:
         the manifest describes. A read from the wrong chain is not a harmless read: it
         decides which sequence gets published next."""
         return self._preflight if self._preflight is not None else self.preflight()
+
+    def _quorum_preflight(self, local_code: bytes) -> None:
+        assert self.quorum is not None
+        try:
+            chain_id = _quorum_quantity(
+                self.quorum.call("eth_chainId", []), "chain id"
+            )
+            remote_code = _quorum_bytes(
+                self.quorum.call(
+                    "eth_getCode", [self.manifest.registry_address, "latest"]
+                ),
+                "runtime bytecode",
+            )
+            expected_chain = int(
+                self._quorum_function(
+                    self.contract.functions.expectedChainId(), "uint256"
+                )
+            )
+            owner = Web3.to_checksum_address(
+                str(self._quorum_function(self.contract.functions.owner(), "address"))
+            )
+            authorized = bool(
+                self._quorum_function(
+                    self.contract.functions.isPublisherAuthorized(
+                        self.publisher_address
+                    ),
+                    "bool",
+                )
+            )
+            identity = Web3.to_checksum_address(
+                str(
+                    self._quorum_function(
+                        self.contract.functions.publisherIdentity(
+                            self.publisher_address
+                        ),
+                        "address",
+                    )
+                )
+            )
+            balance = _quorum_quantity(
+                self.quorum.call(
+                    "eth_getBalance", [self.publisher_address, "latest"]
+                ),
+                "publisher balance",
+            )
+        except (QuorumError, ValueError, TypeError) as error:
+            raise PreflightFailed(f"independent RPC quorum failed: {error}") from error
+        if chain_id != self.manifest.chain_id:
+            raise PreflightFailed(f"quorum endpoint reports chain {chain_id}")
+        if remote_code != local_code:
+            raise PreflightFailed(
+                "independent RPC endpoints disagree on runtime bytecode"
+            )
+        if expected_chain != self.manifest.chain_id:
+            raise PreflightFailed("independent RPC endpoints disagree on registry chain")
+        if self.manifest.deployer_address is None:
+            raise PreflightFailed("quorum preflight requires the manifest deployer")
+        if owner != Web3.to_checksum_address(self.manifest.deployer_address):
+            raise PreflightFailed("independent RPC endpoints disagree on registry owner")
+        if not authorized:
+            raise PreflightFailed(
+                "independent RPC endpoints report publisher unauthorized"
+            )
+        if identity != Web3.to_checksum_address(
+            self.manifest.publisher_identity_address
+        ):
+            raise PreflightFailed(
+                "independent RPC endpoints disagree on publisher lineage"
+            )
+        if balance <= 0:
+            raise PreflightFailed("independent RPC endpoints report no publisher gas")
+
+    def _quorum_function(self, function, output_type: str) -> object:
+        assert self.quorum is not None
+        raw = self.quorum.call(
+            "eth_call",
+            [
+                {
+                    "to": self.manifest.registry_address,
+                    "data": function._encode_transaction_data(),
+                },
+                "latest",
+            ],
+        )
+        return self.web3.codec.decode(
+            [output_type], _quorum_bytes(raw, "eth_call result")
+        )[0]
 
     def _fee_fields(self) -> dict[str, int]:
         """Price the transaction from the chain rather than from an assumption.
@@ -1598,3 +1707,15 @@ def _bytes32_hex(value: object) -> str:
     if len(raw) != 32:
         raise ValueError("onchain bytes32 value has the wrong length")
     return raw.hex()
+
+
+def _quorum_quantity(value: object, context: str) -> int:
+    if not isinstance(value, str) or not re.fullmatch(r"0x[0-9a-fA-F]+", value):
+        raise ValueError(f"quorum {context} is not a hex quantity")
+    return int(value, 16)
+
+
+def _quorum_bytes(value: object, context: str) -> bytes:
+    if not isinstance(value, str) or not re.fullmatch(r"0x[0-9a-fA-F]*", value):
+        raise ValueError(f"quorum {context} is not hex bytes")
+    return bytes.fromhex(value[2:])

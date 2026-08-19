@@ -25,6 +25,10 @@ from collections.abc import Mapping
 import hashlib
 import json
 from pathlib import Path
+import re
+
+from eth_account import Account
+from eth_account.messages import encode_typed_data
 
 from touchstone.controls import ControlRecord
 
@@ -35,6 +39,22 @@ LEDGER = ROOT / "data" / "compilations" / "APPROVALS.json"
 LEDGER_VERSION = "touchstone.approval-ledger.v1"
 APPROVED_KEY = "approved"
 DECLINED_KEY = "declined"
+APPROVAL_SIGNATURE_VERSION = 1
+APPROVAL_DOMAIN = {"name": "Touchstone Approval", "version": "1"}
+_DIGEST = re.compile(r"[0-9a-f]{64}")
+_SIGNATURE = re.compile(r"[0-9a-f]{130}")
+_SIGNED_APPROVAL_FIELDS = frozenset(
+    {
+        "version",
+        "control_digest",
+        "compilation_digest",
+        "decision",
+        "reason_code",
+        "timestamp",
+        "approver",
+        "signature",
+    }
+)
 
 # The only two fields approval may touch. Everything else is what the compiler proposed.
 _APPROVAL_FIELDS = frozenset({"approval_state", "compilation_sha256"})
@@ -55,6 +75,153 @@ def ledger_bytes(path: str | Path = LEDGER) -> bytes:
 def ledger_digest(path: str | Path = LEDGER) -> str:
     """The digest a report commits to, so a reader can tell which ledger it meant."""
     return hashlib.sha256(ledger_bytes(path)).hexdigest()
+
+
+def approval_typed_data(
+    *,
+    control_digest: str,
+    compilation_digest: str,
+    decision: str,
+    reason_code: str,
+    timestamp: int,
+) -> dict[str, object]:
+    """Return the exact EIP-712 payload signed for one approval decision."""
+    _validate_digest("control_digest", control_digest)
+    _validate_digest("compilation_digest", compilation_digest)
+    if decision not in {APPROVED_KEY, DECLINED_KEY}:
+        raise ApprovalError("approval decision must be approved or declined")
+    if not isinstance(reason_code, str) or not reason_code.strip():
+        raise ApprovalError("approval reason_code must be a non-empty string")
+    if type(timestamp) is not int or timestamp <= 0:
+        raise ApprovalError("approval timestamp must be a positive integer")
+    return {
+        "types": {
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+            ],
+            "Approval": [
+                {"name": "control_digest", "type": "bytes32"},
+                {"name": "compilation_digest", "type": "bytes32"},
+                {"name": "decision", "type": "string"},
+                {"name": "reason_code", "type": "string"},
+                {"name": "timestamp", "type": "uint256"},
+            ],
+        },
+        "primaryType": "Approval",
+        "domain": dict(APPROVAL_DOMAIN),
+        "message": {
+            "control_digest": "0x" + control_digest,
+            "compilation_digest": "0x" + compilation_digest,
+            "decision": decision,
+            "reason_code": reason_code,
+            "timestamp": timestamp,
+        },
+    }
+
+
+def sign_approval(
+    private_key: str | bytes,
+    *,
+    control_digest: str,
+    compilation_digest: str,
+    decision: str,
+    reason_code: str,
+    timestamp: int,
+) -> dict[str, object]:
+    """Create the signed EIP-712 approval artifact from explicit key material."""
+    typed_data = approval_typed_data(
+        control_digest=control_digest,
+        compilation_digest=compilation_digest,
+        decision=decision,
+        reason_code=reason_code,
+        timestamp=timestamp,
+    )
+    try:
+        account = Account.from_key(private_key)
+        signature = Account.sign_message(
+            encode_typed_data(full_message=typed_data), private_key
+        ).signature
+    except (TypeError, ValueError) as error:
+        raise ApprovalError(f"approval signing failed: {error}") from error
+    return {
+        "version": APPROVAL_SIGNATURE_VERSION,
+        "control_digest": control_digest,
+        "compilation_digest": compilation_digest,
+        "decision": decision,
+        "reason_code": reason_code,
+        "timestamp": timestamp,
+        "approver": account.address,
+        "signature": signature.hex(),
+    }
+
+
+def verify_signed_approval(
+    value: object, *, expected_decision: str | None = None
+) -> str:
+    """Verify one signed approval and return its recovered approver address."""
+    if not isinstance(value, Mapping):
+        raise ApprovalError("signed approval must be a mapping")
+    supplied = set(value)
+    unknown = supplied - _SIGNED_APPROVAL_FIELDS
+    missing = _SIGNED_APPROVAL_FIELDS - supplied
+    if unknown:
+        raise ApprovalError(
+            "signed approval has unknown field(s): " + ", ".join(sorted(unknown))
+        )
+    if missing:
+        raise ApprovalError(
+            "signed approval is missing field(s): " + ", ".join(sorted(missing))
+        )
+    if value["version"] != APPROVAL_SIGNATURE_VERSION:
+        raise ApprovalError("signed approval version is not supported")
+    decision = value["decision"]
+    if decision not in {APPROVED_KEY, DECLINED_KEY}:
+        raise ApprovalError("signed approval decision is not supported")
+    if expected_decision is not None and decision != expected_decision:
+        raise ApprovalError("signed approval decision does not match its ledger list")
+    _validate_digest("control_digest", value["control_digest"])
+    _validate_digest("compilation_digest", value["compilation_digest"])
+    if not isinstance(value["reason_code"], str) or not value["reason_code"].strip():
+        raise ApprovalError("signed approval reason_code must be a non-empty string")
+    timestamp = value["timestamp"]
+    if type(timestamp) is not int or timestamp <= 0:
+        raise ApprovalError("signed approval timestamp must be a positive integer")
+    approver = value["approver"]
+    if not isinstance(approver, str) or re.fullmatch(r"0x[0-9a-fA-F]{40}", approver) is None:
+        raise ApprovalError("signed approval approver must be an address")
+    try:
+        signature = bytes.fromhex(value["signature"])
+    except (TypeError, ValueError) as error:
+        raise ApprovalError("signed approval signature must be lowercase hexadecimal") from error
+    if (
+        not isinstance(value["signature"], str)
+        or _SIGNATURE.fullmatch(value["signature"]) is None
+    ):
+        raise ApprovalError("signed approval signature must be lowercase hexadecimal")
+    try:
+        recovered = Account.recover_message(
+            encode_typed_data(
+                full_message=approval_typed_data(
+                    control_digest=value["control_digest"],
+                    compilation_digest=value["compilation_digest"],
+                    decision=decision,
+                    reason_code=value["reason_code"],
+                    timestamp=timestamp,
+                )
+            ),
+            signature=signature,
+        )
+    except (TypeError, ValueError) as error:
+        raise ApprovalError("signed approval signature is invalid") from error
+    if recovered.lower() != approver.lower():
+        raise ApprovalError("signed approval approver does not match its signature")
+    return recovered
+
+
+def _validate_digest(field: str, value: object) -> None:
+    if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
+        raise ApprovalError(f"{field} must be a lowercase SHA-256 digest")
 
 
 def assert_ledger_permits(controls, ledger: Mapping) -> None:
@@ -89,6 +256,7 @@ def assert_ledger_permits(controls, ledger: Mapping) -> None:
                 f"{control.control_id!r} appears {len(matches)} times in the approved "
                 "ledger; exactly one approval is required"
             )
+        _assert_signed_control(matches[0], control)
 
 
 def ledger_from_bytes(raw: bytes) -> Mapping[str, list]:
@@ -107,6 +275,9 @@ def _validated_ledger(ledger: object) -> Mapping[str, list]:
     for key in (APPROVED_KEY, DECLINED_KEY):
         if not isinstance(ledger.get(key), list):
             raise ApprovalError(f"the approval ledger has no {key} list")
+        for entry in ledger[key]:
+            if isinstance(entry, Mapping) and "approval" in entry:
+                _verify_ledger_entry_signature(entry, key)
     return ledger
 
 
@@ -242,6 +413,32 @@ def assert_ledger_approves(
         # entry silently shadow an earlier one.
         raise ApprovalError(
             f"{control_id!r} from compilation {digest} is approved {len(approved)} times"
+        )
+    _verify_ledger_entry_signature(approved[0], APPROVED_KEY)
+
+
+def _verify_ledger_entry_signature(entry: Mapping, decision: str) -> None:
+    """Verify a signed entry and ensure its outer ledger fields cannot drift."""
+    signed = entry.get("approval")
+    if signed is None:
+        return
+    verify_signed_approval(signed, expected_decision=decision)
+    if entry.get("compilation_sha256") != signed.get("compilation_digest"):
+        raise ApprovalError("signed approval compilation digest does not match its ledger entry")
+
+
+def _assert_signed_control(entry: Mapping, control: ControlRecord) -> None:
+    """Bind a signed approval to the exact compiler proposal it approved."""
+    signed = entry.get("approval")
+    if signed is None:
+        return
+    _verify_ledger_entry_signature(entry, APPROVED_KEY)
+    proposal_mapping = control.to_mapping()
+    proposal_mapping.update({"approval_state": "proposed", "compilation_sha256": None})
+    proposal = ControlRecord.from_mapping(proposal_mapping)
+    if signed.get("control_digest") != proposal.content_hash:
+        raise ApprovalError(
+            f"signed approval for {control.control_id!r} does not match the compiler proposal"
         )
 
 

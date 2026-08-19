@@ -42,6 +42,7 @@ from touchstone.signing import (
 
 
 MANIFEST_VERSION = 1
+REGISTRY_V2_MANIFEST_VERSION = 2
 
 # Each network name is bound to exactly one chain id. Leaving public ids to be declared
 # per manifest was wrong: preflight then proves only that the endpoint agrees with
@@ -118,10 +119,48 @@ _KEY_FIELDS = frozenset({"kid", "public_key", "state", "not_after"})
 _REQUIRED_KEY_FIELDS = frozenset({"kid", "public_key", "state"})
 _ADDRESS = re.compile(r"0x[0-9a-fA-F]{40}")
 _DIGEST = re.compile(r"[0-9a-f]{64}")
+_TRANSACTION_HASH = re.compile(r"0x[0-9a-f]{64}")
+
+_V2_MANIFEST_FIELDS = _MANIFEST_FIELDS | frozenset(
+    {
+        "registry_version",
+        "legacy_registry_address",
+        "legacy_registry_runtime_bytecode_sha256",
+        "owner_address",
+        "relayer_address",
+        "deployment_transaction",
+        "authorization_transaction",
+    }
+)
+_REQUIRED_V2_MANIFEST_FIELDS = _REQUIRED_MANIFEST_FIELDS | frozenset(
+    {
+        "registry_version",
+        "legacy_registry_address",
+        "legacy_registry_runtime_bytecode_sha256",
+        "owner_address",
+        "relayer_address",
+        "deployment_transaction",
+        "authorization_transaction",
+    }
+)
 
 
 class DeploymentError(ValueError):
     """A manifest does not describe a deployment this publisher will act on."""
+
+
+def _read_manifest(path: str | os.PathLike[str]) -> object:
+    location = Path(path)
+    try:
+        raw = location.read_bytes()
+    except OSError as error:
+        raise DeploymentError(f"cannot read deployment manifest: {error}") from error
+    try:
+        return strict_json_loads(raw)
+    except (TypeError, ValueError) as error:
+        raise DeploymentError(
+            f"deployment manifest {location} is not strict JSON: {error}"
+        ) from error
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,20 +225,7 @@ class DeploymentManifest:
     @classmethod
     def load(cls, path: str | os.PathLike[str]) -> DeploymentManifest:
         """Read and validate a manifest file."""
-        location = Path(path)
-        try:
-            raw = location.read_bytes()
-        except OSError as error:
-            raise DeploymentError(
-                f"cannot read deployment manifest: {error}"
-            ) from error
-        try:
-            value = strict_json_loads(raw)
-        except (TypeError, ValueError) as error:
-            raise DeploymentError(
-                f"deployment manifest {location} is not strict JSON: {error}"
-            ) from error
-        return cls.from_mapping(value)
+        return cls.from_mapping(_read_manifest(path))
 
     @classmethod
     def from_mapping(cls, value: object) -> DeploymentManifest:
@@ -387,6 +413,208 @@ class DeploymentManifest:
         return value
 
 
+@dataclass(frozen=True, slots=True)
+class RegistryV2DeploymentManifest:
+    """A validated RegistryV2 deployment, separate from the v1 publisher target."""
+
+    manifest_version: int
+    registry_version: int
+    network: str
+    chain_id: int
+    rpc_url: str
+    registry_address: str
+    registry_runtime_bytecode_sha256: str
+    legacy_registry_address: str
+    legacy_registry_runtime_bytecode_sha256: str
+    owner_address: str
+    relayer_address: str
+    publisher_address: str
+    publisher_identity_address: str
+    deployer_address: str
+    operations_address: str
+    confirmations: int
+    max_fee_wei: int | None
+    deployment_block: int
+    deployment_state: str
+    deployment_transaction: str
+    authorization_transaction: str
+    reporting_keys: tuple[ReportingKey, ...]
+    notes: str | None
+
+    @property
+    def is_active(self) -> bool:
+        return self.deployment_state == "active"
+
+    @property
+    def is_local(self) -> bool:
+        return self.network == LOCAL_NETWORK
+
+    @property
+    def active_key(self) -> ReportingKey:
+        return next(key for key in self.reporting_keys if key.state == "active")
+
+    def key(self, kid: str) -> ReportingKey | None:
+        return next((key for key in self.reporting_keys if key.kid == kid), None)
+
+    @classmethod
+    def load(cls, path: str | os.PathLike[str]) -> RegistryV2DeploymentManifest:
+        return cls.from_mapping(_read_manifest(path))
+
+    @classmethod
+    def from_mapping(cls, value: object) -> RegistryV2DeploymentManifest:
+        if not isinstance(value, Mapping):
+            raise DeploymentError("deployment manifest must be an object")
+        try:
+            value = frozen_snapshot(value, "deployment manifest")
+        except ValueError as snapshot_error:
+            raise DeploymentError(str(snapshot_error)) from snapshot_error
+        notes = value.get("notes")
+        if isinstance(notes, str) and notes.startswith(TEMPLATE_MARKER):
+            raise DeploymentError("this is a deployment template, not a deployment")
+        unknown = set(value) - _V2_MANIFEST_FIELDS
+        if unknown:
+            raise DeploymentError(
+                f"deployment manifest has unknown fields: {sorted(unknown)}"
+            )
+        missing = _REQUIRED_V2_MANIFEST_FIELDS - set(value)
+        if missing:
+            raise DeploymentError(
+                f"deployment manifest is missing fields: {sorted(missing)}"
+            )
+        if value["manifest_version"] != REGISTRY_V2_MANIFEST_VERSION:
+            raise DeploymentError("deployment manifest version is not RegistryV2")
+        if value["registry_version"] != 2:
+            raise DeploymentError("registry_version must be 2")
+
+        v1_shape = {
+            field: field_value
+            for field, field_value in value.items()
+            if field in _MANIFEST_FIELDS
+        }
+        v1_shape["manifest_version"] = MANIFEST_VERSION
+        common = DeploymentManifest.from_mapping(v1_shape)
+        owner = _address(value["owner_address"], "owner_address")
+        relayer = _address(value["relayer_address"], "relayer_address")
+        if owner in {
+            common.registry_address,
+            common.publisher_address,
+            common.publisher_identity_address,
+            common.operations_address,
+        }:
+            raise DeploymentError(
+                "owner_address must differ from the registry, publisher lineage and "
+                "operations identity"
+            )
+        if relayer in {
+            common.registry_address,
+            owner,
+            common.publisher_address,
+            common.publisher_identity_address,
+            common.deployer_address,
+            common.operations_address,
+        }:
+            raise DeploymentError(
+                "relayer_address must differ from every privileged or funding identity"
+            )
+        legacy = _address(value["legacy_registry_address"], "legacy_registry_address")
+        if legacy in {
+            common.registry_address,
+            owner,
+            relayer,
+            common.publisher_address,
+            common.publisher_identity_address,
+            common.deployer_address,
+            common.operations_address,
+        }:
+            raise DeploymentError(
+                "legacy_registry_address must differ from the v2 registry and every role"
+            )
+        legacy_digest = _digest(
+            value["legacy_registry_runtime_bytecode_sha256"],
+            "legacy_registry_runtime_bytecode_sha256",
+        )
+        deployment_transaction = _transaction_hash(
+            value["deployment_transaction"], "deployment_transaction"
+        )
+        authorization_transaction = _transaction_hash(
+            value["authorization_transaction"], "authorization_transaction"
+        )
+        return cls(
+            manifest_version=REGISTRY_V2_MANIFEST_VERSION,
+            registry_version=2,
+            network=common.network,
+            chain_id=common.chain_id,
+            rpc_url=common.rpc_url,
+            registry_address=common.registry_address,
+            registry_runtime_bytecode_sha256=common.registry_runtime_bytecode_sha256,
+            legacy_registry_address=legacy,
+            legacy_registry_runtime_bytecode_sha256=legacy_digest,
+            owner_address=owner,
+            relayer_address=relayer,
+            publisher_address=common.publisher_address,
+            publisher_identity_address=common.publisher_identity_address,
+            deployer_address=common.deployer_address,
+            operations_address=common.operations_address,
+            confirmations=common.confirmations,
+            max_fee_wei=common.max_fee_wei,
+            deployment_block=common.deployment_block,
+            deployment_state=common.deployment_state,
+            deployment_transaction=deployment_transaction,
+            authorization_transaction=authorization_transaction,
+            reporting_keys=common.reporting_keys,
+            notes=common.notes,
+        )
+
+    def to_mapping(self) -> dict[str, object]:
+        common = DeploymentManifest(
+            manifest_version=MANIFEST_VERSION,
+            network=self.network,
+            chain_id=self.chain_id,
+            rpc_url=self.rpc_url,
+            registry_address=self.registry_address,
+            registry_runtime_bytecode_sha256=self.registry_runtime_bytecode_sha256,
+            publisher_address=self.publisher_address,
+            publisher_identity_address=self.publisher_identity_address,
+            deployer_address=self.deployer_address,
+            operations_address=self.operations_address,
+            confirmations=self.confirmations,
+            max_fee_wei=self.max_fee_wei,
+            deployment_block=self.deployment_block,
+            deployment_state=self.deployment_state,
+            reporting_keys=self.reporting_keys,
+            notes=self.notes,
+        ).to_mapping()
+        common.update(
+            {
+                "manifest_version": REGISTRY_V2_MANIFEST_VERSION,
+                "registry_version": self.registry_version,
+                "legacy_registry_address": self.legacy_registry_address,
+                "legacy_registry_runtime_bytecode_sha256": (
+                    self.legacy_registry_runtime_bytecode_sha256
+                ),
+                "owner_address": self.owner_address,
+                "relayer_address": self.relayer_address,
+                "deployment_transaction": self.deployment_transaction,
+                "authorization_transaction": self.authorization_transaction,
+            }
+        )
+        return common
+
+
+def load_deployment_manifest(
+    path: str | os.PathLike[str],
+) -> DeploymentManifest | RegistryV2DeploymentManifest:
+    value = _read_manifest(path)
+    if not isinstance(value, Mapping):
+        raise DeploymentError("deployment manifest must be an object")
+    version = value.get("manifest_version")
+    if version == MANIFEST_VERSION:
+        return DeploymentManifest.from_mapping(value)
+    if version == REGISTRY_V2_MANIFEST_VERSION:
+        return RegistryV2DeploymentManifest.from_mapping(value)
+    raise DeploymentError("deployment manifest version is not supported")
+
+
 def runtime_bytecode_sha256(code: bytes) -> str:
     """Digest deployed runtime bytecode the one way this project compares it."""
     if not isinstance(code, bytes):
@@ -394,6 +622,18 @@ def runtime_bytecode_sha256(code: bytes) -> str:
     if not code:
         raise DeploymentError("there is no runtime bytecode to digest")
     return hashlib.sha256(code).hexdigest()
+
+
+def _digest(value: object, field: str) -> str:
+    if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
+        raise DeploymentError(f"{field} must be a lowercase SHA-256 digest")
+    return value
+
+
+def _transaction_hash(value: object, field: str) -> str:
+    if not isinstance(value, str) or _TRANSACTION_HASH.fullmatch(value) is None:
+        raise DeploymentError(f"{field} must be a lowercase 32-byte transaction hash")
+    return value
 
 
 def validate_local_rpc_url(value: object) -> None:

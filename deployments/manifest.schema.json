@@ -1,156 +1,206 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://touchstone.invalid/schemas/deployment-manifest-1.json",
+  "$id": "https://touchstone.invalid/schemas/deployment-manifest.json",
   "title": "Touchstone deployment manifest",
-  "description": "A deployment manifest. Every field listed in `required` is refused when absent \u2014 the loader agrees, and the two disagreeing is how a manifest the schema rejects still loads. `max_fee_wei` is required off the local chain, matching the loader's rule that an unbounded fee ceiling is not acceptable on a public network.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "manifest_version",
-    "network",
-    "chain_id",
-    "rpc_url",
-    "registry_address",
-    "registry_runtime_bytecode_sha256",
-    "publisher_address",
-    "publisher_identity_address",
-    "deployer_address",
-    "operations_address",
-    "confirmations",
-    "reporting_keys",
-    "deployment_state",
-    "deployment_block"
+  "description": "Strict deployment manifests for the legacy Registry and RegistryV2.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/v1"
+    },
+    {
+      "$ref": "#/$defs/v2"
+    }
   ],
-  "properties": {
-    "manifest_version": {
-      "const": 1
-    },
-    "network": {
-      "description": "Human label. Never used to choose behaviour \u2014 chain_id is the authority.",
-      "type": "string",
-      "enum": [
-        "hardhat-local",
-        "xlayer-testnet",
-        "xlayer-mainnet"
-      ]
-    },
-    "chain_id": {
-      "description": "Compared against the endpoint's own eth_chainId before signing.",
-      "type": "integer",
-      "minimum": 1
-    },
-    "rpc_url": {
-      "type": "string",
-      "pattern": "^https?://",
-      "description": "HTTPS off the local chain. A path is allowed (X Layer's testnet endpoint ends in /terigon); userinfo, query and fragment are refused because that is where an API key would sit in a committed file."
-    },
-    "registry_address": {
-      "type": "string",
-      "pattern": "^0x[0-9a-fA-F]{40}$"
-    },
-    "registry_runtime_bytecode_sha256": {
-      "description": "SHA-256 of the runtime bytecode actually deployed at registry_address. A mismatch means the address holds a different contract than the one this release was tested against.",
-      "type": "string",
-      "pattern": "^[0-9a-f]{64}$"
-    },
-    "publisher_address": {
-      "description": "The EVM identity that signs registry writes. Must be authorized onchain and must not be the deployer.",
-      "type": "string",
-      "pattern": "^0x[0-9a-fA-F]{40}$"
-    },
-    "publisher_identity_address": {
-      "description": "The publisher lineage the registry recorded (publisherIdentity). Authorization alone says some owner call let this address publish; lineage says it is the same publishing identity this manifest was written for.",
-      "type": "string",
-      "pattern": "^0x[0-9a-fA-F]{40}$"
-    },
-    "deployer_address": {
-      "description": "Owns the registry. Required: an unstated role address cannot be shown to be separate from the publisher. Never used for runtime signing.",
-      "type": "string",
-      "pattern": "^0x[0-9a-fA-F]{40}$"
-    },
-    "operations_address": {
-      "description": "Funds gas and runs the host. Required, and holds no registry authority; recorded so the publisher can be shown not to be running as it.",
-      "type": "string",
-      "pattern": "^0x[0-9a-fA-F]{40}$"
-    },
-    "confirmations": {
-      "description": "Blocks required before a publication is treated as settled.",
-      "type": "integer",
-      "minimum": 1
-    },
-    "deployment_state": {
-      "type": "string",
-      "enum": [
-        "active",
-        "superseded"
-      ],
-      "description": "Whether anything may still be published to this deployment. A superseded deployment cannot be caught by preflight, which compares deployed code against the digest this manifest itself records \u2014 so an obsolete manifest agrees with its obsolete registry. Only this field refuses it."
-    },
-    "max_fee_wei": {
-      "description": "Refuse to sign above this. A spend ceiling is an owner decision, not a runtime one.",
-      "type": "integer",
-      "minimum": 1
-    },
-    "deployment_block": {
-      "description": "The block the registry was deployed in. Positive: an explicit zero causes the same genesis-wide scan for the deployment's own events that an absent field used to.",
-      "type": "integer",
-      "minimum": 1
-    },
-    "reporting_keys": {
-      "description": "Ed25519 report-signing keys. Exactly one is active; superseded keys stay listed so existing bundles remain verifiable.",
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "kid",
-          "public_key",
-          "state"
-        ],
-        "properties": {
-          "kid": {
-            "type": "string",
-            "minLength": 1
-          },
-          "public_key": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
-          },
-          "state": {
-            "enum": [
-              "active",
-              "superseded",
-              "revoked"
-            ]
-          },
-          "not_after": {
-            "description": "Recorded when a key is superseded or revoked, so its bundles can still be dated.",
-            "type": "string"
-          }
+  "$defs": {
+    "reporting_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kid", "public_key", "state"],
+      "properties": {
+        "kid": {
+          "type": "string",
+          "minLength": 1
+        },
+        "public_key": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "state": {
+          "enum": ["active", "superseded", "revoked"]
+        },
+        "not_after": {
+          "type": "string"
         }
       }
     },
-    "notes": {
-      "type": "string"
-    }
-  },
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "network": {
-            "not": {
-              "const": "hardhat-local"
+    "common": {
+      "type": "object",
+      "required": [
+        "manifest_version",
+        "network",
+        "chain_id",
+        "rpc_url",
+        "registry_address",
+        "registry_runtime_bytecode_sha256",
+        "publisher_address",
+        "publisher_identity_address",
+        "deployer_address",
+        "operations_address",
+        "confirmations",
+    "reporting_keys",
+    "deployment_state",
+        "deployment_block"
+      ],
+      "properties": {
+        "manifest_version": {
+          "type": "integer"
+        },
+        "network": {
+          "type": "string",
+          "enum": ["hardhat-local", "xlayer-testnet", "xlayer-mainnet"]
+        },
+        "chain_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rpc_url": {
+          "type": "string",
+          "pattern": "^https?://"
+        },
+        "registry_address": {
+          "$ref": "#/$defs/address"
+        },
+        "registry_runtime_bytecode_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "publisher_address": {
+          "$ref": "#/$defs/address"
+        },
+        "publisher_identity_address": {
+          "$ref": "#/$defs/address"
+        },
+        "deployer_address": {
+          "$ref": "#/$defs/address"
+        },
+        "operations_address": {
+          "$ref": "#/$defs/address"
+        },
+        "confirmations": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deployment_state": {
+          "type": "string",
+          "enum": ["active", "superseded"]
+        },
+        "max_fee_wei": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "deployment_block": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reporting_keys": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/reporting_key"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "network": {
+                "not": {
+                  "const": "hardhat-local"
+                }
+              }
+            }
+          },
+          "then": {
+            "required": ["max_fee_wei"]
+          }
+        }
+      ]
+    },
+    "v1": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/common"
+        },
+        {
+          "properties": {
+            "manifest_version": {
+              "const": 1
             }
           }
         }
-      },
-      "then": {
-        "required": [
-          "max_fee_wei"
-        ]
-      }
+      ],
+      "unevaluatedProperties": false
+    },
+    "v2": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/common"
+        },
+        {
+          "type": "object",
+          "required": [
+            "registry_version",
+            "legacy_registry_address",
+            "legacy_registry_runtime_bytecode_sha256",
+            "owner_address",
+            "relayer_address",
+            "deployment_transaction",
+            "authorization_transaction"
+          ],
+          "properties": {
+            "manifest_version": {
+              "const": 2
+            },
+            "registry_version": {
+              "const": 2
+            },
+            "legacy_registry_address": {
+              "$ref": "#/$defs/address"
+            },
+            "legacy_registry_runtime_bytecode_sha256": {
+              "$ref": "#/$defs/digest"
+            },
+            "owner_address": {
+              "$ref": "#/$defs/address"
+            },
+            "relayer_address": {
+              "$ref": "#/$defs/address"
+            },
+            "deployment_transaction": {
+              "$ref": "#/$defs/transaction_hash"
+            },
+            "authorization_transaction": {
+              "$ref": "#/$defs/transaction_hash"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "address": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "transaction_hash": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$"
     }
-  ]
+  }
 }

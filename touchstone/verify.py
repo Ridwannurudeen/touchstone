@@ -21,6 +21,13 @@ from touchstone.controls import (
     OperationalEvent,
     transition_state,
 )
+from touchstone.policy import MANIFEST_VERSION
+from touchstone.registry_v2 import (
+    ATTESTATION_FIELDS,
+    RegistryV2Error,
+    attestation_from_report,
+    verify_attestation,
+)
 from touchstone.approval import (
     ApprovalError,
     assert_binding,
@@ -36,6 +43,7 @@ from touchstone.normalize.ustb import USTB_NAV_SOURCE_ID
 from touchstone.report import (
     CAPTURE_ROLES,
     REPORT_VERSION,
+    REPORT_VERSION_V4,
     control_set_root,
     evidence_root,
 )
@@ -51,8 +59,13 @@ from touchstone.signing import (
 # digests` that an offline verifier could only check were well-formed hexadecimal — it had
 # no way to resolve one, so "these controls came out of a compiler" was a claim a reader had
 # to take on trust from the party making it.
-BUNDLE_VERSION = "touchstone.verification-bundle.v4"
-_BUNDLE_FIELDS = {
+# v5 carries the policy manifest, so a reader can confirm which manifest bytes produced a
+# policy state. v4 is still verified, unchanged and forever: five bundles were published under
+# it, and "a stranger can check this offline" stops being true the moment an old bundle fails.
+BUNDLE_VERSION = "touchstone.verification-bundle.v5"
+BUNDLE_VERSION_V4 = "touchstone.verification-bundle.v4"
+BUNDLE_VERSION_REGISTRY_V2 = "touchstone.verification-bundle.registry-v2.v1"
+_BUNDLE_FIELDS_V4 = {
     "approval_ledger",
     "compilations",
     "control_records",
@@ -61,6 +74,13 @@ _BUNDLE_FIELDS = {
     "report_canonical",
     "signed_report",
     "version",
+}
+_BUNDLE_FIELDS_V5 = _BUNDLE_FIELDS_V4 | {"policy_manifest"}
+_BUNDLE_FIELDS_REGISTRY_V2 = _BUNDLE_FIELDS_V5 | {"registry_v2_attestation"}
+_BUNDLE_FIELDS_BY_VERSION = {
+    BUNDLE_VERSION_V4: _BUNDLE_FIELDS_V4,
+    BUNDLE_VERSION: _BUNDLE_FIELDS_V5,
+    BUNDLE_VERSION_REGISTRY_V2: _BUNDLE_FIELDS_REGISTRY_V2,
 }
 _REPORT_FIELDS = {
     "approval_ledger_sha256",
@@ -80,9 +100,20 @@ _REPORT_FIELDS = {
     "valid_until",
     "version",
 }
+_REPORT_FIELDS_V4 = _REPORT_FIELDS
+_REPORT_FIELDS_V5 = _REPORT_FIELDS_V4 | {"policy"}
+_REPORT_FIELDS_BY_VERSION = {
+    REPORT_VERSION_V4: _REPORT_FIELDS_V4,
+    REPORT_VERSION: _REPORT_FIELDS_V5,
+}
+_POLICY_FIELDS = {"control_ids", "policy_digest", "policy_id", "policy_version"}
 _CONTROL_RESULT_FIELDS = {"content_hash", "control_id", "evaluation"}
 _EVALUATION_FIELDS = {"evidence_deadline", "observed_on", "observed_value", "result"}
 _TRANSITION_FIELDS = {"as_of", "event", "evidence_deadline", "previous_state"}
+_REGISTRY_V2_ATTESTATION_FIELDS = set(ATTESTATION_FIELDS) | {
+    "chain_id",
+    "verifying_contract",
+}
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _ASSET_KEY = re.compile(
     r"eip155:[1-9][0-9]*:0x[0-9a-f]{40}"
@@ -103,6 +134,14 @@ class VerificationError(RuntimeError):
     """A precise offline-bundle verification failure."""
 
 
+def verify_v2_attestation(value: Mapping[str, object]) -> str:
+    """Recover a Registry v2 publisher, translating codec errors to verifier errors."""
+    try:
+        return verify_attestation(value)
+    except RegistryV2Error as error:
+        raise VerificationError(f"v2 attestation does not verify: {error}") from error
+
+
 def create_bundle(
     signed_report: Mapping[str, object],
     published_key: Mapping[str, object],
@@ -111,6 +150,7 @@ def create_bundle(
     *,
     compilations: Mapping[str, bytes] | None = None,
     approval_ledger: bytes | None = None,
+    policy_manifest: bytes | None = None,
 ) -> dict[str, object]:
     """Create the exact self-contained bundle mapping at ``BUNDLE_VERSION``.
 
@@ -170,8 +210,33 @@ def create_bundle(
             "since the report was signed, so pass the ledger it was signed under as "
             "`approval_ledger` rather than bundling the current one"
         )
+    # The manifest bytes, checked against the digest the report already committed to. A
+    # bundle carrying a manifest that hashes to something else would let a policy state be
+    # re-labelled with a different policy after signing, which is the whole reason the digest
+    # is in the signed report in the first place.
+    report_policy = dict(frozen_report["report"]).get("policy")
+    manifest_text: str | None = None
+    if policy_manifest is not None:
+        if report_policy is None:
+            raise VerificationError(
+                "a policy manifest was supplied for a report that declares no policy"
+            )
+        supplied = hashlib.sha256(bytes(policy_manifest)).hexdigest()
+        if supplied != report_policy.get("policy_digest"):
+            raise VerificationError(
+                "the policy manifest does not hash to the digest this report commits to: "
+                f"report says {report_policy.get('policy_digest')}, these bytes are {supplied}"
+            )
+        manifest_text = bytes(policy_manifest).decode("utf-8")
+    elif report_policy is not None:
+        raise VerificationError(
+            "this report declares a policy, so its bundle must carry the manifest bytes a "
+            "reader needs to check the committed digest"
+        )
+
     return {
         "approval_ledger": ledger.decode("utf-8"),
+        "policy_manifest": manifest_text,
         "compilations": {
             digest: raw.decode("utf-8") for digest, raw in sorted(artifacts.items())
         },
@@ -184,6 +249,36 @@ def create_bundle(
         "signed_report": frozen_report,
         "version": BUNDLE_VERSION,
     }
+
+
+def create_registry_v2_bundle(
+    signed_report: Mapping[str, object],
+    published_key: Mapping[str, object],
+    control_records: Sequence[ControlRecord],
+    evidence_digests: Sequence[Mapping[str, object]],
+    *,
+    registry_v2_attestation: Mapping[str, object],
+    compilations: Mapping[str, bytes] | None = None,
+    approval_ledger: bytes | None = None,
+    policy_manifest: bytes,
+) -> dict[str, object]:
+    """Create a policy-bound bundle carrying a separate Registry v2 attestation."""
+    if not isinstance(registry_v2_attestation, Mapping):
+        raise TypeError("registry_v2_attestation must be a mapping")
+    bundle = create_bundle(
+        signed_report,
+        published_key,
+        control_records,
+        evidence_digests,
+        compilations=compilations,
+        approval_ledger=approval_ledger,
+        policy_manifest=policy_manifest,
+    )
+    bundle["registry_v2_attestation"] = frozen_snapshot(
+        registry_v2_attestation, "registry_v2_attestation"
+    )
+    bundle["version"] = BUNDLE_VERSION_REGISTRY_V2
+    return bundle
 
 
 def write_bundle(path: str | Path, bundle: Mapping[str, object]) -> None:
@@ -206,9 +301,17 @@ def verify_bundle(value: bytes | str | Mapping[str, object]) -> Mapping[str, obj
         )
     except (TypeError, ValueError, json.JSONDecodeError, RecursionError) as error:
         raise VerificationError(f"invalid bundle JSON: {error}") from error
-    bundle = _exact_mapping(parsed, _BUNDLE_FIELDS, "bundle")
-    if bundle["version"] != BUNDLE_VERSION:
+    # The version selects the schema, rather than the schema being fixed and the version
+    # merely asserted. A bundle published under v4 must keep verifying for as long as it
+    # exists: five of them are public, and an offline check that stops working is the one
+    # failure this project cannot argue its way out of.
+    if not isinstance(parsed, Mapping):
+        raise VerificationError("bundle must be an object")
+    declared = parsed.get("version")
+    fields = _BUNDLE_FIELDS_BY_VERSION.get(declared)
+    if fields is None:
         raise VerificationError("unsupported bundle version")
+    bundle = _exact_mapping(parsed, fields, "bundle")
 
     signed_report = _mapping(bundle["signed_report"], "signed_report")
     report = _mapping(signed_report.get("report"), "signed_report.report")
@@ -239,7 +342,12 @@ def verify_bundle(value: bytes | str | Mapping[str, object]) -> Mapping[str, obj
 
     _verify_report_schema(report, kid)
     controls = _load_controls(bundle["control_records"])
-    if any(record.asset_key != report["asset_key"] for record in controls):
+    control_asset_key = _verify_policy_binding(
+        report,
+        bundle.get("policy_manifest"),
+        controls,
+    )
+    if any(record.asset_key != control_asset_key for record in controls):
         raise VerificationError("control records do not identify the report asset")
     evidence = _evidence_records(bundle["evidence_digests"])
     if report["control_set_root"] != control_set_root(controls):
@@ -256,7 +364,62 @@ def verify_bundle(value: bytes | str | Mapping[str, object]) -> Mapping[str, obj
     _verify_capture_roles(evidence, report, controls)
     _verify_compilations(bundle["compilations"], report, controls)
     _verify_approval_ledger(bundle["approval_ledger"], report, controls)
+    if declared == BUNDLE_VERSION_REGISTRY_V2:
+        _verify_registry_v2_binding(bundle["registry_v2_attestation"], report)
     return report
+
+
+def _verify_registry_v2_binding(
+    value: object, report: Mapping[str, object]
+) -> None:
+    attestation = _exact_mapping(
+        value,
+        _REGISTRY_V2_ATTESTATION_FIELDS,
+        "registry_v2_attestation",
+    )
+    verify_v2_attestation(attestation)
+    policy = report.get("policy")
+    if policy is None:
+        raise VerificationError(
+            "a Registry v2 bundle must carry a policy-bound report"
+        )
+    _exact_mapping(policy, _POLICY_FIELDS, "report.policy")
+    try:
+        expected = attestation_from_report(
+            report,
+            publisher=attestation["publisher"],
+            parent_digest=attestation["parent_digest"],
+            correction_of=report["correction_of"] or 0,
+            report_uri=attestation["report_uri"],
+            chain_id=attestation["chain_id"],
+            verifying_contract=attestation["verifying_contract"],
+        )
+    except RegistryV2Error as error:
+        raise VerificationError(f"Registry v2 report binding is invalid: {error}") from error
+    report_fields = {
+        "asset_key",
+        "report_digest",
+        "policy_id",
+        "policy_root",
+        "control_set_root",
+        "evidence_root",
+        "epoch_key",
+        "status",
+        "observed_at",
+        "valid_until",
+        "sequence",
+        "correction_of",
+    }
+    for field in report_fields:
+        expected_value = expected[field]
+        if attestation[field] != expected_value:
+            raise VerificationError(
+                f"Registry v2 attestation {field} does not match the signed report"
+            )
+    if report["sequence"] == 1 and attestation["parent_digest"] != "0" * 64:
+        raise VerificationError(
+            "Registry v2 first report must have a zero parent_digest"
+        )
 
 
 def _verify_approval_ledger(
@@ -355,11 +518,107 @@ def _verify_compilations(
         )
 
 
+def _verify_policy_record(policy: object) -> None:
+    """A v5 report's `policy`: either absent-by-null, or complete and well-formed.
+
+    Checked before the signature is, so a malformed policy is refused by shape rather than
+    by a signature that happens to cover it. `None` is the asset-wide verdict and is valid.
+    """
+    if policy is None:
+        return
+    record = _exact_mapping(policy, _POLICY_FIELDS, "report.policy")
+    if not isinstance(record["policy_id"], str) or not record["policy_id"]:
+        raise VerificationError("report.policy.policy_id must be non-empty text")
+    version = record["policy_version"]
+    if type(version) is not int or version < 1:
+        raise VerificationError("report.policy.policy_version must be a positive integer")
+    if not isinstance(record["policy_digest"], str) or _DIGEST.fullmatch(
+        record["policy_digest"]
+    ) is None:
+        raise VerificationError("report.policy.policy_digest must be a sha256 digest")
+    control_ids = record["control_ids"]
+    if (
+        not isinstance(control_ids, list)
+        or not control_ids
+        or any(not isinstance(name, str) or not name for name in control_ids)
+    ):
+        raise VerificationError("report.policy.control_ids must be non-empty text entries")
+    if len(set(control_ids)) != len(control_ids):
+        raise VerificationError("report.policy.control_ids must not repeat")
+
+
+def _verify_policy_binding(
+    report: Mapping[str, object],
+    manifest: object,
+    controls: Sequence[ControlRecord],
+) -> str:
+    """Verify a policy key and its exact manifest, returning the underlying asset key."""
+    policy = report.get("policy")
+    report_asset_key = report["asset_key"]
+    if policy is None:
+        if manifest is not None:
+            raise VerificationError(
+                "an asset-wide report must not carry a policy manifest"
+            )
+        return report_asset_key
+
+    record = _exact_mapping(policy, _POLICY_FIELDS, "report.policy")
+    policy_id = record["policy_id"]
+    version = record["policy_version"]
+    if not isinstance(policy_id, str) or type(version) is not int:
+        raise VerificationError("report policy identity is invalid")
+    marker = f"#policy:{policy_id}:{version}"
+    if not isinstance(report_asset_key, str) or not report_asset_key.endswith(marker):
+        raise VerificationError("policy report asset_key does not match its policy")
+    underlying = report_asset_key[: -len(marker)]
+    if _ASSET_KEY.fullmatch(underlying) is None:
+        raise VerificationError("policy report does not identify a canonical asset")
+    if not isinstance(manifest, str):
+        raise VerificationError("policy reports must carry their manifest text")
+    if hashlib.sha256(manifest.encode("utf-8")).hexdigest() != record[
+        "policy_digest"
+    ]:
+        raise VerificationError("policy manifest does not match report.policy_digest")
+    try:
+        document = strict_json_loads(manifest)
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise VerificationError(f"policy manifest is not strict JSON: {error}") from error
+    if not isinstance(document, Mapping):
+        raise VerificationError("policy manifest must be an object")
+    expected = {
+        "version",
+        "policy_id",
+        "policy_version",
+        "asset_key",
+        "title",
+        "consumer_question",
+        "controls",
+    }
+    if set(document) != expected:
+        raise VerificationError("policy manifest fields do not match the supported schema")
+    if document["version"] != MANIFEST_VERSION:
+        raise VerificationError("policy manifest version is unsupported")
+    if (
+        document["policy_id"] != policy_id
+        or document["policy_version"] != version
+        or document["asset_key"] != underlying
+    ):
+        raise VerificationError("policy manifest identity does not match the report")
+    selected = document["controls"]
+    if not isinstance(selected, list) or sorted(selected) != sorted(record["control_ids"]):
+        raise VerificationError("policy manifest controls do not match the report")
+    if sorted(record["control_ids"]) != sorted(control.control_id for control in controls):
+        raise VerificationError("policy report controls do not match its policy")
+    return underlying
+
+
 def _verify_report_schema(report: Mapping[str, object], envelope_kid: str) -> None:
-    if set(report) != _REPORT_FIELDS:
-        raise VerificationError("report fields do not match the supported schema")
-    if report["version"] != REPORT_VERSION:
+    fields = _REPORT_FIELDS_BY_VERSION.get(report.get("version"))
+    if fields is None:
         raise VerificationError("unsupported report version")
+    if set(report) != fields:
+        raise VerificationError("report fields do not match the supported schema")
+    _verify_policy_record(report.get("policy"))
     if report["publisher_kid"] != envelope_kid:
         raise VerificationError("report publisher kid does not match signature kid")
     if (

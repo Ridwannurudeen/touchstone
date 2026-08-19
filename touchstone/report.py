@@ -32,7 +32,11 @@ from touchstone.quantities import utc_instant
 from touchstone.signing import canonical_json_bytes
 
 
-REPORT_VERSION = "touchstone.observation-report.v4"
+# v5 adds `policy`. It is always present and is `null` on an asset-wide report, rather than
+# absent, because the verifier validates an exact field set: an optional field would make
+# "this report predates policies" and "this report's policy was stripped" the same shape.
+REPORT_VERSION = "touchstone.observation-report.v5"
+REPORT_VERSION_V4 = "touchstone.observation-report.v4"
 CAPTURE_ROLES = ("current", "confirmation")
 _EVIDENCE_FIELDS = {"capture_role", "retrieved_at", "sha256", "source_id"}
 USTB_LIMITATIONS = (
@@ -211,6 +215,7 @@ def build_observation_report(
     limitations: Iterable[str] = USTB_LIMITATIONS,
     correction_of: int | None = None,
     approval_ledger: bytes | None = None,
+    policy: object = None,
 ) -> dict[str, object]:
     """Build a strict report from a completed epoch.
 
@@ -284,6 +289,17 @@ def build_observation_report(
         raise ValueError("epoch evaluations do not match the control set")
     if any(record.asset_key != epoch.asset_key for record in records):
         raise ValueError("each control must identify the report asset")
+    report_asset_key = epoch.asset_key
+    if policy is not None:
+        try:
+            if policy.asset_key != epoch.asset_key:
+                raise ValueError("policy must identify the report asset")
+            report_asset_key = policy.key
+        except AttributeError as error:
+            raise ValueError(
+                "policy must be a touchstone.policy.Policy, so that its registry key is "
+                f"available: {error}"
+            ) from None
 
     # One read, used for both the approval check below and the digest committed at the end,
     # so the two can never describe different ledgers.
@@ -356,7 +372,7 @@ def build_observation_report(
         # whether a human declined it — both declined candidates remain in their artifacts,
         # because an artifact records what the compiler did, not what a person decided.
         "approval_ledger_sha256": hashlib.sha256(ledger_snapshot).hexdigest(),
-        "asset_key": epoch.asset_key,
+        "asset_key": report_asset_key,
         "compiler_provenance_digests": list(provenance),
         "control_set_root": control_set_root(records),
         "controls": report_controls,
@@ -374,9 +390,33 @@ def build_observation_report(
             "evidence_deadline": epoch.evidence_deadline.isoformat(),
             "previous_state": previous_state.value,
         },
+        "policy": _policy_record(policy),
         "valid_until": valid_text,
         "version": REPORT_VERSION,
     }
+
+
+def _policy_record(policy: object) -> dict[str, object] | None:
+    """The policy this report answers, or ``None`` for the asset-wide verdict.
+
+    The digest is carried, not just the id and version, because a reader must be able to
+    tell *which bytes* of a manifest produced this state. An id alone would let a manifest be
+    edited after publication while every report still named it correctly.
+    """
+    if policy is None:
+        return None
+    try:
+        return {
+            "control_ids": list(policy.control_ids),
+            "policy_digest": policy.digest,
+            "policy_id": policy.policy_id,
+            "policy_version": policy.version,
+        }
+    except AttributeError as error:
+        raise ValueError(
+            "policy must be a touchstone.policy.Policy, so that the digest a report commits "
+            f"to is the one the manifest loader computed: {error}"
+        ) from None
 
 
 def _reject_duplicate_values(

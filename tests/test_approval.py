@@ -21,10 +21,13 @@ from touchstone.approval import (
     approved_control,
     assert_binding,
     assert_ledger_approves,
+    assert_ledger_permits,
     compilation_from_bytes,
     from_mapping,
     load_approval_ledger,
     provenance_digests,
+    sign_approval,
+    verify_signed_approval,
 )
 from historical_pack import historical_controls, historical_ledger_bytes
 from touchstone.controls import ControlRecord
@@ -176,6 +179,75 @@ def test_the_ledger_records_why_each_declined_candidate_was_refused() -> None:
     # Reviewer identity is deliberately absent: there is no approver identity anywhere in
     # this project, and a placeholder would assert an attribution that does not exist.
     assert not any("reviewer" in entry for entry in ledger[DECLINED_KEY])
+
+
+def test_a_signed_approval_recovers_its_approver_and_binds_the_proposal() -> None:
+    control = default_ustb_controls()[0]
+    signed = sign_approval(
+        "0x" + "11" * 32,
+        control_digest=edited(
+            control, approval_state="proposed", compilation_sha256=None
+        ).content_hash,
+        compilation_digest=control.compilation_sha256,
+        decision=APPROVED_KEY,
+        reason_code="operator-confirmed",
+        timestamp=1,
+    )
+    entry = {
+        "control_id": control.control_id,
+        "compilation_sha256": control.compilation_sha256,
+        "approval": signed,
+    }
+    ledger = {
+        "version": "touchstone.approval-ledger.v1",
+        APPROVED_KEY: [entry],
+        DECLINED_KEY: [],
+    }
+
+    assert verify_signed_approval(signed) == signed["approver"]
+    assert_ledger_permits([control], ledger)
+
+
+def test_a_signed_approval_cannot_be_replayed_over_a_different_proposal() -> None:
+    control = default_ustb_controls()[0]
+    signed = sign_approval(
+        "0x" + "11" * 32,
+        control_digest="00" * 32,
+        compilation_digest=control.compilation_sha256,
+        decision=APPROVED_KEY,
+        reason_code="operator-confirmed",
+        timestamp=1,
+    )
+    ledger = {
+        "version": "touchstone.approval-ledger.v1",
+        APPROVED_KEY: [
+            {
+                "control_id": control.control_id,
+                "compilation_sha256": control.compilation_sha256,
+                "approval": signed,
+            }
+        ],
+        DECLINED_KEY: [],
+    }
+
+    with pytest.raises(ApprovalError, match="does not match the compiler proposal"):
+        assert_ledger_permits([control], ledger)
+
+
+def test_unsigned_legacy_approval_remains_readable_and_unattributed() -> None:
+    control = default_ustb_controls()[0]
+    ledger = {
+        "version": "touchstone.approval-ledger.v1",
+        APPROVED_KEY: [
+            {
+                "control_id": control.control_id,
+                "compilation_sha256": control.compilation_sha256,
+            }
+        ],
+        DECLINED_KEY: [],
+    }
+
+    assert_ledger_permits([control], ledger)
 
 
 def test_an_in_memory_resolver_needs_no_filesystem() -> None:

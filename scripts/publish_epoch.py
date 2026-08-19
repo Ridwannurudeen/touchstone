@@ -31,6 +31,7 @@ from touchstone.publish import (  # noqa: E402
     PublisherClient,
     SignedRegistryBackend,
 )
+from touchstone.rpc_quorum import QuorumRPC  # noqa: E402
 from touchstone.signing import strict_json_loads  # noqa: E402
 from touchstone.translog import TransparencyLog  # noqa: E402
 from touchstone.workspace import Workspace  # noqa: E402
@@ -40,7 +41,11 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
     """Preflight, and unless asked to stop there, publish."""
     manifest = DeploymentManifest.load(arguments.manifest)
     assert_role_separation()
-    backend = SignedRegistryBackend(manifest, PublisherKey.from_env(manifest))
+    backend = SignedRegistryBackend(
+        manifest,
+        PublisherKey.from_env(manifest),
+        quorum=QuorumRPC.from_env(),
+    )
     preflight = backend.preflight()
     result: dict[str, object] = {
         "network": manifest.network,
@@ -60,33 +65,54 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
         result["published"] = False
         return result
 
-    signed_report = strict_json_loads(Path(arguments.signed_report).read_bytes())
-    if not isinstance(signed_report, dict):
-        raise PublicationError("the signed report must be an object")
-    workspace = Workspace(arguments.workspace)
-    client = PublisherClient(
-        backend, TransparencyLog(workspace.transparency_log), workspace.pending_journal
-    )
-    # The same workspace lock the service holds, derived the same way from the same
-    # argument. Naming the log and the journal separately here let this command and the
-    # service share their state while locking different files, so both would verify one
-    # transparency-log head before either appended to it.
-    # The active-key rule lives in PublisherClient, not here. It used to live here, which
-    # meant anything calling the client directly bypassed it entirely.
-    publish = client.publish_correction if arguments.correction else client.publish
-    with exclusive_lock(workspace.lock):
-        publication = publish(signed_report, report_uri=arguments.report_uri)
-    result.update(
-        {
-            "published": True,
-            "reporting_kid": signed_report.get("kid"),
-            "transaction_hash": publication.transaction_hash,
-            "reconciled": publication.reconciled,
-            "log_entry_hash": publication.log_entry_hash,
-            "receipt": publication.receipt,
-        }
-    )
+    signed_reports = _batch_values(arguments.signed_report)
+    report_uris = _batch_values(arguments.report_uri)
+    workspaces = _batch_values(arguments.workspace)
+    if not (len(signed_reports) == len(report_uris) == len(workspaces)):
+        raise PublicationError(
+            "--signed-report, --report-uri and --workspace must be supplied the same "
+            "number of times"
+        )
+    roots = [Workspace(path) for path in workspaces]
+    if len({workspace.root for workspace in roots}) != len(roots):
+        raise PublicationError("each report must use a distinct workspace")
+
+    publications: list[dict[str, object]] = []
+    for signed_path, uri, workspace in zip(signed_reports, report_uris, roots):
+        signed_report = strict_json_loads(Path(signed_path).read_bytes())
+        if not isinstance(signed_report, dict):
+            raise PublicationError("the signed report must be an object")
+        client = PublisherClient(
+            backend, TransparencyLog(workspace.transparency_log), workspace.pending_journal
+        )
+        # The active-key rule lives in PublisherClient, not here. It used to live here,
+        # which meant anything calling the client directly bypassed it entirely.
+        publish = client.publish_correction if arguments.correction else client.publish
+        with exclusive_lock(workspace.lock):
+            publication = publish(signed_report, report_uri=uri)
+        publications.append(
+            {
+                "workspace": str(workspace.root),
+                "reporting_kid": signed_report.get("kid"),
+                "transaction_hash": publication.transaction_hash,
+                "reconciled": publication.reconciled,
+                "log_entry_hash": publication.log_entry_hash,
+                "receipt": publication.receipt,
+            }
+        )
+    result["published"] = True
+    if len(publications) == 1:
+        result.update(publications[0])
+    else:
+        result["publications"] = publications
     return result
+
+
+def _batch_values(value: object) -> list[object]:
+    """Treat a legacy scalar CLI value as a one-report batch."""
+    if isinstance(value, list):
+        return value
+    return [value]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -97,10 +123,19 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="verify the chain against the manifest and stop without signing",
     )
-    parser.add_argument("--signed-report", help="signed observation report envelope")
-    parser.add_argument("--report-uri", help="URI recorded onchain for this report")
+    parser.add_argument(
+        "--signed-report",
+        action="append",
+        help="signed observation report envelope; repeat for policy reports",
+    )
+    parser.add_argument(
+        "--report-uri",
+        action="append",
+        help="URI recorded onchain for this report; repeat in report order",
+    )
     parser.add_argument(
         "--workspace",
+        action="append",
         help="directory holding this asset's transparency log, journal and lock",
     )
     parser.add_argument(
