@@ -306,7 +306,6 @@ pre code {
 
 @media (max-width: 719px) {
   .head-row { padding-top: 12px; padding-bottom: 12px; }
-  .site-nav { order: 3; flex-basis: 100%; gap: var(--s4); overflow-x: auto; }
 }
 
 /* ---------- buttons ---------- */
@@ -1451,7 +1450,14 @@ blockquote cite {
   }
   .site-nav a { padding: var(--s3) 0; border-bottom: 1px solid var(--rule-soft); }
   .nav-open:checked ~ .site-nav { display: flex; }
-  .nav-cta--menu { display: inline-block; margin-top: var(--s4); text-align: center; }
+  .site-nav .nav-cta--menu {
+    display: block;
+    margin-top: var(--s4);
+    padding: 12px 16px;
+    border-bottom: 0;
+    text-align: center;
+    color: #FFFFFF;
+  }
   .site-head { position: relative; }
 }
 

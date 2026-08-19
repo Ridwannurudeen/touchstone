@@ -276,7 +276,6 @@ async function connect() {
     account = ethers.getAddress(accounts[0]);
     provider = new ethers.BrowserProvider(transport);
     $("wallet-state").innerHTML = row("connected", short(account), "term-ok");
-    $("btn-simulate").disabled = false;
     $("btn-execute").disabled = false;
     $("btn-decisions").disabled = false;
   } catch (error) {
@@ -797,6 +796,9 @@ $("btn-refresh").addEventListener("click", () => {
   readGate();
 });
 $("btn-connect").addEventListener("click", connect);
+// Simulation is a direct RPC eth_call and needs no wallet — a judge without one still
+// gets the refusal demonstration, which is the product's best moment.
+$("btn-simulate").disabled = false;
 $("btn-simulate").addEventListener("click", simulate);
 $("btn-execute").addEventListener("click", execute);
 $("btn-decisions").addEventListener("click", myDecisions);
