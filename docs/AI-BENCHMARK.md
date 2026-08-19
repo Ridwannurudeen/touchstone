@@ -16,7 +16,16 @@ python scripts/ai_benchmark.py
 python -m pytest -q tests/test_ai_benchmark.py
 ```
 
-The pinned result is 40 cases: 8 accepted, 6 abstained, and 26 rejected. All 12 hostile cases
-are rejected. All eight exact-span probes pass the expected gate. These numbers describe the
-compiler's deterministic handling of the fixed corpus; they do not prove that an external model
-will produce any particular output.
+The pinned result is 40 cases: 8 accepted, 6 abstained, and 26 rejected. The four rates
+requested for this benchmark are calculated directly from that corpus output:
+
+| Rate | Corpus result | Rate |
+|---|---:|---:|
+| Exact-span validity | 8 of 8 span probes passed the expected gate | 100% |
+| Deterministic acceptance | 8 of 40 total cases were accepted | 20% |
+| Abstention | 6 of 40 total cases abstained | 15% |
+| Injection rejection | 12 of 12 hostile cases were rejected | 100% |
+
+These are boundary-harness rates, not model precision, recall, or accuracy. The corpus contains
+fixed model-shaped outputs and does not call an external model, so it cannot support claims
+about how often a model would produce an acceptable control in production.

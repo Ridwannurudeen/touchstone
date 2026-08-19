@@ -9,6 +9,7 @@ export interface PublishedEvent {
   readonly publisher: string;
   readonly reportDigest: string;
   readonly policyId: string;
+  readonly approvalDigest: string;
   readonly parentDigest: string;
   readonly blockNumber: number;
   readonly transactionIndex: number;
@@ -51,7 +52,8 @@ export async function indexPublished(
       publisher: parsed.args[isCorrection ? 3 : 2],
       reportDigest: parsed.args[isCorrection ? 4 : 3],
       policyId: parsed.args[isCorrection ? 5 : 4],
-      parentDigest: parsed.args[isCorrection ? 6 : 5],
+      approvalDigest: parsed.args[isCorrection ? 6 : 5],
+      parentDigest: parsed.args[isCorrection ? 7 : 6],
       blockNumber: log.blockNumber,
       transactionIndex: log.transactionIndex,
       logIndex: log.index,

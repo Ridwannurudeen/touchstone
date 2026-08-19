@@ -3,18 +3,57 @@
 from __future__ import annotations
 
 import argparse
+from html.parser import HTMLParser
 import json
 from pathlib import Path
+import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 
 STATE_VERSION = "touchstone.project-state.v1"
 STALE_PHRASES = ("the dossier was unbuilt", "the gate never deployed")
+POLICY_STATES = ("CONFIRMED", "STALE", "INCONSISTENT", "UNVERIFIABLE")
 
 
 class PublicTruthError(RuntimeError):
     """The public record disagrees with canonical project state."""
+
+
+class PolicyPanelParser(HTMLParser):
+    """Collect machine-readable policy panels and their visible text."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.panels: list[tuple[dict[str, str], str]] = []
+        self._attributes: dict[str, str] | None = None
+        self._depth = 0
+        self._text: list[str] = []
+
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        attributes = {key: value or "" for key, value in attrs}
+        if self._attributes is not None:
+            self._depth += 1
+        elif tag == "div" and "data-policy-panel" in attributes:
+            self._attributes = attributes
+            self._depth = 1
+            self._text = []
+
+    def handle_endtag(self, tag: str) -> None:
+        del tag
+        if self._attributes is None:
+            return
+        self._depth -= 1
+        if self._depth == 0:
+            self.panels.append((self._attributes, " ".join(self._text)))
+            self._attributes = None
+            self._text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._attributes is not None:
+            self._text.append(data)
 
 
 def assert_state(state: dict[str, object], public_paths: tuple[Path, ...]) -> None:
@@ -52,6 +91,47 @@ def assert_state(state: dict[str, object], public_paths: tuple[Path, ...]) -> No
         raise PublicTruthError("project state has incomplete report facts")
     if reports.get("artifact_count") != len(bundles):
         raise PublicTruthError("report count disagrees with bundled artifacts")
+    policies = state.get("policies")
+    if not isinstance(policies, list):
+        raise PublicTruthError("project state has no policy list")
+    declared_policy_keys: set[tuple[str, int]] = set()
+    for policy in policies:
+        if not isinstance(policy, dict):
+            raise PublicTruthError("policy records must be objects")
+        policy_id, policy_version = policy.get("policy_id"), policy.get(
+            "policy_version"
+        )
+        if not isinstance(policy_id, str) or type(policy_version) is not int:
+            raise PublicTruthError("policy records must name an id and integer version")
+        declared_policy_keys.add((policy_id, policy_version))
+    retained_policy_bundles = []
+    confirmed_policy_keys: set[tuple[str, int]] = set()
+    for bundle in bundles:
+        if not isinstance(bundle, dict):
+            raise PublicTruthError("bundle records must be objects")
+        policy = bundle.get("policy")
+        if policy is None:
+            continue
+        if not isinstance(policy, dict):
+            raise PublicTruthError("bundle policy records must be objects or null")
+        key = (policy.get("policy_id"), policy.get("policy_version"))
+        if key not in declared_policy_keys:
+            raise PublicTruthError(f"bundle names an undeclared policy {key!r}")
+        retained_policy_bundles.append(bundle)
+        if bundle.get("state") == "CONFIRMED":
+            confirmed_policy_keys.add(key)
+    if reports.get("retained_verified_policy_bundle_count") != len(
+        retained_policy_bundles
+    ):
+        raise PublicTruthError(
+            "retained verified policy-bundle count disagrees with bundled artifacts"
+        )
+    if reports.get("confirmed_policy_bundle_count") != sum(
+        bundle.get("state") == "CONFIRMED" for bundle in retained_policy_bundles
+    ):
+        raise PublicTruthError(
+            "confirmed policy-bundle count disagrees with bundled artifacts"
+        )
     approval = state.get("approval")
     if not isinstance(approval, dict) or approval.get("approved_count") != len(
         approval.get("approved_control_ids", [])
@@ -69,6 +149,47 @@ def assert_state(state: dict[str, object], public_paths: tuple[Path, ...]) -> No
                     raise PublicTruthError(
                         f"stale public phrase {phrase!r} remains in {public_file}"
                     )
+            if public_file.suffix.lower() == ".html":
+                parser = PolicyPanelParser()
+                parser.feed(text)
+                for attributes, visible_text in parser.panels:
+                    policy_id = attributes.get("data-policy-id")
+                    version_text = attributes.get("data-policy-version")
+                    declared_state = attributes.get("data-policy-state", "").upper()
+                    if (
+                        not policy_id
+                        or not version_text
+                        or not version_text.isdigit()
+                        or declared_state not in POLICY_STATES
+                    ):
+                        raise PublicTruthError(
+                            f"policy panel in {public_file} lacks canonical policy metadata"
+                        )
+                    key = (policy_id, int(version_text))
+                    if key not in declared_policy_keys:
+                        raise PublicTruthError(
+                            f"policy panel in {public_file} names undeclared policy {key!r}"
+                        )
+                    visible_states = {
+                        state
+                        for state in POLICY_STATES
+                        if re.search(
+                            rf"(?<![A-Z]){state}(?![A-Z])", visible_text.upper()
+                        )
+                    }
+                    if visible_states != {declared_state}:
+                        raise PublicTruthError(
+                            f"policy panel in {public_file} visibly claims "
+                            f"{sorted(visible_states)!r}, not {declared_state!r}"
+                        )
+                    if (
+                        declared_state == "CONFIRMED"
+                        and key not in confirmed_policy_keys
+                    ):
+                        raise PublicTruthError(
+                            f"policy panel in {public_file} claims CONFIRMED for {key!r} "
+                            "without a retained verified policy bundle"
+                        )
 
 
 def main(argv: list[str] | None = None) -> int:

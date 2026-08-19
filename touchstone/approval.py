@@ -39,11 +39,16 @@ LEDGER = ROOT / "data" / "compilations" / "APPROVALS.json"
 LEDGER_VERSION = "touchstone.approval-ledger.v1"
 APPROVED_KEY = "approved"
 DECLINED_KEY = "declined"
-APPROVAL_SIGNATURE_VERSION = 1
-APPROVAL_DOMAIN = {"name": "Touchstone Approval", "version": "1"}
+LEGACY_APPROVAL_SIGNATURE_VERSION = 1
+APPROVAL_SIGNATURE_VERSION = 2
+APPROVAL_SCOPE_GLOBAL = "global"
+APPROVAL_SCOPE_POLICY = "policy"
+APPROVAL_DOMAIN = {"name": "Touchstone Approval", "version": "2"}
+_LEGACY_APPROVAL_DOMAIN = {"name": "Touchstone Approval", "version": "1"}
 _DIGEST = re.compile(r"[0-9a-f]{64}")
+_POLICY_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 _SIGNATURE = re.compile(r"[0-9a-f]{130}")
-_SIGNED_APPROVAL_FIELDS = frozenset(
+_LEGACY_SIGNED_APPROVAL_FIELDS = frozenset(
     {
         "version",
         "control_digest",
@@ -55,6 +60,7 @@ _SIGNED_APPROVAL_FIELDS = frozenset(
         "signature",
     }
 )
+_SIGNED_APPROVAL_FIELDS = _LEGACY_SIGNED_APPROVAL_FIELDS | {"scope", "policy_id"}
 
 # The only two fields approval may touch. Everything else is what the compiler proposed.
 _APPROVAL_FIELDS = frozenset({"approval_state", "compilation_sha256"})
@@ -84,6 +90,9 @@ def approval_typed_data(
     decision: str,
     reason_code: str,
     timestamp: int,
+    version: int = APPROVAL_SIGNATURE_VERSION,
+    scope: str = APPROVAL_SCOPE_GLOBAL,
+    policy_id: str = "",
 ) -> dict[str, object]:
     """Return the exact EIP-712 payload signed for one approval decision."""
     _validate_digest("control_digest", control_digest)
@@ -94,29 +103,46 @@ def approval_typed_data(
         raise ApprovalError("approval reason_code must be a non-empty string")
     if type(timestamp) is not int or timestamp <= 0:
         raise ApprovalError("approval timestamp must be a positive integer")
+    if version == LEGACY_APPROVAL_SIGNATURE_VERSION:
+        domain = _LEGACY_APPROVAL_DOMAIN
+    elif version == APPROVAL_SIGNATURE_VERSION:
+        _validate_scope(scope, policy_id)
+        domain = APPROVAL_DOMAIN
+    else:
+        raise ApprovalError("signed approval version is not supported")
+    approval_fields = [
+        {"name": "control_digest", "type": "bytes32"},
+        {"name": "compilation_digest", "type": "bytes32"},
+        {"name": "decision", "type": "string"},
+        {"name": "reason_code", "type": "string"},
+        {"name": "timestamp", "type": "uint256"},
+    ]
+    message = {
+        "control_digest": "0x" + control_digest,
+        "compilation_digest": "0x" + compilation_digest,
+        "decision": decision,
+        "reason_code": reason_code,
+        "timestamp": timestamp,
+    }
+    if version == APPROVAL_SIGNATURE_VERSION:
+        approval_fields.extend(
+            [
+                {"name": "scope", "type": "string"},
+                {"name": "policyId", "type": "string"},
+            ]
+        )
+        message.update({"scope": scope, "policyId": policy_id})
     return {
         "types": {
             "EIP712Domain": [
                 {"name": "name", "type": "string"},
                 {"name": "version", "type": "string"},
             ],
-            "Approval": [
-                {"name": "control_digest", "type": "bytes32"},
-                {"name": "compilation_digest", "type": "bytes32"},
-                {"name": "decision", "type": "string"},
-                {"name": "reason_code", "type": "string"},
-                {"name": "timestamp", "type": "uint256"},
-            ],
+            "Approval": approval_fields,
         },
         "primaryType": "Approval",
-        "domain": dict(APPROVAL_DOMAIN),
-        "message": {
-            "control_digest": "0x" + control_digest,
-            "compilation_digest": "0x" + compilation_digest,
-            "decision": decision,
-            "reason_code": reason_code,
-            "timestamp": timestamp,
-        },
+        "domain": dict(domain),
+        "message": message,
     }
 
 
@@ -128,6 +154,8 @@ def sign_approval(
     decision: str,
     reason_code: str,
     timestamp: int,
+    scope: str = APPROVAL_SCOPE_GLOBAL,
+    policy_id: str = "",
 ) -> dict[str, object]:
     """Create the signed EIP-712 approval artifact from explicit key material."""
     typed_data = approval_typed_data(
@@ -136,6 +164,8 @@ def sign_approval(
         decision=decision,
         reason_code=reason_code,
         timestamp=timestamp,
+        scope=scope,
+        policy_id=policy_id,
     )
     try:
         account = Account.from_key(private_key)
@@ -151,20 +181,35 @@ def sign_approval(
         "decision": decision,
         "reason_code": reason_code,
         "timestamp": timestamp,
+        "scope": scope,
+        "policy_id": policy_id,
         "approver": account.address,
         "signature": signature.hex(),
     }
 
 
 def verify_signed_approval(
-    value: object, *, expected_decision: str | None = None
+    value: object,
+    *,
+    expected_decision: str | None = None,
+    expected_scope: str | None = None,
+    expected_policy_id: str | None = None,
 ) -> str:
     """Verify one signed approval and return its recovered approver address."""
     if not isinstance(value, Mapping):
         raise ApprovalError("signed approval must be a mapping")
     supplied = set(value)
-    unknown = supplied - _SIGNED_APPROVAL_FIELDS
-    missing = _SIGNED_APPROVAL_FIELDS - supplied
+    if "version" not in supplied:
+        raise ApprovalError("signed approval is missing field(s): version")
+    version = value["version"]
+    if version == LEGACY_APPROVAL_SIGNATURE_VERSION:
+        required_fields = _LEGACY_SIGNED_APPROVAL_FIELDS
+    elif version == APPROVAL_SIGNATURE_VERSION:
+        required_fields = _SIGNED_APPROVAL_FIELDS
+    else:
+        raise ApprovalError("signed approval version is not supported")
+    unknown = supplied - required_fields
+    missing = required_fields - supplied
     if unknown:
         raise ApprovalError(
             "signed approval has unknown field(s): " + ", ".join(sorted(unknown))
@@ -173,8 +218,6 @@ def verify_signed_approval(
         raise ApprovalError(
             "signed approval is missing field(s): " + ", ".join(sorted(missing))
         )
-    if value["version"] != APPROVAL_SIGNATURE_VERSION:
-        raise ApprovalError("signed approval version is not supported")
     decision = value["decision"]
     if decision not in {APPROVED_KEY, DECLINED_KEY}:
         raise ApprovalError("signed approval decision is not supported")
@@ -187,6 +230,12 @@ def verify_signed_approval(
     timestamp = value["timestamp"]
     if type(timestamp) is not int or timestamp <= 0:
         raise ApprovalError("signed approval timestamp must be a positive integer")
+    scope = APPROVAL_SCOPE_GLOBAL
+    policy_id = ""
+    if version == APPROVAL_SIGNATURE_VERSION:
+        scope = value["scope"]
+        policy_id = value["policy_id"]
+        _validate_scope(scope, policy_id)
     approver = value["approver"]
     if not isinstance(approver, str) or re.fullmatch(r"0x[0-9a-fA-F]{40}", approver) is None:
         raise ApprovalError("signed approval approver must be an address")
@@ -208,6 +257,9 @@ def verify_signed_approval(
                     decision=decision,
                     reason_code=value["reason_code"],
                     timestamp=timestamp,
+                    version=version,
+                    scope=scope,
+                    policy_id=policy_id,
                 )
             ),
             signature=signature,
@@ -216,12 +268,40 @@ def verify_signed_approval(
         raise ApprovalError("signed approval signature is invalid") from error
     if recovered.lower() != approver.lower():
         raise ApprovalError("signed approval approver does not match its signature")
+    if expected_scope is not None:
+        if expected_scope not in {APPROVAL_SCOPE_GLOBAL, APPROVAL_SCOPE_POLICY}:
+            raise ApprovalError("expected approval scope is not supported")
+        if version == LEGACY_APPROVAL_SIGNATURE_VERSION:
+            if expected_scope != APPROVAL_SCOPE_GLOBAL:
+                raise ApprovalError("legacy signed approval has no signed policy scope")
+        elif scope != expected_scope:
+            raise ApprovalError("signed approval scope does not match its use")
+    if expected_policy_id is not None:
+        if _POLICY_ID.fullmatch(expected_policy_id) is None:
+            raise ApprovalError("expected policy_id is not valid")
+        if version == LEGACY_APPROVAL_SIGNATURE_VERSION:
+            raise ApprovalError("legacy signed approval has no signed policy_id")
+        if policy_id != expected_policy_id:
+            raise ApprovalError("signed approval policy_id does not match its use")
     return recovered
 
 
 def _validate_digest(field: str, value: object) -> None:
     if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
         raise ApprovalError(f"{field} must be a lowercase SHA-256 digest")
+
+
+def _validate_scope(scope: object, policy_id: object) -> None:
+    if scope not in {APPROVAL_SCOPE_GLOBAL, APPROVAL_SCOPE_POLICY}:
+        raise ApprovalError("approval scope must be global or policy")
+    if not isinstance(policy_id, str):
+        raise ApprovalError("approval policy_id must be a string")
+    if scope == APPROVAL_SCOPE_GLOBAL and policy_id:
+        raise ApprovalError("global approval must not name a policy_id")
+    if scope == APPROVAL_SCOPE_POLICY and _POLICY_ID.fullmatch(policy_id) is None:
+        raise ApprovalError(
+            "policy-scoped approval must name a lowercase hyphenated policy_id"
+        )
 
 
 def assert_ledger_permits(controls, ledger: Mapping) -> None:
@@ -422,7 +502,11 @@ def _verify_ledger_entry_signature(entry: Mapping, decision: str) -> None:
     signed = entry.get("approval")
     if signed is None:
         return
-    verify_signed_approval(signed, expected_decision=decision)
+    verify_signed_approval(
+        signed,
+        expected_decision=decision,
+        expected_scope=APPROVAL_SCOPE_GLOBAL,
+    )
     if entry.get("compilation_sha256") != signed.get("compilation_digest"):
         raise ApprovalError("signed approval compilation digest does not match its ledger entry")
 

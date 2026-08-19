@@ -4,6 +4,7 @@ import test from "node:test";
 import { Interface } from "ethers";
 import {
   ASSET_GATE_ABI,
+  ASSET_GATE_V2_ABI,
   AssetGateClient,
   ERC8021_SUFFIX,
   GUARDED_ACTION_ABI,
@@ -45,6 +46,21 @@ test("AssetGate ABI matches the deployed contract surface", () => {
     "requiredControlSetRoot",
     "requiredPublisher",
   ]);
+});
+
+test("AssetGate v2 ABI adds immutable policy pins without changing v1", () => {
+  assert.deepEqual(functionNames(ASSET_GATE_V2_ABI), [
+    "allowedStatuses",
+    "check",
+    "demand",
+    "expectedPolicyId",
+    "expectedPolicyRoot",
+    "maxObservationAge",
+    "registry",
+    "requiredControlSetRoot",
+    "requiredPublisher",
+  ]);
+  assert.equal(functionNames(ASSET_GATE_ABI).includes("expectedPolicyId"), false);
 });
 
 test("GuardedAction ABI keeps execution on the guarded action", () => {
@@ -156,6 +172,7 @@ test("RegistryV2Client preserves integer return values as bigint", async () => {
           HASH,
           HASH,
           HASH,
+          HASH,
           3n,
           100n,
           200n,
@@ -171,6 +188,7 @@ test("RegistryV2Client preserves integer return values as bigint", async () => {
   const report = await client.latestReport(HASH);
   assert.equal(report.status, 3n);
   assert.equal(report.sequence, 2n);
+  assert.equal(report.approvalDigest, HASH);
 });
 
 test("RegistryV2Client returns null for an unknown asset", async () => {
@@ -178,7 +196,7 @@ test("RegistryV2Client returns null for an unknown asset", async () => {
   client.contract = {
     getFunction() {
       return async () => [
-        HASH, HASH, HASH, HASH, HASH, HASH, 0n, 0n, 0n, ADDRESS, 0n, HASH, "",
+        HASH, HASH, HASH, HASH, HASH, HASH, HASH, 0n, 0n, 0n, ADDRESS, 0n, HASH, "",
       ];
     },
   };
@@ -189,10 +207,10 @@ test("RegistryV2Client returns null for an unknown asset", async () => {
 test("Registry v2 indexer returns publications and corrections in log order", async () => {
   const iface = new Interface(REGISTRY_V2_ABI);
   const published = iface.encodeEventLog(iface.getEvent("Published"), [
-    HASH, 1n, ADDRESS, HASH, HASH, HASH,
+    HASH, 1n, ADDRESS, HASH, HASH, HASH, HASH,
   ]);
   const corrected = iface.encodeEventLog(iface.getEvent("Corrected"), [
-    HASH, 2n, 1n, ADDRESS, HASH, HASH, HASH,
+    HASH, 2n, 1n, ADDRESS, HASH, HASH, HASH, HASH,
   ]);
   const provider = {
     async getLogs(request) {
@@ -207,6 +225,7 @@ test("Registry v2 indexer returns publications and corrections in log order", as
   const events = await indexPublished(provider, ADDRESS, 0);
   assert.deepEqual(events.map((event) => event.kind), ["published", "corrected"]);
   assert.equal(events[0].correctedSequence, null);
+  assert.equal(events[0].approvalDigest, HASH);
   assert.equal(events[1].correctedSequence, 1n);
 });
 

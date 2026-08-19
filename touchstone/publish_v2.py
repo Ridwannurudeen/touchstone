@@ -52,6 +52,7 @@ _REPORT_COMPONENTS = [
     {"name": "policyRoot", "type": "bytes32"},
     {"name": "controlSetRoot", "type": "bytes32"},
     {"name": "evidenceRoot", "type": "bytes32"},
+    {"name": "approvalDigest", "type": "bytes32"},
     {"name": "epochKey", "type": "bytes32"},
     {"name": "status", "type": "uint8"},
     {"name": "observedAt", "type": "uint64"},
@@ -63,11 +64,10 @@ _REPORT_COMPONENTS = [
 ]
 _REPORT_INPUT_COMPONENTS = [
     {"name": "assetKey", "type": "bytes32"},
-    *_REPORT_COMPONENTS[:6],
-    *_REPORT_COMPONENTS[6:],
+    *_REPORT_COMPONENTS,
 ]
 _REPORT_OUTPUT_TYPE = (
-    "(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint8,uint64,uint64,"
+    "(bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint8,uint64,uint64,"
     "address,uint64,bytes32,string)"
 )
 REGISTRY_V2_BACKEND_ABI = [
@@ -245,6 +245,7 @@ class RegistryV2ChainReport:
     policy_root: str
     control_set_root: str
     evidence_root: str
+    approval_digest: str
     epoch_key: str
     status: int
     observed_at: int
@@ -488,7 +489,12 @@ class RegistryV2Backend:
         except RegistryV2Error as error:
             raise RegistryV2PublicationError(str(error)) from error
         input_values = report_input(attestation)
-        epoch_key = input_values[6]
+        # ReportInput's epoch key sits at index 7, one past the stored Report's, because the
+        # input carries assetKey at index 0 and the stored struct does not — and because
+        # `approvalDigest` was inserted at input index 6, which is exactly the slot this
+        # read used to name. Reading 6 here compared the approval digest against the
+        # target's epoch key and refused every correction as mismatched.
+        epoch_key = input_values[7]
         if correction_of:
             if correction_of > latest:
                 raise RegistryV2PublicationError(
@@ -498,7 +504,7 @@ class RegistryV2Backend:
                 self.contract.functions.getReport(asset_key, correction_of),
                 _REPORT_OUTPUT_TYPE,
             )
-            if _hex32(corrected[5]) != _hex32(epoch_key):
+            if _hex32(corrected[6]) != _hex32(epoch_key):
                 raise RegistryV2PublicationError(
                     "correction epoch does not match its target"
                 )
@@ -586,24 +592,24 @@ class RegistryV2Backend:
         )
         expected = report_input(attestation)[1:]
         normalized = (
-            *(_hex32(value) for value in stored[:6]),
-            int(stored[6]),
+            *(_hex32(value) for value in stored[:7]),
             int(stored[7]),
             int(stored[8]),
-            Web3.to_checksum_address(stored[9]),
-            int(stored[10]),
-            _hex32(stored[11]),
-            str(stored[12]),
+            int(stored[9]),
+            Web3.to_checksum_address(stored[10]),
+            int(stored[11]),
+            _hex32(stored[12]),
+            str(stored[13]),
         )
         expected_normalized = (
-            *(_hex32(value) for value in expected[:6]),
-            int(expected[6]),
+            *(_hex32(value) for value in expected[:7]),
             int(expected[7]),
             int(expected[8]),
-            Web3.to_checksum_address(expected[9]),
-            int(expected[10]),
-            _hex32(expected[11]),
-            str(expected[12]),
+            int(expected[9]),
+            Web3.to_checksum_address(expected[10]),
+            int(expected[11]),
+            _hex32(expected[12]),
+            str(expected[13]),
         )
         if normalized != expected_normalized:
             raise RegistryV2ReconciliationFailed(
@@ -612,7 +618,7 @@ class RegistryV2Backend:
         lineage = Web3.to_checksum_address(
             str(
                 self._read_function(
-                    self.contract.functions.publisherIdentity(normalized[9]), "address"
+                    self.contract.functions.publisherIdentity(normalized[10]), "address"
                 )
             )
         )
@@ -636,14 +642,15 @@ class RegistryV2Backend:
             policy_root=normalized[2],
             control_set_root=normalized[3],
             evidence_root=normalized[4],
-            epoch_key=normalized[5],
-            status=normalized[6],
-            observed_at=normalized[7],
-            valid_until=normalized[8],
-            publisher=normalized[9],
-            sequence=normalized[10],
-            parent_digest=normalized[11],
-            report_uri=normalized[12],
+            approval_digest=normalized[5],
+            epoch_key=normalized[6],
+            status=normalized[7],
+            observed_at=normalized[8],
+            valid_until=normalized[9],
+            publisher=normalized[10],
+            sequence=normalized[11],
+            parent_digest=normalized[12],
+            report_uri=normalized[13],
             correction_of=stored_correction,
         )
 
@@ -946,6 +953,7 @@ def report_input(attestation: Mapping[str, object]) -> tuple[object, ...]:
         bytes.fromhex(str(attestation["policy_root"])),
         bytes.fromhex(str(attestation["control_set_root"])),
         bytes.fromhex(str(attestation["evidence_root"])),
+        bytes.fromhex(str(attestation["approval_digest"])),
         bytes.fromhex(str(attestation["epoch_key"])),
         int(attestation["status"]),
         int(attestation["observed_at"]),

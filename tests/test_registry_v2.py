@@ -58,6 +58,7 @@ def value() -> dict[str, object]:
         "policy_root": "55" * 32,
         "control_set_root": "66" * 32,
         "evidence_root": "77" * 32,
+        "approval_digest": "56" * 32,
         "epoch_key": "aa" * 32,
         "status": 0,
         "observed_at": 1_700_000_000,
@@ -184,6 +185,7 @@ def test_report_digest_matches_the_signed_report_bytes() -> None:
 def test_policy_report_derives_every_attestation_field() -> None:
     report = {
         "asset_key": "eip155:1:0x" + "ab" * 20 + "#policy:nav-settlement:2",
+        "approval_ledger_sha256": "56" * 32,
         "control_set_root": "66" * 32,
         "epoch_id": "2026-08-19",
         "evidence_root": "77" * 32,
@@ -212,6 +214,7 @@ def test_policy_report_derives_every_attestation_field() -> None:
     assert derived["report_digest"] == report_digest(report)
     assert derived["policy_id"] == policy_id_digest("nav-settlement", 2)
     assert derived["policy_root"] == report["policy"]["policy_digest"]
+    assert derived["approval_digest"] == report["approval_ledger_sha256"]
     assert derived["status"] == 3
     assert derived["observed_at"] == 1_787_133_600
     assert derived["valid_until"] == 1_787_220_000
@@ -262,6 +265,7 @@ def test_v2_attestation_recovers_and_matches_the_contract_digest() -> None:
         ("policy_root", "54" * 32),
         ("control_set_root", "65" * 32),
         ("evidence_root", "76" * 32),
+        ("approval_digest", "57" * 32),
         ("epoch_key", "a9" * 32),
         ("status", 1),
         ("observed_at", 1_700_000_001),
@@ -296,6 +300,7 @@ def test_v2_calldata_is_binary_transaction_data() -> None:
         signed["policy_root"],
         signed["control_set_root"],
         signed["evidence_root"],
+        signed["approval_digest"],
         signed["epoch_key"],
         signed["status"],
         signed["observed_at"],
@@ -334,6 +339,7 @@ def test_registry_v2_bundle_rejects_resigned_binding_tamper(tmp_path: Path) -> N
         "policy_root": "54" * 32,
         "control_set_root": "65" * 32,
         "evidence_root": "76" * 32,
+        "approval_digest": "57" * 32,
         "epoch_key": "a9" * 32,
         "status": 1,
         "observed_at": attestation["observed_at"] + 1,

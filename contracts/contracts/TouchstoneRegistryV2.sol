@@ -18,6 +18,7 @@ contract TouchstoneRegistryV2 {
         bytes32 policyRoot;
         bytes32 controlSetRoot;
         bytes32 evidenceRoot;
+        bytes32 approvalDigest;
         bytes32 epochKey;
         Status status;
         uint64 observedAt;
@@ -34,6 +35,7 @@ contract TouchstoneRegistryV2 {
         bytes32 policyRoot;
         bytes32 controlSetRoot;
         bytes32 evidenceRoot;
+        bytes32 approvalDigest;
         bytes32 epochKey;
         Status status;
         uint64 observedAt;
@@ -63,6 +65,7 @@ contract TouchstoneRegistryV2 {
     error InvalidEpochKey();
     error InvalidReportURI();
     error InvalidReportDigest();
+    error InvalidApprovalDigest();
     error InvalidPolicyId();
     error EpochAlreadyPublished(bytes32 assetKey, bytes32 epochKey, uint64 sequence);
     error CorrectionEpochMismatch(bytes32 expected, bytes32 provided);
@@ -81,6 +84,7 @@ contract TouchstoneRegistryV2 {
         address indexed publisher,
         bytes32 reportDigest,
         bytes32 policyId,
+        bytes32 approvalDigest,
         bytes32 parentDigest
     );
 
@@ -91,6 +95,7 @@ contract TouchstoneRegistryV2 {
         address indexed publisher,
         bytes32 reportDigest,
         bytes32 policyId,
+        bytes32 approvalDigest,
         bytes32 parentDigest
     );
 
@@ -103,7 +108,7 @@ contract TouchstoneRegistryV2 {
         "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
     );
     bytes32 private constant ATTESTATION_TYPEHASH = keccak256(
-        "Attestation(bytes32 assetKey,bytes32 reportDigest,bytes32 policyId,bytes32 policyRoot,bytes32 controlSetRoot,bytes32 evidenceRoot,bytes32 epochKey,uint8 status,uint64 observedAt,uint64 validUntil,address publisher,uint64 sequence,bytes32 parentDigest,uint64 correctionOf,string reportURI)"
+        "Attestation(bytes32 assetKey,bytes32 reportDigest,bytes32 policyId,bytes32 policyRoot,bytes32 controlSetRoot,bytes32 evidenceRoot,bytes32 approvalDigest,bytes32 epochKey,uint8 status,uint64 observedAt,uint64 validUntil,address publisher,uint64 sequence,bytes32 parentDigest,uint64 correctionOf,string reportURI)"
     );
     bytes32 private constant NAME_HASH = keccak256("Touchstone Registry");
     bytes32 private constant VERSION_HASH = keccak256("2");
@@ -214,6 +219,7 @@ contract TouchstoneRegistryV2 {
             input.publisher,
             input.reportDigest,
             input.policyId,
+            input.approvalDigest,
             input.parentDigest
         );
     }
@@ -244,6 +250,7 @@ contract TouchstoneRegistryV2 {
             input.publisher,
             input.reportDigest,
             input.policyId,
+            input.approvalDigest,
             input.parentDigest
         );
     }
@@ -294,6 +301,7 @@ contract TouchstoneRegistryV2 {
                     input.policyRoot,
                     input.controlSetRoot,
                     input.evidenceRoot,
+                    input.approvalDigest,
                     input.epochKey
                 ),
                 abi.encode(
@@ -354,6 +362,7 @@ contract TouchstoneRegistryV2 {
         bytes calldata signature
     ) private view {
         if (input.reportDigest == bytes32(0)) revert InvalidReportDigest();
+        if (input.approvalDigest == bytes32(0)) revert InvalidApprovalDigest();
         if (input.policyId == bytes32(0)) revert InvalidPolicyId();
         if (signature.length != 65) revert InvalidAttestationSignature();
         bytes32 r;
@@ -406,6 +415,7 @@ contract TouchstoneRegistryV2 {
             policyRoot: input.policyRoot,
             controlSetRoot: input.controlSetRoot,
             evidenceRoot: input.evidenceRoot,
+            approvalDigest: input.approvalDigest,
             epochKey: input.epochKey,
             status: input.status,
             observedAt: input.observedAt,

@@ -258,10 +258,12 @@ def run_benchmark() -> dict[str, object]:
         "description": "Fixed model-shaped outputs exercised against the real compiler; not a model-quality score.",
         "total_cases": len(results),
         "counts": counts,
+        "deterministic_acceptance_rate": counts[CompilationStatus.ACCEPTED.value] / len(results),
         "abstention_rate": counts[CompilationStatus.ABSTAINED.value] / len(results),
         "injection_rejection_rate": sum(item["actual"] == CompilationStatus.REJECTED.value for item in hostile_cases) / len(hostile_cases),
         "exact_span_cases": len(span_cases),
         "exact_span_gate_passed": span_gate_passed,
+        "exact_span_validity_rate": span_gate_passed / len(span_cases),
         "results": results,
     }
 

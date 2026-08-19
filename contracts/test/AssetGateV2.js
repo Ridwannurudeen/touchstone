@@ -8,6 +8,7 @@ const POLICY_ROOT = ethers.keccak256(ethers.toUtf8Bytes("v2:guarded-policy-root"
 const CONTROL_ROOT = ethers.keccak256(ethers.toUtf8Bytes("v2:guarded-controls"));
 const OTHER_ROOT = ethers.keccak256(ethers.toUtf8Bytes("v2:other-controls"));
 const EVIDENCE_ROOT = ethers.keccak256(ethers.toUtf8Bytes("v2:guarded-evidence"));
+const APPROVAL_DIGEST = ethers.keccak256(ethers.toUtf8Bytes("v2:guarded-approval"));
 const REPORT_URI = "urn:touchstone:v2:guarded-action:test";
 const TYPES = {
   Attestation: [
@@ -17,6 +18,7 @@ const TYPES = {
     { name: "policyRoot", type: "bytes32" },
     { name: "controlSetRoot", type: "bytes32" },
     { name: "evidenceRoot", type: "bytes32" },
+    { name: "approvalDigest", type: "bytes32" },
     { name: "epochKey", type: "bytes32" },
     { name: "status", type: "uint8" },
     { name: "observedAt", type: "uint64" },
@@ -60,6 +62,7 @@ describe("AssetGateV2", function () {
       policyRoot: POLICY_ROOT,
       controlSetRoot: CONTROL_ROOT,
       evidenceRoot: EVIDENCE_ROOT,
+      approvalDigest: APPROVAL_DIGEST,
       epochKey: ethers.keccak256(
         ethers.solidityPacked(["bytes32", "string"], [assetKey, "epoch:1"])
       ),
@@ -94,6 +97,7 @@ describe("AssetGateV2", function () {
         value.policyRoot,
         value.controlSetRoot,
         value.evidenceRoot,
+        value.approvalDigest,
         value.epochKey,
         value.status,
         value.observedAt,
@@ -113,11 +117,53 @@ describe("AssetGateV2", function () {
       overrides.allowedStatuses || 1,
       overrides.maxObservationAge || 3_600,
       overrides.requiredPublisher || ethers.ZeroAddress,
+      overrides.expectedPolicyId ?? POLICY_ID,
+      overrides.expectedPolicyRoot ?? POLICY_ROOT,
       overrides.requiredControlSetRoot || CONTROL_ROOT,
     ]);
     await gate.waitForDeployment();
     return gate;
   }
+
+  it("requires and stores exact nonzero policy pins", async function () {
+    const { registry } = await loadFixture(deployRegistryFixture);
+    const Gate = await ethers.getContractFactory("AssetGateV2");
+    const arguments_ = [
+      registry.target,
+      1,
+      3_600,
+      ethers.ZeroAddress,
+      POLICY_ID,
+      POLICY_ROOT,
+      CONTROL_ROOT,
+    ];
+    const gate = await deployGate(registry);
+
+    expect(await gate.expectedPolicyId()).to.equal(POLICY_ID);
+    expect(await gate.expectedPolicyRoot()).to.equal(POLICY_ROOT);
+    await expect(Gate.deploy(...arguments_.with(4, ethers.ZeroHash)))
+      .to.be.revertedWithCustomError(Gate, "InvalidPolicyId");
+    await expect(Gate.deploy(...arguments_.with(5, ethers.ZeroHash)))
+      .to.be.revertedWithCustomError(Gate, "InvalidPolicyRoot");
+  });
+
+  it("accepts a new canonical report digest under the pinned policy", async function () {
+    const { publisher, registry } = await loadFixture(deployRegistryFixture);
+    const first = await report(publisher);
+    await publish(registry, publisher, first);
+    const gate = await deployGate(registry);
+    expect(await gate.check(ASSET_KEY)).to.deep.equal([true, "allowed"]);
+
+    const second = await report(publisher, {
+      reportDigest: ethers.keccak256(ethers.toUtf8Bytes("v2:guarded-report:2")),
+      epochKey: ethers.keccak256(ethers.toUtf8Bytes("v2:guarded-epoch:2")),
+      sequence: 2,
+      parentDigest: first.reportDigest,
+    });
+    await publish(registry, publisher, second);
+
+    expect(await gate.check(ASSET_KEY)).to.deep.equal([true, "allowed"]);
+  });
 
   it("permits V2-backed execution through the existing GuardedAction", async function () {
     const { caller, publisher, registry } = await loadFixture(deployRegistryFixture);
@@ -157,6 +203,24 @@ describe("AssetGateV2", function () {
 
   const refusalCases = [
     ["unknown asset", async () => ({})],
+    [
+      "policy-id mismatch",
+      async ({ publisher, registry }) => {
+        await publish(registry, publisher, await report(publisher));
+        return {
+          expectedPolicyId: ethers.keccak256(ethers.toUtf8Bytes("other-policy")),
+        };
+      },
+    ],
+    [
+      "policy-root mismatch",
+      async ({ publisher, registry }) => {
+        await publish(registry, publisher, await report(publisher));
+        return {
+          expectedPolicyRoot: ethers.keccak256(ethers.toUtf8Bytes("other-root")),
+        };
+      },
+    ],
     [
       "status not allowed",
       async ({ publisher, registry }) => {

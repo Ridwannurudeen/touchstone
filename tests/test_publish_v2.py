@@ -189,6 +189,7 @@ def publisher_key(deployment: RegistryV2DeploymentManifest) -> PublisherKey:
 def report() -> dict[str, object]:
     return {
         "asset_key": "eip155:1:0x" + "ab" * 20 + "#policy:nav-settlement:2",
+        "approval_ledger_sha256": "56" * 32,
         "control_set_root": "66" * 32,
         "epoch_id": "2026-08-19",
         "evidence_root": "77" * 32,
@@ -313,7 +314,7 @@ def test_prepare_verifies_report_and_signs_one_relayer_transaction(
         == Web3.keccak(
             text=(
                 "publish((bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,"
-                "uint8,uint64,uint64,address,uint64,bytes32,string),bytes)"
+                "bytes32,uint8,uint64,uint64,address,uint64,bytes32,string),bytes)"
             )
         )[:4]
     )
@@ -335,6 +336,7 @@ def test_prepare_correction_binds_parent_and_target(
         bytes.fromhex("55" * 32),
         bytes.fromhex("66" * 32),
         bytes.fromhex("77" * 32),
+        bytes.fromhex("56" * 32),
         epoch_key,
         3,
         1,
@@ -362,7 +364,7 @@ def test_prepare_correction_binds_parent_and_target(
         == Web3.keccak(
             text=(
                 "publishCorrection(uint64,(bytes32,bytes32,bytes32,bytes32,bytes32,"
-                "bytes32,bytes32,uint8,uint64,uint64,address,uint64,bytes32,string),bytes)"
+                "bytes32,bytes32,bytes32,uint8,uint64,uint64,address,uint64,bytes32,string),bytes)"
             )
         )[:4]
     )
@@ -463,11 +465,12 @@ def test_reconcile_compares_every_report_field_and_correction(
     reconciled = instance.reconcile(prepared.attestation)
 
     assert reconciled.report_digest == prepared.attestation["report_digest"]
+    assert reconciled.approval_digest == prepared.attestation["approval_digest"]
     assert reconciled.report_uri == "ipfs://report"
     assert reconciled.correction_of == 0
 
     stored = list(web3.eth.reports[(asset_key, 1)])
-    stored[6] = 0
+    stored[7] = 0
     web3.eth.reports[(asset_key, 1)] = tuple(stored)
     with pytest.raises(RegistryV2ReconciliationFailed, match="does not match"):
         instance.reconcile(prepared.attestation)

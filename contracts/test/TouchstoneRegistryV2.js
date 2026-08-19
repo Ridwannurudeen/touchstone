@@ -8,6 +8,7 @@ const POLICY_ID = ethers.keccak256(ethers.toUtf8Bytes("ustb-policy-v2"));
 const POLICY_ROOT = ethers.keccak256(ethers.toUtf8Bytes("ustb-policy-root-v2"));
 const CONTROL_ROOT = ethers.keccak256(ethers.toUtf8Bytes("control-set-v2"));
 const EVIDENCE_ROOT = ethers.keccak256(ethers.toUtf8Bytes("evidence-v2"));
+const APPROVAL_DIGEST = ethers.keccak256(ethers.toUtf8Bytes("approval-v2"));
 const REPORT_URI = "ipfs://bafybeiv2report";
 const TYPES = {
   Attestation: [
@@ -17,6 +18,7 @@ const TYPES = {
     { name: "policyRoot", type: "bytes32" },
     { name: "controlSetRoot", type: "bytes32" },
     { name: "evidenceRoot", type: "bytes32" },
+    { name: "approvalDigest", type: "bytes32" },
     { name: "epochKey", type: "bytes32" },
     { name: "status", type: "uint8" },
     { name: "observedAt", type: "uint64" },
@@ -54,6 +56,7 @@ describe("TouchstoneRegistryV2", function () {
       policyRoot: POLICY_ROOT,
       controlSetRoot: CONTROL_ROOT,
       evidenceRoot: EVIDENCE_ROOT,
+      approvalDigest: APPROVAL_DIGEST,
       epochKey: ethers.keccak256(ethers.toUtf8Bytes("v2:epoch:1")),
       status: 0,
       observedAt: now,
@@ -83,6 +86,7 @@ describe("TouchstoneRegistryV2", function () {
         policyRoot: value.policyRoot,
         controlSetRoot: value.controlSetRoot,
         evidenceRoot: value.evidenceRoot,
+        approvalDigest: value.approvalDigest,
         epochKey: value.epochKey,
         status: value.status,
         observedAt: value.observedAt,
@@ -105,6 +109,7 @@ describe("TouchstoneRegistryV2", function () {
         value.policyRoot,
         value.controlSetRoot,
         value.evidenceRoot,
+        value.approvalDigest,
         value.epochKey,
         value.status,
         value.observedAt,
@@ -131,11 +136,13 @@ describe("TouchstoneRegistryV2", function () {
         publisher.address,
         value.reportDigest,
         value.policyId,
+        value.approvalDigest,
         value.parentDigest
       );
 
     const stored = await registry.getLatestReport(value.assetKey);
     expect(stored.reportDigest).to.equal(value.reportDigest);
+    expect(stored.approvalDigest).to.equal(value.approvalDigest);
     expect(stored.policyId).to.equal(value.policyId);
     expect(stored.parentDigest).to.equal(ethers.ZeroHash);
     expect(stored.publisher).to.equal(publisher.address);
@@ -186,6 +193,7 @@ describe("TouchstoneRegistryV2", function () {
       policyRoot: ethers.keccak256(ethers.toUtf8Bytes("tampered:policy-root")),
       controlSetRoot: ethers.keccak256(ethers.toUtf8Bytes("tampered:controls")),
       evidenceRoot: ethers.keccak256(ethers.toUtf8Bytes("tampered:evidence")),
+      approvalDigest: ethers.keccak256(ethers.toUtf8Bytes("tampered:approval")),
       epochKey: ethers.keccak256(ethers.toUtf8Bytes("tampered:epoch")),
       status: 1,
       observedAt: value.observedAt + 1n,

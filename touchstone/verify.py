@@ -403,6 +403,7 @@ def _verify_registry_v2_binding(
         "policy_root",
         "control_set_root",
         "evidence_root",
+        "approval_digest",
         "epoch_key",
         "status",
         "observed_at",

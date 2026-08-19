@@ -20,6 +20,7 @@ export interface RegistryReport {
   readonly policyRoot: string;
   readonly controlSetRoot: string;
   readonly evidenceRoot: string;
+  readonly approvalDigest: string;
   readonly epochKey: string;
   readonly status: bigint;
   readonly observedAt: bigint;
@@ -96,6 +97,7 @@ export class RegistryV2Client {
       string,
       string,
       string,
+      string,
       bigint,
       bigint,
       bigint,
@@ -116,6 +118,7 @@ function toReport(result: readonly [
   string,
   string,
   string,
+  string,
   bigint,
   bigint,
   bigint,
@@ -130,13 +133,14 @@ function toReport(result: readonly [
     policyRoot: result[2],
     controlSetRoot: result[3],
     evidenceRoot: result[4],
-    epochKey: result[5],
-    status: result[6],
-    observedAt: result[7],
-    validUntil: result[8],
-    publisher: result[9],
-    sequence: result[10],
-    parentDigest: result[11],
-    reportURI: result[12],
+    approvalDigest: result[5],
+    epochKey: result[6],
+    status: result[7],
+    observedAt: result[8],
+    validUntil: result[9],
+    publisher: result[10],
+    sequence: result[11],
+    parentDigest: result[12],
+    reportURI: result[13],
   };
 }

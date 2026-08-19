@@ -147,6 +147,7 @@ def signed_report(reporter: Ed25519Signer) -> dict[str, object]:
     return reporter.sign_report(
         {
             "asset_key": "eip155:1:0x" + "ab" * 20 + "#policy:nav-settlement:2",
+            "approval_ledger_sha256": "56" * 32,
             "control_set_root": "66" * 32,
             "epoch_id": "2026-08-19",
             "evidence_root": "77" * 32,
@@ -774,6 +775,7 @@ def test_publish_correction_binds_the_signed_target_in_the_journal(
 ) -> None:
     report = {
         "asset_key": "eip155:1:0x" + "ab" * 20 + "#policy:nav-settlement:2",
+        "approval_ledger_sha256": "56" * 32,
         "control_set_root": "66" * 32,
         "correction_of": 1,
         "epoch_id": "2026-08-19",

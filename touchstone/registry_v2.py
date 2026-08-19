@@ -23,6 +23,7 @@ ATTESTATION_FIELDS = frozenset(
         "policy_root",
         "control_set_root",
         "evidence_root",
+        "approval_digest",
         "epoch_key",
         "status",
         "observed_at",
@@ -44,6 +45,7 @@ ATTESTATION_TYPES = {
         {"name": "policyRoot", "type": "bytes32"},
         {"name": "controlSetRoot", "type": "bytes32"},
         {"name": "evidenceRoot", "type": "bytes32"},
+        {"name": "approvalDigest", "type": "bytes32"},
         {"name": "epochKey", "type": "bytes32"},
         {"name": "status", "type": "uint8"},
         {"name": "observedAt", "type": "uint64"},
@@ -130,6 +132,7 @@ def attestation_from_report(
         "policy_root": policy_root,
         "control_set_root": report.get("control_set_root"),
         "evidence_root": report.get("evidence_root"),
+        "approval_digest": report.get("approval_ledger_sha256"),
         "epoch_key": Web3.keccak(text=epoch_id).hex().removeprefix("0x"),
         "status": _STATUS[state],
         "observed_at": _unix_timestamp(report.get("observed_at"), "observed_at"),
@@ -172,6 +175,7 @@ def attestation_typed_data(value: Mapping[str, object]) -> dict[str, object]:
             "policyRoot": "0x" + value["policy_root"],
             "controlSetRoot": "0x" + value["control_set_root"],
             "evidenceRoot": "0x" + value["evidence_root"],
+            "approvalDigest": "0x" + value["approval_digest"],
             "epochKey": "0x" + value["epoch_key"],
             "status": value["status"],
             "observedAt": value["observed_at"],
@@ -194,6 +198,7 @@ def sign_attestation(
     policy_root: str,
     control_set_root: str,
     evidence_root: str,
+    approval_digest: str,
     epoch_key: str,
     status: int,
     observed_at: int,
@@ -214,6 +219,7 @@ def sign_attestation(
         "policy_root": policy_root,
         "control_set_root": control_set_root,
         "evidence_root": evidence_root,
+        "approval_digest": approval_digest,
         "epoch_key": epoch_key,
         "status": status,
         "observed_at": observed_at,
@@ -274,6 +280,7 @@ V2_REGISTRY_ABI = [
                     {"name": "policyRoot", "type": "bytes32"},
                     {"name": "controlSetRoot", "type": "bytes32"},
                     {"name": "evidenceRoot", "type": "bytes32"},
+                    {"name": "approvalDigest", "type": "bytes32"},
                     {"name": "epochKey", "type": "bytes32"},
                     {"name": "status", "type": "uint8"},
                     {"name": "observedAt", "type": "uint64"},
@@ -308,8 +315,8 @@ def publish_calldata(
     contract = Web3().eth.contract(
         address=Web3.to_checksum_address(registry_address), abi=V2_REGISTRY_ABI
     )
-    if len(report_input) != 14:
-        raise RegistryV2Error("v2 report input must contain 14 fields")
+    if len(report_input) != 15:
+        raise RegistryV2Error("v2 report input must contain 15 fields")
     normalized_input = (
         _bytes32(report_input[0], "asset_key"),
         _bytes32(report_input[1], "report_digest"),
@@ -317,14 +324,20 @@ def publish_calldata(
         _bytes32(report_input[3], "policy_root"),
         _bytes32(report_input[4], "control_set_root"),
         _bytes32(report_input[5], "evidence_root"),
-        _bytes32(report_input[6], "epoch_key"),
-        report_input[7],
+        _bytes32(report_input[6], "approval_digest"),
+        _bytes32(report_input[7], "epoch_key"),
         report_input[8],
         report_input[9],
-        Web3.to_checksum_address(report_input[10]),
-        report_input[11],
-        _bytes32(report_input[12], "parent_digest"),
-        report_input[13],
+        report_input[10],
+        # The struct's order is the authority. When `approvalDigest` was inserted at field
+        # seven this mapping was updated above and not below, so the publisher lived at the
+        # sequence's index and a checksum was attempted on the integer 3 — caught by the
+        # calldata test rather than by a revert on a live chain, which is the whole reason
+        # that test builds real transaction bytes.
+        Web3.to_checksum_address(report_input[11]),
+        report_input[12],
+        _bytes32(report_input[13], "parent_digest"),
+        report_input[14],
     )
     try:
         return bytes(
@@ -357,12 +370,19 @@ def _validate_fields(value: Mapping[str, object], *, include_signature: bool) ->
         "policy_root",
         "control_set_root",
         "evidence_root",
+        "approval_digest",
         "epoch_key",
         "parent_digest",
     ):
         if not isinstance(value[field], str) or _DIGEST.fullmatch(value[field]) is None:
             raise RegistryV2Error(f"{field} must be a lowercase SHA-256 digest")
-    for field in ("asset_key", "report_digest", "policy_id", "epoch_key"):
+    for field in (
+        "asset_key",
+        "report_digest",
+        "policy_id",
+        "approval_digest",
+        "epoch_key",
+    ):
         if value[field] == "0" * 64:
             raise RegistryV2Error(f"{field} must not be zero")
     if not isinstance(value["publisher"], str) or _ADDRESS.fullmatch(value["publisher"]) is None:

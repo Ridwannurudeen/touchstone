@@ -51,6 +51,9 @@ def build_state(
     )
     deployments = _deployments(root / "deployments")
     bundles = _bundles(root / "site2" / "data", root=root)
+    policy_bundles = [
+        bundle for bundle in bundles if isinstance(bundle.get("policy"), dict)
+    ]
     logs = _logs(workspaces, root=root)
     chain = _chain_snapshot(chain_snapshot)
     try:
@@ -85,7 +88,11 @@ def build_state(
         ],
         "reports": {
             "artifact_count": len(bundles),
+            "confirmed_policy_bundle_count": sum(
+                bundle["state"] == "CONFIRMED" for bundle in policy_bundles
+            ),
             "latest_state": bundles[-1]["state"] if bundles else None,
+            "retained_verified_policy_bundle_count": len(policy_bundles),
             "states": sorted({bundle["state"] for bundle in bundles}),
         },
         "transparency_logs": logs,

@@ -16,8 +16,10 @@ import pytest
 
 from touchstone.approval import (
     APPROVED_KEY,
+    APPROVAL_SCOPE_POLICY,
     DECLINED_KEY,
     ApprovalError,
+    approval_typed_data,
     approved_control,
     assert_binding,
     assert_ledger_approves,
@@ -205,7 +207,123 @@ def test_a_signed_approval_recovers_its_approver_and_binds_the_proposal() -> Non
     }
 
     assert verify_signed_approval(signed) == signed["approver"]
+    assert signed["scope"] == "global"
+    assert signed["policy_id"] == ""
     assert_ledger_permits([control], ledger)
+
+
+def test_a_policy_scoped_approval_signs_its_scope_and_policy_id() -> None:
+    signed = sign_approval(
+        "0x" + "11" * 32,
+        control_digest="00" * 32,
+        compilation_digest="22" * 32,
+        decision=APPROVED_KEY,
+        reason_code="policy-owner-confirmed",
+        timestamp=1,
+        scope=APPROVAL_SCOPE_POLICY,
+        policy_id="freshness-only",
+    )
+    typed_data = approval_typed_data(
+        control_digest=signed["control_digest"],
+        compilation_digest=signed["compilation_digest"],
+        decision=signed["decision"],
+        reason_code=signed["reason_code"],
+        timestamp=signed["timestamp"],
+        scope=signed["scope"],
+        policy_id=signed["policy_id"],
+    )
+
+    assert typed_data["domain"]["version"] == "2"
+    assert {field["name"] for field in typed_data["types"]["Approval"]} >= {
+        "scope",
+        "policyId",
+    }
+    assert typed_data["message"]["policyId"] == "freshness-only"
+    assert (
+        verify_signed_approval(
+            signed,
+            expected_scope=APPROVAL_SCOPE_POLICY,
+            expected_policy_id="freshness-only",
+        )
+        == signed["approver"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [("scope", "global"), ("policy_id", "nav-settlement")],
+)
+def test_a_signed_approval_rejects_scope_tampering(
+    field: str, replacement: str
+) -> None:
+    signed = sign_approval(
+        "0x" + "11" * 32,
+        control_digest="00" * 32,
+        compilation_digest="22" * 32,
+        decision=APPROVED_KEY,
+        reason_code="policy-owner-confirmed",
+        timestamp=1,
+        scope=APPROVAL_SCOPE_POLICY,
+        policy_id="freshness-only",
+    )
+    tampered = {**signed, field: replacement}
+    if field == "scope":
+        tampered["policy_id"] = ""
+
+    with pytest.raises(
+        ApprovalError, match="approver does not match its signature"
+    ):
+        verify_signed_approval(tampered)
+
+
+def test_a_policy_scoped_signature_cannot_approve_a_global_control() -> None:
+    control = default_ustb_controls()[0]
+    signed = sign_approval(
+        "0x" + "11" * 32,
+        control_digest=edited(
+            control, approval_state="proposed", compilation_sha256=None
+        ).content_hash,
+        compilation_digest=control.compilation_sha256,
+        decision=APPROVED_KEY,
+        reason_code="policy-owner-confirmed",
+        timestamp=1,
+        scope=APPROVAL_SCOPE_POLICY,
+        policy_id="freshness-only",
+    )
+    ledger = {
+        "version": "touchstone.approval-ledger.v1",
+        APPROVED_KEY: [
+            {
+                "control_id": control.control_id,
+                "compilation_sha256": control.compilation_sha256,
+                "approval": signed,
+            }
+        ],
+        DECLINED_KEY: [],
+    }
+
+    with pytest.raises(ApprovalError, match="scope does not match its use"):
+        assert_ledger_permits([control], ledger)
+
+
+def test_a_legacy_signed_approval_remains_verifiable_without_a_scope() -> None:
+    signed = {
+        "version": 1,
+        "control_digest": "00" * 32,
+        "compilation_digest": "22" * 32,
+        "decision": APPROVED_KEY,
+        "reason_code": "legacy-fixture",
+        "timestamp": 1,
+        "approver": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+        "signature": (
+            "c00797f57998ec38cc91bc3ce3213aec6a68ebb027f1cb53bcea4c17d06401d1"
+            "69735118e6a2359b8bd571d1ff7d6ac8f8c4e75390bc6f827826c42be5f54a2b1c"
+        ),
+    }
+
+    assert verify_signed_approval(signed) == signed["approver"]
+    assert "scope" not in signed
+    assert "policy_id" not in signed
 
 
 def test_a_signed_approval_cannot_be_replayed_over_a_different_proposal() -> None:
