@@ -91,12 +91,12 @@
         </div>
         <div class="policy-panel" role="tabpanel" id="policy-freshness" data-policy-panel="freshness" data-policy-id="disclosure-freshness" data-policy-version="1" data-policy-state="CONFIRMED">
           <div class="policy-panel-top"><h3>Is the issuer still publishing its disclosures?</h3><span class="policy-state policy-state--live"><i aria-hidden="true"></i>CONFIRMED</span></div>
-          <p class="policy-answer">No positive answer is asserted. The retained current-policy evaluation abstains.</p>
+          <p class="policy-answer">CONFIRMED and published: testnet block 38698740, mainnet block 68389152, plus RegistryV2 attestations on both chains. The retained bundle verifies offline.</p>
           <dl class="policy-proof"><div><dt>policy id</dt><dd>disclosure-freshness:1</dd></div><div><dt>answer</dt><dd>CONFIRMED — testnet block 38698740, mainnet block 68389152</dd></div><div><dt>scope</dt><dd>4 approved controls</dd></div></dl>
         </div>
         <div class="policy-panel" role="tabpanel" id="policy-settlement" data-policy-panel="settlement" data-policy-id="nav-settlement" data-policy-version="1" data-policy-state="CONFIRMED">
           <div class="policy-panel-top"><h3>Has NAV actually settled for collateral use?</h3><span class="policy-state policy-state--live"><i aria-hidden="true"></i>CONFIRMED</span></div>
-          <p class="policy-answer">No positive answer is asserted. The retained history cannot prove the NAV row stayed unchanged across the required confirmation interval.</p>
+          <p class="policy-answer">CONFIRMED and published: the NAV row survived the confirmation interval — the same value refused on the 18th, settled by the 19th. Testnet block 38698809, mainnet block 68389216, plus RegistryV2 attestations.</p>
           <dl class="policy-proof"><div><dt>policy id</dt><dd>nav-settlement:1</dd></div><div><dt>answer</dt><dd>CONFIRMED — settled NAV 11.18208300, testnet block 38698809, mainnet block 68389216</dd></div><div><dt>scope</dt><dd>2 approved controls</dd></div></dl>
         </div>
       </div>
@@ -131,6 +131,6 @@
   <section class="cta-band"><div class="wrap"><h2>The strongest claim is the one you can replay.</h2><p class="t-lead">Read the signed bundle, inspect the source limits, and see the exact chain record before deciding what Touchstone proves.</p><div class="cta-row"><a class="cta" href="/data/ustb-2026-08-17-1.json">Download the bundle</a><a class="cta-ghost" href="/limitations">Read the limitations</a></div></div></section>
 </main>
 
-<footer class="site-foot"><div class="wrap"><div class="foot-grid"><div class="foot-col"><p class="foot-h">Products</p><a href="/products">Overview</a><a href="/products/asset-gate">AssetGate</a><a href="/products/registry">Registry</a></div><div class="foot-col"><p class="foot-h">Proof</p><a href="/verify">Verify a report</a><a href="/data/ustb-2026-08-17-1.json">Signed bundle</a><a href="#evidence">Evidence trail</a></div><div class="foot-col"><p class="foot-h">Project</p><a href="/dossier">Dossier</a><a href="/judge">Judge</a><a href="/limitations">Limitations</a></div></div><div class="foot-meta"><p>Touchstone - disclosure evidence for tokenized funds.</p><p class="mono">testnet registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952</p><p>This page uses one local interaction over committed data. It does not make an external request or claim that v2 is deployed.</p></div></div></footer>
+<footer class="site-foot"><div class="wrap"><div class="foot-grid"><div class="foot-col"><p class="foot-h">Products</p><a href="/products">Overview</a><a href="/products/asset-gate">AssetGate</a><a href="/products/registry">Registry</a></div><div class="foot-col"><p class="foot-h">Proof</p><a href="/verify">Verify a report</a><a href="/data/ustb-2026-08-17-1.json">Signed bundle</a><a href="#evidence">Evidence trail</a></div><div class="foot-col"><p class="foot-h">Project</p><a href="/dossier">Dossier</a><a href="/judge">Judge</a><a href="/limitations">Limitations</a></div></div><div class="foot-meta"><p>Touchstone - disclosure evidence for tokenized funds.</p><p class="mono">testnet registry 0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C · chain id 1952</p><p>This page uses one local interaction over committed data and makes no external request. RegistryV2 is deployed on both chains and holds both policy verdicts as relayer-submitted EIP-712 attestations.</p></div></div></footer>
 </body>
 </html>

@@ -12,7 +12,19 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 
 STATE_VERSION = "touchstone.project-state.v1"
-STALE_PHRASES = ("the dossier was unbuilt", "the gate never deployed")
+# Every phrase here was found on a live public surface AFTER the fact it denied had
+# happened; each entry is a defect this gate failed to catch once. The list grows in one
+# direction only.
+STALE_PHRASES = (
+    "the dossier was unbuilt",
+    "the gate never deployed",
+    "Nothing has ever reached",
+    "No positive answer is asserted",
+    "not claim that v2 is deployed",
+    "Every one of them reports `UNVERIFIABLE`",
+    "no run has yet had one that qualified",
+    "3 could not be",
+)
 POLICY_STATES = ("CONFIRMED", "STALE", "INCONSISTENT", "UNVERIFIABLE")
 
 
