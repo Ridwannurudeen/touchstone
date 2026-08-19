@@ -1,0 +1,36 @@
+{
+  "histories": [
+    {
+      "completed_slots": 2,
+      "corrected_publications": 1,
+      "heartbeat": {
+        "last_attempted_slot": "2026-08-18T16:49:00.656609Z",
+        "next_scheduled_slot": null,
+        "written_at": "2026-08-18T16:49:18.756121Z"
+      },
+      "missed_slots": 0,
+      "scheduled_slots": 2,
+      "unaccounted_slots": 0,
+      "window_start": "2026-08-17",
+      "window_through": "2026-08-18",
+      "workspace": "C:\\Users\\gudma\\touchstone-workspace\\ustb"
+    },
+    {
+      "completed_slots": 1,
+      "corrected_publications": 1,
+      "heartbeat": {
+        "last_attempted_slot": "2026-08-18T14:04:21.592662Z",
+        "next_scheduled_slot": null,
+        "written_at": "2026-08-18T14:05:37.668937Z"
+      },
+      "missed_slots": 0,
+      "scheduled_slots": 2,
+      "unaccounted_slots": 1,
+      "window_start": "2026-08-17",
+      "window_through": "2026-08-18",
+      "workspace": "C:\\Users\\gudma\\touchstone-workspace-mainnet\\ustb"
+    }
+  ],
+  "note": "Each workspace is measured independently; hash chains are never concatenated.",
+  "schema": "touchstone.operations-metrics.v1"
+}

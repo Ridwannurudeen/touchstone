@@ -262,7 +262,7 @@ def panel_interval(earlier: dict, later: dict) -> str:
     return _page("The interval", body)
 
 
-def panel_policy() -> str:
+def panel_policy(project_state: dict[str, object] | None = None) -> str:
     ledger = (ROOT / "data" / "compilations" / "APPROVALS.json").read_bytes()
     control = next(
         c
@@ -270,6 +270,12 @@ def panel_policy() -> str:
         if c.control_id == "ustb-nav-per-share-present"
     )
     minimum = control.expected_value.get("minimum_row_age_business_days")
+    policy_note = ""
+    if project_state is not None:
+        policies = project_state.get("policies", [])
+        policy_note = (
+            f" The canonical state records {len(policies)} predeclared consumer policies."
+        )
     body = f"""
     <p class="eyebrow">The rule that exists for that</p>
     <h1>The freshest number is never the verified one</h1>
@@ -288,7 +294,7 @@ def panel_policy() -> str:
     <table>
       <thead><tr><th>The rule, in words</th></tr></thead>
       <tbody><tr><td>Observe the newest row that is byte-identical in a capture taken at least
-      twenty-four hours earlier, and at least {html.escape(str(minimum))} business days old.
+    twenty-four hours earlier, and at least {html.escape(str(minimum))} business days old.{policy_note}
       A row revised between captures is skipped, and an older settled row is observed
       instead.</td></tr></tbody>
     </table>
@@ -312,6 +318,7 @@ def main(argv: list[str] | None = None) -> int:
         help="pin the earlier capture so a later render cannot film a different pair",
     )
     parser.add_argument("--later-sha256", default=None)
+    parser.add_argument("--project-state", type=Path)
     arguments = parser.parse_args(argv)
 
     workspace = Path(arguments.workspace)
@@ -326,7 +333,11 @@ def main(argv: list[str] | None = None) -> int:
     written = {
         "panel-2-captures.html": panel_captures(earlier, later),
         "panel-3-diff.html": diff_page,
-        "panel-4-policy.html": panel_policy(),
+        "panel-4-policy.html": panel_policy(
+            json.loads(arguments.project_state.read_text(encoding="utf-8"))
+            if arguments.project_state
+            else None
+        ),
         "panel-5-interval.html": panel_interval(earlier, later),
     }
     for name, page in written.items():

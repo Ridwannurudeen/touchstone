@@ -75,6 +75,7 @@ def build_release(
     tests_skipped: int | None,
     mutants_killed: int | None,
     mutants_total: int | None,
+    project_state: Path | None = None,
 ) -> dict[str, object]:
     """Assemble one release document for ``root``."""
     if _BUILT_AT.fullmatch(built_at) is None:
@@ -96,7 +97,7 @@ def build_release(
     _require_dir(root / SOURCE_MANIFESTS, SOURCE_MANIFESTS)
     _require_dir(root / DEPLOYMENTS, DEPLOYMENTS)
 
-    return {
+    document = {
         "release_version": RELEASE_VERSION,
         "commit": _commit(root),
         "built_at": built_at,
@@ -113,6 +114,14 @@ def build_release(
             mutants_total=mutants_total,
         ),
     }
+    if project_state is not None:
+        if not project_state.is_file():
+            raise ReleaseError(f"{project_state} is missing")
+        document["project_state"] = {
+            "path": project_state.name,
+            "sha256": sha256_file(project_state),
+        }
+    return document
 
 
 def encode_release(document: dict[str, object]) -> bytes:
@@ -135,6 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="path to write the release document",
     )
+    parser.add_argument("--project-state", type=Path)
     parser.add_argument(
         "--built-at",
         required=True,
@@ -193,6 +203,7 @@ def main(argv: list[str] | None = None) -> int:
             tests_skipped=arguments.tests_skipped,
             mutants_killed=arguments.mutants_killed,
             mutants_total=arguments.mutants_total,
+            project_state=arguments.project_state,
         )
         _write(arguments.out, encode_release(document))
     except ReleaseError as error:

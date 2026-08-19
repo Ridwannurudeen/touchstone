@@ -14,6 +14,8 @@ published because it exists — it is published because it is named here.
 from __future__ import annotations
 
 import html
+import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -144,15 +146,19 @@ def render(slug: str) -> tuple[str, int]:
     return title, len(text.splitlines())
 
 
-def render_index(rows: list[tuple[str, str, int]]) -> None:
+def render_index(
+    rows: list[tuple[str, str, int]], project_state: dict[str, object] | None = None
+) -> None:
     """The docs landing page, from the same template so it cannot drift from the pages.
 
     Each entry carries its source line count, because the number is the argument: this is the
     documentation the project works from, not a summary written for a website.
     """
+    documentation = project_state.get("documentation", {}) if project_state else {}
+    count = documentation.get("published_count", len(rows))
     items = [
         '<h1 id="documentation">Documentation</h1>',
-        "<p>Six committed documents, rendered from the repository rather than rewritten for "
+        f"<p>{html.escape(str(count))} committed documents, rendered from the repository rather than rewritten for "
         "the web. Each is the file the project itself works from.</p>",
         '<ul class="doc-index">',
     ]
@@ -174,7 +180,10 @@ def render_index(rows: list[tuple[str, str, int]]) -> None:
     )
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--project-state", type=Path)
+    arguments = parser.parse_args(argv)
     if not TEMPLATE.exists():
         print(f"missing template: {TEMPLATE}", file=sys.stderr)
         return 1
@@ -185,7 +194,12 @@ def main() -> int:
         rows.append((slug, title, lines))
         print(f"{slug:<20} {title:<24} {lines:>5} source lines")
 
-    render_index(rows)
+    project_state = (
+        json.loads(arguments.project_state.read_text(encoding="utf-8"))
+        if arguments.project_state
+        else None
+    )
+    render_index(rows, project_state)
     print(
         f"\n{len(rows)} documents rendered into {OUT.relative_to(ROOT)}, plus docs.html"
     )

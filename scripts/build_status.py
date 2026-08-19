@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import html
+import json
 from pathlib import Path
 import sys
 
@@ -76,7 +77,13 @@ def _row(record: dict[str, object]) -> str:
     )
 
 
-def render(workspace: Workspace, *, now: datetime, registry_address: str) -> str:
+def render(
+    workspace: Workspace,
+    *,
+    now: datetime,
+    registry_address: str,
+    project_state: dict[str, object] | None = None,
+) -> str:
     latest = observation.latest_by_source(workspace.root / "observations.jsonl")
     total = len(observation.read_all(workspace.root / "observations.jsonl"))
     health = heartbeat.verify(
@@ -113,6 +120,8 @@ def render(workspace: Workspace, *, now: datetime, registry_address: str) -> str
         else ""
     )
 
+    reports = project_state.get("reports", {}) if project_state else {}
+    latest_state = reports.get("latest_state", "UNVERIFIABLE")
     body = f"""<h1>Status</h1>
 <p class="t-lead">What was last observed, and when. <strong>This page is a static
 snapshot generated at <code>{_stamp(now)}</code>.</strong> It cannot know when you are
@@ -144,7 +153,8 @@ that this page was not regenerated. Those are different failures: one is about t
 the other about whatever refreshes this file. Neither is evidence for the other, and this page
 will not guess which one happened.</p>
 <p>Nothing on this page asserts that an asset is verified. <strong>As of the generation
-time above</strong>, every report published reported <code>UNVERIFIABLE</code>, and the
+time above</strong>, the canonical artifact record's latest report was
+<code>{html.escape(str(latest_state))}</code>, and the
 consumer gate on X&nbsp;Layer <em>testnet</em> refused the asset accordingly. That is a
 statement about this snapshot, not a standing guarantee: a later report can reach a different
 state while this file is still being served, so check
@@ -176,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="the registry this workspace publishes to; the heartbeat is checked against it",
     )
+    parser.add_argument("--project-state", type=Path)
     arguments = parser.parse_args(argv)
 
     now = datetime.now(timezone.utc)
@@ -183,6 +194,11 @@ def main(argv: list[str] | None = None) -> int:
         Workspace(arguments.workspace),
         now=now,
         registry_address=arguments.registry_address,
+        project_state=(
+            json.loads(arguments.project_state.read_text(encoding="utf-8"))
+            if arguments.project_state
+            else None
+        ),
     )
     target = Path(arguments.out)
     target.parent.mkdir(parents=True, exist_ok=True)
