@@ -306,6 +306,52 @@ def panel_policy(project_state: dict[str, object] | None = None) -> str:
     return _page("The policy", body)
 
 
+def panel_confirmation() -> str:
+    """The ending the first cuts could not have, because it had not happened yet.
+
+    Reads the retained sequence-4 bundle rather than a workspace, so the panel can only
+    render from an artifact a stranger could download and verify.
+    """
+    bundle = json.loads(
+        (ROOT / "site2" / "data" / "ustb-2026-08-19-4.json").read_text(encoding="utf-8")
+    )
+    report = bundle["signed_report"]["report"]
+    if report["state"] != "CONFIRMED":
+        raise SystemExit("the retained sequence-4 bundle is not CONFIRMED; do not film it")
+    nav = next(
+        c["evaluation"]["observed_value"]
+        for c in report["controls"]
+        if c["control_id"] == "ustb-nav-per-share-present"
+    )
+    body = f"""
+    <p class="eyebrow">A day later</p>
+    <h1>The same row, unchanged. Confirmed.</h1>
+    <p class="lead">On the 19th a fresh capture carried the same NAV the issuer had revised
+    to on the 17th &mdash; now at least a day old and byte-identical across two looks. Every
+    approved control passed, and the first <strong>CONFIRMED</strong> state published to
+    both chains.</p>
+    <div class="cards">
+      <div class="card"><h2>Refused on the 18th</h2>
+        <p class="big mono">{html.escape(str(nav))}</p></div>
+      <div class="card"><h2>Confirmed on the 19th</h2>
+        <p class="big mono">{html.escape(str(nav))}</p></div>
+      <div class="card"><h2>Controls changed</h2>
+        <p class="big mono">none</p></div>
+    </div>
+    <table>
+      <thead><tr><th>Consequence, on chain</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Consumer gate, refused for two days</td><td class="mono">(true, "allowed")</td></tr>
+        <tr class="changed"><td>GuardedAction on the confirmed policy</td><td class="mono">executed &mdash; status 1</td></tr>
+        <tr><td>GuardedAction on a never-verified key</td><td class="mono">reverted &mdash; status 0</td></tr>
+      </tbody>
+    </table>
+    <p class="foot">Refusal and confirmation are one mechanism. The gate moved because the
+    evidence did.</p>
+    """
+    return _page("Confirmed", body)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", required=True)
@@ -339,6 +385,7 @@ def main(argv: list[str] | None = None) -> int:
             else None
         ),
         "panel-5-interval.html": panel_interval(earlier, later),
+        "panel-6-confirmed.html": panel_confirmation(),
     }
     for name, page in written.items():
         (out / name).write_text(page, encoding="utf-8")

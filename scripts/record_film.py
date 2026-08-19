@@ -47,14 +47,17 @@ class Scene:
 # Seven beats totalling ninety seconds. Scene 5 exists because the first cut did not have
 # it: without the interval on screen, scene 4's rule reads as the reason this run refused,
 # and it was not — the run never reached a row comparison at all.
+# Eight beats, ninety seconds, and the arc the earlier cuts could not have: the system
+# refuses a provisional value, and confirms the same value once the evidence earns it.
 SCENES = (
-    Scene(1, "verdict", f"{SITE}/dossier/ustb-2026-08-17", 10.0),
-    Scene(2, "captures", "panel-2-captures.html", 14.0),
-    Scene(3, "diff", "panel-3-diff.html", 18.0),
-    Scene(4, "policy", "panel-4-policy.html", 16.0),
-    Scene(5, "interval", "panel-5-interval.html", 18.0),
-    Scene(6, "verify", f"{SITE}/verify", 8.0, scroll_to=520),
-    Scene(7, "status", f"{SITE}/status", 6.0),
+    Scene(1, "verdict", f"{SITE}/", 10.0),
+    Scene(2, "captures", "panel-2-captures.html", 12.0),
+    Scene(3, "diff", "panel-3-diff.html", 14.0),
+    Scene(4, "interval", "panel-5-interval.html", 14.0),
+    Scene(5, "confirmed", "panel-6-confirmed.html", 16.0),
+    Scene(6, "judge", f"{SITE}/judge", 12.0, scroll_to=900),
+    Scene(7, "verify", f"{SITE}/verify", 7.0, scroll_to=520),
+    Scene(8, "status", f"{SITE}/status", 5.0),
 )
 
 

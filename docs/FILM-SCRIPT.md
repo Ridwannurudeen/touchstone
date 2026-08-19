@@ -1,109 +1,72 @@
 # The ninety-second film — locked script
 
-**The story is the refusal.** Every report Touchstone has published reports `UNVERIFIABLE`,
-and the consumer gate on X Layer testnet refuses the asset. That is not the demo failing to
-reach a happy ending; it is the product working, and on 2026-08-17 it was working against a
-number the issuer went on to change.
+**The story is refusal that earns confirmation.** On the 17th the issuer published a NAV; on
+the 18th it revised that row, and Touchstone had already declined to certify it. On the 19th a
+fresh capture carried the revised value unchanged for over a day — and the same mechanism that
+refused it confirmed it, on both chains, with two policy verdicts beside it and a consumer
+gate that flipped without a single control changing.
 
-`ROADMAP.md` specifies a two-act demo whose second act ends with the gate flipping to
-`ACCEPTED`. `docs/DEMO-RUNBOOK.md` says plainly that act cannot be walked, because no report
-has ever reached `CONFIRMED`. **This script does not chase it.** Nothing here is staged, no
-control set is changed for the camera, and no state is altered off-screen.
-
-> ⚠️ **Corrected after an audit, and the correction matters.** The first cut of this film said
-> the revised row "was skipped" in favour of an older settled one. That is what the rule does
-> in general. It is **not** what happened on this run. These two captures are 23h39m35s apart,
-> short of the twenty-four-hour confirmation interval, so **no predecessor qualified and the
-> value control never compared any row at all** — the published sequence-2 report records
-> `ustb-nav-per-share-present` as `UNEVALUABLE` with no observed value. Narrating a skip over
-> that evidence asserted a cause that did not occur. The cut now says what the run actually
-> did, which is a better story anyway: it declined because it was twenty minutes short of its
-> own rule.
-
----
+Earlier cuts ended on the refusal because the confirmation had not happened yet, and one cut
+falsely narrated a "skip" that never occurred — both corrections are in the git history. This
+cut is the complete arc, and every number on screen comes from a retained artifact or a live
+page.
 
 ## The facts on screen
 
-Every one is verifiable by a viewer, and every one was read from the chain or from retained
-evidence rather than recalled.
-
 | Fact | Value |
 |---|---|
-| Testnet registry | `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`, chain 1952, `latestSequence` 3 |
-| Mainnet registry | `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, chain 196, `latestSequence` 2 |
-| Consumer gate | `0xAac48DC261B04737FDCB101D5049395121034a83`, testnet — `check()` returns `(false, "status not allowed")` |
-| Earlier capture | `4d22989c…7e54`, retrieved 2026-08-17T16:48:32Z |
-| Later capture | `f9f87f32…1cd7`, retrieved 2026-08-18T16:28:07Z |
-| The revision | `08/17/2026` NAV `11.17883400` → `11.18208300` |
-| Unrevised rows | `08/15/2026` and `08/16/2026`, byte-identical across both captures |
-| The policy | `ustb-nav-per-share-present`, `minimum_row_age_business_days: 2` |
-| Gap between the captures | **23h 39m 35s** — short of the 24h confirmation interval by 20m 25s |
-| What the run actually returned | `ustb-nav-per-share-present` → `UNEVALUABLE`, no observed value; asset `UNVERIFIABLE` |
-| Signed bundle | sha256 `914ea892…bfc955`, printed on `/verify` beside its own download |
-
-⚠️ **Do not say the issuer restates every day.** Two captures support one changed row and two
-unchanged ones. They do not establish a settlement policy, and claiming one would be the same
-kind of overclaim this film is about.
-
----
+| The revision | `08/17/2026` NAV `11.17883400` → `11.18208300`, between captures a day apart |
+| The refusal | captures 23h39m35s apart — 20m25s short of the interval; `UNEVALUABLE`, asset `UNVERIFIABLE` |
+| The confirmation | 2026-08-19: all 5 controls SATISFIED; testnet seq 4 blk 38698679, mainnet seq 3 blk 68389082 |
+| Policy verdicts | `disclosure-freshness:1` and `nav-settlement:1`, both CONFIRMED, own registry keys, both chains |
+| The gate | refused for two days; now `(true, "allowed")`; a never-verified key still refused |
+| The pair | permitted `status 1` / reverted `status 0` on each chain (testnet `0x5b6e65b9…`/`0xfc9bcc47…`, mainnet `0x8b4b6c85…`/`0x2b106907…`) |
+| Bundles | all retained under `/data/`, digests printed beside their downloads |
 
 ## The cut
 
-Seven beats, ninety seconds. Narration is about 210 words, which fits a measured 150 wpm with
-air around it.
+Eight beats, ninety seconds. Narration ≈205 words at a measured pace.
 
-### 1 — The decision, first (0:00–0:10) · 10s
+### 1 — Open on the verdict (0:00–0:10)
+**On screen:** the live homepage, CONFIRMED card.
+> This tokenised Treasury fund is confirmed on X Layer — by a system whose whole design is
+> refusing to say that until the evidence earns it.
 
-**On screen:** the live dossier for `ustb-2026-08-17`. Hold on the `UNVERIFIABLE` chip.
+### 2 — What it watches (0:10–0:22)
+**On screen:** the two capture identifiers and UTC times.
+> Touchstone captures the issuer's own published feeds and keeps every byte, hashed.
 
-> A consumer contract on X Layer asks Touchstone whether this tokenised Treasury fund's
-> disclosures check out. Touchstone says: not confirmed. So the gate refuses it.
+### 3 — The issuer moved a number (0:22–0:36)
+**On screen:** the row diff, 08/17 highlighted.
+> Between two captures a day apart, the value published for August seventeenth changed.
+> Nine hundred and fifty-seven other rows did not.
 
-### 2 — What it looked at (0:10–0:24) · 14s
+### 4 — It refused (0:36–0:50)
+**On screen:** the interval panel — 23h39m elapsed, 24h required, `UNEVALUABLE`.
+> A value counts only once a capture at least a day older still carries it. These were twenty
+> minutes short, so it did not evaluate the number at all — the asset stayed unverifiable
+> rather than round its own rule down.
 
-**On screen:** the two capture identifiers with their UTC retrieval times, side by side.
+### 5 — It confirmed (0:50–1:06)
+**On screen:** the confirmation panel — same value refused and confirmed, controls changed:
+none; gate allowed; the executed and reverted actions.
+> A day later, the same value, unchanged. Every control passed and the first confirmed state
+> published to both chains. The gate that refused for two days flipped on its own — and a
+> contract action that couldn't run before ran, while one bound to an unverified asset still
+> reverted.
 
-> It had fetched the issuer's own daily NAV feed twice, a day apart, and kept both responses
-> exactly as they arrived — every byte, hashed on receipt.
+### 6 — Ask it your question (1:06–1:18)
+**On screen:** the judge page, both policy panels CONFIRMED.
+> Different consumers need different evidence, so verdicts publish per policy: is the issuer
+> still disclosing, and has the NAV actually settled — each signed, each on its own key.
 
-### 3 — The issuer moved a number (0:24–0:42) · 18s
+### 7 — Check it yourself (1:18–1:25)
+**On screen:** `/verify`, the digest beside the bundle.
+> Every report is a downloadable bundle you verify offline. The page tells you its hash.
 
-**On screen:** the row diff — 08/15 unchanged, 08/16 unchanged, 08/17 highlighted,
-`11.17883400 → 11.18208300`.
-
-> Nine hundred and fifty-seven rows were identical. One was not. The value published for the
-> seventeenth of August had changed by the time the feed was read again the next day.
-
-### 4 — The rule that exists for exactly that (0:42–0:58) · 16s
-
-**On screen:** the approved control, `minimum_row_age_business_days: 2`, and the rule in words.
-
-> So Touchstone never reads the freshest number and calls it verified. A value counts only
-> once a capture at least twenty-four hours older still carries it, unchanged.
-
-### 5 — What it actually did (0:58–1:16) · 18s
-
-**On screen:** the interval panel — 23h 39m 35s elapsed, 24h required, short by 20m 25s; and
-`ustb-nav-per-share-present → UNEVALUABLE`, no observed value.
-
-> On this run it never got that far. The two captures were twenty minutes short of the
-> interval, so nothing qualified to confirm against and the control did not evaluate the value
-> at all. The asset stayed unverifiable — not because the number looked wrong, but because the
-> system would not vouch for a check it had not been able to make.
-
-### 6 — Checkable by anyone (1:16–1:24) · 8s
-
-**On screen:** `/verify`, the published sha256 beside the bundle it describes.
-
-> The result is signed, published to an append-only registry on X Layer, and checkable
-> offline. The page tells you the hash of the file it is handing you.
-
-### 7 — The thesis (1:24–1:30) · 6s
-
-**On screen:** the live status page, then hold.
-
-> Not a rating. Not a price oracle. A machine-checkable refusal to overclaim when the evidence
-> is provisional.
+### 8 — The thesis (1:25–1:30)
+**On screen:** the status page, hold.
+> Not a rating. A machine-checkable answer that says no until it can prove yes.
 
 ---
 
