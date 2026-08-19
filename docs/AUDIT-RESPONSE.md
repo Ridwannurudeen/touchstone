@@ -25,7 +25,7 @@ its snapshot. Deltas against its verdicts, each verifiable from chain or repo:
 | Its verdict | Now |
 |---|---|
 | "No truthful live accepted policy; both panels UNVERIFIABLE" | **CLOSED.** First CONFIRMED states published 2026-08-19: asset + both policies, both chains. NAV 11.18208300 — refused on the 18th, confirmed on the 19th. Bundles retained under `site2/data/`. |
-| "Registry V2 not deployed; SDK addresses null" | **CLOSED.** Deployed both chains (testnet blk 38699818, mainnet blk 68389940), manifests committed, SDK addresses filled. **V2 holds no publications yet** — first v2 publication planned at the next epoch window. |
+| "Registry V2 not deployed; SDK addresses null" | **CLOSED.** Deployed both chains (testnet blk 38699818, mainnet blk 68389940), manifests committed, SDK addresses filled. **V2 now holds its first publications** — both policies, both chains, 2026-08-19: testnet `0xd78803d2…`/`0x796dee43…`, mainnet `0x90736a7c…`/`0xf4cdbd1e…`. Each was submitted by the relayer (`0x5b4e381C…`) with the publisher recovered on chain from the EIP-712 attestation, under a two-provider RPC quorum, with the signed approval release's digest committed in the attestation payload. |
 | "Demonstration ends only in refusal" | **CLOSED.** GuardedAction permit/refuse pairs on chain, both networks: testnet `0x5b6e65b9…`(1)/`0xfc9bcc47…`(0), mainnet `0x8b4b6c85…`(1)/`0x2b106907…`(0). |
 | "AssetGateV2 does not enforce nonzero control-set root" | **CLOSED.** Contract-level `InvalidControlSetRoot`; tested. |
 | "Approval digest never checked by the consumer" | **CLOSED.** `expectedApprovalDigest` immutable pin, `approval mismatch` refusal; tested. |
