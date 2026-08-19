@@ -31,6 +31,12 @@ dev = [
     # it -- web3 does not. A clean install would have failed at import, which is the kind of
     # thing the repository had no CI to notice.
     "jsonschema==4.26.0",
+    # Imported by `scripts/build_docs.py` and, through it, `scripts/build_project_state.py`
+    # -- which CI runs as the canonical-truth gate. Undeclared for the same reason as its
+    # neighbours: present on the authoring machine by accident, so every local run passed
+    # while the first clean environment to try it failed on import. Third instance of this
+    # defect; the comment pattern above exists because it keeps happening.
+    "markdown==3.10.2",
     "pytest==8.3.3",
     # Read by `scripts/assert_ci_gates.py`, which checks the CI workflow covers every job.
     # It was importable on this machine only because a dozen unrelated packages had pulled
