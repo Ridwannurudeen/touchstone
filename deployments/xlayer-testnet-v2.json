@@ -1,0 +1,30 @@
+{
+  "manifest_version": 2,
+  "registry_version": 2,
+  "network": "xlayer-testnet",
+  "chain_id": 1952,
+  "rpc_url": "https://testrpc.xlayer.tech/terigon",
+  "registry_address": "0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720",
+  "registry_runtime_bytecode_sha256": "59a8b2efe1280721829ba228ffbb98bbd07da3acfebff9a1396220a117116a2b",
+  "legacy_registry_address": "0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C",
+  "legacy_registry_runtime_bytecode_sha256": "cecada9e4caefaa153ea321d5831b053ad8750ffe58a4ac0ee61b81ba4dbc561",
+  "owner_address": "0xAa1C01C6FcDcc268DbF93C861D26C44a27C35436",
+  "publisher_address": "0x86A100BDdF8754c95fec97BeC96dBFd64Be44710",
+  "relayer_address": "0x5b4e381CA8CCFF91553711512f08B4dF685faFCe",
+  "publisher_identity_address": "0x86A100BDdF8754c95fec97BeC96dBFd64Be44710",
+  "deployer_address": "0xAa1C01C6FcDcc268DbF93C861D26C44a27C35436",
+  "operations_address": "0xF901f538d17ED060018F043bCAA1d7f0977Fa65D",
+  "confirmations": 3,
+  "deployment_block": 38699818,
+  "deployment_state": "active",
+  "deployment_transaction": "0x120b880beaf3bf544da2386589b4339a72261c1faf54c522b2c492d6fbc4477a",
+  "authorization_transaction": "0x572211b41669da0f1fcf6432e08d6a2fd8ce1a15741fe9b03d371830e78ba067",
+  "reporting_keys": [
+    {
+      "kid": "ed25519:394ee022b83de4783cd49f60cc4842b48d108f6a339b73272739490cb9a581fd",
+      "public_key": "0959d043538a483024722ced848e52ae5dcaf56661e598dc850a9541028b9dba",
+      "state": "active"
+    }
+  ],
+  "max_fee_wei": 2000000000000000
+}

@@ -103,6 +103,58 @@ would *agree* with it rather than reject it.
 
 ---
 
+## 1a. 2026-08-19: first CONFIRMED states, v2 registries, and the permit/refuse pair
+
+Published and verified from chain:
+
+| Chain | What | Where |
+|---|---|---|
+| 1952 | asset seq 4 **CONFIRMED**; policies `disclosure-freshness:1`, `nav-settlement:1` seq 1 **CONFIRMED** | v1 registry `0x0dAb4A5B…352C` |
+| 196 | asset seq 3 **CONFIRMED**; both policies seq 1 **CONFIRMED** | v1 registry `0xc9d58e…D30d` |
+| 1952 | RegistryV2 (block 38699818), freshness-pinned AssetGate `0x0bc5c0cc…8eE1`, GuardedAction pair — permitted `0x5b6e65b9…` status 1, refused `0xfc9bcc47…` status 0 | |
+| 196 | RegistryV2 (block 68389940), freshness-pinned AssetGate (block 68389983), GuardedAction pair — permitted `0x8b4b6c85…` status 1, refused `0x2b106907…` status 0 | |
+
+The confirmed NAV row is `11.18208300` — the value the system refused on the 18th, now
+settled unchanged across two captures. The refusal and the confirmation are one mechanism.
+
+A relayer identity was minted (`0x5b4e381C…faFCe`) because the v2 deploy script requires it
+distinct from owner, publisher and operations; its key sits with the others in the gitignored
+env file and it has never held funds.
+
+🚨 **The address collision hazard now has four instances.** The deployer's nonce sequence
+replays across chains, so: `0x0dAb4A5B…352C` is the **v1 registry on 1952** and the
+**RegistryV2 on 196**; `0xAac48DC2…4a83` is the **v1 asset gate on 1952** and the
+**freshness-pinned gate on 196**; `0xBaE680e6…7720` is the **RegistryV2 on 1952** and a
+**GuardedAction on 196**; and `0xc9d58e…D30d` remains superseded-on-1952 / v1-live-on-196.
+An address means nothing here without a chain id. Ever.
+
+## 1b. Incident 2026-08-19: mainnet publications journaled into the testnet workspace
+
+The first CONFIRMED states published to both chains on 2026-08-19 — testnet asset sequence 4
+plus two policy sequence 1s (16:36 UTC), then mainnet asset sequence 3 plus two policy
+sequence 1s (16:46 UTC). Every report is genuine, evaluates from qualifying evidence, and its
+bundle verifies offline. The chains are correct.
+
+The local records are not where they belong. The mainnet run was launched by a runner edited
+with an unverified stream edit that silently failed to change the workspace root, so it ran
+with the mainnet manifest against the **testnet** workspace — twice, because the corrected
+rewrite also failed silently and the old file ran again. Consequences, stated precisely:
+
+- the testnet workspace's transparency logs now interleave chain-1952 and chain-196 entries
+  (each log's own hash chain remains intact; the chain id of each entry is determined by its
+  transaction, which the paired registry resolves unambiguously);
+- the mainnet workspace's local log is missing mainnet sequence 3 and both policy records —
+  the chain is authoritative and unaffected;
+- the 16:36 testnet policy bundle *files* were overwritten by the same-named 16:46 mainnet
+  ones; their full signed reports remain embedded in the transparency logs.
+
+The logs are append-only and stay as they are: rewriting a transparency log to tidy history
+is exactly what this project must never do. The workspace reorganisation planned as the
+"workspace split" resolution now also covers this interleaving. Two working rules follow:
+**never launch a publishing runner whose configuration was edited without asserting every
+substitution applied**, and **a runner must print its workspace root and manifest before
+waiting, so a mismatch is visible while there is still time to kill it**.
+
 ## 2. Daily schedule
 
 Per the roadmap's operations calendar, and reproduced here so an operator needs one file:
