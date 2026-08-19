@@ -34,7 +34,7 @@ its snapshot. Deltas against its verdicts, each verifiable from chain or repo:
 | "GitHub About overclaims 'signed onchain attestation'" | **CLOSED.** Narrowed to publisher-authenticated commitment + offline-verifiable report. |
 | "Dossier lists one report; four reports lack public bundles" | **CLOSED with one stated gap.** All 11 reports listed; 9 bundles public and verified; the 2 testnet policy bundle *files* were overwritten by same-named mainnet ones (their signed reports remain in the transparency logs) — stated on the dossier, not hidden. |
 | "Homepage count, OPERATIONS header, submission draft, judge 'Interactive' label stale" | **CLOSED**, this commit. |
-| "Approvals ledger unsigned legacy data" | **OPEN — owner.** Signing exists; a new dated approval release signed by the owner's key is required. Backdating is refused on principle. |
+| "Approvals ledger unsigned legacy data" | **CLOSED 2026-08-19.** The owner reviewed all ten decisions and signed: `data/compilations/APPROVALS-SIGNED-2026-08-19.json`, approver `0x537873b0…fA16Bc` recoverable from every artifact, timestamped at signing — the ledger's own dates remain the record of when each decision was made, and nothing was backdated. Verified 10/10 against `verify_signed_approval` and against the ledger's own lists. |
 | "Every publication hand-started; publisher disabled" | **OPEN — owner** (`DEPLOY-SERVICE.md` §3c). Workspace migration is done, so enabling is safe when decided. |
 | "No external consumer / Builder Code / rebrand" | **OPEN — owner.** |
 | "Truth gate scope insufficient" | **PARTIAL.** OPERATIONS.md added to the scan this commit; chain-snapshot-in-CI still open. |

@@ -44,7 +44,10 @@ def artifacts() -> dict[str, bytes]:
     return {
         path.stem: path.read_bytes()
         for path in COMPILATIONS.glob("*.json")
-        if path.stem != "APPROVALS"
+        # The ledger and its dated signed releases live beside the artifacts they attest,
+        # and neither is content-addressed: a compilation is named by what it is, a decision
+        # record by what it decides about.
+        if not path.stem.startswith("APPROVALS")
     }
 
 
