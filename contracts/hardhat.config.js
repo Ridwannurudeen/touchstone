@@ -1,4 +1,8 @@
 require("@nomicfoundation/hardhat-toolbox");
+// OKLink source verification for X Layer. OKLink's docs recommend `npx hardhat okverify`
+// over vanilla `hardhat verify`, whose docs only promise Etherscan/Blockscout/Sourcify.
+// The API key is an OKLink account credential and never lives in this file.
+require("@okxweb3/hardhat-explorer-verify");
 
 // X Layer testnet, added 2026-08-15 with owner approval. Chain 1952 at
 // https://testrpc.xlayer.tech/terigon, verified against chainlist.org/chain/1952.
@@ -34,6 +38,9 @@ const solidity = require("./solidity.json");
 
 module.exports = {
   solidity,
+  okxweb3explorer: {
+    apiKey: process.env.OKLINK_API_KEY,
+  },
   networks: {
     hardhat: {
       initialDate: FIXTURE_EPOCH_RETRIEVED_AT,

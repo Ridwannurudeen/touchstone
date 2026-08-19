@@ -29,8 +29,12 @@ from touchstone.registry_v2 import (
     verify_attestation,
 )
 from touchstone.approval import (
+    APPROVED_KEY,
+    DECLINED_KEY,
+    LEDGER_VERSION,
     ApprovalError,
     assert_binding,
+    assert_entry_proposal,
     assert_ledger_permits,
     compilation_bytes,
     from_mapping,
@@ -363,7 +367,7 @@ def verify_bundle(value: bytes | str | Mapping[str, object]) -> Mapping[str, obj
     _verify_state(report)
     _verify_capture_roles(evidence, report, controls)
     _verify_compilations(bundle["compilations"], report, controls)
-    _verify_approval_ledger(bundle["approval_ledger"], report, controls)
+    _verify_approval_ledger(bundle["approval_ledger"], report, controls, bundle["compilations"])
     if declared == BUNDLE_VERSION_REGISTRY_V2:
         _verify_registry_v2_binding(bundle["registry_v2_attestation"], report)
     return report
@@ -427,6 +431,7 @@ def _verify_approval_ledger(
     raw_ledger: object,
     report: Mapping[str, object],
     controls: Sequence[ControlRecord],
+    compilations: object,
 ) -> None:
     """The human decision, made checkable by a reader who was not there.
 
@@ -441,9 +446,15 @@ def _verify_approval_ledger(
     Every reported control must appear exactly once in `approved`. None may appear in
     `declined`.
 
-    What this still does not establish is *who* approved: the ledger records what and when
-    and why-not, but carries no approver identity and nothing signs the decision. That is
-    R-9 in the threat model, and it stays open.
+    For a version-1 ledger, *who* approved stays unestablished: it records what and when
+    and why-not, but carries no approver identity. That was R-9 in the threat model. A
+    version-2 ledger closes it — `ledger_from_bytes` has already verified an EIP-712
+    signature on every entry by the time this runs, so the digest the report commits to
+    names decisions an identified approver signed. What remains partial offline is the
+    proposal binding for entries whose compilation this bundle does not carry: a bundle
+    holds the artifacts its own report needs, not the publisher's whole compilation
+    store, so entries are bound to their exact proposals wherever the artifact is here
+    and the source-of-truth binding for the rest runs at every on-disk ledger load.
     """
     if not isinstance(raw_ledger, str):
         raise VerificationError("the bundled approval ledger must be text")
@@ -458,7 +469,20 @@ def _verify_approval_ledger(
             f"{committed}"
         )
     try:
-        assert_ledger_permits(controls, ledger_from_bytes(encoded))
+        ledger = ledger_from_bytes(encoded)
+        assert_ledger_permits(controls, ledger)
+        if ledger.get("version") == LEDGER_VERSION and isinstance(compilations, Mapping):
+            resolve = from_mapping(
+                {
+                    digest: text.encode("utf-8")
+                    for digest, text in compilations.items()
+                    if isinstance(digest, str) and isinstance(text, str)
+                }
+            )
+            for key in (APPROVED_KEY, DECLINED_KEY):
+                for entry in ledger[key]:
+                    if entry.get("compilation_sha256") in compilations:
+                        assert_entry_proposal(entry, resolve=resolve)
     except ApprovalError as error:
         raise VerificationError(f"approval does not verify: {error}") from error
 

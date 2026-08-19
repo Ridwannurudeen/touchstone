@@ -1,31 +1,91 @@
 {
-  "version": "touchstone.approval-ledger.v1",
-  "note": "Every control this project evaluates is here, and nothing else. Each entry names a candidate a model proposed from the issuer's own bytes and the compilation artifact it was accepted in; the control itself is read from that artifact, so this file can only point at a control, never restate one. Approval changes exactly two fields: approval_state and compilation_sha256. Declined entries are candidates that passed every deterministic gate and a human still did not approve \u2014 recorded because a control set that silently omits them cannot be audited for why.",
+  "version": "touchstone.approval-ledger.v2",
+  "note": "Every control this project evaluates is here, and nothing else. Each entry names a candidate a model proposed from the issuer's own bytes and the compilation artifact it was accepted in; the control itself is read from that artifact, so this file can only point at a control, never restate one. Approval changes exactly two fields: approval_state and compilation_sha256. Declined entries are candidates that passed every deterministic gate and a human still did not approve \u2014 recorded because a control set that silently omits them cannot be audited for why. As of version 2, every entry also carries the approver's EIP-712 signature over the exact proposal it decides, so the identity behind each decision is recoverable by anyone holding these bytes; the signatures were created 2026-08-19 and say so, because a signature dated to the decision it attests would be manufactured history.",
   "approved": [
     {
       "control_id": "ustb-holdings-as-of-date-present",
       "compilation_sha256": "fad12109e3ec919ec87d923ee628392f3b64c91269711b5626a5b8239843afc3",
-      "approved_on": "2026-08-18"
+      "approved_on": "2026-08-18",
+      "approval": {
+        "compilation_digest": "fad12109e3ec919ec87d923ee628392f3b64c91269711b5626a5b8239843afc3",
+        "decision": "approved",
+        "control_digest": "e64ef76d0dc0ffeb35fd2f59862173ec9a418a07e831511a7c7b80520306beeb",
+        "reason_code": "operator-approved",
+        "timestamp": 1787163880,
+        "version": 2,
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "scope": "global",
+        "policy_id": "",
+        "signature": "ff6626e94e21a0e2c154a7263be457376972320aaf1fbc4a3f4e2e9116d1d7637873c7d38cdbcc144240aca086adf8c01d963682071865d13cb2efcc8c8818671c"
+      }
     },
     {
       "control_id": "ustb-nav-daily-freshness",
       "compilation_sha256": "db4eebc0e7a795eec7d835dfc4ccd939b87dd3a86d4c4e30a8b1c028bebb4bba",
-      "approved_on": "2026-08-18"
+      "approved_on": "2026-08-18",
+      "approval": {
+        "compilation_digest": "db4eebc0e7a795eec7d835dfc4ccd939b87dd3a86d4c4e30a8b1c028bebb4bba",
+        "decision": "approved",
+        "control_digest": "2cca37761843b549087e85186efe6f17f6f360a112442d8225fe1127ffee3f8c",
+        "reason_code": "operator-approved",
+        "timestamp": 1787163880,
+        "version": 2,
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "scope": "global",
+        "policy_id": "",
+        "signature": "cb9bed6c33dbecc49a71c48ef4028ff37de48ea877045c8d71fd7013c0e5b99c5032d7c5dc8fc84814f0e8e6f42deadc2734491c3a6f85fe5688e62335a6c0d51b"
+      }
     },
     {
       "control_id": "ustb-nav-per-share-present",
       "compilation_sha256": "db4eebc0e7a795eec7d835dfc4ccd939b87dd3a86d4c4e30a8b1c028bebb4bba",
-      "approved_on": "2026-08-18"
+      "approved_on": "2026-08-18",
+      "approval": {
+        "compilation_digest": "db4eebc0e7a795eec7d835dfc4ccd939b87dd3a86d4c4e30a8b1c028bebb4bba",
+        "decision": "approved",
+        "control_digest": "4b8bf0dfccba3fe20213a94c83bf61a65e2471022f828b884fd888fce5c939ff",
+        "reason_code": "operator-approved",
+        "timestamp": 1787163880,
+        "version": 2,
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "scope": "global",
+        "policy_id": "",
+        "signature": "2a79290985c3489a14ae659852323532188b0e7a59c08b05c16da1eb94c602b17ec5dcf9d298ff12a84a84f9097a2b99e887e52b5a6a22aef3bb07e66df107221b"
+      }
     },
     {
       "control_id": "ustb-yield-as-of-date-fresh",
       "compilation_sha256": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
-      "approved_on": "2026-08-18"
+      "approved_on": "2026-08-18",
+      "approval": {
+        "compilation_digest": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
+        "decision": "approved",
+        "control_digest": "5184eb0d6b487a156ffc46d77bfc3deb3a6af5dbffc3e8c2c94addd122d1a9ac",
+        "reason_code": "operator-approved",
+        "timestamp": 1787163880,
+        "version": 2,
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "scope": "global",
+        "policy_id": "",
+        "signature": "c46f23d471461014278e37923b14377372bfddf1707e4f9098bcb7435a393f9217348d62caca58d00b3d1fc8804b008077f79d8fdf2e28d190f2c73be8d90c6a1c"
+      }
     },
     {
       "control_id": "ustb-yield-one-day-present",
       "compilation_sha256": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
-      "approved_on": "2026-08-18"
+      "approved_on": "2026-08-18",
+      "approval": {
+        "compilation_digest": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
+        "decision": "approved",
+        "control_digest": "02ec4f3c059ae5ad4ccea1cbe1cc8fd65b14643be9d79bb4d10e9a0a31ead68a",
+        "reason_code": "operator-approved",
+        "timestamp": 1787163880,
+        "version": 2,
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "scope": "global",
+        "policy_id": "",
+        "signature": "3ac50d63308283426c7c5c2d4494495329d1c5dfa1d392d1621151ad433f59bd3a5a4a34427df0f74aa0d647ee96ae2d76007b29c470692a2b18d9643eeb8cd41b"
+      }
     }
   ],
   "declined": [
@@ -33,31 +93,91 @@
       "control_id": "ustb-holdings-recently-published",
       "compilation_sha256": "fad12109e3ec919ec87d923ee628392f3b64c91269711b5626a5b8239843afc3",
       "declined_on": "2026-08-18",
-      "reason": "Redundant with ustb-holdings-as-of-date-present: both read the same as_of_date, and a 40-calendar-day window on a monthly holdings file adds no claim the presence control does not already make."
+      "reason": "Redundant with ustb-holdings-as-of-date-present: both read the same as_of_date, and a 40-calendar-day window on a monthly holdings file adds no claim the presence control does not already make.",
+      "approval": {
+        "compilation_digest": "fad12109e3ec919ec87d923ee628392f3b64c91269711b5626a5b8239843afc3",
+        "decision": "declined",
+        "control_digest": "2bb8205f529c0ff21ce9d702e32078b29b488b5f59bdd6e3f5891c4380334afa",
+        "reason_code": "operator-declined",
+        "timestamp": 1787163880,
+        "version": 2,
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "scope": "global",
+        "policy_id": "",
+        "signature": "d7e575f19b8f2e89cbf4c43088adfc8fa635647b5428ae3acce3b3cddf577f7d44dd70411b8cdbe57916556d10e49c33fb2b3363bfe21e1d1e542453f5eb0c621c"
+      }
     },
     {
       "control_id": "ustb-outstanding-shares-present",
       "compilation_sha256": "db4eebc0e7a795eec7d835dfc4ccd939b87dd3a86d4c4e30a8b1c028bebb4bba",
       "declined_on": "2026-08-18",
-      "reason": "Compiler confidence is 0.80 against a gate of < 0.80, so it clears by zero margin. That is not a deterministic invalidity and the candidate is well formed, but zero margin is not the evidence quality a first approved set should rest on when ustb-nav-per-share-present already covers the NAV value claim."
+      "reason": "Compiler confidence is 0.80 against a gate of < 0.80, so it clears by zero margin. That is not a deterministic invalidity and the candidate is well formed, but zero margin is not the evidence quality a first approved set should rest on when ustb-nav-per-share-present already covers the NAV value claim.",
+      "approval": {
+        "compilation_digest": "db4eebc0e7a795eec7d835dfc4ccd939b87dd3a86d4c4e30a8b1c028bebb4bba",
+        "decision": "declined",
+        "control_digest": "2943448d5c2421808a28efe832a09b21c494ca7a5ae8ca6ac34de461b70645f1",
+        "reason_code": "operator-declined",
+        "timestamp": 1787163880,
+        "version": 2,
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "scope": "global",
+        "policy_id": "",
+        "signature": "e8b2023c551111b9a0f3ec0ac3f1651d4e545277e21e7c27af01c7b09d6f1aac657986e0953511be408784343d1b26829f613325d044493fc2a38aefb2b1d89a1b"
+      }
     },
     {
       "control_id": "ustb-yield-as-of-date-present",
       "compilation_sha256": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
       "declined_on": "2026-08-18",
-      "reason": "Redundant with ustb-yield-as-of-date-fresh, which reads the same field and also checks it against the source's declared two-business-day policy."
+      "reason": "Redundant with ustb-yield-as-of-date-fresh, which reads the same field and also checks it against the source's declared two-business-day policy.",
+      "approval": {
+        "compilation_digest": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
+        "decision": "declined",
+        "control_digest": "5510cadfdcdc7f44331207b1a9e125d38836d6de5fed311af822b5c34fd87d3b",
+        "reason_code": "operator-declined",
+        "timestamp": 1787163880,
+        "version": 2,
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "scope": "global",
+        "policy_id": "",
+        "signature": "5145c4c32a414694e967e22d4042a510124506efa0f76e08be58c584e0cce9bf07ffd565b47cf86af469436a26b42232a3e2291aa2fa76b5623560d8be2c05101b"
+      }
     },
     {
       "control_id": "ustb-yield-seven-day-present",
       "compilation_sha256": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
       "declined_on": "2026-08-18",
-      "reason": "Valid, but a third presence check on the same yield document is additional scalar coverage rather than breadth. ustb-yield-one-day-present is the representative field; approving all three would present duplication as product scope."
+      "reason": "Valid, but a third presence check on the same yield document is additional scalar coverage rather than breadth. ustb-yield-one-day-present is the representative field; approving all three would present duplication as product scope.",
+      "approval": {
+        "compilation_digest": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
+        "decision": "declined",
+        "control_digest": "3e603bbbb5b6483bab47b8b985f4901cca31e156458661699c4a12fedbc0b759",
+        "reason_code": "operator-declined",
+        "timestamp": 1787163880,
+        "version": 2,
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "scope": "global",
+        "policy_id": "",
+        "signature": "cee52a63685b08d114bf6ad6d55fc8da374ed41f9ed6030eb99ef3951beeddf4227eb09adeb5fbe492800073ba4c0a3adc23001368ceaf3e3b268cfbce39a4841b"
+      }
     },
     {
       "control_id": "ustb-yield-thirty-day-present",
       "compilation_sha256": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
       "declined_on": "2026-08-18",
-      "reason": "Valid, but a third presence check on the same yield document is additional scalar coverage rather than breadth. ustb-yield-one-day-present is the representative field; approving all three would present duplication as product scope."
+      "reason": "Valid, but a third presence check on the same yield document is additional scalar coverage rather than breadth. ustb-yield-one-day-present is the representative field; approving all three would present duplication as product scope.",
+      "approval": {
+        "compilation_digest": "669c276109b9b6e07b7e6674e5f0ee4fa45d79b7987656c28c3919a2f13eaea6",
+        "decision": "declined",
+        "control_digest": "f55dfa5d422f4b22f21f1587dac1be305edf6bfd7b19e16290f18eac7dd98337",
+        "reason_code": "operator-declined",
+        "timestamp": 1787163880,
+        "version": 2,
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "scope": "global",
+        "policy_id": "",
+        "signature": "637335b5dfa1dfe335983598d2aba53221fe420ef32dbd8a287f58bd7abc48ac2aa9a73d020dcd2fbdc65bdd02dc4c89e3e85645ea1a2f69bb22324f547363b61b"
+      }
     }
   ]
 }

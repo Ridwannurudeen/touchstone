@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from touchstone.approval import LEDGER_VERSION
+from touchstone.approval import LEDGER_VERSION_V1
 from touchstone.assets import ASSET_BY_KEY, USTB, AssetDescriptor, get_asset
 from touchstone.compiler import (
     CompilationStatus,
@@ -137,7 +137,7 @@ def compiled_probe(tmp_path: Path, asset: AssetDescriptor):
     assert result.outcomes[0].status is CompilationStatus.ACCEPTED
     artifact = (store.objects_dir / result.compilation_sha256).read_bytes()
     ledger = {
-        "version": LEDGER_VERSION,
+        "version": LEDGER_VERSION_V1,
         "approved": [
             {
                 "control_id": "probe-as-of-fresh",

@@ -109,14 +109,20 @@ maximum confidence — is accepted as a proposal, because nothing detects
 that a human never intended it. That limit is pinned by tests
 (`tests/test_compiler.py`).
 
-Only the approval gate stops it. New approval artifacts are EIP-712
-signed over the decision, reason, timestamp, control digest and
-compilation digest, and verification recovers the named approver and
-binds the exact compiler proposal. Historical published approvals remain
-unsigned legacy entries and are readable but unattributed. There is still
-no four-eyes requirement. The compiler's confidence value is supplied by
-the model itself, so it cannot substitute for that gate. This is the
-remaining part of residual **R-9** (and threat **T9**).
+Only the approval gate stops it. Since 2026-08-19 the live approval
+ledger is version 2: every entry, declined entries included, carries the
+approver's EIP-712 signature over the decision, reason, timestamp,
+control digest and compilation digest; validation refuses any unsigned
+entry, recovers the named approver, and binds each signed decision to
+the exact compiler proposal so a signature cannot be repurposed for a
+different control. Reports published earlier commit by digest to the
+version-1 unsigned ledger and their bundles verify unchanged forever —
+those decisions stay readable but unattributed, because signing them
+now would manufacture history. There is still no four-eyes requirement:
+one person proposes, operates and approves. The compiler's confidence
+value is supplied by the model itself, so it cannot substitute for that
+gate. The role separation is the remaining part of residual **R-9**
+(and threat **T9**).
 
 The serving runtime does not call a model. `scripts/compile_controls.py`
 is the only place a model is invoked; it runs at proposal time, on the

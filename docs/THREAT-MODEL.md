@@ -37,7 +37,7 @@ assumptions are the product, so they are enumerated rather than minimised.
 |---|---|---|---|
 | B1 | **Source** (issuer endpoint) | Publishing its own figures | Touchstone reports what the issuer published; it cannot detect issuer dishonesty |
 | B2 | **Network path to the source** | Transport integrity via TLS | A successful TLS MITM could substitute evidence; pinning is not implemented |
-| B3 | **Model provider** (control compiler) | Proposing candidate controls only | A hostile model cannot itself change state: compilation only ever emits `proposed` records, and a candidate the deterministic evaluator cannot decide is refused at compilation. An approved control is bound to the compilation that accepted it, checked at report construction and repeated by the offline verifier from artifacts the bundle carries. What remains is that the approval decision itself is unattributed — see R-9 |
+| B3 | **Model provider** (control compiler) | Proposing candidate controls only | A hostile model cannot itself change state: compilation only ever emits `proposed` records, and a candidate the deterministic evaluator cannot decide is refused at compilation. An approved control is bound to the compilation that accepted it, checked at report construction and repeated by the offline verifier from artifacts the bundle carries. The approval decision itself is signed and attributed as of 2026-08-19 — see R-9; what remains is that one person holds both the proposing-operator and approver roles |
 | B4 | **Parsing worker** | Normalising bytes into typed observations | Process isolation only, not a kernel sandbox — see R-3 |
 | B5 | **Evidence store** | Retaining exact bytes and their order | Local filesystem trust; chain verification detects modification, not a privileged rewrite of both objects and index |
 | B6 | **Ed25519 reporting key** | Authenticity of a report's content | A compromised key can sign false reports. A bundle verifies against the key it carries, so a consumer must decide which key it trusts out of band. Rollover is built (`touchstone/keyring.py`) and is additive: a superseded key stays published and trusted, and only the active key may sign or publish anew. Note the limit this creates — because a bundle carries its own key, a bundle signed by a **revoked** key still passes `verify_bundle` (`touchstone/verify.py:133`). Revocation is a manifest-level withdrawal of trust, not a cryptographic one, so a consumer who cares must consult the manifest. Custody is the open part — R-5 |
@@ -90,10 +90,10 @@ threat identifiers `T1`–`T27` used in this section.
 
 | ID | Threat | Disposition |
 |---|---|---|
-| T9 | **Prompt injection** — instructions embedded in issuer evidence steer the compiler | **Partially mitigated, and the limit is now pinned by tests.** The model is given no tool surface at all: the request body carries only `model` and `messages` (`temperature` was removed when current models began rejecting it as deprecated), so there is no shell, network, wallet or contract capability for injected text to invoke. Impact is further bounded because output is only a *proposal* that must survive schema validation, an adapter/source binding check (`touchstone/compiler.py:379`) and explicit approval before evaluation. **This constrains impact; it does not prevent steering** — embedded instructions can still shape a schema-valid, byte-citable proposal. **Tested as of PLAN-T5:** evidence carrying explicit self-approval instructions is refused outright, because a candidate declaring any `approval_state` other than `proposed` is rejected; a fabricated citation is rejected; a control redirected to another adapter is rejected; and the request carries no tool schema for injected text to invoke. **The honest limit is also pinned:** a *well-formed* injected candidate — correct adapter, exact citation, `proposed`, maximum confidence — is ACCEPTED by the compiler, because nothing detects that a human never intended it. Only the approval gate stops it, and approval is unattributed (B14, R-9) |
+| T9 | **Prompt injection** — instructions embedded in issuer evidence steer the compiler | **Partially mitigated, and the limit is now pinned by tests.** The model is given no tool surface at all: the request body carries only `model` and `messages` (`temperature` was removed when current models began rejecting it as deprecated), so there is no shell, network, wallet or contract capability for injected text to invoke. Impact is further bounded because output is only a *proposal* that must survive schema validation, an adapter/source binding check (`touchstone/compiler.py:379`) and explicit approval before evaluation. **This constrains impact; it does not prevent steering** — embedded instructions can still shape a schema-valid, byte-citable proposal. **Tested as of PLAN-T5:** evidence carrying explicit self-approval instructions is refused outright, because a candidate declaring any `approval_state` other than `proposed` is rejected; a fabricated citation is rejected; a control redirected to another adapter is rejected; and the request carries no tool schema for injected text to invoke. **The honest limit is also pinned:** a *well-formed* injected candidate — correct adapter, exact citation, `proposed`, maximum confidence — is ACCEPTED by the compiler, because nothing detects that a human never intended it. Only the approval gate stops it — attributed since 2026-08-19, when every ledger decision gained the approver's EIP-712 signature, though proposer-operator and approver are still one person (B14, R-9) |
 | T10 | **False citation** — a proposed control cites evidence it did not come from | **Partially implemented — byte-presence only.** The cited span must occur byte-exactly in both the stored artifact and the excerpt shown to the model (`touchstone/compiler.py:325`). That proves the bytes are present; it does not prove uniqueness or that they denote the value the adapter consumed. The broader threat remains open under **R-1** |
 | T11 | **Silent model substitution** — output attributed to a model that did not produce it | **Closed 2026-08-16.** The provider boundary returns the identity the service answered with, and provenance records `returned_model_name` beside `requested_model_name`, the resolved endpoint, the response id, and a digest over the whole response body — which is persisted in the artifact, so the digest is checkable rather than asserted. A response whose returned model differs from the requested one is refused, as is any finish reason other than `stop`. The identity is still the provider's own claim about itself: Touchstone can prove what the service *said* it used, not what it actually ran |
-| T12 | **Overconfident acceptance** — an ambiguous document yields a confident control | **Partially implemented.** Below-threshold confidence abstains rather than accepting (`touchstone/compiler.py:340`), but `compiler_confidence` is **supplied by the model in its own proposal**, so a confidently wrong or hostile output can clear the threshold by asserting a high number. The remaining protection is that a control must be marked approved before it becomes evaluable — which is a string comparison on a field, not an attested human decision (B14, R-9, R-11) |
+| T12 | **Overconfident acceptance** — an ambiguous document yields a confident control | **Partially implemented.** Below-threshold confidence abstains rather than accepting (`touchstone/compiler.py:340`), but `compiler_confidence` is **supplied by the model in its own proposal**, so a confidently wrong or hostile output can clear the threshold by asserting a high number. The remaining protection is that a control must be marked approved before it becomes evaluable — a field that has, since 2026-08-19, been backed by the approver's EIP-712 signature over the exact proposal, verified at every ledger load (B14, R-9, R-11) |
 
 ### Evaluation and state
 
@@ -248,11 +248,22 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   — that is the part v4 did not change, and the limitation the report's own caveats state.
 - **R-7 — TLS is trusted without pinning.** Evidence integrity in transit rests on the
   platform certificate store.
-- **R-9 — Control approval is unattributed.** Approval is a field on the control record set
-  by whoever edits the control set (B14). There is no approver identity, no signature over
-  the approval decision, and no separation between the person proposing a control and the
-  person approving it. The compiler's confidence gate cannot substitute for this, because
-  the confidence value is supplied by the model itself (T12).
+- **R-9 — Control approval is unattributed. Closed for the live ledger 2026-08-19; role
+  separation remains open.** Approval used to be a field on the control record set by
+  whoever edits the control set (B14), with no approver identity and nothing signing the
+  decision. The live approval ledger is now version 2: every entry — declined entries
+  included — carries an EIP-712 signature over the exact compiler proposal, the decision,
+  a reason code and the signing timestamp, and validation refuses a version-2 ledger with
+  any unsigned entry, verifies every signature on every load, and binds each signed
+  decision to the one candidate its compilation actually accepted, so a signed decline
+  cannot be repurposed for a different control. All ten decisions recover one approver,
+  `0x537873b087654395CB0A487B50d0bFBe15fA16Bc`. Signatures are timestamped at signing —
+  2026-08-19, not the decision dates they attest — because a backdated signature would be
+  manufactured history. Reports published before this commit to the version-1 unsigned
+  ledger by digest, and their bundles verify unchanged, unsigned and honestly so, forever.
+  What R-9 still holds open: there is no separation between the person proposing a control
+  and the person approving it, and the compiler's confidence gate cannot substitute for
+  that, because the confidence value is supplied by the model itself (T12).
 - **R-11 — Compilation is bound to evaluation. Closed 2026-08-16.** These were two
   disconnected paths: compilation validated a candidate and emitted a `proposed` record,
   evaluation admitted any record whose `approval_state` read `approved`, and the
@@ -279,11 +290,13 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   the issuer's own bytes; two further accepted candidates were declined by a human, recorded
   with reasons in `data/compilations/APPROVALS.json`, and cannot be relabelled approved.
 
-  **What remains is R-9, and it is the load-bearing gap now.** The approval decision itself
-  is unattributed: the ledger records what was approved, when, and why a candidate was
-  declined, but not *by whom*, and nothing signs the decision. "AI proposes, deterministic
-  systems decide" now holds for the compile-to-evaluate path; who approves remains a
-  question this system does not answer.
+  **What remained was R-9, and its unattributed half closed 2026-08-19.** The ledger now
+  records not only what was approved, when, and why a candidate was declined, but *by
+  whom*: every decision carries the approver's EIP-712 signature over the exact proposal
+  it decides. "AI proposes, deterministic systems decide" holds for the
+  compile-to-evaluate path, and who approves is now a question the ledger answers with a
+  recoverable address — what it does not yet answer is whether the proposer and the
+  approver are different people.
 
 - **R-10 — Time is taken from the host clock, with only a one-sided chain check.**
   Retrieval timestamps, freshness deadlines and the 24-hour confirmation separation all

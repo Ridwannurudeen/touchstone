@@ -36,7 +36,12 @@ from touchstone.controls import ControlRecord
 ROOT = Path(__file__).parents[1]
 COMPILATIONS = ROOT / "data" / "compilations"
 LEDGER = ROOT / "data" / "compilations" / "APPROVALS.json"
-LEDGER_VERSION = "touchstone.approval-ledger.v1"
+# v2 requires a signed approval on every entry, recovered to one approver. v1 verifies a
+# signature wherever an entry carries one and demands nothing where it does not — which is
+# the shape both external audits named the weakest link: an unauthenticated `approval_state`
+# is a claim, not a control. Published bundles carry v1 ledgers and verify forever.
+LEDGER_VERSION = "touchstone.approval-ledger.v2"
+LEDGER_VERSION_V1 = "touchstone.approval-ledger.v1"
 APPROVED_KEY = "approved"
 DECLINED_KEY = "declined"
 LEGACY_APPROVAL_SIGNATURE_VERSION = 1
@@ -350,14 +355,30 @@ def ledger_from_bytes(raw: bytes) -> Mapping[str, list]:
 
 def _validated_ledger(ledger: object) -> Mapping[str, list]:
     """One shape check, shared by the on-disk and in-bundle readers."""
-    if not isinstance(ledger, Mapping) or ledger.get("version") != LEDGER_VERSION:
+    if not isinstance(ledger, Mapping) or ledger.get("version") not in (
+        LEDGER_VERSION,
+        LEDGER_VERSION_V1,
+    ):
         raise ApprovalError("the approval ledger is not a supported version")
+    strict = ledger.get("version") == LEDGER_VERSION
     for key in (APPROVED_KEY, DECLINED_KEY):
         if not isinstance(ledger.get(key), list):
             raise ApprovalError(f"the approval ledger has no {key} list")
         for entry in ledger[key]:
-            if isinstance(entry, Mapping) and "approval" in entry:
-                _verify_ledger_entry_signature(entry, key)
+            if not isinstance(entry, Mapping) or "approval" not in entry:
+                # One approver across a ledger is today's operational fact, but it is not
+                # a rule of the format: making it one would force re-signing history the
+                # day the approver key rotates, and manufactured history is the one thing
+                # this project must never produce. What the format does demand is that
+                # every version-2 decision carries a signature at all.
+                if strict:
+                    named = entry.get("control_id") if isinstance(entry, Mapping) else None
+                    raise ApprovalError(
+                        "a version-2 approval ledger requires a signed approval on "
+                        f"every entry, and {named or 'an entry'} in {key} has none"
+                    )
+                continue
+            _verify_ledger_entry_signature(entry, key)
     return ledger
 
 
@@ -370,7 +391,18 @@ def load_approval_ledger(path: str | Path = LEDGER) -> Mapping[str, list]:
         raise ApprovalError(f"no approval ledger at {location}") from error
     except (OSError, json.JSONDecodeError) as error:
         raise ApprovalError(f"the approval ledger cannot be read: {error}") from error
-    return _validated_ledger(ledger)
+    validated = _validated_ledger(ledger)
+    # A version-2 ledger binds each signed decision to the proposal it decides, and this
+    # is the load path where the named compilations are always on disk to check against.
+    # `ledger_from_bytes` cannot promise that — a bundle carries the artifacts its report
+    # needs, not the publisher's whole compilation store — so its reader binds whatever
+    # the bundle holds and says so, in `verify._verify_approval_ledger`.
+    if validated.get("version") == LEDGER_VERSION:
+        resolve = from_directory()
+        for key in (APPROVED_KEY, DECLINED_KEY):
+            for entry in validated[key]:
+                assert_entry_proposal(entry, resolve=resolve)
+    return validated
 
 
 def compilation_from_bytes(digest: str, raw: bytes) -> Mapping:
@@ -497,18 +529,19 @@ def assert_ledger_approves(
     _verify_ledger_entry_signature(approved[0], APPROVED_KEY)
 
 
-def _verify_ledger_entry_signature(entry: Mapping, decision: str) -> None:
+def _verify_ledger_entry_signature(entry: Mapping, decision: str) -> str:
     """Verify a signed entry and ensure its outer ledger fields cannot drift."""
     signed = entry.get("approval")
     if signed is None:
-        return
-    verify_signed_approval(
+        return ""
+    approver = verify_signed_approval(
         signed,
         expected_decision=decision,
         expected_scope=APPROVAL_SCOPE_GLOBAL,
     )
     if entry.get("compilation_sha256") != signed.get("compilation_digest"):
         raise ApprovalError("signed approval compilation digest does not match its ledger entry")
+    return approver
 
 
 def _assert_signed_control(entry: Mapping, control: ControlRecord) -> None:
@@ -523,6 +556,42 @@ def _assert_signed_control(entry: Mapping, control: ControlRecord) -> None:
     if signed.get("control_digest") != proposal.content_hash:
         raise ApprovalError(
             f"signed approval for {control.control_id!r} does not match the compiler proposal"
+        )
+
+
+def assert_entry_proposal(entry: Mapping, *, resolve=None) -> None:
+    """Bind one signed decision to the exact proposal its compilation records.
+
+    `_assert_signed_control` does this for a control on its way into a report, which
+    covers approved entries and nothing else. A signed decline needed the same binding:
+    its signature covers a control digest and a compilation digest, but the outer
+    `control_id` — the field a decline actually refuses by — was tied to neither, so one
+    candidate's signed refusal could sit on another candidate's entry and refuse the
+    wrong control.
+    """
+    signed = entry.get("approval")
+    if signed is None:
+        return
+    control_id = entry.get("control_id")
+    digest = entry.get("compilation_sha256")
+    if not isinstance(digest, str) or not isinstance(control_id, str):
+        raise ApprovalError("an approval entry must name a control and a compilation")
+    resolve = from_directory() if resolve is None else resolve
+    candidates = [
+        candidate
+        for candidate in accepted_candidates(resolve(digest))
+        if candidate.get("control_id") == control_id
+    ]
+    if not candidates:
+        raise ApprovalError(
+            f"compilation {digest} accepted no candidate called {control_id!r}"
+        )
+    proposals = {
+        ControlRecord.from_mapping(candidate).content_hash for candidate in candidates
+    }
+    if signed.get("control_digest") not in proposals:
+        raise ApprovalError(
+            f"the signed decision on {control_id!r} does not match the compiler proposal"
         )
 
 

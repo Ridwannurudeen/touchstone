@@ -18,14 +18,17 @@ from touchstone.approval import (
     APPROVED_KEY,
     APPROVAL_SCOPE_POLICY,
     DECLINED_KEY,
+    LEDGER_VERSION,
     ApprovalError,
     approval_typed_data,
     approved_control,
     assert_binding,
+    assert_entry_proposal,
     assert_ledger_approves,
     assert_ledger_permits,
     compilation_from_bytes,
     from_mapping,
+    ledger_from_bytes,
     load_approval_ledger,
     provenance_digests,
     sign_approval,
@@ -369,6 +372,88 @@ def test_unsigned_legacy_approval_remains_readable_and_unattributed() -> None:
     }
 
     assert_ledger_permits([control], ledger)
+
+
+def signed_entry(control, decision: str) -> dict:
+    signed = sign_approval(
+        "0x" + "11" * 32,
+        control_digest=edited(
+            control, approval_state="proposed", compilation_sha256=None
+        ).content_hash,
+        compilation_digest=control.compilation_sha256,
+        decision=decision,
+        reason_code="operator-confirmed",
+        timestamp=1,
+    )
+    return {
+        "control_id": control.control_id,
+        "compilation_sha256": control.compilation_sha256,
+        "approval": signed,
+    }
+
+
+def test_a_version2_ledger_verifies_from_bytes_and_binds_from_disk(
+    tmp_path: Path,
+) -> None:
+    controls = default_ustb_controls()
+    ledger = {
+        "version": LEDGER_VERSION,
+        APPROVED_KEY: [signed_entry(controls[0], APPROVED_KEY)],
+        DECLINED_KEY: [signed_entry(controls[1], DECLINED_KEY)],
+    }
+    raw = json.dumps(ledger).encode("utf-8")
+
+    ledger_from_bytes(raw)
+    location = tmp_path / "APPROVALS.json"
+    location.write_bytes(raw)
+    load_approval_ledger(location)
+
+
+def test_a_version2_ledger_refuses_an_unsigned_entry() -> None:
+    control = default_ustb_controls()[0]
+    ledger = {
+        "version": LEDGER_VERSION,
+        APPROVED_KEY: [signed_entry(control, APPROVED_KEY)],
+        DECLINED_KEY: [
+            {
+                "control_id": DECLINED,
+                "compilation_sha256": control.compilation_sha256,
+            }
+        ],
+    }
+
+    with pytest.raises(ApprovalError, match="every entry"):
+        ledger_from_bytes(json.dumps(ledger).encode("utf-8"))
+
+
+def test_a_signed_decline_cannot_be_repurposed_for_another_control(
+    tmp_path: Path,
+) -> None:
+    """The gap Codex named: a decline refuses by its outer control_id, and before the
+    version-2 binding nothing tied that field to the digest the human actually signed."""
+    controls = default_ustb_controls()
+    # Two real candidates from one compilation, so the signature's compilation binding
+    # holds while the control identity is swapped underneath it.
+    donor, victim = controls[1], controls[2]
+    assert donor.compilation_sha256 == victim.compilation_sha256
+    entry = signed_entry(donor, DECLINED_KEY)
+    entry["control_id"] = victim.control_id
+    ledger = {
+        "version": LEDGER_VERSION,
+        APPROVED_KEY: [signed_entry(controls[0], APPROVED_KEY)],
+        DECLINED_KEY: [entry],
+    }
+    raw = json.dumps(ledger).encode("utf-8")
+
+    # From bytes alone the artifact is not there to check against; the binding is the
+    # loader's job, and it refuses.
+    ledger_from_bytes(raw)
+    with pytest.raises(ApprovalError, match="does not match the compiler proposal"):
+        assert_entry_proposal(entry)
+    location = tmp_path / "APPROVALS.json"
+    location.write_bytes(raw)
+    with pytest.raises(ApprovalError, match="does not match the compiler proposal"):
+        load_approval_ledger(location)
 
 
 def test_an_in_memory_resolver_needs_no_filesystem() -> None:
