@@ -71,6 +71,22 @@ epoch without opening one. Verified from chain after publication: `latestSequenc
 
 Every other asset key is still zero on both chains.
 
+### Measured publication window
+
+`docs/OPERATIONS-METRICS-2026-08-19.json` was derived from each transparency log independently
+for 2026-08-17 through 2026-08-18. Testnet records 2 scheduled, 2 completed, 0 missed and
+1 corrected publication. Mainnet records 2 scheduled calendar slots, 1 completed, 0 missed,
+1 corrected publication and 1 unaccounted slot because the mainnet workspace began on Aug 18.
+The histories were not concatenated. This is a publication-history measurement, not proof of
+continuous unattended operation; the heartbeat snapshots show the last hand-started run and
+no next scheduled slot.
+
+The reproducible command is:
+
+```text
+python scripts/build_operations_metrics.py --workspace <testnet-workspace> --workspace <mainnet-workspace> --start 2026-08-17 --through 2026-08-18 --out docs/OPERATIONS-METRICS-YYYY-MM-DD.json
+```
+
 **The state is `UNVERIFIABLE` throughout, and that is the correct answer rather than a failure.**
 A value control observes only a row confirmed by a capture at least 24 hours older. On a first
 run there is no such capture. On chain 1952 sequence 2 there was one, but the run went out at

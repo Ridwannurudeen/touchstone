@@ -21,10 +21,10 @@ observed.
 | Version | `0.1.0` (`pyproject.toml`) |
 | Licence | Apache-2.0 |
 | One sentence | Touchstone compiles issuer-published RWA disclosures into cited, machine-checkable controls, evaluates them deterministically against retained evidence, and can publish signed results to an append-only registry on X Layer. |
-| Public website | **LIVE** — https://touchstone.gudman.xyz — 21 pages, zero JavaScript, self-hosted fonts |
+| Public website | **LIVE** — https://touchstone.gudman.xyz — 22 pages, zero external JavaScript, self-hosted fonts |
 | Public dossier | **LIVE** — https://touchstone.gudman.xyz/dossier/ustb-2026-08-17 — the published report in full, every control and digest |
-| Demo URL | `not_deployed` — an 89-second silent cut exists and is not yet uploaded or narrated |
-| Documentation site | **LIVE** — https://touchstone.gudman.xyz/docs — 2,003 lines of the project's committed documentation |
+| Demo URL | **LIVE** — https://touchstone.gudman.xyz/judge — retained replay and refusal path; the narrated replacement film is not uploaded |
+| Documentation site | **LIVE** — https://touchstone.gudman.xyz/docs — 2,009 lines of the project's committed documentation |
 | X / social handles | **`@touch__stone`** — created by the owner 2026-08-18. The owner reports the @XLayerOfficial post as published; it is not machine-verifiable from this repository, and its URL belongs in the submission form. The rules require the account be *kept active*, which cannot be backdated. |
 | Domain | `gudman.xyz` subdomain, TLS via Let's Encrypt, certificate to 2026-11-16 |
 | Repository | `github.com/Ridwannurudeen/touchstone` — **private until after the 2026-08-21 deadline, by owner decision on 2026-08-18.** The reason is disclosure timing, not concealment: the approach is novel and the owner does not want it copied inside the submission window. Judging happens after the deadline, so the code is readable when it is read. Anyone following the link before then gets a 404, which is an accepted cost. |
@@ -50,8 +50,9 @@ actually verified.
 
 ## 2. What was built
 
-A single USTB vertical, local and on a testnet registry carrying one
-published report: sequence 1, state `UNVERIFIABLE`, 2026-08-17.
+A single USTB vertical across testnet and mainnet, carrying five legacy
+v1 reports: testnet sequences 1–3 and mainnet sequences 1–2. The latest
+report on each chain is `UNVERIFIABLE`.
 
 **Evidence and controls.** Source manifests for USTB, USDY and FOBXX.
 Golden fixtures where retrieval was bounded. Five approved controls,
@@ -72,7 +73,9 @@ least 24 hours apart. An unseeded workspace reports `UNVERIFIABLE`.
 
 **Publication path.** Ed25519-signed reports, hash-chained transparency
 log, offline verification bundle (bundle v4 carries compilation
-artifacts and the approval ledger). Locally signed raw transactions. A
+artifacts and the approval ledger). The registry entry is a
+publisher-authenticated onchain commitment; the signed report and bundle
+are the offline-verifiable artifacts. Locally signed raw transactions. A
 deployment manifest pins chain id, registry address, runtime bytecode
 digest, publisher lineage and confirmation depth. Preflight runs in
 full immediately before signing.
@@ -82,28 +85,31 @@ uniqueness (`epochKey` / `epochSequence`), corrections that must name
 the epoch they correct, publisher authorise / revoke / rotate,
 immutable owner and expected chain id. No custody, no payable, no
 token, no proxy, no `delegatecall`, no `selfdestruct`.
-`AssetGate`: freshness and publisher checks against the latest report.
-Written and tested; deployed only on an ephemeral local chain.
+`AssetGate`: freshness and publisher checks against the latest report;
+live on testnet and currently refusing USTB. `GuardedAction` and
+`TouchstoneRegistryV2` are built and tested locally but are not deployed.
 
 **Operations code.** Unattended daemon (`scripts/run_service.py`),
 append-only incidents, heartbeat, watchdog, one HTTPS alert webhook,
 gas runway from measured costs, encrypted backup and a restore that
-verifies into a fresh directory. Packaging onto a host is
-`not_configured`.
+verifies into a fresh directory. The production observer and status
+timer are active on the shared VPS; the publisher unit remains disabled.
 
 **Testnet.** Registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` on
 X Layer testnet (chain 1952), deployed 2026-08-17 at block 38489602
 under a recorded owner approval. Publisher
-`0x86A100BDdF8754c95fec97BeC96dBFd64Be44710` authorised. Holds zero
+`0x86A100BDdF8754c95fec97BeC96dBFd64Be44710` authorised. Holds three
 reports. Predecessor `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` is
 superseded and must not be published to.
 
 **CI.** `.github/workflows/ci.yml` runs ruff, pytest on Python 3.11 and
-3.12, Hardhat (expects 76 passing contract tests), a managed local-
+3.12, Hardhat, a managed local-
 chain E2E, and a mutation harness. The workflow is given no project
 secret. Branch protection that would make the aggregate job mandatory
 is `unknown` from this tree; the workflow file itself says that on a
 private repository without GitHub Pro the protection APIs refuse.
+The verified local result is 1,877 passed / 1 skipped, 82 contract tests,
+and 125/125 mutants killed; a public Actions run remains open.
 
 **Release builder.** `scripts/build_release.py` writes an unsigned JSON
 document from the tree and from caller-supplied test counts. It does
@@ -120,7 +126,7 @@ Stated as misses, not as near-misses.
 | ≥2 fully autonomous **live** adapters | **Missed — one, not zero.** USTB ran the unattended daemon against the live issuer on 2026-08-17 and published sequence 1. This row said "zero proven live" until 2026-08-18, contradicting both `LIMITATIONS.md` and the published report. One live slot is also not continuous operation. USDY's daily page is bounded and measured but has no approved control; FOBXX has a live bounded SEC N-MFP3 regulator route, monthly; OUSG is the ruled next adapter. |
 | One live consumer contract gating on state | **Met on testnet**, 2026-08-18. `AssetGate` at `0xAac48DC261B04737FDCB101D5049395121034a83` returns `(false, "status not allowed")` for USTB — it refuses, which is the correct behaviour against an `UNVERIFIABLE` report. Not on mainnet, and no third party consumes it. |
 | One production canary epoch | **Met on both chains.** Testnet 2026-08-17 (sequence 1, block 38526525) and mainnet 2026-08-18 (sequence 1, block 68292878). Both `UNVERIFIABLE`. |
-| Living dossier and developer surface | **Shipped 2026-08-18.** Live at https://touchstone.gudman.xyz — 21 pages, zero JavaScript, an offline verifier, a coverage page, and 2,003 lines of the repository's documentation. |
+| Living dossier and developer surface | **Shipped 2026-08-18.** Live at https://touchstone.gudman.xyz — 22 pages, zero external JavaScript, an offline verifier, `/judge`, a coverage page, and 2,009 lines of the repository's documentation. |
 | Public demo | **Live** at https://touchstone.gudman.xyz. The two-act script in `ROADMAP.md` still cannot be walked as written; see `docs/DEMO-RUNBOOK.md`. |
 
 Phase 1 ships one USTB vertical. The two-adapter and production-canary
@@ -161,17 +167,18 @@ attestation and must not be described as trustless.
 | Verification API | `not_deployed` |
 | Status page | https://touchstone.gudman.xyz/status — regenerated every five minutes from the observer's log; states its own generation time and that it may be stale |
 
-Mainnet is unscheduled. It is conditional on a proven testnet loop, and
-is additionally blocked until the deployer and publisher keys sit on
-separate hosts, which they currently do not.
+Further mainnet publication is unscheduled. The registry exists, but the
+publisher is disabled and the deployer and publisher keys do not sit on
+separate hosts.
 
 ---
 
 ## 5. Demo, as it would be described if asked
 
-The specified demo is two acts, 90–120 seconds, in `ROADMAP.md`. It
-depends on a dossier that does not exist and an `AssetGate` that is
-not on a persistent chain.
+The specified demo is two acts, 90–120 seconds, in `ROADMAP.md`. `/judge`
+now provides the retained replay and refusal path, and a legacy
+`AssetGate` is live on testnet. The live policy-bound publication,
+permitted/refused mainnet pair and narrated replacement film do not exist.
 
 What can be shown without a public chain: the managed local-chain
 end-to-end test, which deploys a registry and a gate on Hardhat,
@@ -216,7 +223,7 @@ evidence or the refusal.
 | "Live on X Layer" | Registries are live on testnet (3 reports) and mainnet (2 reports), all `UNVERIFIABLE`. Live is accurate; "verified" is not. | `docs/OPERATIONS.md`, `docs/DEPLOYMENT-G1-EXECUTED.md` |
 | "Two live adapters" | One adapter, several live runs. Not two assets, and **not continuous** — every run was hand-started. | `ROADMAP.md` completion table |
 | "Consumer contract in production" | `AssetGate` is live on **testnet** at `0xAac48DC2…`, and refuses USTB. It is `not_deployed` on mainnet, and no third party consumes it. | `contracts/scripts/deploy_gate.js` |
-| "Autonomous canary" | Prepared, not executed. | `docs/CANARY-G1B.md` |
+| "Autonomous canary" | Five reports were published, but every publication was hand-started; unattended publication is not proven. | `docs/OPERATIONS.md` |
 | "Public dossier" | Live since 2026-08-18 at touchstone.gudman.xyz. | The site itself; `docs/DEPLOY-T9.md` |
 | "Independently attested" | Not claimed. Issuer API is issuer disclosure. | `manifests/sources/ustb.json` `authority_class: issuer-api` |
 | "Regulatory-grade" / "safe" / "solvent" | Banned. Not claimed. | `ROADMAP.md` ambition-theatre list; `docs/LIMITATIONS.md` |
@@ -224,7 +231,7 @@ evidence or the refusal.
 | "OKX / issuer partner" | Not claimed. Endorsement would need written confirmation. | `ROADMAP.md` |
 | "Name is clear" | Two live crypto projects use Touchstone; counsel opinion is not on file. | `docs/BRAND-CLEARANCE.md` |
 | "Signed release" | The builder emits unsigned JSON. | `scripts/build_release.py` |
-| "Production host" | `not_configured`. | `docs/OPERATIONS.md` |
+| "Production host" | Observer and status timer active; publisher installed but disabled on the same shared VPS. | `docs/OPERATIONS.md` |
 
 ---
 

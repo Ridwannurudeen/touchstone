@@ -43,3 +43,8 @@ runtime/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Scratch output from local tooling (PDF extraction and similar). Never shipped: it can
+# hold third-party material — an audit extraction here included the auditor's contact
+# photos — and a pre-publication `git add -A` must not be able to sweep any of it in.
+tmp/

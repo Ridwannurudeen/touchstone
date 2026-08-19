@@ -22,7 +22,7 @@ previous one passes audit.**
 | PLAN-T8 | Heartbeat, watchdog, alerts, gas runway, encrypted backup and restore | L | **Done** (`d71e9cb`) |
 | PLAN-T9 | Wallet-free living dossier and developer surface | L | |
 | PLAN-T10 | **Amended:** USTB autonomous daily adapter | L | **Done** (`e9df186`) — USDY was cut; see below |
-| PLAN-T11 | FOBXX issuer/SEC contrast adapter | L | **Dropped from Phase 1** (2026-08-16) |
+| PLAN-T11 | FOBXX issuer/SEC contrast adapter | L | **Initial Phase 1 publication route dropped; strict SEC normalizer added in the post-audit breadth track** |
 | PLAN-T12 | Release-candidate hardening matrix and CI | L | |
 | PLAN-T13 | Release and owner-gate package | M | |
 
@@ -250,7 +250,8 @@ remains, in order:
 9. T9 dossier, built from real canary data rather than fixtures.
 10. T12/T13 release package.
 
-**The deliberate cuts are final for Phase 1: no OUSG adapter, no FOBXX adapter, no second
+**The deliberate cuts are final for the initial Phase 1 release: no OUSG adapter, no FOBXX
+production publication route, no second
 autonomous adapter, and no Aug 21 mainnet canary.** One flawless USTB vertical, with the
 two-adapter and production-canary metrics reported as unmet.
 
@@ -308,9 +309,11 @@ timeout in an isolated worker; select attestations by report date, never by uplo
 metadata; evaluate collateralisation; implement the documented publication lag; state that
 the attestation covers Ondo USDY LLC only.
 
-**PLAN-T11 — FOBXX adapter. DROPPED FROM PHASE 1 (2026-08-16).** FOBXX is retained as a
+**PLAN-T11 — FOBXX adapter. Initial production route dropped from Phase 1 (2026-08-16); strict
+SEC normalizer added in the post-audit breadth track.** FOBXX is retained as a
 documented monthly contrast asset — its N-MFP3 fixture is committed and its manifest records
-the daily feed's Cloudflare 403 — but no adapter ships. Everything below is the narrowed
+the daily feed's Cloudflare 403 — the offline SEC normalizer ships, but no live production
+publication route ships. Everything below is the narrowed
 scope as it stood before the cut, kept as the record of what was considered. None of it is
 outstanding work.
 

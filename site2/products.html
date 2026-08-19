@@ -64,17 +64,20 @@
           <p class="card-link" aria-hidden="true">Read about verification →</p>
         </article>
         <article class="product-card">
-          <h3><a href="/products/asset-gate">AssetGate<span class="foot-flag">testnet only</span></a> <span class="status-tag">Not deployed</span></h3>
+          <h3><a href="/products/asset-gate">AssetGate<span class="foot-flag">testnet only</span></a> <span class="status-tag">Live on testnet</span></h3>
           <p>The consumer contract, written to gate on a report's status,
-          freshness, publisher lineage and pinned control-set root. It is not
-          deployed; nothing reads the registry in production today.</p>
+          freshness, publisher lineage and pinned control-set root. It is live
+          on testnet and not deployed on mainnet; the registry entries are
+          publisher-authenticated commitments, while signed reports and bundles
+          remain offline-verifiable.</p>
           <p class="card-link" aria-hidden="true">Read about AssetGate →</p>
         </article>
         <article class="product-card">
           <h3><a href="/products/registry">Registry</a></h3>
           <p>The on-chain record on X Layer testnet, chain id 1952. Reports are
-          published in sequence, permanently; a later report can correct an
-          earlier one by naming it, never by overwriting it.</p>
+          publisher-authenticated commitments published in sequence, permanently;
+          their signed bundles remain offline-verifiable. A later report can
+          correct an earlier one by naming it, never by overwriting it.</p>
           <p class="card-link" aria-hidden="true">Read about the registry →</p>
         </article>
       </div>
@@ -118,7 +121,8 @@
           <div>
             <h3>The registry makes it permanent</h3>
             <p>The report is published to the registry contract on X&nbsp;Layer
-            testnet, at a sequence number, checkable by anyone.</p>
+            testnet as a publisher-authenticated commitment, at a sequence number.
+            The signed report and bundle are checkable offline by anyone.</p>
           </div>
         </li>
         <li>

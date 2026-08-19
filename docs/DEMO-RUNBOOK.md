@@ -68,15 +68,17 @@ fabricated demo.
 | Testnet registry | Deployed. `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` on chain 1952. Holds **three** reports (sequences 1–3, the last a correction), all `UNVERIFIABLE`. A mainnet registry is also live on chain 196. See `docs/OPERATIONS.md`. |
 | Publisher authorised and funded | Yes, on both registries. Publication is a separate owner gate (`docs/CANARY-G1B.md`) and **has now been run five times**. |
 | Previous signed epoch on a public chain | **Five**, across two chains. Epochs `ustb-2026-08-17` and `ustb-2026-08-18`; every one `UNVERIFIABLE`. |
-| Living dossier (PLAN-T9) | **Built and live** at https://touchstone.gudman.xyz — 21 pages, zero JavaScript. |
+| Living dossier (PLAN-T9) | **Built and live** at https://touchstone.gudman.xyz — 22 pages, zero external JavaScript. `/judge` is live and uses one local interaction over retained data. |
 | `AssetGate` on a persistent chain | **Live on testnet** at `0xAac48DC261B04737FDCB101D5049395121034a83`; `check(USTB)` returns `(false, "status not allowed")`. `not_deployed` on mainnet. |
 | Demo URL | https://touchstone.gudman.xyz |
-| Host / supervisor | **`not_configured`.** |
+| Host / supervisor | **Configured.** `touchstone-observer@xlayer-mainnet` and the status timer are active on the shared VPS; the publisher unit remains disabled. |
 
-The pre-staged list in the roadmap is therefore only partly true today.
-The approved control set and the hash-bound fixtures exist. Deployed
-contracts exist for the **registry** only. There is no previous signed
-epoch, no demo consumer on chain, and no dossier to open.
+The pre-staged list in the roadmap is still only partly true today. The
+approved control set, hash-bound fixtures, two registries, five legacy v1
+reports, a refusing testnet `AssetGate`, the dossier and `/judge` exist.
+What does not exist is a confirmed report, a live mainnet `GuardedAction`
+pass/refuse pair, a live compiler-to-publication interaction, or the
+narrated replacement film.
 
 ---
 
@@ -99,8 +101,9 @@ What the code actually does:
 - On a public network, a live-source failure opens an incident and
   **signs nothing and publishes nothing** (`scripts/run_service.py`).
   Silence is recorded as silence.
-- There is no dossier to make the switch visible, because PLAN-T9 is
-  unbuilt.
+- The dossier and `/judge` are live, but the service does not silently
+  switch either page to fixtures. A failure still has to be stated and
+  logged before a local retained replay is shown.
 
 So the honest fallback today, in front of a person, is:
 
@@ -124,10 +127,11 @@ inside one document, which is the exact defect this project treats as
 disqualifying.
 
 What is true: the dossier **is** live at
-https://touchstone.gudman.xyz/dossier/ustb-2026-08-17. What is still
-missing is the interaction — no compile button, no span highlighter, no
-wallet-free run. The page renders a published report; it does not let a
-judge drive the compiler.
+https://touchstone.gudman.xyz/dossier/ustb-2026-08-17 and `/judge` now
+provides a wallet-free retained replay with policy selection, cited
+evidence, approval metadata, gate refusal and an integration snippet.
+It does not call the live compiler, publish a new report, or send a
+transaction; those steps remain outside the public page.
 
 The compiler itself exists, as a command, not a UI:
 
@@ -168,8 +172,9 @@ emerges — including `UNVERIFIABLE` on an unseeded workspace. That is a
 true canary, not a two-act product walkthrough. This document does not
 authorise it.
 
-**USDY and FOBXX are not demo assets.** USDY has no bounded retrieval.
-FOBXX has no adapter.
+**USDY and FOBXX are not demo assets.** USDY has no bounded retrieval. FOBXX now has a
+strict offline SEC discovery/N-MFP3 normalizer and committed fixtures, but no live epoch,
+policy publication, or production-host route has been claimed.
 
 ---
 
@@ -247,8 +252,9 @@ not assume that. Check the registry and the canary packet's "After the
 run" section before claiming a transaction. If nothing has been
 published, do not invent an explorer link.
 
-Even then, Act 1 and Act 2 as written still need the dossier and a
-deployed `AssetGate`. Those remain PLAN-T9 and a later owner gate.
+Even then, Act 1 and Act 2 as written still need a live policy-bound
+publication and a permitted/refused consumer pair. The dossier,
+`/judge`, and a refusing legacy testnet `AssetGate` already exist.
 
 ---
 

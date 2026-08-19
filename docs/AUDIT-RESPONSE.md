@@ -41,7 +41,7 @@ published `UNVERIFIABLE`:
 
 ```
 [all approved controls]   UNVERIFIABLE
-Disclosure freshness      CONFIRMED
+Disclosure freshness      UNVERIFIABLE
 NAV settlement            UNVERIFIABLE
 ```
 
@@ -49,25 +49,30 @@ A policy is a versioned subset of approved controls that cannot extend the appro
 reinstate a declined control, alter a threshold, or be edited in place. `touchstone/policy.py`,
 `data/policies/*.json`, 31 tests.
 
-**Remainder:** policy metadata is not yet in the signed report, not committed in the bundle,
-not published to any chain, and no consumer reads it. That is items B.1–B.3 below.
+**Local mechanics complete:** schema v5 carries policy identity and manifest digest, bundle
+verification binds the policy before signature verification, and the publisher/service batch
+path uses one policy key and workspace per policy. One retained capture now produces three
+policy-scoped evaluations with one shared evidence root. All three correctly abstain for the
+checked-in evidence; no retained current-policy `CONFIRMED` result, signed three-report bundle,
+or live policy-key publication is claimed. The five historical v1 reports remain legacy and
+unchanged.
+**Re-audit verification:** run the policy evaluation over the retained capture and confirm three
+policy-scoped results share the evidence root; confirm `data/policies/` manifests are
+digest-committed and predate the evaluation, then inspect the v5 policy metadata in the bundle.
 
-**Re-audit verification:** run the policy evaluation over the two retained captures and confirm
-two different states from one evidence set; confirm `data/policies/` manifests are digest-
-committed and predate the evaluation.
-
-### Blocker 2 — "Public product is a dossier, not an application" · **OPEN**
-Build `/judge`: one page, minimal JavaScript, that lets a judge complete the loop in two
+### Blocker 2 — "Public product is a dossier, not an application" · **PARTIAL**
+`/judge` is live at https://touchstone.gudman.xyz/judge: one page, minimal JavaScript, that lets a judge complete the retained loop in two
 minutes without a terminal — problem statement, film, live policy states, an interactive
 policy check, evidence, AI provenance, explorer links, integration snippet, trust assumptions.
-**Verification:** an independent person completes the loop unaided.
+**Verification:** the served file matches the tested local SHA-256 and returns HTTP 200; an independent person completing the loop unaided remains open.
 
-### Blocker 3 — "X Layer is a publication destination, not the centre" · **OPEN**
+### Blocker 3 — "X Layer is a publication destination, not the centre" · **PARTIAL**
 `PolicyGate` pinned to a frozen policy root, plus `GuardedAction` whose principal function
-cannot execute unless the gate permits it. One permitted and one refused mainnet action.
-Builder Code registration and ERC-8021 attribution on app-originated transactions.
-**Verification:** two explorer transactions, one succeeding and one reverting with a reason;
-attribution visible.
+cannot execute unless the gate permits it. The local contract suite proves one permitted and
+one refused action; the SDK carries ERC-8021 attribution bytes when an owner-registered code
+is supplied. No live mainnet pair or Builder Code registration is claimed.
+**Verification:** local tests are green; two explorer transactions and attribution visibility
+remain owner-gated evidence.
 
 ### Blocker 4 — "No external consumer or market proof" · **OWNER**
 Minimum acceptable: another X Layer project calling the gate, a public integration PR, a signed
@@ -92,23 +97,22 @@ fails on a deployed contract called undeployed, a report count disagreeing with 
 a known stale phrase.
 **Verification:** delete a fact from a page and watch CI fail.
 
-### Blocker 6 — "The onchain guarantee is narrower than the pitch" · **OPEN**
-True and verified: `TouchstoneRegistry` contains no signature verification. The contract proves
-*an authorized publisher posted these fields*, not that the status came from the signed report.
+### Blocker 6 — "The onchain guarantee is narrower than the pitch" · **PARTIAL**
+True and verified for v1: `TouchstoneRegistry` contains no signature verification. The legacy
+contract proves *an authorized publisher posted these fields*, not that the status came from the
+signed report. `TouchstoneRegistryV2` now binds an EIP-712 report digest, policy roots, parent
+digest and signer identity in local Hardhat tests; it is not deployed or publicly claimed.
 
 Two paths, and the sequencing matters:
 1. **Immediately:** narrow every public claim to "publisher-authenticated onchain commitment
    with an offline-verifiable signed report." Never "trustless", never "onchain signature
    verification." This costs nothing and removes the overclaim today.
-2. **Then:** registry v2 binding an EIP-712 report digest, parent digest and signer identity
+2. **Then:** deploy and independently verify registry v2 under owner authorization. The contract and Python codec are built; deployment remains a live owner action.
    onchain. Design open — see §D.
 
-### Blocker 7 — "Human approval is a mutable field" · **OPEN**
-Approval currently records no approver identity, signature, timestamp or rationale. Make it an
-EIP-712 signed artifact and show the signature beside the model proposal, so the division reads
-end to end: AI proposed, deterministic code validated, **a named human** approved, deterministic
-surveillance evaluated, X Layer enforced.
-**Verification:** recover the approver address from a published approval.
+### Blocker 7 — "Human approval is a mutable field" · **PARTIAL**
+Approvals now carry an EIP-712 signed artifact with approver identity, timestamp, decision, reason code, control digest and compilation digest. The verifier recovers the approver and binds the proposal exactly; the public judge renders the retained signature metadata. Existing published approvals are legacy and no fabricated replacement was written.
+**Verification:** local recovery/tamper tests pass; recovering an approval from a new live publication remains owner-gated.
 
 ### Blocker 8 — "Operational maturity is not production-grade" · **PARTIAL**
 
@@ -116,14 +120,14 @@ Eight sub-items:
 
 | Sub-item | Status |
 |---|---|
-| Run observation continuously | **CLOSED** — `touchstone-observer@` live on the host since 2026-08-18 |
+| Run observation continuously | **CLOSED** — `touchstone-observer@xlayer-mainnet` is active and records all three USTB sources every 15 minutes |
 | Automate one complete publication without manual initiation | **OPEN** — every slot to date was hand-started |
 | Place the owner key offline | **OWNER** |
-| Publisher key in a separate secret store or host | **PARTIAL** — separate Unix identity and root-owned `0600` env; still the same host as the site |
-| Two independent RPC providers for pre-publication reads | **OPEN** |
+| Publisher key in a separate secret store or host | **PARTIAL** — separate Unix identity and unit exist, but the required `/etc/touchstone/xlayer-mainnet.env` is absent; no separate publisher host or secret store is configured |
+| Two independent RPC providers for pre-publication reads | **PARTIAL** — fail-closed quorum boundary implemented and tested; two production endpoints are not configured |
 | Schedule from UTC, not human-entered local time | **CLOSED** — the daemon schedules from `datetime.now(timezone.utc)`; the 20-minute miss was a human reading a local clock, not the scheduler |
-| Publish a measured operations window without exaggerating it | **OPEN** |
-| Show completed, missed and corrected slot counts | **OPEN** |
+| Publish a measured operations window without exaggerating it | **CLOSED locally** — `scripts/build_operations_metrics.py` produced `docs/OPERATIONS-METRICS-2026-08-19.json`; it records the exact window and leaves continuity open |
+| Show completed, missed and corrected slot counts | **CLOSED locally** — recorded per workspace in `docs/OPERATIONS-METRICS-2026-08-19.json` without joining hash chains |
 
 ### Blocker 9 — "The brand is a material risk" · **OWNER**
 The project's own `docs/BRAND-CLEARANCE.md` found an existing `touchstone-verify` product with a
@@ -151,19 +155,19 @@ relevant trademarks. Contracts and deployment history can remain as legacy infra
 
 | Item | Status | Note |
 |---|---|---|
-| P0.1 public-truth rebuild | OPEN | same work as Blocker 5 |
-| P0.2 judge application | OPEN | Blocker 2 |
-| P0.3 policy profiles | PARTIAL | Blocker 1 |
-| P0.4 mainnet consumer | OPEN | Blocker 3 |
+| P0.1 retained demonstration set | **PARTIAL** | One unique retained v4 bundle is mirrored across two static sites; five unique retained bundles and a committed v5 bundle are not present |
+| P0.2 judge application | **PARTIAL** | `/judge` is live with retained replay and a refusal-oriented path; unaided external completion and live v2/gate transactions remain open |
+| P0.3 multi-policy proof | **PARTIAL** | One retained capture produces three policy-scoped evaluations sharing one evidence root; all abstain, and no current signed three-report bundle or live policy-key publication is retained |
+| P0.4 mainnet consumer | **PARTIAL** | `GuardedAction` and the policy-key consumer path are built and tested locally; no live mainnet permitted/refused pair is claimed |
 | P0.5 make AI visible | **CLOSED** | `AI_USAGE.md` rewritten with measured outcomes and published at `/docs/ai` |
-| P0.6 green public CI run | OPEN | claims ~1,849 tests; no judge will run them |
+| P0.6 green public CI run | OPEN | local suite is 1,958 passed / 1 skipped; a public Actions run remains owner evidence |
 | P0.7 administrative eligibility | OWNER | X account, post URL, explorer links, form receipt, repo access |
 | P1 Builder Code | OWNER + agent | |
 | P1 external integration | OWNER | |
-| P1 AI evaluation benchmark | OPEN | 30–50 adversarial cases: fabricated citations, wrong binding, injection, self-approval |
-| P1 sign approvals | OPEN | Blocker 7 |
-| P1 five-minute SDK kit | OPEN | |
-| P2 second asset | OPEN | **FOBXX, not USDY** — regulator-filed evidence is a different source class; USDY has an unresolved arithmetic discrepancy and an unbounded archive |
+| P1 AI evaluation benchmark | **CLOSED locally** | 40 fixed compiler-boundary cases; 8 accepted, 6 abstained, 26 rejected, 100% hostile rejection; see `docs/AI-BENCHMARK.md` |
+| P1 sign approvals | **PARTIAL** | EIP-712 signed artifacts recover a named approver and bind the exact control and compilation digests; the retained approval ledger and published approvals remain legacy/unsigned |
+| P1 five-minute SDK kit | **PARTIAL** | `sdk/` includes TypeScript clients, Solidity interface, policies, canonical correction-aware indexer, attribution suffix path and fixture; an independent timed integration remains unproven |
+| P2 second asset | **PARTIAL** | FOBXX SEC discovery/N-MFP3 normalizer, descriptor and hostile fixture tests ship; no live epoch/publication or daily issuer feed is claimed |
 
 ---
 

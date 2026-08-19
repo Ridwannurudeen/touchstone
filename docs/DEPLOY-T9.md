@@ -58,15 +58,20 @@ Sort both with `LC_ALL=C` — Git Bash and the host disagree on collation otherw
 will report differences that do not exist.
 
 ⚠️ **`status.html` is generated on the host, not shipped in `site2/`.** It is owned
-`touchstone:www-data` so the status timer can replace it in place. A deploy that runs
-`chown -R www-data:www-data /opt/touchstone-site` takes that ownership away, and the timer
-then fails every five minutes while the page it cannot rewrite keeps serving an old
-timestamp — which is precisely the "stale page" the page itself warns about, caused by the
-deploy rather than by the daemon. So after any `chown -R`, restore it::
+`touchstone-observer:www-data` so the status timer can replace it in place. A tar created on
+Windows can also carry `0777` directory and `0666` file modes; extracting it as root applies
+those modes and changes the served tree to `root:root`. Normalize the complete static tree
+after every upload, then restore the status file's distinct owner:
 
-    chown touchstone:www-data /opt/touchstone-site/status.html
+    find /opt/touchstone-site -xdev -type d \
+      -exec chown www-data:www-data {} + -exec chmod 0755 {} +
+    find /opt/touchstone-site -xdev -type f ! -name status.html \
+      -exec chown www-data:www-data {} + -exec chmod 0644 {} +
+    chown touchstone-observer:www-data /opt/touchstone-site/status.html
+    chmod 0644 /opt/touchstone-site/status.html
 
-and confirm with `systemctl start touchstone-status@<network>.service`.
+Confirm the write path with `systemctl start touchstone-status@<network>.service` and require
+`Result=success` before calling the content update complete.
 
 Take a snapshot first: `cp -a /opt/touchstone-site /opt/touchstone-site.bak-$(date -u +%Y%m%dT%H%M%SZ)`.
 Rolling a content update back is restoring that directory, not removing the vhost.

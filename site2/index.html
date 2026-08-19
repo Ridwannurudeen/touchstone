@@ -19,6 +19,7 @@
       <a href="/products">Products</a>
       <a href="/coverage">Coverage</a>
       <a href="/verify">Verify</a>
+      <a href="/judge">Judge</a>
       <a href="/limitations">Limitations</a>
     </nav>
     <a class="nav-cta" href="/dossier">Read the dossier</a>
@@ -34,8 +35,9 @@
         <h1 class="hero-title">Machine-checked evidence for tokenized funds</h1>
         <p class="t-lead">Touchstone compiles controls from a fund issuer's own
         disclosures, evaluates them deterministically, signs the result with
-        Ed25519, and publishes it to an on-chain registry. When the evidence
-        cannot support an answer, it reports that too.</p>
+        Ed25519, and publishes a publisher-authenticated commitment to an
+        on-chain registry. The signed report and bundle remain offline-verifiable;
+        when the evidence cannot support an answer, it reports that too.</p>
         <div class="cta-row">
           <a class="cta" href="/dossier">Read the dossier</a>
           <a class="cta-ghost" href="/verify">Verify a report</a>
@@ -107,8 +109,9 @@
         it to a registry on X&nbsp;Layer — testnet and mainnet both. A consumer contract, AssetGate,
         is written to gate on that state — on the report's status, freshness,
         publisher lineage and pinned control-set root. It is live on X&nbsp;Layer
-        testnet at <code>0xAac48DC261B04737FDCB101D5049395121034a83</code> and is not deployed on mainnet, so nothing
-        reads the mainnet registry in production today.</p>
+        testnet at <code>0xAac48DC261B04737FDCB101D5049395121034a83</code> and is not deployed on mainnet, so no AssetGate
+        reads the mainnet registry in production today; the signed report and
+        bundle remain the offline-verifiable artifacts.</p>
       </div>
 
       <figure class="flow">
@@ -249,8 +252,9 @@
         </article>
         <article class="product-card">
           <h3><a href="/products/registry">Registry</a></h3>
-          <p>The on-chain record on X Layer testnet: sequenced, signed reports,
-          published permanently.</p>
+          <p>The on-chain record on X Layer testnet: sequenced,
+          publisher-authenticated commitments with offline-verifiable signed
+          reports, published permanently.</p>
           <p class="card-link" aria-hidden="true">Read about the registry →</p>
         </article>
       </div>

@@ -74,7 +74,7 @@ that is the signal you have taken a wrong turn.
 | Repo | `C:\Users\gudma\OneDrive\Desktop\GITHUB-FILES\touchstone` |
 | Branch | `feat/t12-ci` — **all work is here**; `main` is ~70 commits behind and untouched |
 | Python | 3.12, deps in `pyproject.toml` (`cryptography`, `psutil`, `web3`) |
-| Tests | `python -m pytest -q` — ~1,849 pass, takes 3–5 minutes |
+| Tests | `python -m pytest -q` — 1,877 pass, 1 skipped locally, takes 6–7 minutes |
 | Lint | `python -m ruff check .` — must be clean |
 | Mutation | `python scripts/mutation_check.py` — 125/125 killed, needs a clean tree |
 | Shell | Windows, Git Bash. Both `bash` and PowerShell available |

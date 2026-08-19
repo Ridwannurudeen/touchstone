@@ -47,14 +47,14 @@ missed rows.
 |---|---|---|
 | Accepted controls | ≥6 | **5 — missed.** The 0.3.0 recompile (2026-08-17, live retrieval) proposed ten candidates that passed the deterministic gates. Five were approved and five declined, with reasons, in `data/compilations/APPROVALS.json`. The five declines were not forced: three are duplicate presence checks on a document another approved control already reads, and one clears the 0.80 confidence gate with zero margin. Approving any of them would have met this target and would have counted duplication as breadth, so the number stands at five and the row reads missed. Each approved control is bound by digest to the compilation that accepted it, and a declined candidate cannot be relabelled approved. |
 | Assets documented | 3 | **3 — met.** USTB, USDY and FOBXX source manifests, with golden fixtures where retrieval was bounded. |
-| Fully autonomous live adapters | ≥2 | **1 — missed.** USTB ran the unattended daemon against the live issuer on 2026-08-17 and published sequence 1, so the count is one, not zero. ⚠️ This row read "0 proven live… it has never run against live sources" until 2026-08-18, which the canary row two lines below had already contradicted — the count was corrected upward, but a table that disagrees with itself is the defect worth recording, not the number. Slot count is no longer the gap: five reports have been published across two chains (testnet sequences 1–3, mainnet 1–2). **Continuous operation still is.** Every slot so far was hand-started; the daemon has never held a sustained schedule on a production host, and until it does, no reliability claim can be made at all. USDY is blocked on unbounded retrieval (a single 260,431,605-byte archive). FOBXX is retained as a documented monthly contrast asset; no adapter ships. OUSG was cut rather than rushed into the second slot (`manifests/sources/ousg.json`, `phase_1_status.state: cut`). Phase 1 deliberately ships one vertical rather than two hurried ones. |
-| Live consumer contract gating on state | 1 | **1 — met on testnet, 2026-08-18.** `AssetGate` at `0xAac48DC261B04737FDCB101D5049395121034a83` on X Layer testnet, block 38602126, pointed at the live registry. `check()` on USTB returns **`(false, "status not allowed")`** — the gate refuses the asset, because the latest report is `UNVERIFIABLE` and the mask admits `CONFIRMED` only. That refusal is the point rather than a failure: a gate widened until it returned `allowed` would be a consumer contract accepting an unverified asset. `requiredControlSetRoot` is zero and so unpinned, deliberately — the approved set changed on 2026-08-18 and the root is immutable once constructed, so pinning one the project intends to retire would be wrong on the day it was deployed. Publisher lineage and freshness are still enforced. Not deployed on mainnet, by the same reasoning. |
+| Fully autonomous live adapters | ≥2 | **1 — missed.** USTB ran the unattended daemon against the live issuer on 2026-08-17 and published sequence 1, so the count is one, not zero. This row read "0 proven live... it has never run against live sources" until 2026-08-18, which the canary row two lines below had already contradicted. The production observer now sustains a 15-minute retrieval schedule for all three USTB sources, but every publication slot to date was hand-started; unattended publication and recovery on the production host remain unproven. Slot count is no longer the gap: five reports have been published across two chains (testnet sequences 1–3, mainnet 1–2). USDY is blocked on unbounded retrieval (a single 260,431,605-byte archive). FOBXX now has a strict offline SEC normalizer and fixtures, but no live epoch or production-host adapter run. OUSG was cut rather than rushed into the second slot (`manifests/sources/ousg.json`, `phase_1_status.state: cut`). Phase 1 deliberately ships one vertical rather than two hurried ones. |
+| Live consumer contract gating on state | 1 | **1 — met on testnet, 2026-08-18.** `AssetGate` at `0xAac48DC261B04737FDCB101D5049395121034a83` on X Layer testnet, block 38602126, pointed at the live registry. `check()` on USTB returns **`(false, "status not allowed")`** — the gate refuses the asset, because the latest report is `UNVERIFIABLE` and the mask admits `CONFIRMED` only. That refusal is the point rather than a failure: a gate widened until it returned `allowed` would be a consumer contract accepting an unverified asset. The deployment script now requires a nonzero `requiredControlSetRoot`; the historical gate was deployed before that pinning guard and remains a legacy testnet artifact. Publisher lineage and freshness are still enforced. Not deployed on mainnet, by the same reasoning. |
 | Production canary epoch | 1 | **1 — met on mainnet, 2026-08-18.** USTB sequence 1 on X Layer **mainnet** (chain 196), registry `0xc9d58e44…D30d` — note this address is a *superseded* registry on chain 1952, so only the chain id identifies it — epoch `ustb-2026-08-18`, observed 14:04:21Z, state `UNVERIFIABLE`. It was later restated by sequence 2, a correction; mainnet now holds two reports and testnet three. The testnet canary of 2026-08-17 (block 38526525) stands as its own record. Both abstained, and for the same reason: a fresh workspace has no capture from ≥24h earlier, so the NAV value controls cannot confirm a row and the engine refuses to assert one. This row previously read "unmet for mainnet, which remains unscheduled". |
 | Claims span-cited and hash-bound | 100% | Met for every accepted control. |
 
 The living dossier (PLAN-T9) shipped 2026-08-18 and is live at
-https://touchstone.gudman.xyz — 21 pages, zero JavaScript, an offline
-verifier, a coverage page, and 2,003 lines of this documentation rendered
+https://touchstone.gudman.xyz — 22 pages, zero external JavaScript, an offline
+verifier, a coverage page, and 2,009 lines of this documentation rendered
 from the repository. This paragraph previously read "there is no public
 page", and was being served *from* the public page. A project whose whole
 claim is that it does not assert more than the evidence supports cannot
@@ -86,8 +86,9 @@ that channel. Closing this would need a restricted transport carrying
 only plain data, plus OS-level confinement. That is residual **R-3** in
 `docs/THREAT-MODEL.md`.
 
-There is no PDF or archive parser in Phase 1. Those paths were cut with
-the USDY and FOBXX adapters.
+There is no PDF or unbounded archive parser in Phase 1. USDY's archive path remains cut.
+FOBXX's retained SEC N-MFP3 XML path is bounded by source bytes, XML depth and unsafe-marker
+checks, but it is not a live production adapter.
 
 ---
 
@@ -108,12 +109,14 @@ maximum confidence — is accepted as a proposal, because nothing detects
 that a human never intended it. That limit is pinned by tests
 (`tests/test_compiler.py`).
 
-Only the approval gate stops it. Approval is a field on the record, set
-by whoever edits the control set. There is no approver identity, no
-signature over the decision, and no four-eyes requirement. The
-compiler's confidence value is supplied by the model itself, so it
-cannot substitute for that gate. This is residual **R-9** (and threat
-**T9**) in `docs/THREAT-MODEL.md`.
+Only the approval gate stops it. New approval artifacts are EIP-712
+signed over the decision, reason, timestamp, control digest and
+compilation digest, and verification recovers the named approver and
+binds the exact compiler proposal. Historical published approvals remain
+unsigned legacy entries and are readable but unattributed. There is still
+no four-eyes requirement. The compiler's confidence value is supplied by
+the model itself, so it cannot substitute for that gate. This is the
+remaining part of residual **R-9** (and threat **T9**).
 
 The serving runtime does not call a model. `scripts/compile_controls.py`
 is the only place a model is invoked; it runs at proposal time, on the
@@ -171,11 +174,11 @@ path, so loss or theft of the deployer is unrecoverable. See
 `docs/KEY-MANAGEMENT.md` and residual **R-5**.
 
 There is no multi-region failover, no leader election, and no second
-publisher. A single host runs a single daemon. The host is
-`not_configured`. Supervisor units are `not_configured`. Detection and
-recovery timings are proven in a local subprocess harness; they have
-not been proven on production hardware, because there is no production
-host yet.
+publisher. The shared VPS runs `touchstone-observer@xlayer-mainnet` and
+the status timer; the publisher unit is installed but disabled. The
+observer is recording all three USTB sources every 15 minutes. Detection
+and recovery timings are proven in a local subprocess harness, but an
+unattended publication has not been proven on the production host.
 
 Compromise detection does not exist. Nothing watches for a publication
 from an unexpected publisher or a report signed by a retired key.
@@ -183,15 +186,18 @@ from an unexpected publisher or a report signed by a retired key.
 TLS is trusted without pinning (residual **R-7**). Evidence integrity in
 transit rests on the platform certificate store.
 
-Chain state is read from the same single JSON-RPC endpoint it is written
-through (residual **R-12**). An endpoint that answers dishonestly can
-report a publication that did not occur, or conceal one that did.
+The publisher supports fail-closed reads from two independent HTTPS RPC
+hosts and refuses disagreement or partial availability. Production has
+not configured `TOUCHSTONE_RPC_QUORUM`, so a future publication would
+still use the manifest's single JSON-RPC endpoint. Residual **R-12**
+therefore remains operationally open.
 
 Time is taken from the host clock (residual **R-10**). The chain rejects
 a future `observedAt`; that check is one-sided and delay-sensitive.
 
-Source probes were run from a development machine (residual **R-8**).
-Repeated retrieval from the eventual deployment host is unverified.
+The production observer now retrieves all three USTB sources from the
+shared VPS every 15 minutes. Cross-region retrieval and a second host are
+still unverified (residual **R-8**).
 
 ---
 
@@ -273,8 +279,8 @@ Touchstone is.
 ## 10. Explicitly out of scope for Phase 1
 
 From `docs/PHASE-1-PLAN.md` and `ROADMAP.md` Phases 2–5, and not claimed:
-legal review; external contract and pipeline audits; API and SDKs; paid
-rescans; a second autonomous adapter; FOBXX or OUSG adapters; PAXG;
+legal review; external contract and pipeline audits; a public verification API; paid
+rescans; a second autonomous live adapter; a production FOBXX or OUSG route; PAXG;
 design partners; formal specifications; multi-publisher quorum;
 accreditation; staking or a token; institutional governance; HSM or
 multisig custody; multi-region deployment.

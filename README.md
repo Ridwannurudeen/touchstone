@@ -1,6 +1,6 @@
 # Touchstone
 
-Touchstone turns the disclosures behind real-world assets into executable intelligence. AI compiles issuer-published commitments into cited, machine-checkable controls. Deterministic surveillance evaluates those controls against current evidence. Signed results are published to X Layer, where applications can enforce freshness and verification requirements through a shared registry.
+Touchstone turns the disclosures behind real-world assets into executable intelligence. AI compiles issuer-published commitments into cited, machine-checkable controls. Deterministic surveillance evaluates those controls against current evidence. Results are published to X Layer as publisher-authenticated onchain commitments; the signed report and verification bundle remain offline-verifiable artifacts. A testnet AssetGate can enforce freshness and verification requirements through the shared registry.
 
 Status: **Phase 1 in progress — registries are live on X Layer testnet and mainnet, holding
 five published reports between them. Every one of them reports `UNVERIFIABLE`.** The registry is at `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` on X Layer testnet
