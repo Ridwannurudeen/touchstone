@@ -50,7 +50,10 @@ function approvalTypes(version) {
     { name: "timestamp", type: "uint256" },
   ];
   if (version === 2) {
-    fields.push({ name: "scope", type: "string" }, { name: "policyId", type: "string" });
+    fields.push(
+      { name: "scope", type: "string" },
+      { name: "policyId", type: "string" },
+    );
   }
   return { Approval: fields };
 }
@@ -90,13 +93,29 @@ async function rpc(net, method, params) {
   throw new Error(`every RPC endpoint refused: ${lastError}`);
 }
 
-async function ethCall(net, to, iface, fn, args) {
+async function ethCall(net, to, iface, fn, args, blockTag) {
   const data = iface.encodeFunctionData(fn, args);
   const { result, endpoint } = await rpc(net, "eth_call", [
     { to, data },
-    "latest",
+    blockTag || "latest",
   ]);
   return { decoded: iface.decodeFunctionResult(fn, result), endpoint };
+}
+
+/* One header, read once, pins a whole panel: every read in the panel names this block,
+ * and "expired" is judged against this block's own timestamp rather than the visitor's
+ * clock — a wrong laptop clock must not relabel a live report as dead, or vice versa. */
+async function pinnedHead(net) {
+  const { result, endpoint } = await rpc(net, "eth_getBlockByNumber", [
+    "latest",
+    false,
+  ]);
+  return {
+    hex: result.number,
+    number: parseInt(result.number, 16),
+    timestamp: parseInt(result.timestamp, 16),
+    endpoint,
+  };
 }
 
 /* ---------- live report panel ---------- */
@@ -127,10 +146,15 @@ async function readReport() {
   );
   const registry = key.registry === "v2" ? net.registryV2 : net.registryV1;
   try {
-    const head = await rpc(net, "eth_blockNumber", []);
-    const seq = await ethCall(net, registry, iface, "latestSequence", [
-      key.key,
-    ]);
+    const head = await pinnedHead(net);
+    const seq = await ethCall(
+      net,
+      registry,
+      iface,
+      "latestSequence",
+      [key.key],
+      head.hex,
+    );
     if (Number(seq.decoded[0]) === 0) {
       panel.innerHTML =
         row("registry", `${key.registry} · ${short(registry)}`) +
@@ -140,10 +164,7 @@ async function readReport() {
           "0 — no report has ever been published under this key",
           "term-pending",
         ) +
-        row(
-          "read at block",
-          `${parseInt(head.result, 16)} via ${seq.endpoint}`,
-        );
+        row("read at block", `${head.number} via ${seq.endpoint}`);
       return;
     }
     const { decoded, endpoint } = await ethCall(
@@ -152,11 +173,13 @@ async function readReport() {
       iface,
       "getLatestReport",
       [key.key],
+      head.hex,
     );
     const r = decoded[0];
     const statusName = STATUS_NAMES[Number(r.status)] || `status ${r.status}`;
-    const now = Math.floor(Date.now() / 1000);
-    const expired = now > Number(r.validUntil);
+    // Judged against the pinned block's own timestamp — the clock the gate contracts
+    // consult — never the visitor's machine, whose clock is nobody's evidence.
+    const expired = head.timestamp > Number(r.validUntil);
     const lines = [
       row("registry", `${key.registry} · ${short(registry)}`),
       row("key", short(key.key)),
@@ -191,7 +214,10 @@ async function readReport() {
       );
     }
     lines.push(
-      row("read at block", `${parseInt(head.result, 16)} via ${endpoint}`),
+      row(
+        "read at block",
+        `${head.number} (chain time ${utc(head.timestamp)}) via ${endpoint}`,
+      ),
     );
     panel.innerHTML = lines.join("");
   } catch (error) {
@@ -220,9 +246,15 @@ async function readGate() {
   panel.innerHTML = row("checking", short(key.gate), "term-pending");
   try {
     const iface = new ethers.Interface(GATE_ABI);
-    const { decoded, endpoint } = await ethCall(net, key.gate, iface, "check", [
-      key.key,
-    ]);
+    const head = await pinnedHead(net);
+    const { decoded, endpoint } = await ethCall(
+      net,
+      key.gate,
+      iface,
+      "check",
+      [key.key],
+      head.hex,
+    );
     const [allowed, reason] = decoded;
     panel.innerHTML =
       row(
@@ -235,7 +267,7 @@ async function readGate() {
         allowed ? "term-ok" : "term-blocked",
       ) +
       row("reason", `"${reason}"`, allowed ? "term-ok" : "term-blocked") +
-      row("via", endpoint) +
+      row("read at block", `${head.number} via ${endpoint}`) +
       (allowed
         ? ""
         : row(
@@ -323,6 +355,39 @@ function actionTarget() {
   return net.actions[choice];
 }
 
+/* ---------- ERC-8021 Builder Code attribution ----------
+ *
+ * Inert until the owner registers a real code and sets `builderCode` in the page config —
+ * while it is null every transaction goes out as ordinary, unattributed calldata. When set,
+ * the schema-0 suffix (payload ‖ length ‖ 0x00 ‖ the 0x8021… marker) is appended to the
+ * calldata; contracts ignore bytes past their arguments, so behaviour is unchanged. The
+ * byte layout is the one sdk/src/attribution.ts implements and the SDK suite pins against
+ * the canonical reference vector — change either only with the other. Never invent a code:
+ * an unregistered value attributes to nobody.
+ */
+const ERC8021_MARKER = "0x80218021802180218021802180218021";
+
+function withBuilderCode(data) {
+  const code = CONFIG.builderCode;
+  if (code == null || code === "") return data;
+  if (!/^[\x20-\x7e]+$/.test(code) || code.includes(",")) {
+    throw new Error("builderCode must be printable ASCII without commas");
+  }
+  const encoded = ethers.toUtf8Bytes(code);
+  if (encoded.length > 255) {
+    throw new Error("builderCode must fit one length byte");
+  }
+  return ethers.hexlify(
+    ethers.concat([
+      ethers.getBytes(data),
+      encoded,
+      Uint8Array.of(encoded.length),
+      Uint8Array.of(0),
+      ethers.getBytes(ERC8021_MARKER),
+    ]),
+  );
+}
+
 async function simulate() {
   const net = network();
   const target = actionTarget();
@@ -336,10 +401,13 @@ async function simulate() {
     const iface = new ethers.Interface(
       target.kind === "admission" ? ADMISSION_ABI : GUARDED_ABI,
     );
-    const data =
+    // The simulation must exercise the exact calldata a real send would carry,
+    // attribution suffix included — simulating different bytes proves nothing.
+    const data = withBuilderCode(
       target.kind === "admission"
         ? iface.encodeFunctionData("execute", [target.key])
-        : iface.encodeFunctionData("execute", []);
+        : iface.encodeFunctionData("execute", []),
+    );
     await rpc(net, "eth_call", [{ to: target.address, data }, "latest"]).then(
       ({ endpoint }) => {
         panel.innerHTML =
@@ -389,10 +457,11 @@ async function execute() {
     const iface = new ethers.Interface(
       target.kind === "admission" ? ADMISSION_ABI : GUARDED_ABI,
     );
-    const data =
+    const data = withBuilderCode(
       target.kind === "admission"
         ? iface.encodeFunctionData("execute", [target.key])
-        : iface.encodeFunctionData("execute", []);
+        : iface.encodeFunctionData("execute", []),
+    );
     panel.innerHTML = row(
       "awaiting wallet",
       "confirm or reject in your wallet",
