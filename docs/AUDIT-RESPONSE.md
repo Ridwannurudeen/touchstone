@@ -259,7 +259,7 @@ done before it arrived. Status of its required sequence:
 | 3 | Publish all three reports through Registry V2 | **UNBLOCKED** — the v2 path was policy-only (`attestation_from_report` refused asset-wide reports); asset-wide semantics are now defined and tested: zero policy identity, legal only as a pair, unpinnable by construction because AssetGateV2 refuses zero pins. Publication follows item 2 |
 | 4 | Redeploy hardened AssetGateV2 | **WAITING on items 2–3 by design** — the gate pins the approval digest exactly, and the only digest worth pinning is the signed ledger's. Pinning today's on-chain reports would pin the unsigned artifact the audits called weak |
 | 5 | Deploy the meaningful consumer | **BUILT** — `RWAAdmissionController`: proposer-bound gate per asset, activation only on the gate's word, suspension computed on every read and every privileged action rather than stored, admission history permanent. Nine tests cover the audit's four demonstration scenarios plus suspension-recovery with no state mutation. Deployment follows item 4 |
-| 6 | Verify source on OKLink | **OWNER-GATED** — `@okxweb3/hardhat-explorer-verify` wired and proven to reach the API; it requires an OKLink API key, which is an account credential only the owner can create. Trap recorded: the plugin's built-in network list carries chain 195, the deprecated testnet; chain 1952 needs a custom entry |
+| 6 | Verify source on OKLink | **DONE 2026-08-20** — the owner supplied the API key and all ten live contracts verified on OKLink, five per chain, each verification byte-proving its constructor arguments (including the original testnet gate's zero control-set root). Two traps closed on the way: the plugin's built-in list maps `xlayertest` to chain 195, the deprecated testnet — a `customChains` entry teaches it 1952 — and the plugin fetches its solc list from `solc-bin.ethereum.org`, which is dead; patched in node_modules to `binaries.soliditylang.org` (okverify is a local attended task, so CI never runs it). The superseded first registry stays unverified by decision. AssetGateV2 and the AdmissionController verify at deploy time |
 
 Also from audit #3, fixed same evening: three public surfaces still carried pre-CONFIRMED
 text, and the truth gate learned all six phrases it had missed (its stale-phrase list grows
@@ -305,8 +305,7 @@ Executed (agent):
   badges and explorer links, Open Graph and JSON-LD metadata, sitemap and robots.
 - Chain-aware bundle filenames (P0.8) had landed in the pipeline the same evening.
 
-Owner-gated from this audit: OKLink source verification (API key) and "verified contract"
-badges; an external integration; OKX.AI service listing; institutional/company pages; brand
+Owner-gated from this audit: an external integration; OKX.AI service listing; institutional/company pages; brand
 clearance. Deliberately deferred with reasons: the Next.js/Astro rebuild (§15 — the audit
 itself licenses keeping the lightweight static architecture with the Terminal as an island;
 a framework migration days before the deadline is how judges meet a broken site) and the

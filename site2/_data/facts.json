@@ -2,7 +2,8 @@
   "_comment": "Canonical chain facts for the public site. Every address was re-verified from chain on 2026-08-19 by classifying each contract at the deployer's CREATE addresses (see docs/OPERATIONS.md for the collision table - several addresses exist on BOTH chains as different contracts; the chain id is the only discriminator). scripts/build_site.py renders these into the pages; edit here, rebuild, redeploy. 32-byte values are stored WITHOUT their 0x prefix; a page source writes 0x{{fact:...}} - a session hook refuses any file carrying a 0x-prefixed 64-hex literal, and the convention keeps sources writable. Test counts are as of the suites run on 2026-08-19.",
   "site": {
     "updated": "2026-08-19",
-    "url": "https://touchstone.gudman.xyz"
+    "url": "https://touchstone.gudman.xyz",
+    "contracts_verified_on": "2026-08-20"
   },
   "counts": {
     "reports_published": "11",
@@ -91,7 +92,8 @@
     "guarded_refused_tx": "2b106907d529810dcbd3952a7d3e4f28ef05635a36b926c86d062ba7531cad53",
     "guarded_refused_block": "68390055",
     "gate_freshness_root": "35dbfa3dfbae5a7dc6a2852264fca08b2674629bc51e6018be06b5c083158d73",
-    "gate_freshness_max_age": "93600"
+    "gate_freshness_max_age": "93600",
+    "oklink": "https://www.oklink.com/xlayer"
   },
   "testnet": {
     "chain_id": "1952",
@@ -138,7 +140,8 @@
     "gate_v1_root": "0000000000000000000000000000000000000000000000000000000000000000",
     "gate_v1_max_age": "172800",
     "gate_freshness_root": "35dbfa3dfbae5a7dc6a2852264fca08b2674629bc51e6018be06b5c083158d73",
-    "gate_freshness_max_age": "93600"
+    "gate_freshness_max_age": "93600",
+    "oklink": "https://www.oklink.com/xlayer-test"
   },
   "story": {
     "refusal_date": "2026-08-18",

@@ -41,6 +41,22 @@ module.exports = {
   okxweb3explorer: {
     apiKey: process.env.OKLINK_API_KEY,
   },
+  etherscan: {
+    // The verify plugin's built-in list maps `xlayertest` to chain 195, the DEPRECATED
+    // testnet this project must never touch. This entry teaches it chain 1952 (terigon),
+    // pointed at the same OKLink endpoint family the migrated explorer serves.
+    customChains: [
+      {
+        network: "xLayerTestnet",
+        chainId: 1952,
+        urls: {
+          apiURL:
+            "https://www.oklink.com/api/v5/explorer/contract/verify-source-code-plugin/XLAYER_TESTNET",
+          browserURL: "https://www.oklink.com/xlayer-test",
+        },
+      },
+    ],
+  },
   networks: {
     hardhat: {
       initialDate: FIXTURE_EPOCH_RETRIEVED_AT,

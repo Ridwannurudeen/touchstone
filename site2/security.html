@@ -296,13 +296,28 @@
         </table>
       </div>
 
-      <p class="layer-note" style="margin-top:var(--s5)"><strong>Source verification is in
-      progress.</strong> The explorer's verification plugin is wired and reaches the API; the
-      remaining step is an OKLink API credential. Until a contract's source is verified there,
-      no page on this site will show a verified-source badge for it. In the meantime the
-      Solidity sources, the deployment manifests and the recorded runtime bytecode digest for
-      each deployment are in <a href="https://github.com/Ridwannurudeen/touchstone">the
-      repository</a>, and the deployed bytecode can be compared against them from any node.</p>
+      <p class="layer-note" style="margin-top:var(--s5)"><strong>Every live contract's
+      source is verified on OKLink</strong> (2026-08-20) &mdash; and
+      verification is itself a proof: the explorer recompiles the published source and
+      accepts it only when the bytecode and every constructor argument match what is on
+      chain. Mainnet:
+      <a href="https://www.oklink.com/xlayer/address/0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C#code">Registry&nbsp;v2</a> &middot;
+      <a href="https://www.oklink.com/xlayer/address/0xc9d58e4496bF061C3177301Ff02518eBB70AD30d#code">Registry&nbsp;v1</a> &middot;
+      <a href="https://www.oklink.com/xlayer/address/0xAac48DC261B04737FDCB101D5049395121034a83#code">AssetGate</a> &middot;
+      <a href="https://www.oklink.com/xlayer/address/0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720#code">GuardedAction (permitted)</a> &middot;
+      <a href="https://www.oklink.com/xlayer/address/0x8FbcFf50bf1F88cADEc9103a57c4C86e8A44BAcB#code">GuardedAction (refused)</a>.
+      Testnet:
+      <a href="https://www.oklink.com/xlayer-test/address/0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720#code">Registry&nbsp;v2</a> &middot;
+      <a href="https://www.oklink.com/xlayer-test/address/0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C#code">Registry&nbsp;v1</a> &middot;
+      <a href="https://www.oklink.com/xlayer-test/address/0xAac48DC261B04737FDCB101D5049395121034a83#code">AssetGate (original)</a> &middot;
+      <a href="https://www.oklink.com/xlayer-test/address/0x0bc5c0cc879CE1b5AD23aEdA8fC42dB414eB8eE1#code">AssetGate (policy)</a> &middot;
+      <a href="https://www.oklink.com/xlayer-test/address/0xf6D53a9cD76C6777835a6b4070e88337199127Dc#code">GuardedAction (permitted)</a> &middot;
+      <a href="https://www.oklink.com/xlayer-test/address/0x8641CF6d40524AC55aBd0a02601AfBd374EFB059#code">GuardedAction (refused)</a>.
+      The superseded first testnet registry is deliberately not verified against current
+      sources: it predates the epoch-uniqueness change, and its manifest marks it
+      <span class="mono">superseded</span>. The Solidity sources, deployment manifests and
+      runtime bytecode digests also live in
+      <a href="https://github.com/Ridwannurudeen/touchstone">the repository</a>.</p>
     </div>
   </section>
 

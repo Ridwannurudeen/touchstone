@@ -310,6 +310,13 @@ curl -s https://rpc.xlayer.tech -H <span class="c-string">'content-type: applica
   <section class="section">
     <div class="wrap key-facts">
       <p class="eyebrow">Keys</p>
+      <p class="t-small secondary">Every contract above is <strong>source-verified on
+      OKLink</strong> &mdash; open an address and its <span class="mono">#code</span> tab
+      shows the recompiled source and constructor arguments matching the chain. Start with
+      <a href="{{fact:mainnet.oklink}}/address/{{fact:mainnet.registry_v2}}#code">mainnet Registry v2</a> or
+      <a href="{{fact:testnet.oklink}}/address/{{fact:testnet.registry_v2}}#code">testnet Registry v2</a>;
+      the full list is on <a href="/security">Security</a>.</p>
+
       <h2>Registry keys, and where they come from</h2>
       <p class="t-lead" style="max-width:66ch">A registry key is
       <span class="mono">keccak256</span> of a text identifier — nothing else. Derive it,
