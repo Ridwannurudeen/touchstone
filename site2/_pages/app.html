@@ -160,17 +160,22 @@
           "label": "RWAAdmissionController · execute the admitted USTB policy action",
           "address": "{{fact:mainnet.admission}}",
           "kind": "admission",
-          "key": "0x{{fact:keys.freshness}}"
+          "key": "0x{{fact:keys.freshness}}",
+          "gate": "{{fact:mainnet.gate_v2}}"
         },
         "permitted": {
           "label": "GuardedAction · freshness-pinned (permitted while CONFIRMED)",
           "address": "{{fact:mainnet.guarded_permitted}}",
-          "kind": "guarded"
+          "kind": "guarded",
+          "key": "0x{{fact:keys.freshness}}",
+          "gate": "{{fact:mainnet.gate_freshness}}"
         },
         "refused": {
           "label": "GuardedAction · never-reported key (always refused)",
           "address": "{{fact:mainnet.guarded_refused}}",
-          "kind": "guarded"
+          "kind": "guarded",
+          "key": "0x{{fact:keys.refused_demo}}",
+          "gate": "{{fact:mainnet.gate_freshness}}"
         }
       }
     },
@@ -208,12 +213,16 @@
         "permitted": {
           "label": "GuardedAction · freshness-pinned (permitted while CONFIRMED)",
           "address": "{{fact:testnet.guarded_permitted}}",
-          "kind": "guarded"
+          "kind": "guarded",
+          "key": "0x{{fact:keys.freshness}}",
+          "gate": "{{fact:testnet.gate_freshness}}"
         },
         "refused": {
           "label": "GuardedAction · never-reported key (always refused)",
           "address": "{{fact:testnet.guarded_refused}}",
-          "kind": "guarded"
+          "kind": "guarded",
+          "key": "0x{{fact:keys.refused_demo}}",
+          "gate": "{{fact:testnet.gate_freshness}}"
         }
       }
     }

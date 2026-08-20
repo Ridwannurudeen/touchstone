@@ -178,17 +178,22 @@
           "label": "RWAAdmissionController · execute the admitted USTB policy action",
           "address": "0x5C5265392701A99cbB137aF8116E0F97f630329A",
           "kind": "admission",
-          "key": "0xa40f966944356ce543320f59f22ba003e3f0be28532bae029d4f9f9d05efc589"
+          "key": "0xa40f966944356ce543320f59f22ba003e3f0be28532bae029d4f9f9d05efc589",
+          "gate": "0x8641CF6d40524AC55aBd0a02601AfBd374EFB059"
         },
         "permitted": {
           "label": "GuardedAction · freshness-pinned (permitted while CONFIRMED)",
           "address": "0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720",
-          "kind": "guarded"
+          "kind": "guarded",
+          "key": "0xa40f966944356ce543320f59f22ba003e3f0be28532bae029d4f9f9d05efc589",
+          "gate": "0xAac48DC261B04737FDCB101D5049395121034a83"
         },
         "refused": {
           "label": "GuardedAction · never-reported key (always refused)",
           "address": "0x8FbcFf50bf1F88cADEc9103a57c4C86e8A44BAcB",
-          "kind": "guarded"
+          "kind": "guarded",
+          "key": "0x540326d519dd50f31cf313392638fe11c02f436e5a39120c18492cec7adc7de5",
+          "gate": "0xAac48DC261B04737FDCB101D5049395121034a83"
         }
       }
     },
@@ -226,12 +231,16 @@
         "permitted": {
           "label": "GuardedAction · freshness-pinned (permitted while CONFIRMED)",
           "address": "0xf6D53a9cD76C6777835a6b4070e88337199127Dc",
-          "kind": "guarded"
+          "kind": "guarded",
+          "key": "0xa40f966944356ce543320f59f22ba003e3f0be28532bae029d4f9f9d05efc589",
+          "gate": "0x0bc5c0cc879CE1b5AD23aEdA8fC42dB414eB8eE1"
         },
         "refused": {
           "label": "GuardedAction · never-reported key (always refused)",
           "address": "0x8641CF6d40524AC55aBd0a02601AfBd374EFB059",
-          "kind": "guarded"
+          "kind": "guarded",
+          "key": "0x540326d519dd50f31cf313392638fe11c02f436e5a39120c18492cec7adc7de5",
+          "gate": "0x0bc5c0cc879CE1b5AD23aEdA8fC42dB414eB8eE1"
         }
       }
     }

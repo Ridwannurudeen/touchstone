@@ -29,11 +29,14 @@ const GATE_ABI = [
 ];
 const GUARDED_ABI = [
   "function actionCount() view returns (uint256)",
+  "function gate() view returns (address)",
+  "function assetKey() view returns (bytes32)",
   "function execute()",
   "event ActionExecuted(bytes32 indexed assetKey, address indexed caller, uint256 actionNumber)",
 ];
 const ADMISSION_ABI = [
   "function isActive(bytes32 assetKey) view returns (bool active, string reason)",
+  "function admissionOf(bytes32 assetKey) view returns (tuple(address gate, uint64 proposedAt, uint64 activatedAt, address activator))",
   "function execute(bytes32 assetKey)",
   "function activate(bytes32 assetKey)",
   "function useCount() view returns (uint256)",
@@ -73,19 +76,26 @@ function policyKey() {
 
 /* ---------- RPC: try each endpoint in order, name the one that answered ---------- */
 
+async function rpcOne(url, method, params) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  const body = await response.json();
+  if (body.error)
+    throw new Error(body.error.message || JSON.stringify(body.error));
+  return body.result;
+}
+
 async function rpc(net, method, params) {
   let lastError = null;
   for (const url of net.rpc) {
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      });
-      const body = await response.json();
-      if (body.error)
-        throw new Error(body.error.message || JSON.stringify(body.error));
-      return { result: body.result, endpoint: new URL(url).host };
+      return {
+        result: await rpcOne(url, method, params),
+        endpoint: new URL(url).host,
+      };
     } catch (error) {
       lastError = error;
     }
@@ -93,9 +103,50 @@ async function rpc(net, method, params) {
   throw new Error(`every RPC endpoint refused: ${lastError}`);
 }
 
+/* Ask every configured endpoint the same question and require the answers to agree.
+ * Disagreement is refused outright — two hosts telling different stories is not a
+ * situation to average over. One host answering alone is not hidden either: the label
+ * says so, because "verified by both" and "the only one that picked up" are different
+ * claims and a panel that blurred them would be lying about its own evidence. */
+async function comparedRpc(net, method, params) {
+  const settled = await Promise.allSettled(
+    net.rpc.map((url) => rpcOne(url, method, params)),
+  );
+  const answers = [];
+  settled.forEach((outcome, index) => {
+    if (outcome.status === "fulfilled")
+      answers.push({
+        host: new URL(net.rpc[index]).host,
+        result: outcome.value,
+      });
+  });
+  if (answers.length === 0) {
+    throw new Error(
+      `every RPC endpoint refused: ${settled[0].reason?.message || settled[0].reason}`,
+    );
+  }
+  const first = JSON.stringify(answers[0].result);
+  if (answers.some((a) => JSON.stringify(a.result) !== first)) {
+    throw new Error(
+      `RPC endpoints DISAGREE on ${method} — refusing to render either answer (${answers
+        .map((a) => a.host)
+        .join(" vs ")})`,
+    );
+  }
+  const endpoint =
+    answers.length > 1
+      ? `${answers.map((a) => a.host).join(" + ")} agree`
+      : `${answers[0].host} (only responder)`;
+  return { result: answers[0].result, endpoint };
+}
+
 async function ethCall(net, to, iface, fn, args, blockTag) {
   const data = iface.encodeFunctionData(fn, args);
-  const { result, endpoint } = await rpc(net, "eth_call", [
+  // Pinned reads are cross-checked across endpoints; a pinned block makes the answers
+  // byte-comparable. Unpinned calls (simulation at "latest") keep ordered failover,
+  // because two hosts sitting on different heads disagree without either lying.
+  const read = blockTag ? comparedRpc : rpc;
+  const { result, endpoint } = await read(net, "eth_call", [
     { to, data },
     blockTag || "latest",
   ]);
@@ -104,7 +155,10 @@ async function ethCall(net, to, iface, fn, args, blockTag) {
 
 /* One header, read once, pins a whole panel: every read in the panel names this block,
  * and "expired" is judged against this block's own timestamp rather than the visitor's
- * clock — a wrong laptop clock must not relabel a live report as dead, or vice versa. */
+ * clock — a wrong laptop clock must not relabel a live report as dead, or vice versa.
+ * The header itself comes from failover, not comparison: endpoints legitimately sit on
+ * different heads for a moment, so the pin is one host's head — and every subsequent
+ * read AT that pin is then required to agree across the endpoints that hold it. */
 async function pinnedHead(net) {
   const { result, endpoint } = await rpc(net, "eth_getBlockByNumber", [
     "latest",
@@ -118,11 +172,44 @@ async function pinnedHead(net) {
   };
 }
 
-/* ---------- live report panel ---------- */
+/* ---------- DOM-safe rendering: no dynamic markup, ever ----------
+ *
+ * Every value that reaches a panel goes in as a text node or an explicitly built
+ * element. Chain-sourced strings — reportURI, revert reasons, gate refusal strings —
+ * render as inert text no matter what they contain. The old renderer interpolated them
+ * into innerHTML, which was fine right up until the first hostile publisher. */
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = String(text);
+  return node;
+}
+
+function link(href, text, download) {
+  const a = el("a", null, text);
+  a.href = href;
+  a.rel = "noopener";
+  if (download) a.setAttribute("download", "");
+  return a;
+}
 
 function row(k, v, cls) {
-  return `<div class="term-row"><span class="tr-k">${k}</span><span class="tr-v ${cls || ""}">${v}</span></div>`;
+  const r = el("div", "term-row");
+  r.appendChild(el("span", "tr-k", k));
+  const value = el("span", cls ? `tr-v ${cls}` : "tr-v");
+  for (const part of Array.isArray(v) ? v : [v]) {
+    value.append(part instanceof Node ? part : String(part));
+  }
+  r.appendChild(value);
+  return r;
 }
+
+function render(panel, ...rows) {
+  panel.replaceChildren(...rows.flat());
+}
+
+/* ---------- live report panel ---------- */
 
 function statusClass(name) {
   return name === "CONFIRMED"
@@ -136,11 +223,7 @@ async function readReport() {
   const net = network();
   const key = policyKey();
   const panel = $("report-panel");
-  panel.innerHTML = row(
-    "reading",
-    `${net.name} · ${key.label}`,
-    "term-pending",
-  );
+  render(panel, row("reading", `${net.name} · ${key.label}`, "term-pending"));
   const iface = new ethers.Interface(
     key.registry === "v2" ? V2_REGISTRY_ABI : V1_REGISTRY_ABI,
   );
@@ -156,15 +239,17 @@ async function readReport() {
       head.hex,
     );
     if (Number(seq.decoded[0]) === 0) {
-      panel.innerHTML =
-        row("registry", `${key.registry} · ${short(registry)}`) +
-        row("key", short(key.key)) +
+      render(
+        panel,
+        row("registry", `${key.registry} · ${short(registry)}`),
+        row("key", short(key.key)),
         row(
           "latest sequence",
           "0 — no report has ever been published under this key",
           "term-pending",
-        ) +
-        row("read at block", `${head.number} via ${seq.endpoint}`);
+        ),
+        row("read at block", `${head.number} via ${seq.endpoint}`),
+      );
       return;
     }
     const { decoded, endpoint } = await ethCall(
@@ -191,10 +276,9 @@ async function readReport() {
         `${utc(r.validUntil)}${expired ? " — EXPIRED: a report is a statement about a day, and this day has ended. The next publication window re-evaluates from fresh evidence." : ""}`,
         expired ? "term-blocked" : "term-ok",
       ),
-      row(
-        "publisher",
-        `<a href="${net.explorer}/address/${r.publisher}" rel="noopener">${short(r.publisher)}</a>`,
-      ),
+      row("publisher", [
+        link(`${net.explorer}/address/${r.publisher}`, short(r.publisher)),
+      ]),
       row("control-set root", short(r.controlSetRoot)),
       row("evidence root", short(r.evidenceRoot)),
     ];
@@ -207,10 +291,7 @@ async function readReport() {
     lines.push(row("report URI", r.reportURI));
     if (key.bundle) {
       lines.push(
-        row(
-          "bundle",
-          `<a href="${key.bundle}" download>download the signed bundle</a>`,
-        ),
+        row("bundle", [link(key.bundle, "download the signed bundle", true)]),
       );
     }
     lines.push(
@@ -219,12 +300,11 @@ async function readReport() {
         `${head.number} (chain time ${utc(head.timestamp)}) via ${endpoint}`,
       ),
     );
-    panel.innerHTML = lines.join("");
+    render(panel, lines);
   } catch (error) {
-    panel.innerHTML = row(
-      "read failed",
-      String(error.message || error),
-      "term-blocked",
+    render(
+      panel,
+      row("read failed", String(error.message || error), "term-blocked"),
     );
   }
 }
@@ -236,14 +316,17 @@ async function readGate() {
   const key = policyKey();
   const panel = $("gate-panel");
   if (!key.gate) {
-    panel.innerHTML = row(
-      "gate",
-      "no deployed gate pins this key — policy keys are what gates pin; the asset-wide verdict is a registry fact, unpinnable by design",
-      "term-pending",
+    render(
+      panel,
+      row(
+        "gate",
+        "no deployed gate pins this key — policy keys are what gates pin; the asset-wide verdict is a registry fact, unpinnable by design",
+        "term-pending",
+      ),
     );
     return;
   }
-  panel.innerHTML = row("checking", short(key.gate), "term-pending");
+  render(panel, row("checking", short(key.gate), "term-pending"));
   try {
     const iface = new ethers.Interface(GATE_ABI);
     const head = await pinnedHead(net);
@@ -256,30 +339,32 @@ async function readGate() {
       head.hex,
     );
     const [allowed, reason] = decoded;
-    panel.innerHTML =
-      row(
-        "gate",
-        `<a href="${net.explorer}/address/${key.gate}" rel="noopener">${short(key.gate)}</a>`,
-      ) +
+    const lines = [
+      row("gate", [
+        link(`${net.explorer}/address/${key.gate}`, short(key.gate)),
+      ]),
       row(
         "check(key)",
         allowed ? "true" : "false",
         allowed ? "term-ok" : "term-blocked",
-      ) +
-      row("reason", `"${reason}"`, allowed ? "term-ok" : "term-blocked") +
-      row("read at block", `${head.number} via ${endpoint}`) +
-      (allowed
-        ? ""
-        : row(
-            "meaning",
-            "the refusal is the product working: no control was weakened to make this pass",
-            "term-pending",
-          ));
+      ),
+      row("reason", `"${reason}"`, allowed ? "term-ok" : "term-blocked"),
+      row("read at block", `${head.number} via ${endpoint}`),
+    ];
+    if (!allowed) {
+      lines.push(
+        row(
+          "meaning",
+          "the refusal is the product working: no control was weakened to make this pass",
+          "term-pending",
+        ),
+      );
+    }
+    render(panel, lines);
   } catch (error) {
-    panel.innerHTML = row(
-      "check failed",
-      String(error.message || error),
-      "term-blocked",
+    render(
+      panel,
+      row("check failed", String(error.message || error), "term-blocked"),
     );
   }
 }
@@ -296,10 +381,13 @@ function walletTransport() {
 async function connect() {
   const transport = walletTransport();
   if (!transport) {
-    $("wallet-state").innerHTML = row(
-      "wallet",
-      "no wallet detected — install OKX Wallet or any EIP-1193 wallet; every read on this page works without one",
-      "term-pending",
+    render(
+      $("wallet-state"),
+      row(
+        "wallet",
+        "no wallet detected — install OKX Wallet or any EIP-1193 wallet; every read on this page works without one",
+        "term-pending",
+      ),
     );
     return;
   }
@@ -307,14 +395,13 @@ async function connect() {
     const accounts = await transport.request({ method: "eth_requestAccounts" });
     account = ethers.getAddress(accounts[0]);
     provider = new ethers.BrowserProvider(transport);
-    $("wallet-state").innerHTML = row("connected", short(account), "term-ok");
+    render($("wallet-state"), row("connected", short(account), "term-ok"));
     $("btn-execute").disabled = false;
     $("btn-decisions").disabled = false;
   } catch (error) {
-    $("wallet-state").innerHTML = row(
-      "connect failed",
-      String(error.message || error),
-      "term-blocked",
+    render(
+      $("wallet-state"),
+      row("connect failed", String(error.message || error), "term-blocked"),
     );
   }
 }
@@ -388,16 +475,115 @@ function withBuilderCode(data) {
   );
 }
 
+/* ---------- preflight: prove the target is the contract the page claims ----------
+ *
+ * Before any simulation or send, the target's own bindings are read back from the chain
+ * at a pinned block and compared to the pins this page ships (which were themselves read
+ * from the chain when the config was written). A GuardedAction must name the expected
+ * gate and asset key in its immutables; an admission target must hold a proposal binding
+ * the key to the expected gate. A page that skipped this would happily walk a visitor's
+ * wallet into whatever contract a poisoned config or cache named. */
+async function verifyActionBinding(net, target) {
+  const head = await pinnedHead(net);
+  const iface = new ethers.Interface(
+    target.kind === "admission" ? ADMISSION_ABI : GUARDED_ABI,
+  );
+  const sameAddress = (a, b) =>
+    String(a).toLowerCase() === String(b).toLowerCase();
+  if (target.kind === "admission") {
+    const { decoded, endpoint } = await ethCall(
+      net,
+      target.address,
+      iface,
+      "admissionOf",
+      [target.key],
+      head.hex,
+    );
+    const admission = decoded[0];
+    if (Number(admission.proposedAt) === 0) {
+      throw new Error(
+        `binding check failed: ${short(target.address)} holds NO proposal for this key`,
+      );
+    }
+    if (!sameAddress(admission.gate, target.gate)) {
+      throw new Error(
+        `binding check failed: admission names gate ${short(admission.gate)}, this page expected ${short(target.gate)}`,
+      );
+    }
+    return row(
+      "binding verified",
+      `admission binds this key to gate ${short(admission.gate)} · block ${head.number} via ${endpoint}`,
+      "term-ok",
+    );
+  }
+  const gateRead = await ethCall(
+    net,
+    target.address,
+    iface,
+    "gate",
+    [],
+    head.hex,
+  );
+  const keyRead = await ethCall(
+    net,
+    target.address,
+    iface,
+    "assetKey",
+    [],
+    head.hex,
+  );
+  const boundGate = gateRead.decoded[0];
+  const boundKey = String(keyRead.decoded[0]).toLowerCase();
+  if (!sameAddress(boundGate, target.gate)) {
+    throw new Error(
+      `binding check failed: contract names gate ${short(boundGate)}, this page expected ${short(target.gate)}`,
+    );
+  }
+  if (boundKey !== String(target.key).toLowerCase()) {
+    throw new Error(
+      `binding check failed: contract pins key ${short(boundKey)}, this page expected ${short(target.key)}`,
+    );
+  }
+  return row(
+    "binding verified",
+    `immutables pin gate ${short(boundGate)} and key ${short(boundKey)} · block ${head.number} via ${gateRead.endpoint}`,
+    "term-ok",
+  );
+}
+
+/* What the visitor had selected when they clicked. Compared again at every later step:
+ * an async pause is exactly when a click on the other select can swap the action, and
+ * a preflight that verified one contract must never authorize a send to another. */
+function selectionSnapshot() {
+  return `${$("net-select").value}::${$("action-select").value}`;
+}
+
 async function simulate() {
   const net = network();
   const target = actionTarget();
   const panel = $("action-panel");
-  panel.innerHTML = row(
-    "simulating",
-    `${target.label} · ${short(target.address)}`,
-    "term-pending",
+  const chosen = selectionSnapshot();
+  render(
+    panel,
+    row(
+      "simulating",
+      `${target.label} · ${short(target.address)}`,
+      "term-pending",
+    ),
   );
   try {
+    const bindingRow = await verifyActionBinding(net, target);
+    if (selectionSnapshot() !== chosen) {
+      render(
+        panel,
+        row(
+          "aborted",
+          "the selected action changed while its binding was being verified — nothing was simulated; click again",
+          "term-blocked",
+        ),
+      );
+      return;
+    }
     const iface = new ethers.Interface(
       target.kind === "admission" ? ADMISSION_ABI : GUARDED_ABI,
     );
@@ -410,37 +596,43 @@ async function simulate() {
     );
     await rpc(net, "eth_call", [{ to: target.address, data }, "latest"]).then(
       ({ endpoint }) => {
-        panel.innerHTML =
+        render(
+          panel,
+          bindingRow,
           row(
             "simulation",
             "would succeed — the gate currently permits this action",
             "term-ok",
-          ) + row("via", endpoint);
+          ),
+          row("via", endpoint),
+        );
       },
       (error) => {
-        panel.innerHTML =
+        render(
+          panel,
+          bindingRow,
           row(
             "simulation",
             "would revert — the gate refuses this action right now",
             "term-blocked",
-          ) +
+          ),
           row(
             "revert detail",
             String(error.message || error).slice(0, 220),
             "term-blocked",
-          ) +
+          ),
           row(
             "meaning",
             "nothing was sent; this is the contract's answer, not the site's",
             "term-pending",
-          );
+          ),
+        );
       },
     );
   } catch (error) {
-    panel.innerHTML = row(
-      "simulate failed",
-      String(error.message || error),
-      "term-blocked",
+    render(
+      panel,
+      row("simulate failed", String(error.message || error), "term-blocked"),
     );
   }
 }
@@ -449,11 +641,21 @@ async function execute() {
   const net = network();
   const target = actionTarget();
   const panel = $("action-panel");
+  const chosen = selectionSnapshot();
   if (!provider) return;
   try {
     await ensureChain(net);
     provider = new ethers.BrowserProvider(walletTransport());
     const signer = await provider.getSigner();
+    render(
+      panel,
+      row(
+        "verifying",
+        "reading the target's bindings back from the chain",
+        "term-pending",
+      ),
+    );
+    const bindingRow = await verifyActionBinding(net, target);
     const iface = new ethers.Interface(
       target.kind === "admission" ? ADMISSION_ABI : GUARDED_ABI,
     );
@@ -462,34 +664,61 @@ async function execute() {
         ? iface.encodeFunctionData("execute", [target.key])
         : iface.encodeFunctionData("execute", []),
     );
-    panel.innerHTML = row(
-      "awaiting wallet",
-      "confirm or reject in your wallet",
-      "term-pending",
+    // The last look before the wallet opens. Everything above awaited the network, and
+    // an await is where a click can change what "the selected action" means — a send
+    // must go to the contract whose binding was just verified, or nowhere.
+    if (selectionSnapshot() !== chosen) {
+      render(
+        panel,
+        row(
+          "aborted",
+          "the selected action changed during preflight — nothing was sent; click Execute again",
+          "term-blocked",
+        ),
+      );
+      return;
+    }
+    render(
+      panel,
+      bindingRow,
+      row(
+        "awaiting wallet",
+        "confirm or reject in your wallet",
+        "term-pending",
+      ),
     );
     const tx = await signer.sendTransaction({ to: target.address, data });
-    panel.innerHTML = row(
-      "sent",
-      `<a href="${net.explorer}/tx/${tx.hash}" rel="noopener">${short(tx.hash)}</a>`,
-      "term-pending",
+    render(
+      panel,
+      bindingRow,
+      row(
+        "sent",
+        [link(`${net.explorer}/tx/${tx.hash}`, short(tx.hash))],
+        "term-pending",
+      ),
     );
     const receipt = await tx.wait(1);
-    panel.innerHTML =
-      row(
-        "transaction",
-        `<a href="${net.explorer}/tx/${tx.hash}" rel="noopener">${short(tx.hash)}</a>`,
-      ) +
+    render(
+      panel,
+      bindingRow,
+      row("transaction", [
+        link(`${net.explorer}/tx/${tx.hash}`, short(tx.hash)),
+      ]),
       row(
         "status",
         receipt.status === 1 ? "1 — executed" : "0 — reverted on chain",
         receipt.status === 1 ? "term-ok" : "term-blocked",
-      ) +
-      row("block", String(receipt.blockNumber));
+      ),
+      row("block", String(receipt.blockNumber)),
+    );
   } catch (error) {
-    panel.innerHTML = row(
-      "execute",
-      String(error.shortMessage || error.message || error).slice(0, 300),
-      "term-blocked",
+    render(
+      panel,
+      row(
+        "execute",
+        String(error.shortMessage || error.message || error).slice(0, 300),
+        "term-blocked",
+      ),
     );
   }
 }
@@ -498,10 +727,13 @@ async function myDecisions() {
   const net = network();
   const panel = $("decisions-panel");
   if (!account) return;
-  panel.innerHTML = row(
-    "scanning",
-    "recent blocks for your wallet's guarded executions",
-    "term-pending",
+  render(
+    panel,
+    row(
+      "scanning",
+      "recent blocks for your wallet's guarded executions",
+      "term-pending",
+    ),
   );
   try {
     const head = parseInt((await rpc(net, "eth_blockNumber", [])).result, 16);
@@ -526,26 +758,31 @@ async function myDecisions() {
           found.push(log);
       }
     }
-    panel.innerHTML = found.length
-      ? found
-          .map((log) =>
+    render(
+      panel,
+      found.length
+        ? found.map((log) =>
             row(
               `block ${parseInt(log.blockNumber, 16)}`,
-              `<a href="${net.explorer}/tx/${log.transactionHash}" rel="noopener">${short(log.transactionHash)}</a>`,
+              [
+                link(
+                  `${net.explorer}/tx/${log.transactionHash}`,
+                  short(log.transactionHash),
+                ),
+              ],
               "term-ok",
             ),
           )
-          .join("")
-      : row(
-          "result",
-          `no guarded executions by ${short(account)} in the last ~4,500 blocks (older history is on the explorer)`,
-          "term-pending",
-        );
+        : row(
+            "result",
+            `no guarded executions by ${short(account)} in the last ~4,500 blocks (older history is on the explorer)`,
+            "term-pending",
+          ),
+    );
   } catch (error) {
-    panel.innerHTML = row(
-      "scan failed",
-      String(error.message || error),
-      "term-blocked",
+    render(
+      panel,
+      row("scan failed", String(error.message || error), "term-blocked"),
     );
   }
 }
@@ -573,10 +810,13 @@ async function verifyBundle(file) {
     const bundle = JSON.parse(text);
     const report = bundle.signed_report?.report;
     if (!report || !bundle.report_canonical) {
-      panel.innerHTML = verdict(
-        "bundle shape",
-        false,
-        "this file does not carry signed_report and report_canonical",
+      render(
+        panel,
+        verdict(
+          "bundle shape",
+          false,
+          "this file does not carry signed_report and report_canonical",
+        ),
       );
       return;
     }
@@ -829,12 +1069,11 @@ async function verifyBundle(file) {
         "term-pending",
       ),
     );
-    panel.innerHTML = lines.join("");
+    render(panel, lines);
   } catch (error) {
-    panel.innerHTML = verdict(
-      "verification",
-      false,
-      String(error.message || error),
+    render(
+      panel,
+      verdict("verification", false, String(error.message || error)),
     );
   }
 }
@@ -843,14 +1082,15 @@ async function verifyBundle(file) {
 
 function refreshKeys() {
   const net = network();
-  const keySelect = $("key-select");
-  keySelect.innerHTML = Object.entries(net.keys)
-    .map(([id, k]) => `<option value="${id}">${k.label}</option>`)
-    .join("");
-  const actionSelect = $("action-select");
-  actionSelect.innerHTML = Object.entries(net.actions)
-    .map(([id, a]) => `<option value="${id}">${a.label}</option>`)
-    .join("");
+  const option = ([id, entry]) => {
+    const node = el("option", null, entry.label);
+    node.value = id;
+    return node;
+  };
+  $("key-select").replaceChildren(...Object.entries(net.keys).map(option));
+  $("action-select").replaceChildren(
+    ...Object.entries(net.actions).map(option),
+  );
   readReport();
   readGate();
 }

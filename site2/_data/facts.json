@@ -37,7 +37,8 @@
     "freshness": "a40f966944356ce543320f59f22ba003e3f0be28532bae029d4f9f9d05efc589",
     "nav": "3cd89b1b73d40adc47c25a1fbf2123dcf6839c92a446275db8f9268a146b62b8",
     "freshness_policy_id": "f660064184f586dac34851895679486af283e817936c7141af751ad567e7ab57",
-    "nav_policy_id": "9fa492c7df6ade4f220a10b5d10da3f158343077b44df7b1939ba83b14ac7949"
+    "nav_policy_id": "9fa492c7df6ade4f220a10b5d10da3f158343077b44df7b1939ba83b14ac7949",
+    "refused_demo": "540326d519dd50f31cf313392638fe11c02f436e5a39120c18492cec7adc7de5"
   },
   "policies": {
     "freshness_id": "disclosure-freshness:1",
