@@ -23,6 +23,7 @@ const V1_REGISTRY_ABI = [
 const V2_REGISTRY_ABI = [
   "function latestSequence(bytes32 assetKey) view returns (uint64)",
   "function getLatestReport(bytes32 assetKey) view returns (tuple(bytes32 reportDigest, bytes32 policyId, bytes32 policyRoot, bytes32 controlSetRoot, bytes32 evidenceRoot, bytes32 approvalDigest, bytes32 epochKey, uint8 status, uint64 observedAt, uint64 validUntil, address publisher, uint64 sequence, bytes32 parentDigest, string reportURI))",
+  "function getReport(bytes32 assetKey, uint64 sequence) view returns (tuple(bytes32 reportDigest, bytes32 policyId, bytes32 policyRoot, bytes32 controlSetRoot, bytes32 evidenceRoot, bytes32 approvalDigest, bytes32 epochKey, uint8 status, uint64 observedAt, uint64 validUntil, address publisher, uint64 sequence, bytes32 parentDigest, string reportURI))",
 ];
 const GATE_ABI = [
   "function check(bytes32 assetKey) view returns (bool allowed, string reason)",
@@ -796,6 +797,39 @@ async function sha256hex(bytes) {
   ).join("");
 }
 
+/* The bundle and report schemas this panel knows how to judge. Anything else is refused
+ * outright rather than partially checked: a checkmark produced by code that does not
+ * understand the file's schema is the exact lie this panel exists to avoid. */
+const KNOWN_BUNDLE_VERSIONS = [
+  "touchstone.verification-bundle.v4",
+  "touchstone.verification-bundle.v5",
+];
+const KNOWN_REPORT_VERSIONS = [
+  "touchstone.observation-report.v4",
+  "touchstone.observation-report.v5",
+];
+
+function deepEqual(a, b) {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== typeof b) return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((value, index) => deepEqual(value, b[index]))
+    );
+  }
+  if (a && b && typeof a === "object") {
+    const keysA = Object.keys(a).sort();
+    const keysB = Object.keys(b).sort();
+    return (
+      deepEqual(keysA, keysB) && keysA.every((key) => deepEqual(a[key], b[key]))
+    );
+  }
+  return false;
+}
+
 function verdict(name, ok, detail) {
   const mark = ok === null ? "·" : ok ? "✓" : "✗";
   const cls = ok === null ? "term-pending" : ok ? "term-ok" : "term-blocked";
@@ -820,9 +854,31 @@ async function verifyBundle(file) {
       );
       return;
     }
-    lines.push(
-      row("bundle", `${file.name} · ${bundle.version || "unversioned"}`),
-    );
+    // Versioned schema, fail closed: an unknown version is refused before any check
+    // could half-run against a shape this code never learned.
+    if (!KNOWN_BUNDLE_VERSIONS.includes(bundle.version)) {
+      render(
+        panel,
+        verdict(
+          "bundle schema",
+          false,
+          `unknown bundle version ${JSON.stringify(bundle.version)} — this panel judges only ${KNOWN_BUNDLE_VERSIONS.join(", ")}`,
+        ),
+      );
+      return;
+    }
+    if (!KNOWN_REPORT_VERSIONS.includes(report.version)) {
+      render(
+        panel,
+        verdict(
+          "report schema",
+          false,
+          `unknown report version ${JSON.stringify(report.version)} — this panel judges only ${KNOWN_REPORT_VERSIONS.join(", ")}`,
+        ),
+      );
+      return;
+    }
+    lines.push(row("bundle", `${file.name} · ${bundle.version}`));
 
     // 1. The Ed25519 signature over the exact canonical bytes the bundle carries.
     const canonicalBytes = new TextEncoder().encode(bundle.report_canonical);
@@ -867,25 +923,19 @@ async function verifyBundle(file) {
       );
     }
 
-    // 2. The canonical text must be the report it claims to be (spot fields, not a re-serialisation).
+    // 2. The canonical text must BE the report — complete nested equality, both
+    // directions. The previous check compared six identity fields, which left every
+    // other field free to disagree; a canonical text with an extra or altered field
+    // would have passed while the signature covered different content than displayed.
     const canonicalParsed = JSON.parse(bundle.report_canonical);
-    const fieldsAgree = [
-      "asset_key",
-      "sequence",
-      "state",
-      "control_set_root",
-      "evidence_root",
-      "approval_ledger_sha256",
-    ].every(
-      (k) => JSON.stringify(canonicalParsed[k]) === JSON.stringify(report[k]),
-    );
+    const fieldsAgree = deepEqual(canonicalParsed, report);
     lines.push(
       verdict(
         "canonical/report agreement",
         fieldsAgree,
         fieldsAgree
-          ? "identity fields agree between report_canonical and signed_report.report"
-          : "report_canonical describes a DIFFERENT report",
+          ? "report_canonical and signed_report.report are identical, every field, both directions"
+          : "report_canonical differs from signed_report.report — the signed bytes describe a DIFFERENT report",
       ),
     );
 
@@ -960,7 +1010,10 @@ async function verifyBundle(file) {
       }
     }
 
-    // 4. The policy manifest hashes to the digest the report commits to.
+    // 4. The policy manifest hashes to the digest the report commits to — and IS the
+    // policy the report names. The digest alone binds bytes; the identity check binds
+    // meaning: a manifest for some other policy hashing correctly is still the wrong
+    // manifest.
     if (report.policy && bundle.policy_manifest) {
       const manifestDigest = await sha256hex(
         new TextEncoder().encode(bundle.policy_manifest),
@@ -972,9 +1025,32 @@ async function verifyBundle(file) {
           `${short(manifestDigest)} vs committed ${short(report.policy.policy_digest)}`,
         ),
       );
+      try {
+        const manifest = JSON.parse(bundle.policy_manifest);
+        const identityAgrees =
+          manifest.policy_id === report.policy.policy_id &&
+          Number(manifest.policy_version) ===
+            Number(report.policy.policy_version);
+        lines.push(
+          verdict(
+            "policy identity",
+            identityAgrees,
+            identityAgrees
+              ? `manifest names ${manifest.policy_id}:${manifest.policy_version}, exactly what the report claims`
+              : `manifest names ${manifest.policy_id}:${manifest.policy_version}, report claims ${report.policy.policy_id}:${report.policy.policy_version}`,
+          ),
+        );
+      } catch {
+        lines.push(
+          verdict("policy identity", false, "policy_manifest is not JSON"),
+        );
+      }
     }
 
-    // 5. Every compilation artifact hashes to the name it is filed under.
+    // 5. Every compilation artifact hashes to the name it is filed under — and is
+    // named by a signed ledger decision. The hash proves the bytes; the binding proves
+    // somebody approved them: an artifact no decision names has no business riding in
+    // a bundle, however correctly it hashes.
     if (bundle.compilations) {
       let all = true;
       for (const [digest, artifact] of Object.entries(bundle.compilations)) {
@@ -988,6 +1064,39 @@ async function verifyBundle(file) {
           `${Object.keys(bundle.compilations).length} artifact(s) hash to their filed digests`,
         ),
       );
+      if (bundle.approval_ledger) {
+        try {
+          const ledger = JSON.parse(bundle.approval_ledger);
+          const named = new Set();
+          for (const list of ["approved", "declined"]) {
+            for (const entry of ledger[list] || []) {
+              const digest =
+                entry.approval?.compilation_digest ?? entry.compilation_sha256;
+              if (digest) named.add(String(digest).replace(/^0x/, ""));
+            }
+          }
+          const orphans = Object.keys(bundle.compilations).filter(
+            (digest) => !named.has(digest.replace(/^0x/, "")),
+          );
+          lines.push(
+            verdict(
+              "ledger ↔ compilation binding",
+              orphans.length === 0,
+              orphans.length === 0
+                ? "every bundled compilation artifact is named by a ledger decision"
+                : `${orphans.length} bundled artifact(s) are named by NO ledger decision: ${orphans.map(short).join(", ")}`,
+            ),
+          );
+        } catch {
+          lines.push(
+            verdict(
+              "ledger ↔ compilation binding",
+              false,
+              "approval_ledger is not JSON",
+            ),
+          );
+        }
+      }
     }
 
     // 6. A Registry v2 attestation, when the bundle carries one, recovers its publisher.
@@ -1059,6 +1168,57 @@ async function verifyBundle(file) {
             String(error.message || error).slice(0, 160),
           ),
         );
+      }
+
+      // 7. The registry actually stores what the attestation describes. Everything
+      // above is offline; this one read asks the chain the attestation names whether
+      // a report with this digest sits at this key and sequence. A bundle whose
+      // attestation verifies but was never published would fail exactly here.
+      const chainNet = Object.values(CONFIG.networks).find(
+        (n) => Number(n.chainId) === Number(a.chain_id),
+      );
+      if (!chainNet) {
+        lines.push(
+          verdict(
+            "stored on-chain report",
+            null,
+            `attestation names chain ${a.chain_id}, which this page has no endpoints for`,
+          ),
+        );
+      } else {
+        try {
+          const head = await pinnedHead(chainNet);
+          const iface = new ethers.Interface(V2_REGISTRY_ABI);
+          const { decoded, endpoint } = await ethCall(
+            chainNet,
+            a.verifying_contract,
+            iface,
+            "getReport",
+            ["0x" + a.asset_key, a.sequence],
+            head.hex,
+          );
+          const stored = decoded[0];
+          const digestMatches =
+            String(stored.reportDigest).toLowerCase() ===
+            ("0x" + a.report_digest).toLowerCase();
+          lines.push(
+            verdict(
+              "stored on-chain report",
+              digestMatches,
+              digestMatches
+                ? `registry ${short(a.verifying_contract)} stores digest ${short(stored.reportDigest)} at sequence ${a.sequence} · block ${head.number} via ${endpoint}`
+                : `registry stores ${short(stored.reportDigest)}, attestation claims ${short("0x" + a.report_digest)}`,
+            ),
+          );
+        } catch (error) {
+          lines.push(
+            verdict(
+              "stored on-chain report",
+              false,
+              `the chain read failed: ${String(error.message || error).slice(0, 140)}`,
+            ),
+          );
+        }
       }
     }
 

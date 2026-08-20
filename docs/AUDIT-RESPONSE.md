@@ -17,6 +17,32 @@ defects the audit noted in passing.
 
 ---
 
+## Status update — 2026-08-20, the fifth external review
+
+The fifth review arrived as a hardening package pinned to `a432886` (three documents; its
+patch scripts were reviewed as a specification and never executed — every claim below was
+re-verified against the repository and the live chains before anything changed). Deltas:
+
+| Its finding | Now |
+|---|---|
+| "Stale-phrase checks must be case-insensitive" | **CLOSED — and it was worse than claimed.** The scan lowercased the document but compared each phrase as recorded, so five of the eight recorded phrases could never match anything. The comparison now lowers the phrase at the moment of use, and a test walks every recorded phrase through a document containing it verbatim. The repaired gate found the public record clean. |
+| "Truth gate must scan Operations, Limitations and the submission draft" | **CLOSED.** LIMITATIONS.md and SUBMISSION-DRAFT.md joined the default scan set; OPERATIONS.md and the SDK README were already in it. |
+| "Docs must reflect the a432886 deployment state" | **CLOSED.** README, OPERATIONS, LIMITATIONS and SUBMISSION-DRAFT all still described 2026-08-18 — five reports all `UNVERIFIABLE`, publisher disabled, V2 undeployed, repository private, quorum unconfigured. Corrected against `site2/_data/facts.json`, live chain reads, and a live check of the production host's unit state and quorum variable. The suite count was itself off by one (1,977 then, 1,978 with the new gate test). |
+| "Add SDK and Terminal tests to required CI" | **CLOSED.** New `sdk` job: `npm test` with an exact-count guard (15 — `node --test` exits 0 when its glob matches nothing, the same failure mode the hardhat count guards against) plus `node --check` on the Terminal. The aggregate now waits on eight jobs; `assert_ci_gates.py` enforces that it must. |
+| "Terminal: no dynamic innerHTML" | **CLOSED.** Every panel renders through DOM builders; chain-sourced strings (reportURI, refusal reasons, revert details, dropped-file names) enter as text nodes. Zero `innerHTML` remains in `app.js`. |
+| "Pin reads to one explicit block header" | **CLOSED.** One `eth_getBlockByNumber` pins each panel; registry and gate reads pass that block tag and the panel prints the block. |
+| "Use chain block time for expiry, not the browser clock" | **CLOSED.** Expiry is judged against the pinned header's own timestamp. |
+| "Compare configured RPC responses" | **CLOSED.** Pinned reads ask every configured endpoint and require byte-identical answers; disagreement is refused, and a lone responder is labelled "(only responder)" rather than blurred into agreement. Unpinned simulation keeps ordered failover — hosts on different heads disagree without either lying. |
+| "Verify GuardedAction immutables and admission/gate binding before simulation or execution" | **CLOSED.** Both paths read the target's bindings back from the chain at a pinned block and compare them to config pins that were themselves read from both chains (all four GuardedActions' `gate()`/`assetKey()`, `admissionOf(freshness)`); mismatch aborts before any calldata is built. |
+| "Abort if the visible action changes during preflight" | **CLOSED.** A selection snapshot taken at click is re-checked after every await; a changed selection aborts with nothing sent. |
+| "Optional ERC-8021 Builder Code without inventing a code" | **CLOSED, inert.** `builderCode: null` in the page config; when the owner registers a real code the schema-0 suffix is appended to execute and to the simulation. The byte layout is `sdk/src/attribution.ts`'s, pinned by the SDK suite's canonical vector and cross-checked against an independent implementation; the in-page encoder was proven byte-identical before landing. |
+| "Expand browser verification" | **CLOSED for: versioned schema (fail-closed on unknown versions), complete nested canonical/report equality both directions (proven against all 12 retained bundles), policy identity, ledger↔compilation binding, and the stored on-chain report (one pinned read against the chain the attestation names, digest compared). DECLINED for: control-set and evidence root recomputation in the browser — re-deriving the canonical hashing scheme in JavaScript risks a checkmark that lies, and the panel's "not checked here" row continues to say so plainly; the CLI recipes on /verify remain the way to check roots. |
+| "Remove misleading mainnet bundle links from the two lost testnet policy entries" | **NOT APPLICABLE.** The dossier rows already read "No bundle file — see the note below" and link only their own testnet transactions; the finding described a tree five commits older than its own pin. |
+| Builder Code registration, X post/form evidence, external adoption, multi-day unattended window, custody, independent security review, brand clearance | **OPEN — owner.** As the package itself states, no code patch can perform these. |
+| "Second live asset (FOBXX)" | **DECLINED for Phase 1.** Contradicts the recorded scope decision; FOBXX remains the documented monthly contrast asset without an adapter. |
+
+---
+
 ## Status update — 2026-08-19 evening
 
 The second external re-audit examined `fb7806e` and scored 8.0/10; five commits landed after
