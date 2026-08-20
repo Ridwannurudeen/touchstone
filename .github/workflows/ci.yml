@@ -172,6 +172,43 @@ jobs:
             exit 1
           fi
 
+  sdk:
+    name: sdk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: sdk/package-lock.json
+      - run: npm ci
+        working-directory: sdk
+      # Counted, for the same reason the hardhat job counts: `node --test` exits 0 when a
+      # glob matches no files, so a renamed test directory would pass silently forever.
+      - name: Run the SDK suite and prove it ran
+        working-directory: sdk
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee sdk-test.log
+          passing=$(grep -oE '(#|ℹ) pass [0-9]+' sdk-test.log | head -1 | grep -oE '[0-9]+')
+          echo "node --test reported ${passing:-0} passing"
+          if [ "${passing:-0}" -ne 15 ]; then
+            echo "expected exactly 15 passing SDK tests, got ${passing:-0}"
+            echo "if this change is intended, update the number here in the same commit"
+            exit 1
+          fi
+      # The Policy Terminal is the one public page with JavaScript. A syntax error there
+      # is a blank product page that every other gate would wave through, because nothing
+      # else in CI ever parses the file.
+      - name: The Policy Terminal parses
+        run: node --check site2/assets/app.js
+
   local_e2e:
     name: managed local-chain E2E
     runs-on: ubuntu-24.04
@@ -254,7 +291,7 @@ jobs:
     name: required
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    needs: [lint, workflow_gates, project_truth, python_tests, contracts, local_e2e, mutation]
+    needs: [lint, workflow_gates, project_truth, python_tests, contracts, sdk, local_e2e, mutation]
     if: always()
     permissions:
       contents: read
