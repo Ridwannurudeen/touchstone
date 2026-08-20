@@ -12,7 +12,7 @@
     "enforcement_txs": "6",
     "networks": "2",
     "bundles_downloadable": "12",
-    "python_tests": "1,976",
+    "python_tests": "1,978",
     "contract_tests": "111",
     "sdk_tests": "15",
     "mutations": "125",

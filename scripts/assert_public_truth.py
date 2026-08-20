@@ -42,9 +42,7 @@ class PolicyPanelParser(HTMLParser):
         self._depth = 0
         self._text: list[str] = []
 
-    def handle_starttag(
-        self, tag: str, attrs: list[tuple[str, str | None]]
-    ) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attributes = {key: value or "" for key, value in attrs}
         if self._attributes is not None:
             self._depth += 1
@@ -78,22 +76,30 @@ def assert_state(state: dict[str, object], public_paths: tuple[Path, ...]) -> No
         if not isinstance(deployment, dict):
             raise PublicTruthError("deployment records must be objects")
         address = deployment.get("registry_address")
-        if isinstance(address, str) and address.lower().startswith("0x") and set(
-            address[2:]
-        ) == {"0"}:
+        if (
+            isinstance(address, str)
+            and address.lower().startswith("0x")
+            and set(address[2:]) == {"0"}
+        ):
             raise PublicTruthError(
                 f"{deployment.get('source')} describes a zero address as deployed"
             )
-        if address and address != "not_deployed" and deployment.get("deployment_state") not in {
-            "active",
-            "superseded",
-        }:
+        if (
+            address
+            and address != "not_deployed"
+            and deployment.get("deployment_state")
+            not in {
+                "active",
+                "superseded",
+            }
+        ):
             raise PublicTruthError(
                 f"{deployment.get('source')} has an address but no deployed state"
             )
-        if not isinstance(deployment.get("network"), str) or type(
-            deployment.get("chain_id")
-        ) is not int:
+        if (
+            not isinstance(deployment.get("network"), str)
+            or type(deployment.get("chain_id")) is not int
+        ):
             raise PublicTruthError(
                 f"{deployment.get('source')} names a network without a chain id"
             )
@@ -110,8 +116,9 @@ def assert_state(state: dict[str, object], public_paths: tuple[Path, ...]) -> No
     for policy in policies:
         if not isinstance(policy, dict):
             raise PublicTruthError("policy records must be objects")
-        policy_id, policy_version = policy.get("policy_id"), policy.get(
-            "policy_version"
+        policy_id, policy_version = (
+            policy.get("policy_id"),
+            policy.get("policy_version"),
         )
         if not isinstance(policy_id, str) or type(policy_version) is not int:
             raise PublicTruthError("policy records must name an id and integer version")
@@ -157,7 +164,11 @@ def assert_state(state: dict[str, object], public_paths: tuple[Path, ...]) -> No
         for public_file in files:
             text = public_file.read_text(encoding="utf-8").lower()
             for phrase in STALE_PHRASES:
-                if phrase in text:
+                # The document is lowercased above, so the phrase must be lowered here
+                # too — comparing it as recorded left every phrase containing an
+                # uppercase letter unable to match anything, which was five of the
+                # eight. Found by an external audit on 2026-08-20.
+                if phrase.lower() in text:
                     raise PublicTruthError(
                         f"stale public phrase {phrase!r} remains in {public_file}"
                     )
@@ -223,6 +234,12 @@ def main(argv: list[str] | None = None) -> int:
             or (
                 Path("README.md"),
                 Path("docs/OPERATIONS.md"),
+                # LIMITATIONS and the submission draft joined on 2026-08-20: both are
+                # public claims the moment the repo is public — the submission draft is
+                # literally the text judges receive — and neither was scanned, so a row
+                # they froze could contradict the site without anything failing.
+                Path("docs/LIMITATIONS.md"),
+                Path("docs/SUBMISSION-DRAFT.md"),
                 Path("sdk/README.md"),
                 Path("site2"),
             )

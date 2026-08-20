@@ -21,23 +21,23 @@ observed.
 | Version | `0.1.0` (`pyproject.toml`) |
 | Licence | Apache-2.0 |
 | One sentence | Touchstone compiles issuer-published RWA disclosures into cited, machine-checkable controls, evaluates them deterministically against retained evidence, and can publish signed results to an append-only registry on X Layer. |
-| Public website | **LIVE** — https://touchstone.gudman.xyz — 22 pages, zero external JavaScript, self-hosted fonts |
+| Public website | **LIVE** — https://touchstone.gudman.xyz — 26 routes, self-hosted fonts, no external JavaScript except the vendored ethers bundle on `/app` |
 | Public dossier | **LIVE** — https://touchstone.gudman.xyz/dossier/ustb-2026-08-17 — the published report in full, every control and digest |
 | Demo URL | **LIVE** — https://touchstone.gudman.xyz/judge — retained replay and refusal path; the narrated replacement film is not uploaded |
-| Documentation site | **LIVE** — https://touchstone.gudman.xyz/docs — 2,009 lines of the project's committed documentation |
+| Documentation site | **LIVE** — https://touchstone.gudman.xyz/docs — the project's committed documentation rendered in full |
 | X / social handles | **`@touch__stone`** — created by the owner 2026-08-18. The owner reports the @XLayerOfficial post as published; it is not machine-verifiable from this repository, and its URL belongs in the submission form. The rules require the account be *kept active*, which cannot be backdated. |
 | Domain | `gudman.xyz` subdomain, TLS via Let's Encrypt, certificate to 2026-11-16 |
 | Repository | `github.com/Ridwannurudeen/touchstone` — **PUBLIC since 2026-08-19**, `main` protected by the CI aggregate check. The private-until-deadline plan was superseded by the owner's decision to open it early. |
 | Submission venue | **OKX AI Season Hackathon**, X Layer. Google Form, deadline **2026-08-21 23:59 UTC**. |
 | Contact | `unknown` — not recorded in the tracked tree. |
 
-## Competition requirements, checked against the tree on 2026-08-18
+## Competition requirements, checked against the tree on 2026-08-20
 
 | Requirement | State |
 |---|---|
 | AI in the product design | **Met.** A model compiles issuer disclosures into controls citing byte-exact spans. It never runs in the serving path, which is the point — the daily result is deterministic. |
-| Deployed on X Layer testnet | **Met.** Registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`, chain 1952, three published reports (sequences 1–3; sequence 3 is a correction). `AssetGate` is also live there at `0xAac48DC261B04737FDCB101D5049395121034a83` and correctly refuses USTB. |
-| Launched on X Layer mainnet | **MET, 2026-08-18.** Registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, chain 196, deployed at block 68291416 under a recorded owner approval; manifest `deployments/xlayer-mainnet.json`, `deployment_state: active`. Two published reports (sequence 1, and sequence 2 correcting it). ⚠️ That address is *also* a superseded registry on chain 1952 — same deployer, nonce 0 — so the chain id is the only thing that identifies this deployment. `AssetGate` is deliberately **not** on mainnet: `requiredControlSetRoot` is immutable and the approved control set is still moving. |
+| Deployed on X Layer testnet | **Met.** Registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`, chain 1952, USTB sequences 1–4 (sequence 4 is `CONFIRMED`), plus both policy keys at sequence 1 with Registry v2 attestations on `0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720`. The legacy `AssetGate` at `0xAac48DC261B04737FDCB101D5049395121034a83` and a freshness-pinned gate at `0x0bc5c0cc879CE1b5AD23aEdA8fC42dB414eB8eE1` are live there. |
+| Launched on X Layer mainnet | **MET, 2026-08-18.** Registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, chain 196, deployed at block 68291416 under a recorded owner approval; manifest `deployments/xlayer-mainnet.json`, `deployment_state: active`. USTB sequences 1–4 (sequence 4 is `CONFIRMED`, published unattended on 2026-08-20), both policy keys at sequence 2 with Registry v2 attestations on `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` (chain 196). ⚠️ Both registry addresses recur across chains — same deployer, aligned nonces — so the chain id is the only thing that identifies a deployment. `AssetGateV2` is live on mainnet at `0x8641CF6d40524AC55aBd0a02601AfBd374EFB059` (block 68427105), pinned to the approved policy, control-set root and signed approval-ledger digest; `RWAAdmissionController` at `0x5C5265392701A99cbB137aF8116E0F97f630329A` consumes it with permit and refusal transactions on chain. |
 | Dedicated X account, kept active | **Account created:** `@touch__stone`. "Kept active" is a continuing obligation, not a one-time step. |
 | Post mentioning @XLayerOfficial | **Owner reports this as done.** Not machine-verifiable from this repo, and the post URL is not recorded here — it belongs in the submission form field, not in a document that cannot check it. |
 | Google Form by 2026-08-21 23:59 UTC | **NOT SUBMITTED.** The owner holds the form. Nothing is submitted without explicit approval. |
@@ -50,9 +50,11 @@ actually verified.
 
 ## 2. What was built
 
-A single USTB vertical across testnet and mainnet, carrying five legacy
-v1 reports: testnet sequences 1–3 and mainnet sequences 1–2. The latest
-report on each chain is `UNVERIFIABLE`.
+A single USTB vertical across testnet and mainnet: 14 published reports
+across both chains, 9 of them `CONFIRMED`, spanning the asset key and two
+policy keys, with six Registry v2 attestations and six enforcement
+transactions. The first `CONFIRMED` state landed 2026-08-19; the
+2026-08-20 mainnet slot was published unattended by the production host.
 
 **Evidence and controls.** Source manifests for USTB, USDY and FOBXX.
 Golden fixtures where retrieval was bounded. Five approved controls,
@@ -86,30 +88,41 @@ the epoch they correct, publisher authorise / revoke / rotate,
 immutable owner and expected chain id. No custody, no payable, no
 token, no proxy, no `delegatecall`, no `selfdestruct`.
 `AssetGate`: freshness and publisher checks against the latest report;
-live on testnet and currently refusing USTB. `GuardedAction` and
-`TouchstoneRegistryV2` are built and tested locally but are not deployed.
+live on testnet. `TouchstoneRegistryV2`: policy-aware reports carrying
+the signed approval-ledger digest; deployed on both chains and holding
+attestations for both policies. `AssetGateV2`: additionally pins exact
+policy identity, policy root and approval digest at construction; live
+on mainnet at `0x8641CF6d40524AC55aBd0a02601AfBd374EFB059`.
+`GuardedAction` permit/refuse pairs and the `RWAAdmissionController`
+admission sequence (propose, activate on the gate's word, execute, and a
+refused activation left on chain) are real transactions on both their
+networks.
 
 **Operations code.** Unattended daemon (`scripts/run_service.py`),
 append-only incidents, heartbeat, watchdog, one HTTPS alert webhook,
 gas runway from measured costs, encrypted backup and a restore that
-verifies into a fresh directory. The production observer and status
-timer are active on the shared VPS; the publisher unit remains disabled.
+verifies into a fresh directory. The production observer, status timer
+and publisher unit are all active on the shared VPS; the publisher was
+enabled 2026-08-20 under the owner's release of that gate, and its first
+unattended slot published the mainnet asset and both policy reports,
+all `CONFIRMED`.
 
 **Testnet.** Registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` on
 X Layer testnet (chain 1952), deployed 2026-08-17 at block 38489602
 under a recorded owner approval. Publisher
-`0x86A100BDdF8754c95fec97BeC96dBFd64Be44710` authorised. Holds three
-reports. Predecessor `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` is
+`0x86A100BDdF8754c95fec97BeC96dBFd64Be44710` authorised. Holds USTB
+sequences 1–4 plus both policy keys at sequence 1; Registry v2 at
+`0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720` holds their attestations.
+Predecessor `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` is
 superseded and must not be published to.
 
 **CI.** `.github/workflows/ci.yml` runs ruff, pytest on Python 3.11 and
-3.12, Hardhat, a managed local-
-chain E2E, and a mutation harness. The workflow is given no project
-secret. Branch protection that would make the aggregate job mandatory
-is `unknown` from this tree; the workflow file itself says that on a
-private repository without GitHub Pro the protection APIs refuse.
-The verified result is 1,971 passed / 1 skipped locally with public CI green on the same commit class, 102 contract tests,
-and 125/125 mutants killed; a public Actions run remains open.
+3.12, Hardhat, a managed local-chain E2E, a public-truth gate against
+the canonical project state, and a mutation harness. The workflow is
+given no project secret. The repository is public and `main` requires
+the aggregate `required` check. The verified local result at this
+revision is 1,978 passed / 1 skipped, 111 contract tests, 15 SDK tests,
+and 125/125 mutants killed.
 
 **Release builder.** `scripts/build_release.py` writes an unsigned JSON
 document from the tree and from caller-supplied test counts. It does
@@ -123,11 +136,11 @@ Stated as misses, not as near-misses.
 
 | Target (`ROADMAP.md`) | Result |
 |---|---|
-| ≥2 fully autonomous **live** adapters | **Missed — one, not zero.** USTB ran the unattended daemon against the live issuer on 2026-08-17 and published sequence 1. This row said "zero proven live" until 2026-08-18, contradicting both `LIMITATIONS.md` and the published report. One live slot is also not continuous operation. USDY's daily page is bounded and measured but has no approved control; FOBXX has a live bounded SEC N-MFP3 regulator route, monthly; OUSG is the ruled next adapter. |
-| One live consumer contract gating on state | **Met on testnet**, 2026-08-18. `AssetGate` at `0xAac48DC261B04737FDCB101D5049395121034a83` returns `(false, "status not allowed")` for USTB — it refuses, which is the correct behaviour against an `UNVERIFIABLE` report. Not on mainnet, and no third party consumes it. |
-| One production canary epoch | **Met on both chains.** Testnet 2026-08-17 (sequence 1, block 38526525) and mainnet 2026-08-18 (sequence 1, block 68292878). Both `UNVERIFIABLE`. |
-| Living dossier and developer surface | **Shipped 2026-08-18.** Live at https://touchstone.gudman.xyz — 22 pages, zero external JavaScript, an offline verifier, `/judge`, a coverage page, and 2,009 lines of the repository's documentation. |
-| Public demo | **Live** at https://touchstone.gudman.xyz. The two-act script in `ROADMAP.md` still cannot be walked as written; see `docs/DEMO-RUNBOOK.md`. |
+| ≥2 fully autonomous **live** adapters | **Missed — one, not zero.** USTB runs the unattended daemon against the live issuer; since 2026-08-20 the production host publishes its daily slot on its own. Still one asset, not two. USDY's daily page is bounded and measured but has no approved control; FOBXX has a live bounded SEC N-MFP3 regulator route, monthly; OUSG is the ruled next adapter. |
+| One live consumer contract gating on state | **Met on both chains.** Testnet `AssetGate` at `0xAac48DC261B04737FDCB101D5049395121034a83` (2026-08-18) refused USTB while it was `UNVERIFIABLE` and the freshness-pinned gates flipped to `(true, "allowed")` when confirmation landed. Mainnet `AssetGateV2` at `0x8641CF6d40524AC55aBd0a02601AfBd374EFB059` (2026-08-20) pins policy, control-set root and approval digest, and `RWAAdmissionController` consumes it on chain. No third party consumes either — both consumers are this project's own contracts. |
+| One production canary epoch | **Met on both chains.** Testnet 2026-08-17 (sequence 1, block 38526525) and mainnet 2026-08-18 (sequence 1, block 68292878), both honestly `UNVERIFIABLE` on an unseeded workspace; `CONFIRMED` reached on both chains 2026-08-19 once a qualifying 24-hour-old capture existed. |
+| Living dossier and developer surface | **Shipped 2026-08-18, rebuilt 2026-08-20.** Live at https://touchstone.gudman.xyz — 26 routes, zero external JavaScript except the vendored ethers bundle on `/app`, an offline verifier, `/judge`, a live Policy Terminal, and the repository's documentation rendered in full. |
+| Public demo | **Live** at https://touchstone.gudman.xyz. `/app` walks gate checks and the admission action against both live chains; the narrated film is still not uploaded. |
 
 Phase 1 ships one USTB vertical. The two-adapter and production-canary
 metrics were not retargeted.
@@ -156,29 +169,36 @@ attestation and must not be described as trustless.
 
 | Item | Value |
 |---|---|
-| X Layer testnet (1952) registry | `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` |
+| X Layer testnet (1952) registry | `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` — ⚠️ the same address is the *Registry v2* on chain 196; pin the chain id |
+| Testnet Registry v2 | `0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720` |
 | Testnet publisher | `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710` |
-| Testnet `AssetGate` | `0xAac48DC261B04737FDCB101D5049395121034a83` |
+| Testnet `AssetGate` (legacy) / freshness gate | `0xAac48DC261B04737FDCB101D5049395121034a83` / `0x0bc5c0cc879CE1b5AD23aEdA8fC42dB414eB8eE1` |
 | X Layer mainnet (196) registry | `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` — ⚠️ the same address is a *superseded* registry on chain 1952; pin the chain id |
+| Mainnet Registry v2 | `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` (chain 196, block 68389940) |
 | Mainnet publisher | `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710` (same identity as testnet) |
-| Mainnet `AssetGate` | `not_deployed` — deliberately; `requiredControlSetRoot` is immutable and the approved set is still moving |
+| Mainnet `AssetGateV2` | `0x8641CF6d40524AC55aBd0a02601AfBd374EFB059` — block 68427105, pins policy id, policy root, control-set root and the signed approval-ledger digest |
+| Mainnet `RWAAdmissionController` | `0x5C5265392701A99cbB137aF8116E0F97f630329A` — block 68427148; propose, activate, execute and a refused activation are all on-chain transactions |
 | Hero asset (off-chain identity) | USTB `eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e` |
-| Published report / explorer tx | Five reports, all `UNVERIFIABLE`. First: USTB sequence 1, block 38526525, tx `0x5107140c…5be6b869`, X Layer testnet. Latest testnet: sequence 3 (a correction), block 38617112. Latest mainnet: sequence 2 (a correction), block 68307118 |
-| Verification API | `not_deployed` |
+| Published reports | 14 across both chains, 9 `CONFIRMED`. First: USTB sequence 1, block 38526525, tx `0x5107140c…5be6b869`, X Layer testnet. Latest on each chain: asset sequence 4, `CONFIRMED` — the mainnet one published unattended 2026-08-20. Full per-report table with transactions: https://touchstone.gudman.xyz/dossier |
+| Verification API | `not_deployed` — verification is offline and in-browser, by design |
 | Status page | https://touchstone.gudman.xyz/status — regenerated every five minutes from the observer's log; states its own generation time and that it may be stale |
 
-Further mainnet publication is unscheduled. The registry exists, but the
-publisher is disabled and the deployer and publisher keys do not sit on
-separate hosts.
+Mainnet publication is scheduled: the production host's publisher unit
+has run its daily slot unattended since 2026-08-20. The custody
+deviation stands — the deployer and publisher keys still do not sit on
+separate hosts, and the publisher's key now also lives on the shared
+production host, root-owned and never readable by the service account.
 
 ---
 
 ## 5. Demo, as it would be described if asked
 
 The specified demo is two acts, 90–120 seconds, in `ROADMAP.md`. `/judge`
-now provides the retained replay and refusal path, and a legacy
-`AssetGate` is live on testnet. The live policy-bound publication,
-permitted/refused mainnet pair and narrated replacement film do not exist.
+provides the retained replay and refusal path; `/app` walks the live
+gates and the admission action against both chains. The policy-bound
+publications exist (both policies, both chains, `CONFIRMED`), and the
+permitted/refused pair is on mainnet as real transactions. What does not
+exist is the narrated film — an 89-second silent cut is on file.
 
 What can be shown without a public chain: the managed local-chain
 end-to-end test, which deploys a registry and a gate on Hardhat,
@@ -220,10 +240,10 @@ evidence or the refusal.
 
 | Claim one might want | Honest substitute | Evidence |
 |---|---|---|
-| "Live on X Layer" | Registries are live on testnet (3 reports) and mainnet (2 reports), all `UNVERIFIABLE`. Live is accurate; "verified" is not. | `docs/OPERATIONS.md`, `docs/DEPLOYMENT-G1-EXECUTED.md` |
-| "Two live adapters" | One adapter, several live runs. Not two assets, and **not continuous** — every run was hand-started. | `ROADMAP.md` completion table |
-| "Consumer contract in production" | `AssetGate` is live on **testnet** at `0xAac48DC2…`, and refuses USTB. It is `not_deployed` on mainnet, and no third party consumes it. | `contracts/scripts/deploy_gate.js` |
-| "Autonomous canary" | Five reports were published, but every publication was hand-started; unattended publication is not proven. | `docs/OPERATIONS.md` |
+| "Live on X Layer" | Registries v1 and v2 are live on both chains: 14 reports, 9 `CONFIRMED`. Live and verified-against-evidence are both accurate; "trustless" is not. | `docs/OPERATIONS.md`, https://touchstone.gudman.xyz/dossier |
+| "Two live adapters" | One adapter. Not two assets. Its daily slot has run unattended on the production host since 2026-08-20 — a two-day-old property, not a track record. | `ROADMAP.md` completion table |
+| "Consumer contract in production" | `AssetGateV2` and `RWAAdmissionController` are live on **mainnet** with permit and refusal transactions; gates are live on testnet. No third party consumes them — every consumer is this project's own contract. | `contracts/scripts/deploy_gate.js`, `deploy_admission.js` |
+| "Autonomous canary" | The 2026-08-20 mainnet slot was published unattended by the production host. Its first slot failed closed on a parse timeout the loaded host could not meet; the timeout was corrected and the next slot published on its own. One unattended day is proof of the path, not of continuity. | `docs/OPERATIONS.md` |
 | "Public dossier" | Live since 2026-08-18 at touchstone.gudman.xyz. | The site itself; `docs/DEPLOY-T9.md` |
 | "Independently attested" | Not claimed. Issuer API is issuer disclosure. | `manifests/sources/ustb.json` `authority_class: issuer-api` |
 | "Regulatory-grade" / "safe" / "solvent" | Banned. Not claimed. | `ROADMAP.md` ambition-theatre list; `docs/LIMITATIONS.md` |
@@ -258,8 +278,8 @@ Prepared since this list was written:
 
 Not prepared, and not to be invented:
 
-- Public repository URL — `not_deployed` until the owner makes the repository public
-- Demo video URL — `not_deployed` until the narrated cut is uploaded
+- Demo video URL — `not_deployed` until the narrated cut is uploaded. The
+  public repository URL, by contrast, exists: https://github.com/Ridwannurudeen/touchstone
 
 ---
 

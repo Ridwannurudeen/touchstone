@@ -21,15 +21,15 @@ honest state, and a runbook that invented them would be worse than one that admi
 | Backup | `touchstone/backup.py` | `scripts/backup_workspace.py` | daily |
 | Restore | `touchstone/backup.py` | `scripts/restore_workspace.py` | rehearsal only |
 
-**Host:** `75.119.153.252`, shared, under the disclosed custody deviation. **Supervisor units:** `touchstone-observer@` active since 2026-08-18 and `touchstone-status@` on a five-minute timer; `touchstone-publisher@` installed and **deliberately not enabled** — see `docs/DEPLOY-SERVICE.md` §3c.
+**Host:** `75.119.153.252`, shared, under the disclosed custody deviation. **Supervisor units:** `touchstone-observer@` active since 2026-08-18, `touchstone-status@` on a five-minute timer, and `touchstone-publisher@xlayer-mainnet` **enabled 2026-08-20 under the owner's release of the §3c gate** — its first slot failed closed on a parse timeout the loaded host could not meet, the timeout was corrected, and the next slot published the mainnet asset and both policy reports unattended, all `CONFIRMED`. The slot fires daily around 02:47 UTC.
 
 **Deployment:**
 
 | Network | State |
 |---|---|
-| X Layer **testnet** (chain 1952) | **ACTIVE** — registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` (block 38489602), deployed 2026-08-17 under a recorded owner approval. Manifest `deployments/xlayer-testnet-2.json`, `deployment_state: active`, publisher authorized. **Holds three reports**: USTB sequences 1–3, `latestSequence` 3 |
+| X Layer **testnet** (chain 1952) | **ACTIVE** — registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` (block 38489602), deployed 2026-08-17 under a recorded owner approval. Manifest `deployments/xlayer-testnet-2.json`, `deployment_state: active`, publisher authorized. Holds USTB sequences 1–4 (`latestSequence` 4, `CONFIRMED`) plus both policy keys at sequence 1. Registry v2 `0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720` (block 38699818) holds both policies' attestations |
 | X Layer testnet — **predecessor** | **SUPERSEDED** — registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` **on chain 1952** (block 38369203) predates the `epochKey` change and cannot enforce one report per epoch. Its manifest declares `deployment_state: superseded` and the service refuses it before reading any key. It published nothing, verified by a full log scan from its deployment block to head. **This address is not unique to it — see the collision note below** |
-| X Layer **mainnet** (chain 196) | **ACTIVE** — registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` (block 68291416), deployed 2026-08-18 under a recorded owner approval. Manifest `deployments/xlayer-mainnet.json`, `deployment_state: active`, publisher authorized. **Holds two reports**: USTB sequences 1–2, `latestSequence` 2. Its workspace is `touchstone-workspace-mainnet/ustb`, separate from testnet's. **The key separation recorded in `docs/DEPLOYMENT-G1-EXECUTED.md` §"Deviation" is still not real** — both keys remain on one laptop, and that document said mainnet must not proceed until it was. It proceeded anyway, under owner direction, with the exposure disclosed rather than resolved |
+| X Layer **mainnet** (chain 196) | **ACTIVE** — registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` (block 68291416), deployed 2026-08-18 under a recorded owner approval. Manifest `deployments/xlayer-mainnet.json`, `deployment_state: active`, publisher authorized. Holds USTB sequences 1–4 (`latestSequence` 4, `CONFIRMED`, published unattended 2026-08-20) plus both policy keys at sequence 2. Registry v2 `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` (chain 196, block 68389940) holds their attestations; `AssetGateV2` `0x8641CF6d40524AC55aBd0a02601AfBd374EFB059` and `RWAAdmissionController` `0x5C5265392701A99cbB137aF8116E0F97f630329A` consume them. Canonical mainnet history lives on the VPS at `/var/lib/touchstone/xlayer-mainnet/ustb` since the 2026-08-19 workspace migration. **The key separation recorded in `docs/DEPLOYMENT-G1-EXECUTED.md` §"Deviation" is still not real** — the laptop holds both deployer and publisher keys, and the publisher's key now also lives on the shared production host (root-owned `0600`, read by systemd before privileges drop, never readable by the service account). Disclosed rather than resolved |
 
 > **Address collision — read before pointing any tool at `0xc9d58e…D30d`.** The same deployer at
 > nonce 0 produced the same contract address on both chains, so this one address is the
@@ -47,7 +47,13 @@ registry's manifest `deployments/xlayer-testnet.json` is retained; its note dist
 fields read from the chain from the ones that are reconstructed configuration.
 
 **The canary ran on 2026-08-17 at 16:49 UTC, under its own owner authorisation, and it is the
-first report Touchstone has ever published.** Every published report to date, on both chains:
+first report Touchstone has ever published.** The table below is that first era — the five
+v1 asset reports through 2026-08-18, kept because its footnote records a correction lesson.
+It is **not** the current publication state: as of 2026-08-20 there are 14 published reports
+across both chains, 9 of them `CONFIRMED`, spanning the asset key and both policy keys with
+Registry v2 attestations. The per-report table with every transaction is the dossier at
+https://touchstone.gudman.xyz/dossier, generated from `site2/_data/facts.json`, which is the
+canonical record:
 
 | Chain | Seq | Epoch | State | Event | Block | Transaction |
 |---|---|---|---|---|---|---|
@@ -69,7 +75,7 @@ Each correction reproduces its original's `control_set_root`, `evidence_root` an
 epoch without opening one. Verified from chain after publication: `latestSequence` 3 and 2, both
 `Corrected` events naming sequence 1, both transparency logs re-verifying end to end.
 
-Every other asset key is still zero on both chains.
+Every asset key other than USTB's and its two policy keys is still zero on both chains.
 
 ### Measured publication window
 
@@ -78,8 +84,9 @@ for 2026-08-17 through 2026-08-18. Testnet records 2 scheduled, 2 completed, 0 m
 1 corrected publication. Mainnet records 2 scheduled calendar slots, 1 completed, 0 missed,
 1 corrected publication and 1 unaccounted slot because the mainnet workspace began on Aug 18.
 The histories were not concatenated. This is a publication-history measurement, not proof of
-continuous unattended operation; the heartbeat snapshots show the last hand-started run and
-no next scheduled slot.
+continuous unattended operation. Unattended operation itself began 2026-08-20, when the
+enabled publisher unit ran the mainnet slot on its own; one day of it is proof of the path,
+not a track record, and the measured window predates it.
 
 The reproducible command is:
 
@@ -347,16 +354,18 @@ an epoch, deploy on another network, or make a private repository public.
       approval packet, so its `AWAITING DIGEST-BOUND APPROVAL` banner is historical rather
       than current status. `docs/DEPLOYMENT-G1-EXECUTED.md` is the execution record
 - [x] **Live USTB testnet epoch** — done 2026-08-17 under its own owner authorisation, and
-      twice more since. Testnet holds three reports
+      repeatedly since. Testnet holds four asset reports and both policy keys
 - [x] **Mainnet deploy + canary** — done 2026-08-18 under a recorded owner approval. Mainnet
-      holds two reports. Note this was authorized while the key separation this document
-      requires still did not exist; see the deployment table above
-- [ ] **Continuous operation** — still open, and the real gap. Every slot to date was
-      hand-started; no production host holds a sustained schedule
+      holds four asset reports and both policy keys at sequence 2. Note this was authorized
+      while the key separation this document requires still did not exist; see the
+      deployment table above
+- [ ] **Continuous operation** — the publisher unit has run the mainnet slot unattended
+      since 2026-08-20. One unattended day opens this box; it does not check it. It checks
+      when a multi-day measured window exists with no hand-started slot in it
 - [ ] **Submission** — owner-handled
 - [ ] **Domains and handles** — deliberately last; see `docs/BRAND-CLEARANCE.md`
-- [x] **Private git remote** — `github.com/Ridwannurudeen/touchstone` exists and is private.
-      Making it public remains a separate owner decision
+- [x] **Git remote** — `github.com/Ridwannurudeen/touchstone`, **public since 2026-08-18**
+      by the owner's decision, `main` protected by the CI aggregate check
 - [ ] **Any public post**
 
 ---
@@ -425,10 +434,11 @@ open. Closing it properly needs a separate lock-owning process and IPC, which is
 proportion to what it protects. Reviewed and accepted 2026-08-16.
 
 Detection and recovery timings are proven in a local subprocess harness that kills a real
-daemon. They have **not** been proven on production hardware, because there is no production
-host yet.
+daemon. They have **not** been re-proven on the production host — restart and recovery
+there is still an open demonstration.
 
-A live testnet registry is not a running system. Nothing has published to it, no epoch has
-been produced unattended, and the schedule in section 2 describes what this service is built
-to do rather than what it has done. Until an epoch is produced and published without a
-person present, every reliability figure here is a property of the tests.
+An epoch has now been produced and published without a person present: the enabled
+publisher unit ran the 2026-08-20 mainnet slot on its own, including one failed-closed slot
+before it. That converts the reliability figures from pure test properties into claims with
+exactly one production data point. They earn the word "measured" only when a multi-day
+unattended window exists.

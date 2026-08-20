@@ -19,7 +19,9 @@ build = _module("build_project_state")
 assert_truth = _module("assert_public_truth")
 
 
-def test_project_state_is_assembled_from_verified_repository_facts(tmp_path: Path) -> None:
+def test_project_state_is_assembled_from_verified_repository_facts(
+    tmp_path: Path,
+) -> None:
     state = build.build_state(ROOT)
     assert state["version"] == build.STATE_VERSION
     assert state["approval"]["approved_count"] == len(
@@ -48,6 +50,25 @@ def test_public_truth_rejects_a_stale_phrase(tmp_path: Path) -> None:
         assert "stale public phrase" in str(error)
     else:
         raise AssertionError("stale public copy was accepted")
+
+
+def test_public_truth_rejects_a_stale_phrase_regardless_of_its_recorded_case(
+    tmp_path: Path,
+) -> None:
+    # The scan lowercases the document before comparing, so a phrase recorded with any
+    # uppercase letter could never match anything — five of the eight phrases were dead
+    # the moment they were added, and the one test above passed because it used the one
+    # phrase that happened to be all-lowercase. An external audit found it (2026-08-20).
+    state = build.build_state(ROOT)
+    for phrase in assert_truth.STALE_PHRASES:
+        public = tmp_path / "index.html"
+        public.write_text(f"prose around {phrase} the claim", encoding="utf-8")
+        try:
+            assert_truth.assert_state(state, (public,))
+        except assert_truth.PublicTruthError as error:
+            assert "stale public phrase" in str(error)
+        else:
+            raise AssertionError(f"stale phrase {phrase!r} was accepted")
 
 
 def _confirmed_policy_panel() -> str:

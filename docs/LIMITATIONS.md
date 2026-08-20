@@ -47,18 +47,20 @@ missed rows.
 |---|---|---|
 | Accepted controls | ≥6 | **5 — missed.** The 0.3.0 recompile (2026-08-17, live retrieval) proposed ten candidates that passed the deterministic gates. Five were approved and five declined, with reasons, in `data/compilations/APPROVALS.json`. The five declines were not forced: three are duplicate presence checks on a document another approved control already reads, and one clears the 0.80 confidence gate with zero margin. Approving any of them would have met this target and would have counted duplication as breadth, so the number stands at five and the row reads missed. Each approved control is bound by digest to the compilation that accepted it, and a declined candidate cannot be relabelled approved. |
 | Assets documented | 3 | **3 — met.** USTB, USDY and FOBXX source manifests, with golden fixtures where retrieval was bounded. |
-| Fully autonomous live adapters | ≥2 | **1 — missed.** USTB ran the unattended daemon against the live issuer on 2026-08-17 and published sequence 1, so the count is one, not zero. This row read "0 proven live... it has never run against live sources" until 2026-08-18, which the canary row two lines below had already contradicted. The production observer now sustains a 15-minute retrieval schedule for all three USTB sources, but every publication slot to date was hand-started; unattended publication and recovery on the production host remain unproven. Slot count is no longer the gap: five reports have been published across two chains (testnet sequences 1–3, mainnet 1–2). USDY is blocked on unbounded retrieval (a single 260,431,605-byte archive). FOBXX now has a strict offline SEC normalizer and fixtures, but no live epoch or production-host adapter run. OUSG was cut rather than rushed into the second slot (`manifests/sources/ousg.json`, `phase_1_status.state: cut`). Phase 1 deliberately ships one vertical rather than two hurried ones. |
-| Live consumer contract gating on state | 1 | **1 — met on testnet, 2026-08-18.** `AssetGate` at `0xAac48DC261B04737FDCB101D5049395121034a83` on X Layer testnet, block 38602126, pointed at the live registry. `check()` on USTB returns **`(false, "status not allowed")`** — the gate refuses the asset, because the latest report is `UNVERIFIABLE` and the mask admits `CONFIRMED` only. That refusal is the point rather than a failure: a gate widened until it returned `allowed` would be a consumer contract accepting an unverified asset. The deployment script now requires a nonzero `requiredControlSetRoot`; the historical gate was deployed before that pinning guard and remains a legacy testnet artifact. Publisher lineage and freshness are still enforced. Not deployed on mainnet, by the same reasoning. |
+| Fully autonomous live adapters | ≥2 | **1 — missed.** USTB ran the unattended daemon against the live issuer on 2026-08-17 and published sequence 1, so the count is one, not zero. This row read "0 proven live... it has never run against live sources" until 2026-08-18, which the canary row two lines below had already contradicted. The production observer sustains a 15-minute retrieval schedule for all three USTB sources, and since 2026-08-20 the enabled publisher unit has run the mainnet slot unattended — one day of it; recovery on the production host remains unproven. Publication count is no longer the gap: 14 reports across two chains, 9 `CONFIRMED`. The miss is the asset count. USDY is blocked on unbounded retrieval (a single 260,431,605-byte archive). FOBXX now has a strict offline SEC normalizer and fixtures, but no live epoch or production-host adapter run. OUSG was cut rather than rushed into the second slot (`manifests/sources/ousg.json`, `phase_1_status.state: cut`). Phase 1 deliberately ships one vertical rather than two hurried ones. |
+| Live consumer contract gating on state | 1 | **1 — met on testnet, 2026-08-18.** `AssetGate` at `0xAac48DC261B04737FDCB101D5049395121034a83` on X Layer testnet, block 38602126, pointed at the live registry. `check()` on USTB returns **`(false, "status not allowed")`** — the gate refuses the asset, because the latest report is `UNVERIFIABLE` and the mask admits `CONFIRMED` only. That refusal is the point rather than a failure: a gate widened until it returned `allowed` would be a consumer contract accepting an unverified asset. The deployment script now requires a nonzero `requiredControlSetRoot`; the historical gate was deployed before that pinning guard and remains a legacy testnet artifact. Publisher lineage and freshness are still enforced. On mainnet the reasoning that kept a gate off — an immutable pin against a still-moving control set — expired when the owner signed the approval release: `AssetGateV2` at `0x8641CF6d40524AC55aBd0a02601AfBd374EFB059` (2026-08-20, block 68427105) pins policy id, policy root, control-set root and the signed approval-ledger digest, and returned `(true, "allowed")` for the pinned policy key on deployment day. |
 | Production canary epoch | 1 | **1 — met on mainnet, 2026-08-18.** USTB sequence 1 on X Layer **mainnet** (chain 196), registry `0xc9d58e44…D30d` — note this address is a *superseded* registry on chain 1952, so only the chain id identifies it — epoch `ustb-2026-08-18`, observed 14:04:21Z, state `UNVERIFIABLE`. It was later restated by sequence 2, a correction; mainnet now holds two reports and testnet three. The testnet canary of 2026-08-17 (block 38526525) stands as its own record. Both abstained, and for the same reason: a fresh workspace has no capture from ≥24h earlier, so the NAV value controls cannot confirm a row and the engine refuses to assert one. This row previously read "unmet for mainnet, which remains unscheduled". |
 | Claims span-cited and hash-bound | 100% | Met for every accepted control. |
 
 The living dossier (PLAN-T9) shipped 2026-08-18 and is live at
-https://touchstone.gudman.xyz — 22 pages, zero external JavaScript, an offline
-verifier, a coverage page, and 2,009 lines of this documentation rendered
-from the repository. This paragraph previously read "there is no public
-page", and was being served *from* the public page. A project whose whole
-claim is that it does not assert more than the evidence supports cannot
-leave a page telling its reader that page does not exist.
+https://touchstone.gudman.xyz — 26 routes, an offline verifier, a live
+Policy Terminal at `/app` (the one page with JavaScript: the vendored
+ethers bundle, no external hosts), a coverage page, and this
+documentation rendered from the repository. This paragraph previously
+read "there is no public page", and was being served *from* the public
+page. A project whose whole claim is that it does not assert more than
+the evidence supports cannot leave a page telling its reader that page
+does not exist.
 
 PLAN-T12 (release-candidate matrix) is not marked done in
 `docs/PHASE-1-PLAN.md`. A CI workflow exists at
@@ -180,11 +182,14 @@ path, so loss or theft of the deployer is unrecoverable. See
 `docs/KEY-MANAGEMENT.md` and residual **R-5**.
 
 There is no multi-region failover, no leader election, and no second
-publisher. The shared VPS runs `touchstone-observer@xlayer-mainnet` and
-the status timer; the publisher unit is installed but disabled. The
-observer is recording all three USTB sources every 15 minutes. Detection
-and recovery timings are proven in a local subprocess harness, but an
-unattended publication has not been proven on the production host.
+publisher. The shared VPS runs `touchstone-observer@xlayer-mainnet`, the
+status timer, and — since 2026-08-20 — the enabled publisher unit, which
+has produced exactly one unattended mainnet publication day (its first
+slot failed closed on a parse timeout; the corrected next slot
+published). The observer is recording all three USTB sources every 15
+minutes. Detection and recovery timings are proven in a local subprocess
+harness; restart and recovery on the production host itself remain
+undemonstrated, and one unattended day is not a measured window.
 
 Compromise detection does not exist. Nothing watches for a publication
 from an unexpected publisher or a report signed by a retired key.
@@ -193,10 +198,12 @@ TLS is trusted without pinning (residual **R-7**). Evidence integrity in
 transit rests on the platform certificate store.
 
 The publisher supports fail-closed reads from two independent HTTPS RPC
-hosts and refuses disagreement or partial availability. Production has
-not configured `TOUCHSTONE_RPC_QUORUM`, so a future publication would
-still use the manifest's single JSON-RPC endpoint. Residual **R-12**
-therefore remains operationally open.
+hosts and refuses disagreement or partial availability. Production
+configured `TOUCHSTONE_RPC_QUORUM` in the publisher unit's environment
+when the unit was enabled on 2026-08-20 (verified on the host), and the
+Registry v2 publication path refuses to run without it. Residual
+**R-12** is operationally closed for the publishing path; reads made by
+other tools still use single endpoints.
 
 Time is taken from the host clock (residual **R-10**). The chain rejects
 a future `observedAt`; that check is one-sided and delay-sensitive.
