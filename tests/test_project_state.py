@@ -26,11 +26,12 @@ def test_project_state_is_assembled_from_verified_repository_facts(tmp_path: Pat
         state["approval"]["approved_control_ids"]
     )
     assert state["reports"]["artifact_count"] == len(state["bundles"])
-    # Two, since 2026-08-19: the first confirmed policy reports were published and their
-    # bundles retained under site2/data. These pinned zero right up until the product did
-    # the thing it was built to do.
-    assert state["reports"]["retained_verified_policy_bundle_count"] == 2
-    assert state["reports"]["confirmed_policy_bundle_count"] == 2
+    # Four, since 2026-08-20: the 2026-08-19 pair plus the first unattended slot's pair,
+    # every one retained under site2/data and verified. These pinned zero right up until
+    # the product did the thing it was built to do, and the count only moves when another
+    # confirmed policy bundle is retained — which is exactly the event worth pinning.
+    assert state["reports"]["retained_verified_policy_bundle_count"] == 4
+    assert state["reports"]["confirmed_policy_bundle_count"] == 4
     assert state["deployments"]
     output = tmp_path / "project-state.json"
     output.write_bytes(build.encode_state(state))

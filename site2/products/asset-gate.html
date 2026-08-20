@@ -104,7 +104,7 @@
       All five conditions hold, so the gate permits — which is why the guarded consumer bound
       to that key was able to execute on chain, and the one bound to an unpublished key was
       not.</p>
-      <p class="prose secondary">State of record 2026-08-19. Reports expire at end
+      <p class="prose secondary">State of record 2026-08-20. Reports expire at end
       of day UTC. When the current report passes its <code>validUntil</code>, this same call
       answers <code>(false, &ldquo;observation too old&rdquo;)</code> until the next daily
       window publishes a new one — the gate treats an expired report as unreported rather
@@ -368,7 +368,7 @@
           </table>
         </div>
       </div>
-      <p class="t-small secondary under-table">4 enforcement
+      <p class="t-small secondary under-table">6 enforcement
       transactions across the 2 chains. Both addresses in each pair
       also exist on the other network as different contracts — read every row with its chain
       id attached.</p>

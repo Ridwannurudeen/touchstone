@@ -92,10 +92,10 @@
         carries the NAV value 11.18208300 through to the gate.</p>
       </div>
       <div class="cta-row">
-        <a class="cta" href="/data/ustb-2026-08-19-1-policy-nav-settlement-1.json">Download ustb-2026-08-19-1-policy-nav-settlement-1.json</a>
-        <a class="cta-ghost" href="/dossier">All 9 bundles</a>
+        <a class="cta" href="/data/eip155-196-ustb-2026-08-20-2-policy-nav-settlement-1.json">Download eip155-196-ustb-2026-08-20-2-policy-nav-settlement-1.json</a>
+        <a class="cta-ghost" href="/dossier">All 12 bundles</a>
       </div>
-      <p class="secondary mono">the file above hashes to 24871bd2e251d6b14661fe00085b2b88d0eca38d35ca6c6bf21f29fb7e03f860</p>
+      <p class="secondary mono">the file above hashes to 29c6c771d1d9893060be93bfa925640fa4682223a08791561ddb408604d1fe87</p>
 
       <div class="tabs">
         <input type="radio" id="tab-1" name="verify-path" checked>
@@ -164,13 +164,13 @@ cd touchstone
 pip install -e .
 
 <span class="c-comment"># 2. get the bundle</span>
-curl -O https://touchstone.gudman.xyz/data/ustb-2026-08-19-1-policy-nav-settlement-1.json
+curl -O https://touchstone.gudman.xyz/data/eip155-196-ustb-2026-08-20-2-policy-nav-settlement-1.json
 
 <span class="c-comment"># 3. verify it</span>
-python -m touchstone.verify ustb-2026-08-19-1-policy-nav-settlement-1.json</code></pre>
+python -m touchstone.verify eip155-196-ustb-2026-08-20-2-policy-nav-settlement-1.json</code></pre>
 
           <p class="code-block-label" style="margin-top:var(--s6)">OUTPUT</p>
-          <pre class="code-block"><code>PASS: eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:nav-settlement:1 epoch=ustb-2026-08-19 sequence=1 state=CONFIRMED</code></pre>
+          <pre class="code-block"><code>PASS: eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:nav-settlement:1 epoch=ustb-2026-08-19 sequence=2 state=CONFIRMED</code></pre>
 
           <div class="prose" style="margin-top:var(--s5)">
             <p>A failing bundle prints <span class="mono">FAIL:</span> with the reason and
@@ -193,7 +193,7 @@ python -m touchstone.verify ustb-2026-08-19-1-policy-nav-settlement-1.json</code
           </div>
 
           <p class="bundle-pick">
-            <a class="cta-ghost" href="/data/ustb-2026-08-19-1-policy-nav-settlement-1.json">ustb-2026-08-19-1-policy-nav-settlement-1.json <span class="badge badge-latest">CONFIRMED</span></a>
+            <a class="cta-ghost" href="/data/eip155-196-ustb-2026-08-20-2-policy-nav-settlement-1.json">eip155-196-ustb-2026-08-20-2-policy-nav-settlement-1.json <span class="badge badge-latest">CONFIRMED</span></a>
             <a class="cta-ghost" href="/data/ustb-2026-08-17-1.json">ustb-2026-08-17-1.json <span class="badge">historical, sequence 1</span></a>
           </p>
           <p class="t-small secondary">The recipes below name the confirmed policy bundle.
@@ -209,7 +209,7 @@ python -m touchstone.verify ustb-2026-08-19-1-policy-nav-settlement-1.json</code
 import json
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-bundle = json.load(open("ustb-2026-08-19-1-policy-nav-settlement-1.json", encoding="utf-8"))
+bundle = json.load(open("eip155-196-ustb-2026-08-20-2-policy-nav-settlement-1.json", encoding="utf-8"))
 assert json.loads(bundle["report_canonical"]) == bundle["signed_report"]["report"]
 key = Ed25519PublicKey.from_public_bytes(bytes.fromhex(bundle["published_key"]["public_key"]))
 key.verify(bytes.fromhex(bundle["signed_report"]["signature"]),
@@ -225,7 +225,7 @@ print("signature verifies over report_canonical")</code></pre>
 <pre><code># check_ledger.py
 import hashlib, json
 
-bundle = json.load(open("ustb-2026-08-19-1-policy-nav-settlement-1.json", encoding="utf-8"))
+bundle = json.load(open("eip155-196-ustb-2026-08-20-2-policy-nav-settlement-1.json", encoding="utf-8"))
 digest = hashlib.sha256(bundle["approval_ledger"].encode("utf-8")).hexdigest()
 assert digest == bundle["signed_report"]["report"]["approval_ledger_sha256"]
 print("approval ledger digest matches:", digest)</code></pre>
@@ -246,7 +246,7 @@ print("approval ledger digest matches:", digest)</code></pre>
 <pre><code># check_compilations.py
 import hashlib, json
 
-bundle = json.load(open("ustb-2026-08-19-1-policy-nav-settlement-1.json", encoding="utf-8"))
+bundle = json.load(open("eip155-196-ustb-2026-08-20-2-policy-nav-settlement-1.json", encoding="utf-8"))
 for digest, artifact in bundle["compilations"].items():
     assert hashlib.sha256(artifact.encode("utf-8")).hexdigest() == digest
 assert set(bundle["compilations"]) == set(
@@ -262,7 +262,7 @@ print("all", len(bundle["compilations"]), "compilation artifacts self-hash")</co
 <pre><code># check_content_hashes.py
 import hashlib, json
 
-bundle = json.load(open("ustb-2026-08-19-1-policy-nav-settlement-1.json", encoding="utf-8"))
+bundle = json.load(open("eip155-196-ustb-2026-08-20-2-policy-nav-settlement-1.json", encoding="utf-8"))
 records = {r["control_id"]: r for r in bundle["control_records"]}
 for control in bundle["signed_report"]["report"]["controls"]:
     canonical = json.dumps(records[control["control_id"]],
@@ -279,7 +279,7 @@ print("all", len(bundle["signed_report"]["report"]["controls"]), "content hashes
 <pre><code># check_roots.py
 import hashlib, json
 
-bundle = json.load(open("ustb-2026-08-19-1-policy-nav-settlement-1.json", encoding="utf-8"))
+bundle = json.load(open("eip155-196-ustb-2026-08-20-2-policy-nav-settlement-1.json", encoding="utf-8"))
 report = bundle["signed_report"]["report"]
 
 def root(domain, items):
