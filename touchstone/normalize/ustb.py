@@ -17,7 +17,13 @@ from touchstone.quantities import finite_positive
 
 DEFAULT_MAX_BYTES = 1_048_576
 DEFAULT_MAX_DEPTH = 32
-DEFAULT_ISOLATED_TIMEOUT = 2.0
+# The wall clock covers spawning a fresh interpreter, not only the parse — the spawn
+# context re-imports everything — and on the production host (a shared box that has run
+# at load ~20 on 8 cores) interpreter startup alone exceeded 2 seconds, so the first
+# unattended mainnet slot failed with EPOCH_FAILED before any payload was read. The
+# guard exists to bound a hostile payload's parse; 20 seconds bounds it just as firmly,
+# and an honest slot on a busy host is not the thing it exists to refuse.
+DEFAULT_ISOLATED_TIMEOUT = 20.0
 # A terminated worker that ignores SIGTERM must not block the epoch either.
 _JOIN_GRACE_SECONDS = 5.0
 

@@ -26,6 +26,9 @@ WorkingDirectory=/opt/touchstone
 # as root before dropping privileges, so the secret never needs to be readable by the
 # identity that runs the process.
 EnvironmentFile=/etc/touchstone/%i.env
+# Unbuffered, or the journal shows nothing until Python flushes: the first enablement ran
+# an entire failing slot in silence and the incident file was the only witness.
+Environment=PYTHONUNBUFFERED=1
 
 ExecStart=/opt/touchstone/.venv/bin/python /opt/touchstone/scripts/run_service.py \
     --manifest /opt/touchstone/deployments/%i.json \
