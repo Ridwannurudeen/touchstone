@@ -1062,7 +1062,7 @@ def build_service(manifest_path: str, workspace: str, *, asset_key: str) -> Serv
         # on chain unverifiable. A fresh slot cannot reach that state — it writes and verifies
         # the bundle before the report is returned — but a legacy or externally written
         # operation can.
-        before_publish=require_verifying_bundle(root.bundles),
+        before_publish=require_verifying_bundle(root.bundles, manifest.chain_id),
     )
 
 
@@ -1143,7 +1143,9 @@ def _serve_ustb(service: Service, arguments) -> int:
             for policy, workspace_path in zip(policies, policy_workspace_paths)
         )
         for policy_service in policy_services:
-            policy_service.before_publish = require_verifying_bundle(workspace.bundles)
+            policy_service.before_publish = require_verifying_bundle(
+                workspace.bundles, manifest.chain_id
+            )
         services = (service, *policy_services)
         service_by_key = {item.asset_key: item for item in services}
         manifests = {
@@ -1169,7 +1171,7 @@ def _serve_ustb(service: Service, arguments) -> int:
             policies=policies,
             policy_manifests=manifests,
             transport=transport,
-            bundle_sink=write_bundle(workspace.bundles),
+            bundle_sink=write_bundle(workspace.bundles, manifest.chain_id),
         )
     else:
         served_service = service
@@ -1182,7 +1184,7 @@ def _serve_ustb(service: Service, arguments) -> int:
             # Every published report gets an offline verification bundle written beside the
             # workspace's other durable state. Without this the service published reports a
             # reader had no way to check, which is the one claim the project rests on.
-            bundle_sink=write_bundle(workspace.bundles),
+            bundle_sink=write_bundle(workspace.bundles, manifest.chain_id),
         )
 
     outcome = serve(

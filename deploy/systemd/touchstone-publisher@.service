@@ -30,7 +30,11 @@ EnvironmentFile=/etc/touchstone/%i.env
 ExecStart=/opt/touchstone/.venv/bin/python /opt/touchstone/scripts/run_service.py \
     --manifest /opt/touchstone/deployments/%i.json \
     --workspace /var/lib/touchstone/%i/ustb \
-    --asset-key eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e
+    --asset-key eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e \
+    --policy-manifest /opt/touchstone/data/policies/disclosure-freshness-v1.json \
+    --policy-workspace /var/lib/touchstone/%i/ustb-policy-disclosure-freshness-v1 \
+    --policy-manifest /opt/touchstone/data/policies/nav-settlement-v1.json \
+    --policy-workspace /var/lib/touchstone/%i/ustb-policy-nav-settlement-v1
 
 # A publication left in flight is settled on startup before anything new is signed, so a
 # restart is a resolution path rather than a risk. It still waits: a service that relaunched

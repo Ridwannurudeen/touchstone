@@ -653,14 +653,14 @@ def test_an_unattended_run_writes_a_bundle_that_verifies(tmp_path: Path) -> None
     backend = FakeBackend()
     service, workspace = built(tmp_path, backend)
     _, produce = producer(
-        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+        store, service, backend, bundle_sink=write_bundle(workspace.bundles, 1952)
     )
 
     run(service, produce)
 
     written = sorted(workspace.bundles.glob("*.json"))
     assert len(written) == 1, f"expected exactly one bundle, got {written}"
-    assert written[0].name == "eip155-1-ustb-2026-08-14-1.json"
+    assert written[0].name == "eip155-1952-ustb-2026-08-14-1.json"
     # Partial files must never survive a completed write.
     assert not list(workspace.bundles.glob("*.partial"))
 
@@ -715,7 +715,7 @@ def test_a_bundle_filename_cannot_escape_its_directory(
     but `write_bundle` is a public reusable sink and its safety should not depend on which
     caller happens to be wired to it today.
     """
-    sink = write_bundle(tmp_path / "bundles")
+    sink = write_bundle(tmp_path / "bundles", 1952)
     bundle = {
         "signed_report": {
             "report": {
@@ -768,7 +768,7 @@ def test_one_slot_reads_the_approval_ledger_exactly_once(
         store,
         service,
         backend,
-        bundle_sink=write_bundle(workspace.bundles),
+        bundle_sink=write_bundle(workspace.bundles, 1952),
         approval_ledger=None,
     )
     reads.clear()
@@ -821,7 +821,7 @@ def test_an_injected_ledger_replaces_the_shipped_one_rather_than_joining_it(
     backend = FakeBackend()
     service, workspace = built(tmp_path, backend)
     _, produce = producer(
-        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+        store, service, backend, bundle_sink=write_bundle(workspace.bundles, 1952)
     )
 
     run(service, produce)
@@ -851,7 +851,7 @@ def test_a_bundle_is_never_named_after_a_windows_device(
     once a dot is present; a rendered-filename check was tried first and deleted as dead,
     because appending `-{sequence}` cannot turn a non-device into a device.
     """
-    sink = write_bundle(tmp_path / "bundles")
+    sink = write_bundle(tmp_path / "bundles", 1952)
     bundle = {
         "signed_report": {
             "report": {
@@ -871,20 +871,21 @@ def test_a_bundle_is_never_named_after_a_windows_device(
 def test_bundles_for_the_same_epoch_on_two_chains_never_share_a_name(
     tmp_path: Path,
 ) -> None:
-    """The 2026-08-19 loss: two workspaces, one epoch, identical names, one file."""
-    sink = write_bundle(tmp_path / "bundles")
-    for chain in (1952, 196):
-        sink(
-            {
-                "signed_report": {
-                    "report": {
-                        "asset_key": f"eip155:{chain}:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
-                        "epoch_id": "ustb-2026-08-19",
-                        "sequence": 1,
-                    }
-                }
+    """The 2026-08-19 loss: two networks published the SAME report identity — one asset,
+    one epoch, one sequence — and the sinks rendered one name. The publication chain is
+    the only thing that distinguishes them, and it comes from the manifest: the report's
+    own asset_key names the chain the asset lives on, identical everywhere."""
+    report = {
+        "signed_report": {
+            "report": {
+                "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+                "epoch_id": "ustb-2026-08-19",
+                "sequence": 1,
             }
-        )
+        }
+    }
+    write_bundle(tmp_path / "bundles", 1952)(report)
+    write_bundle(tmp_path / "bundles", 196)(report)
 
     names = sorted(path.name for path in (tmp_path / "bundles").glob("*.json"))
     assert names == [
@@ -893,12 +894,30 @@ def test_bundles_for_the_same_epoch_on_two_chains_never_share_a_name(
     ]
 
 
+def test_a_bundle_needs_a_publication_chain_to_take_a_name(tmp_path: Path) -> None:
+    sink = write_bundle(tmp_path / "bundles", 0)
+    bundle = {
+        "signed_report": {
+            "report": {
+                "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+                "epoch_id": "ustb-2026-08-19",
+                "sequence": 1,
+            }
+        }
+    }
+
+    with pytest.raises(EpochProductionError, match="publication chain id"):
+        sink(bundle)
+
+    assert not list(tmp_path.rglob("*.json"))
+
+
 @pytest.mark.parametrize("sequence", ["1", "../1", 0, -1, 1.0, True, None])
 def test_a_bundle_sequence_must_be_a_positive_integer(
     tmp_path: Path, sequence: object
 ) -> None:
     """It is interpolated into the filename, so a string could carry a separator through."""
-    sink = write_bundle(tmp_path / "bundles")
+    sink = write_bundle(tmp_path / "bundles", 1952)
     bundle = {
         "signed_report": {
             "report": {
@@ -961,7 +980,7 @@ def test_a_report_whose_bundle_cannot_be_verified_is_never_published(
         next_sequence=lambda: backend.latest_sequence(asset_key_bytes(ASSET)) + 1,
         previous_state=lambda on: AssetState.UNVERIFIABLE,
         transport=FixtureTransport(FIXTURES, date(2026, 8, 14)),
-        bundle_sink=write_bundle(workspace.bundles),
+        bundle_sink=write_bundle(workspace.bundles, 1952),
         approval_ledger=historical_ledger_bytes(),
     )
 
@@ -993,7 +1012,7 @@ def test_recovery_refuses_to_republish_a_report_with_no_bundle(tmp_path: Path) -
     only by a new report. An earlier docstring claimed publication and verifiability could not
     come apart; this is the path that disproved it.
     """
-    guard = require_verifying_bundle(tmp_path / "bundles")
+    guard = require_verifying_bundle(tmp_path / "bundles", 1952)
     operation = _pending(
         {
             "report": {
@@ -1022,11 +1041,11 @@ def test_recovery_refuses_a_bundle_that_describes_a_different_report(
     backend = FakeBackend()
     service, workspace = built(tmp_path, backend)
     _, produce = producer(
-        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+        store, service, backend, bundle_sink=write_bundle(workspace.bundles, 1952)
     )
     run(service, produce)
 
-    guard = require_verifying_bundle(workspace.bundles)
+    guard = require_verifying_bundle(workspace.bundles, 1952)
     written = next(iter(workspace.bundles.glob("*.json")))
     genuine = json.loads(written.read_text(encoding="utf-8"))["signed_report"]
     # Same epoch and sequence, so it resolves to the same file. Different report.
@@ -1046,7 +1065,7 @@ def test_recovery_refuses_a_bundle_that_no_longer_verifies(tmp_path: Path) -> No
     backend = FakeBackend()
     service, workspace = built(tmp_path, backend)
     _, produce = producer(
-        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+        store, service, backend, bundle_sink=write_bundle(workspace.bundles, 1952)
     )
     run(service, produce)
 
@@ -1056,7 +1075,7 @@ def test_recovery_refuses_a_bundle_that_no_longer_verifies(tmp_path: Path) -> No
     bundle["approval_ledger"] = '{"approved": [], "declined": []}'
     written.write_text(json.dumps(bundle), encoding="utf-8")
 
-    guard = require_verifying_bundle(workspace.bundles)
+    guard = require_verifying_bundle(workspace.bundles, 1952)
     with pytest.raises(VerificationError):
         guard(_pending(genuine))
 
@@ -1075,7 +1094,7 @@ def test_recovery_reads_a_bundle_the_way_a_reader_would(tmp_path: Path) -> None:
     backend = FakeBackend()
     service, workspace = built(tmp_path, backend)
     _, produce = producer(
-        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+        store, service, backend, bundle_sink=write_bundle(workspace.bundles, 1952)
     )
     run(service, produce)
 
@@ -1089,7 +1108,7 @@ def test_recovery_reads_a_bundle_the_way_a_reader_would(tmp_path: Path) -> None:
     assert duplicated.count('"version"') > text.count('"version"')
     written.write_text(duplicated, encoding="utf-8")
 
-    guard = require_verifying_bundle(workspace.bundles)
+    guard = require_verifying_bundle(workspace.bundles, 1952)
     with pytest.raises(EpochProductionError, match="not strictly readable JSON"):
         guard(_pending(genuine))
 
@@ -1111,7 +1130,7 @@ def test_a_first_publication_does_not_claim_to_have_reconfirmed_anything(
     backend = FakeBackend()
     service, workspace = built(tmp_path, backend)
     _, produce = producer(
-        store, service, backend, bundle_sink=write_bundle(workspace.bundles)
+        store, service, backend, bundle_sink=write_bundle(workspace.bundles, 1952)
     )
 
     run(service, produce)

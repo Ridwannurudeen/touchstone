@@ -258,6 +258,7 @@ def make_producer(
 
 def write_bundle(
     directory: str | os.PathLike[str],
+    chain_id: int,
 ) -> Callable[[Mapping[str, object]], None]:
     """A ``bundle_sink`` that persists each bundle under ``directory``.
 
@@ -293,7 +294,7 @@ def write_bundle(
                 f"sequence must be a positive integer to name a bundle: {sequence!r}"
             )
         target.mkdir(parents=True, exist_ok=True)
-        destination = target / _bundle_name(report)
+        destination = target / _bundle_name(report, chain_id)
         staging = destination.with_suffix(".json.partial")
         staging.write_text(
             json.dumps(bundle, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -303,34 +304,30 @@ def write_bundle(
     return sink
 
 
-def _bundle_name(report: Mapping[str, object]) -> str:
+def _bundle_name(report: Mapping[str, object], chain_id: int) -> str:
     """The one filename a report's bundle lives under, for the writer and the guard alike.
 
     Derived in exactly one place because the two callers must agree: a writer and a
     recovery guard that render names independently can drift, and the guard then refuses
     a bundle that is sitting right there under the name the writer chose.
 
-    The chain leads the name. Two workspaces publishing the same epoch on different chains
-    used to render identical names, and on 2026-08-19 the second sink overwrote the first —
-    two verified testnet policy bundles were lost to files that verified perfectly and
-    described the other chain. Refused rather than defaulted when the asset key names no
-    chain, because a chainless name is that collision again.
+    The PUBLICATION chain leads the name, passed in from the deployment manifest — never
+    read from the report, whose ``asset_key`` names the chain the asset lives on and is
+    therefore identical on every network that publishes it. The first version of this fix
+    made exactly that mistake: it keyed on the asset's chain, rendered the same name for a
+    testnet and a mainnet publication of one epoch, and would have repeated the 2026-08-19
+    loss it existed to prevent — two verified testnet policy bundles overwritten by
+    same-named mainnet files that verified perfectly and described the other chain.
     """
-    asset_key = report.get("asset_key")
-    chain = (
-        asset_key.split(":", 2)[1]
-        if isinstance(asset_key, str) and asset_key.count(":") >= 2
-        else ""
-    )
-    if not chain.isdigit():
+    if type(chain_id) is not int or chain_id < 1:
         raise EpochProductionError(
-            f"asset_key must name an eip155 chain to name a bundle: {asset_key!r}"
+            f"a publication chain id is required to name a bundle: {chain_id!r}"
         )
     policy = report.get("policy")
     suffix = ""
     if isinstance(policy, Mapping):
         suffix = f"-policy-{_path_component(policy['policy_id'])}-{policy['policy_version']}"
-    return f"eip155-{chain}-{_path_component(report['epoch_id'])}-{report['sequence']}{suffix}.json"
+    return f"eip155-{chain_id}-{_path_component(report['epoch_id'])}-{report['sequence']}{suffix}.json"
 
 
 def _path_component(epoch_id: object) -> str:
@@ -391,6 +388,7 @@ def asset_key() -> str:
 
 def require_verifying_bundle(
     directory: str | os.PathLike[str],
+    chain_id: int,
 ) -> Callable[[object], None]:
     """A ``before_publish`` guard: refuse to republish a report with no verifying bundle.
 
@@ -409,7 +407,7 @@ def require_verifying_bundle(
 
     def guard(operation: object) -> None:
         report = operation.signed_report["report"]  # type: ignore[attr-defined,index]
-        path = target / _bundle_name(report)
+        path = target / _bundle_name(report, chain_id)
         try:
             raw = path.read_text(encoding="utf-8")
         except OSError as error:

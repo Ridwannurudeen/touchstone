@@ -174,7 +174,7 @@ def test_batch_service_publishes_each_key_from_one_capture(tmp_path: Path) -> No
             lock_path=workspace.lock,
             sleep=lambda _seconds: None,
             now=lambda: RETRIEVED_AT,
-            before_publish=require_verifying_bundle(base_workspace.bundles),
+            before_publish=require_verifying_bundle(base_workspace.bundles, 1952),
         )
         for workspace, key in (
             (base_workspace, controls[0].asset_key),
@@ -197,7 +197,7 @@ def test_batch_service_publishes_each_key_from_one_capture(tmp_path: Path) -> No
         approval_ledger=historical_ledger_bytes(),
         policies=(policy,),
         policy_manifests={(policy.policy_id, policy.version): policy_raw},
-        bundle_sink=write_bundle(base_workspace.bundles),
+        bundle_sink=write_bundle(base_workspace.bundles, 1952),
     )
 
     outcome = service.run_slot(
