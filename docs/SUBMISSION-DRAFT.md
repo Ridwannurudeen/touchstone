@@ -27,7 +27,7 @@ observed.
 | Documentation site | **LIVE** — https://touchstone.gudman.xyz/docs — the project's committed documentation rendered in full |
 | X / social handles | **`@touch__stone`** — created by the owner 2026-08-18. The owner reports the @XLayerOfficial post as published; it is not machine-verifiable from this repository, and its URL belongs in the submission form. The rules require the account be *kept active*, which cannot be backdated. |
 | Domain | `gudman.xyz` subdomain, TLS via Let's Encrypt, certificate to 2026-11-16 |
-| Repository | `github.com/Ridwannurudeen/touchstone` — **PUBLIC since 2026-08-19**, `main` protected by the CI aggregate check. The private-until-deadline plan was superseded by the owner's decision to open it early. |
+| Repository | `github.com/Ridwannurudeen/touchstone` — **PUBLIC since 2026-08-16**, per GitHub's own PublicEvent record (2026-08-16T14:10:51Z, no later visibility change), with `main` protected by the CI aggregate check (protection verified via the API on 2026-08-20). The private-until-deadline plan was superseded by the owner's decision to open it early. |
 | Submission venue | **OKX AI Season Hackathon**, X Layer. Google Form, deadline **2026-08-21 23:59 UTC**. |
 | Contact | `unknown` — not recorded in the tracked tree. |
 
@@ -241,7 +241,7 @@ evidence or the refusal.
 | Claim one might want | Honest substitute | Evidence |
 |---|---|---|
 | "Live on X Layer" | Registries v1 and v2 are live on both chains: 14 reports, 9 `CONFIRMED`. Live and verified-against-evidence are both accurate; "trustless" is not. | `docs/OPERATIONS.md`, https://touchstone.gudman.xyz/dossier |
-| "Two live adapters" | One adapter. Not two assets. Its daily slot has run unattended on the production host since 2026-08-20 — a two-day-old property, not a track record. | `ROADMAP.md` completion table |
+| "Two live adapters" | One adapter. Not two assets. Its daily slot has run unattended on the production host since 2026-08-20 — exactly one day of that record exists, not a track record. | `ROADMAP.md` completion table |
 | "Consumer contract in production" | `AssetGateV2` and `RWAAdmissionController` are live on **mainnet** with permit and refusal transactions; gates are live on testnet. No third party consumes them — every consumer is this project's own contract. | `contracts/scripts/deploy_gate.js`, `deploy_admission.js` |
 | "Autonomous canary" | The 2026-08-20 mainnet slot was published unattended by the production host. Its first slot failed closed on a parse timeout the loaded host could not meet; the timeout was corrected and the next slot published on its own. One unattended day is proof of the path, not of continuity. | `docs/OPERATIONS.md` |
 | "Public dossier" | Live since 2026-08-18 at touchstone.gudman.xyz. | The site itself; `docs/DEPLOY-T9.md` |

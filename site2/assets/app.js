@@ -220,10 +220,20 @@ function statusClass(name) {
       : "term-blocked";
 }
 
+/* What the read panels were asked about. A slow chain's answer arriving after the
+ * visitor switched network or key must not render over the newer selection — this
+ * config makes that concrete: several addresses are DIFFERENT live contracts on the
+ * two chains, so a late mainnet answer on a testnet screen is not merely stale, it is
+ * the wrong contract wearing the right address. */
+function readSnapshot() {
+  return `${$("net-select").value}::${$("key-select").value}`;
+}
+
 async function readReport() {
   const net = network();
   const key = policyKey();
   const panel = $("report-panel");
+  const chosen = readSnapshot();
   render(panel, row("reading", `${net.name} · ${key.label}`, "term-pending"));
   const iface = new ethers.Interface(
     key.registry === "v2" ? V2_REGISTRY_ABI : V1_REGISTRY_ABI,
@@ -239,6 +249,7 @@ async function readReport() {
       [key.key],
       head.hex,
     );
+    if (readSnapshot() !== chosen) return;
     if (Number(seq.decoded[0]) === 0) {
       render(
         panel,
@@ -301,8 +312,10 @@ async function readReport() {
         `${head.number} (chain time ${utc(head.timestamp)}) via ${endpoint}`,
       ),
     );
+    if (readSnapshot() !== chosen) return;
     render(panel, lines);
   } catch (error) {
+    if (readSnapshot() !== chosen) return;
     render(
       panel,
       row("read failed", String(error.message || error), "term-blocked"),
@@ -316,6 +329,7 @@ async function readGate() {
   const net = network();
   const key = policyKey();
   const panel = $("gate-panel");
+  const chosen = readSnapshot();
   if (!key.gate) {
     render(
       panel,
@@ -361,8 +375,10 @@ async function readGate() {
         ),
       );
     }
+    if (readSnapshot() !== chosen) return;
     render(panel, lines);
   } catch (error) {
+    if (readSnapshot() !== chosen) return;
     render(
       panel,
       row("check failed", String(error.message || error), "term-blocked"),
@@ -927,7 +943,23 @@ async function verifyBundle(file) {
     // directions. The previous check compared six identity fields, which left every
     // other field free to disagree; a canonical text with an extra or altered field
     // would have passed while the signature covered different content than displayed.
-    const canonicalParsed = JSON.parse(bundle.report_canonical);
+    // A parse failure is its own verdict, rendered beside the verdicts already earned —
+    // throwing to the outer catch would discard them, and this panel's contract is to
+    // list what it checked.
+    let canonicalParsed;
+    try {
+      canonicalParsed = JSON.parse(bundle.report_canonical);
+    } catch {
+      lines.push(
+        verdict(
+          "canonical/report agreement",
+          false,
+          "report_canonical is not JSON — nothing downstream of it can be judged",
+        ),
+      );
+      render(panel, lines);
+      return;
+    }
     const fieldsAgree = deepEqual(canonicalParsed, report);
     lines.push(
       verdict(
@@ -952,8 +984,19 @@ async function verifyBundle(file) {
           `${short(ledgerDigest)} vs committed ${short(committed)}`,
         ),
       );
-      const ledger = JSON.parse(bundle.approval_ledger);
-      if (ledger.version === "touchstone.approval-ledger.v2") {
+      let ledger = null;
+      try {
+        ledger = JSON.parse(bundle.approval_ledger);
+      } catch {
+        lines.push(
+          verdict(
+            "approver signatures",
+            false,
+            "approval_ledger is not JSON — its digest was judged above, its decisions cannot be",
+          ),
+        );
+      }
+      if (ledger && ledger.version === "touchstone.approval-ledger.v2") {
         let recovered = new Set();
         let signedEntries = 0;
         let bad = 0;
@@ -999,7 +1042,7 @@ async function verifyBundle(file) {
               : `${bad} entries failed signature recovery — check with the CLI`,
           ),
         );
-      } else {
+      } else if (ledger) {
         lines.push(
           verdict(
             "approver signatures",
@@ -1099,9 +1142,28 @@ async function verifyBundle(file) {
       }
     }
 
-    // 6. A Registry v2 attestation, when the bundle carries one, recovers its publisher.
+    // 6. A Registry v2 attestation, when the bundle carries one, recovers its publisher
+    // — and describes THIS bundle's report, not merely some report. Without the digest
+    // binding, a genuine attestation copied out of any public bundle would lend its
+    // checkmarks to a fabricated report riding alongside it: every attestation check
+    // would verify the spliced attestation while the panel vouched for the fake. The
+    // reference verifier refuses exactly that, and this panel must refuse it too.
     if (bundle.registry_v2_attestation) {
       const a = bundle.registry_v2_attestation;
+      const canonicalDigest = await sha256hex(canonicalBytes);
+      const attestedDigest = String(a.report_digest || "")
+        .replace(/^0x/, "")
+        .toLowerCase();
+      const bound = canonicalDigest === attestedDigest;
+      lines.push(
+        verdict(
+          "attestation ↔ report binding",
+          bound,
+          bound
+            ? `the attestation's report digest is sha256 of THIS bundle's canonical report (${short(canonicalDigest)})`
+            : `the attestation describes digest ${short(attestedDigest)}, but this bundle's report hashes to ${short(canonicalDigest)} — a spliced attestation vouches for nothing here`,
+        ),
+      );
       try {
         const who = ethers.verifyTypedData(
           {
@@ -1177,12 +1239,36 @@ async function verifyBundle(file) {
       const chainNet = Object.values(CONFIG.networks).find(
         (n) => Number(n.chainId) === Number(a.chain_id),
       );
-      if (!chainNet) {
+      if (!bound) {
+        // Asking the chain about a digest this bundle's report does not hash to would
+        // produce a true answer about the wrong question — and a ✓ beside it.
+        lines.push(
+          verdict(
+            "stored on-chain report",
+            null,
+            "not asked — the attestation does not describe this bundle's report, so the chain's answer about it proves nothing here",
+          ),
+        );
+      } else if (!chainNet) {
         lines.push(
           verdict(
             "stored on-chain report",
             null,
             `attestation names chain ${a.chain_id}, which this page has no endpoints for`,
+          ),
+        );
+      } else if (
+        String(a.verifying_contract).toLowerCase() !==
+        String(chainNet.registryV2).toLowerCase()
+      ) {
+        // The read must go to the registry this page already knows, never to whatever
+        // contract the attestation names — an attacker-deployed contract answering
+        // getReport with the fake digest would otherwise buy itself a checkmark.
+        lines.push(
+          verdict(
+            "stored on-chain report",
+            false,
+            `attestation names contract ${short(a.verifying_contract)}, but the Registry v2 on chain ${a.chain_id} is ${short(chainNet.registryV2)} — refusing to ask a stranger`,
           ),
         );
       } else {

@@ -28,7 +28,7 @@ on:
       - "**"
   workflow_dispatch:
 
-# Nothing by default. All seven jobs check out the repository and ask for `contents: read`,
+# Nothing by default. Every job checks out the repository and asks for `contents: read`,
 # including the aggregate, which executes the checked-in enforcer script. Each checkout
 # disables credential persistence, so the granted token is not left in repository config.
 permissions: {}
@@ -303,8 +303,10 @@ jobs:
       # this file and fails if any job is missing from the list above.
       #
       # What this cannot do is make itself mandatory. Requiring it is a branch-protection
-      # setting, and on a private repository without GitHub Pro the protection and ruleset
-      # APIs both refuse. Until that is enabled, this job reports honestly and blocks nothing.
+      # setting that lives in GitHub, not in this tree — the repository went public on
+      # 2026-08-16 and `main` protection requiring this check was enabled and verified via
+      # the API on 2026-08-20, but nothing in this file can prove that setting still holds;
+      # only the branch's own protection status can.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

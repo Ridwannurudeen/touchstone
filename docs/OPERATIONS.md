@@ -364,8 +364,9 @@ an epoch, deploy on another network, or make a private repository public.
       when a multi-day measured window exists with no hand-started slot in it
 - [ ] **Submission** — owner-handled
 - [ ] **Domains and handles** — deliberately last; see `docs/BRAND-CLEARANCE.md`
-- [x] **Git remote** — `github.com/Ridwannurudeen/touchstone`, **public since 2026-08-18**
-      by the owner's decision, `main` protected by the CI aggregate check
+- [x] **Git remote** — `github.com/Ridwannurudeen/touchstone`, **public since 2026-08-16**
+      by the owner's decision (GitHub's PublicEvent, 2026-08-16T14:10:51Z, no later
+      visibility change on record), `main` protected by the CI aggregate check
 - [ ] **Any public post**
 
 ---
