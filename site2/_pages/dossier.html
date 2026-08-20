@@ -11,7 +11,8 @@
 <meta property="og:description" content="Every report Touchstone has published across X Layer mainnet and testnet, newest first, with network, registry version, state and signed bundle.">
 <meta property="og:url" content="https://touchstone.gudman.xyz/dossier">
 <meta property="og:type" content="website">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="https://touchstone.gudman.xyz/assets/og-card.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="/assets/style.css">
 <style>
   .d-badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
@@ -238,7 +239,7 @@
       <p class="t-lead">Every digest on this site can be recomputed from a bundle, offline, on
       your own machine — and every state can be re-read from the registry in your browser. The
       newest confirmed bundle is
-      <a href="/data/ustb-2026-08-19-1-policy-nav-settlement-1.json">ustb-2026-08-19-1-policy-nav-settlement-1.json</a>.</p>
+      <a href="/data/{{fact:bundles.latest_policy_file}}">{{fact:bundles.latest_policy_file}}</a>.</p>
       <div class="cta-row">
         <a class="cta" href="/app">Launch Terminal</a>
         <a class="cta-ghost" href="/verify">Verify a report</a>

@@ -12,7 +12,8 @@
 <meta property="og:description" content="Browser, CLI, or by hand: check the signature, the approval ledger, the compilations and both roots on a machine that has never heard of this site.">
 <meta property="og:url" content="https://touchstone.gudman.xyz/verify">
 <meta property="og:type" content="website">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="https://touchstone.gudman.xyz/assets/og-card.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="/assets/style.css">
 <style>
   .checklist { list-style: none; margin: var(--s5) 0 0; padding: 0; max-width: 74ch; }
@@ -86,10 +87,10 @@
     <div class="wrap">
       <h2>Start with the latest confirmed bundle</h2>
       <div class="prose">
-        <p>The default example throughout this page is the confirmed
+        <p>The default example throughout this page is the latest confirmed
         <span class="mono">nav-settlement:1</span> policy report for
-        USTB, published 2026-08-19 — the report that
-        carries the NAV value 11.18208300 through to the gate.</p>
+        USTB — the policy first confirmed 2026-08-19,
+        carrying the NAV value 11.18208300 through to the gate.</p>
       </div>
       <div class="cta-row">
         <a class="cta" href="/data/eip155-196-ustb-2026-08-20-2-policy-nav-settlement-1.json">Download eip155-196-ustb-2026-08-20-2-policy-nav-settlement-1.json</a>
@@ -112,22 +113,32 @@
           <div class="prose">
             <p>The Terminal at <a href="/app">/app</a> carries a local verifier. Drop a bundle
             onto it and the checks run inside the tab using the browser's own crypto — the
-            file is never uploaded, never sent to a server, and never leaves your machine.
-            The panel prints one line per check, and names the ones it did not run.</p>
+            file is never uploaded and never leaves your machine. The only network traffic
+            is one read of the X&nbsp;Layer RPC when a bundle carries an attestation, so the
+            registry itself can contradict the file. The panel prints one line per check,
+            and names the ones it did not run.</p>
           </div>
 
           <p class="strip-title">What it checks</p>
           <ul class="checklist">
+            <li>The bundle and report schema versions — an unknown version is refused
+            outright rather than half-checked.</li>
             <li>The Ed25519 report signature over the exact canonical bytes the bundle
             carries, under the published key.</li>
             <li>That <span class="mono">report_canonical</span> and
-            <span class="mono">signed_report.report</span> describe the same report.</li>
+            <span class="mono">signed_report.report</span> are identical — complete nested
+            equality, every field, both directions.</li>
             <li>The approval-ledger digest, and — for version-2 ledgers — EIP-712 recovery of
             every approver signature in the ledger.</li>
-            <li>The policy-manifest digest, where the report names a policy.</li>
-            <li>That every compilation artifact hashes to the digest it is filed under.</li>
+            <li>The policy-manifest digest, and that the manifest names exactly the policy
+            the report claims.</li>
+            <li>That every compilation artifact hashes to the digest it is filed under and
+            is named by a ledger decision.</li>
             <li>The Registry&nbsp;v2 attestation, where the bundle carries one: EIP-712
-            recovery back to the publisher it names.</li>
+            recovery back to the publisher it names, that its report digest is the hash of
+            <em>this</em> bundle's canonical report — a spliced attestation vouches for
+            nothing — and, in one live read of the configured registry only, that the chain
+            actually stores that digest at that key and sequence.</li>
           </ul>
 
           <p class="strip-title" style="margin-top:var(--s6)">What it does not check</p>
