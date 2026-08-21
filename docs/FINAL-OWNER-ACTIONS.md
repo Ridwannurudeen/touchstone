@@ -18,14 +18,17 @@ a form without the owner's explicit approval and account access.
 
 ## X Layer ecosystem attribution
 
-- [ ] Register a 16-character X Layer Builder Code in the OKX developer portal.
-- [ ] Put the exact registered value in `site2/_pages/app.html`; do not invent one.
-- [ ] Rebuild and deploy the site.
-- [ ] Execute one legitimate mainnet admission action through the Terminal.
-- [ ] Verify attribution on the explorer and link the transaction from `/judge`.
+- [x] Registered Builder Code `f0axgs7smtk2nfa7` in the OKX developer portal.
+- [x] Put the exact registered value in `site2/_pages/app.html`.
+- [x] Rebuilt and deployed the site at commit `48711da`.
+- [x] Executed one legitimate mainnet admission action through the Terminal.
+- [x] Verified the exact ERC-8021 suffix and the visible code on the
+  [X Layer explorer transaction](https://web3.okx.com/explorer/xlayer/tx/0xb48cf6182b7bf87df78817401c7fefc2e8a319b341b96e572552775361fa9a1e).
 
-The Terminal intentionally sends ordinary, unattributed calldata while `builderCode` is
-`null`, and rejects malformed configured values.
+The attributed transaction called the configured `RWAAdmissionController` with the configured
+disclosure-freshness policy key, emitted `AssetUsed` for the connected wallet, and advanced
+`useCount` from 1 to 2. Both configured RPCs returned the same successful receipt at block
+68574822; the explorer displays `f0axgs7smtk2nfa7` on the transaction.
 
 ## External adoption
 

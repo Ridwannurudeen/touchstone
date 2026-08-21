@@ -39,11 +39,11 @@ re-verified against the repository and the live chains before anything changed).
 | "Compare configured RPC responses" | **CLOSED.** Pinned reads ask every configured endpoint and require byte-identical answers; disagreement is refused, and a lone responder is labelled "(only responder)" rather than blurred into agreement. Unpinned simulation keeps ordered failover — hosts on different heads disagree without either lying. |
 | "Verify GuardedAction immutables and admission/gate binding before simulation or execution" | **CLOSED.** Both paths read the target's bindings back from the chain at a pinned block and compare them to config pins that were themselves read from both chains (all four GuardedActions' `gate()`/`assetKey()`, `admissionOf(freshness)`); mismatch aborts before any calldata is built. |
 | "Abort if the visible action changes during preflight" | **CLOSED.** A selection snapshot taken at click is re-checked after every await; a changed selection aborts with nothing sent. |
-| "Optional ERC-8021 Builder Code without inventing a code" | **CLOSED, inert.** `builderCode: null` in the page config; when the owner registers a real code the schema-0 suffix is appended to execute and to the simulation. The byte layout is `sdk/src/attribution.ts`'s, pinned by the SDK suite's canonical vector and cross-checked against an independent implementation; the in-page encoder was proven byte-identical before landing. |
+| "Optional ERC-8021 Builder Code without inventing a code" | **CLOSED and exercised.** Owner-registered code `f0axgs7smtk2nfa7` is configured in the live Terminal. Mainnet transaction `0xb48cf6182b7bf87df78817401c7fefc2e8a319b341b96e572552775361fa9a1e` carries the exact schema-0 suffix, succeeded against the admission controller, and displays the code on the X Layer explorer. The byte layout is `sdk/src/attribution.ts`'s, pinned by the SDK suite's canonical vector and an independent browser implementation. |
 | "Expand browser verification" | **CLOSED for: versioned schema (fail-closed on unknown versions), complete nested canonical/report equality both directions (proven against all 18 retained bundles), policy identity, ledger↔compilation binding, and the stored on-chain report (one pinned read against the chain the attestation names, digest compared). DECLINED for: control-set and evidence root recomputation in the browser — re-deriving the canonical hashing scheme in JavaScript risks a checkmark that lies, and the panel's "not checked here" row continues to say so plainly; the CLI recipes on /verify remain the way to check roots. |
 | "Remove misleading mainnet bundle links from the two lost testnet policy entries" | **CLOSED for the current state.** Fresh chain-aware bundles for both testnet policies were retained on 2026-08-21 and are linked from the dossier. The two historical 2026-08-19 testnet artifacts remain unavailable and their rows link only their own transactions and attestations. |
 | X post evidence | **CLOSED.** The launch post mentions `@XLayerOfficial` and is retained at https://x.com/TOUCH__STONE/status/2090844839055159485. |
-| Builder Code registration, form evidence, external adoption, multi-day unattended window, custody, independent security review, brand clearance | **OPEN — owner.** As the package itself states, no code patch can perform these. |
+| Form evidence, external adoption, multi-day unattended window, custody, independent security review, brand clearance | **OPEN — owner.** Builder Code registration and one attributed mainnet action closed on 2026-08-21; the remaining items need owner accounts, elapsed operating time or an independent party. |
 | "Second live asset (FOBXX)" | **DECLINED for Phase 1.** Contradicts the recorded scope decision; FOBXX remains the documented monthly contrast asset without an adapter. |
 
 ---
@@ -67,7 +67,7 @@ its snapshot. Deltas against its verdicts, each verifiable from chain or repo:
 | "Homepage count, OPERATIONS header, submission draft, judge 'Interactive' label stale" | **CLOSED**, this commit. |
 | "Approvals ledger unsigned legacy data" | **CLOSED 2026-08-19.** The owner reviewed all ten decisions and signed: `data/compilations/APPROVALS-SIGNED-2026-08-19.json`, approver `0x537873b0…fA16Bc` recoverable from every artifact, timestamped at signing — the ledger's own dates remain the record of when each decision was made, and nothing was backdated. Verified 10/10 against `verify_signed_approval` and against the ledger's own lists. |
 | "Every publication hand-started; publisher disabled" | **CLOSED for path proof, open for reliability.** The publisher was enabled under owner approval on 2026-08-20 and produced one unattended mainnet publication day. A multi-day operating window and production recovery remain unproven. |
-| "No external consumer / Builder Code / rebrand" | **OPEN — owner.** |
+| "No external consumer / Builder Code / rebrand" | **PARTIAL.** Builder Code closed with a live attributed mainnet action; external adoption and professional brand clearance remain open. |
 | "Truth gate scope insufficient" | **PARTIAL.** OPERATIONS.md added to the scan this commit; chain-snapshot-in-CI still open. |
 
 ## Status key
@@ -122,11 +122,11 @@ policy check, evidence, AI provenance, explorer links, integration snippet, trus
 ### Blocker 3 — "X Layer is a publication destination, not the centre" · **PARTIAL**
 `AssetGateV2` pins policy identity, policy root, control-set root and signed approval digest;
 `GuardedAction` and `RWAAdmissionController` cannot execute their protected actions unless the
-gate permits them. Permit/refuse transactions are live on mainnet. The SDK carries ERC-8021
-attribution bytes when an owner-registered code is supplied; Builder Code registration itself
-remains open.
-**Verification:** deployment facts and explorer transactions are indexed by the dossier;
-attribution visibility remains owner-gated evidence.
+gate permits them. Permit/refuse transactions are live on mainnet. The SDK and live Terminal
+carry the registered Builder Code's ERC-8021 attribution bytes. One mainnet admission execution
+is mined with the exact suffix and visible explorer attribution.
+**Verification:** deployment facts and explorer transactions are indexed by the dossier; the
+attributed execution is `0xb48cf6182b7bf87df78817401c7fefc2e8a319b341b96e572552775361fa9a1e`.
 
 ### Blocker 4 — "No external consumer or market proof" · **OWNER**
 Minimum acceptable: another X Layer project calling the gate, a public integration PR, a signed
@@ -222,7 +222,7 @@ relevant trademarks. Contracts and deployment history can remain as legacy infra
 | P0.5 make AI visible | **CLOSED** | `AI_USAGE.md` rewritten with measured outcomes and published at `/docs/ai` |
 | P0.6 green public CI run | **CLOSED at `d2d1668`** | 1,985 Python tests passed with 1 skipped, 111 contract tests, 15 SDK tests and 125/125 mutation targets; public required CI succeeded at https://github.com/Ridwannurudeen/touchstone/actions/runs/32508657320 |
 | P0.7 administrative eligibility | **PARTIAL / OWNER** | X account, launch post URL, explorer links and public repository are evidenced; form submission and receipt remain owner-controlled and open |
-| P1 Builder Code | OWNER + agent | |
+| P1 Builder Code | **CLOSED** | Registered code `f0axgs7smtk2nfa7`; live Terminal execution succeeded at block 68574822 and the X Layer explorer displays the code |
 | P1 external integration | OWNER | |
 | P1 AI evaluation benchmark | **CLOSED locally** | 40 fixed compiler-boundary cases; 8 accepted, 6 abstained, 26 rejected, 100% hostile rejection; see `docs/AI-BENCHMARK.md` |
 | P1 sign approvals | **CLOSED for current publications** | The signed approval ledger contains 10 recoverable EIP-712 decisions, and current policy reports and Registry V2 attestations bind its digest; earlier publications remain historical legacy records |

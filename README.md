@@ -50,3 +50,6 @@ Touchstone does not issue assets, custody funds, recommend investments, assign c
   retained bundles against an out-of-band trusted key and rejects tampering, self-signed
   attacker bundles, unsupported versions, and expired reports. It is integration proof, not
   a claim of adoption or endorsement while the PR remains unmerged.
+- Builder Code `f0axgs7smtk2nfa7` is active in the live Terminal. Its first attributed
+  [mainnet admission execution](https://web3.okx.com/explorer/xlayer/tx/0xb48cf6182b7bf87df78817401c7fefc2e8a319b341b96e572552775361fa9a1e)
+  succeeded, emitted `AssetUsed`, and is labelled with the code on the X Layer explorer.

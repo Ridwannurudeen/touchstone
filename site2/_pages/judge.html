@@ -210,6 +210,12 @@
       <code>{{fact:mainnet.gate_freshness}}</code> on mainnet and
       <code>{{fact:testnet.gate_freshness}}</code> on testnet. Reads need no wallet;
       connecting one lets you simulate and execute the same calls.</p>
+      <p class="proof-line"><strong>Builder Code proof:</strong> the live Terminal appended
+      registered code <code>{{fact:builder.code}}</code> to a permitted mainnet admission
+      execution. The transaction emitted <code>AssetUsed</code> for use number
+      {{fact:mainnet.builder_attributed_use_number}} at block
+      {{fact:mainnet.builder_attributed_block}}, and the X Layer explorer displays the code:
+      <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.builder_attributed_tx}}">inspect the attributed transaction</a>.</p>
     </div>
   </section>
 

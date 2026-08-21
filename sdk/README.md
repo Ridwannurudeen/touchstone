@@ -81,6 +81,9 @@ and `policyDigestRoot(report.policy.policy_digest)` for the policy root. The sha
 
 ## ERC-8021 attribution
 
-After the owner registers a Builder Code, pass it to `GuardedActionClient.execute([code])`.
-The SDK appends the canonical ERC-8021 schema-0 suffix to the action calldata. The package
-does not ship an unregistered code or claim that registration has happened.
+Pass a registered Builder Code to `GuardedActionClient.execute([code])`. The SDK appends the
+canonical ERC-8021 schema-0 suffix to the action calldata. Touchstone's registered code is
+`f0axgs7smtk2nfa7`; its first attributed
+[mainnet admission execution](https://web3.okx.com/explorer/xlayer/tx/0xb48cf6182b7bf87df78817401c7fefc2e8a319b341b96e572552775361fa9a1e)
+is public. External applications must register and pass their own code rather than reusing
+Touchstone's attribution.

@@ -144,7 +144,10 @@ npm ci &amp;&amp; npm run build &amp;&amp; npm test</pre>
         exercises the gate's state-changing path and rejects a known refusal before it
         submits anything. <span class="mono">GuardedActionClient.execute(builderCodes)</span>
         appends the canonical ERC-8021 attribution suffix when you pass a registered Builder
-        Code.</p>
+        Code. Touchstone's live Terminal uses <span class="mono">f0axgs7smtk2nfa7</span>;
+        <a href="https://web3.okx.com/explorer/xlayer/tx/0xb48cf6182b7bf87df78817401c7fefc2e8a319b341b96e572552775361fa9a1e">its first
+        attributed mainnet execution</a> is public. Integrators should register and pass their
+        own code.</p>
         <p class="code-block-label" style="margin-top:var(--s5)">read the registry directly</p>
         <pre class="code-block"><span class="c-key">import</span> { RegistryV2Client, indexPublished, policyRegistryKey } <span class="c-key">from</span> <span class="c-string">"@touchstone/sdk"</span>;
 

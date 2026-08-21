@@ -9,7 +9,7 @@
     "reports_published": "20",
     "confirmed_reports": "15",
     "v2_attestations": "10",
-    "enforcement_txs": "8",
+    "enforcement_txs": "9",
     "networks": "2",
     "bundles_downloadable": "18",
     "python_tests": "1,990",
@@ -50,6 +50,10 @@
     "ledger_sha256": "4f2c7dd5ea0cd09c3b0e9d51445873c65b882a1b3b3265c15979b598dab91dd1",
     "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
     "signed_on": "2026-08-19"
+  },
+  "builder": {
+    "code": "f0axgs7smtk2nfa7",
+    "registered_on": "2026-08-21"
   },
   "roles": {
     "deployer": "0xAa1C01C6FcDcc268DbF93C861D26C44a27C35436",
@@ -125,6 +129,10 @@
     "admission_activate_tx": "add906e84500e698ea4df94586c88380b6eae6f82eaa04000f335be8db8cd773",
     "admission_execute_tx": "1f08a3e93801764e9aa205ead10862443c01fffdf160424a1cb8dce182a386c7",
     "admission_refused_tx": "4c62fabf77b31c0883a6eb71c9052f29aefae53687b46ba02ba82830b271e9e1",
+    "builder_attributed_tx": "b48cf6182b7bf87df78817401c7fefc2e8a319b341b96e572552775361fa9a1e",
+    "builder_attributed_block": "68574822",
+    "builder_attributed_caller": "0xe55816904796341BF8535e25f6c8b647927fc946",
+    "builder_attributed_use_number": "2",
     "seq_freshness_v1": "3",
     "seq_nav_v1": "3"
   },

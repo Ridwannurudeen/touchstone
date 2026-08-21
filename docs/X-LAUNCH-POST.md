@@ -5,7 +5,7 @@ https://x.com/TOUCH__STONE/status/2090844839055159485
 
 The live post mentions `@XLayerOfficial`, and its exact URL is retained above for the form.
 The repository has advanced since the post was prepared; the verified current totals are 20
-reports, 15 `CONFIRMED`, 10 Registry V2 attestations and 8 enforcement transactions. The post
+reports, 15 `CONFIRMED`, 10 Registry V2 attestations and 9 enforcement transactions. The post
 is an immutable launch-time snapshot, not the canonical source for changing totals.
 
 ## Exact published copy
