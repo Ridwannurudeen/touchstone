@@ -100,6 +100,24 @@ jobs:
       # a hand edit to a generated file, or a fact changed without a rebuild, fails here.
       - run: python scripts/build_site.py --check
 
+  site_quality:
+    name: generated site quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: python scripts/build_site.py --check
+      - run: python scripts/check_site_links.py
+      - run: python scripts/check_public_truth.py --offline
+      - run: python scripts/smoke_site.py
+
   python_tests:
     name: pytest (py${{ matrix.python }})
     runs-on: ubuntu-24.04
@@ -293,7 +311,8 @@ jobs:
     name: required
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    needs: [lint, workflow_gates, project_truth, python_tests, contracts, sdk, local_e2e, mutation]
+    needs:
+      [lint, workflow_gates, project_truth, site_quality, python_tests, contracts, sdk, local_e2e, mutation]
     if: always()
     permissions:
       contents: read
