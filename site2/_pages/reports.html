@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reports — Touchstone</title>
+<meta name="description" content="Newest-first Touchstone transparency log reports on X Layer.">
+<link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
+<link rel="canonical" href="https://touchstone.gudman.xyz/reports">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+{{> header}}
+<main id="main">
+  <header class="page-head reports-head">
+    <div class="wrap"><h1>Reports</h1></div>
+  </header>
+  <section class="section reports-section">
+    <div class="wrap">
+      <div class="table-scroll reports-table">
+        <table>
+          <caption class="sr">Touchstone transparency log, newest publication first</caption>
+          <thead>
+            <tr><th>Asset</th><th>Published (UTC)</th><th>State</th><th>Report hash</th><th>Transaction</th></tr>
+          </thead>
+          <tbody>
+{{fact:reports.rows}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+{{> footer}}
+</body>
+</html>
