@@ -124,9 +124,20 @@ the aggregate `required` check. The verified local result at this
 revision is 1,990 passed / 1 skipped, 111 contract tests, 15 SDK tests,
 and 125/125 mutants killed.
 
-**Release builder.** `scripts/build_release.py` writes an unsigned JSON
-document from the tree and from caller-supplied test counts. It does
-not invent counts and does not read the clock.
+**Signed release.** [`v0.1.0`](https://github.com/Ridwannurudeen/touchstone/releases/tag/v0.1.0)
+binds clean commit `c6908f00058c44f57251ca1dab446cbc16300ce6`, deterministic source and
+project-state artifacts, and successful CI run `32517792979`. The release set is Ed25519-signed
+by the active reporter identity recorded in the mainnet deployment manifest. The release was
+re-downloaded after publication; all checksums and the signature verified. The annotated Git
+tag itself is not cryptographically signed, and the reporter signature is not an independent
+security audit.
+
+**External integration proposal.** [Blvck Protocol PR #1](https://github.com/anyathebrand-prog/blvck_protocol/pull/1)
+adds optional ingestion of Touchstone bundles through Blvck's content-addressed source path.
+It requires an independently supplied reporter key and rejects tampering, attacker-controlled
+self-signed bundles, unsupported versions, and expired reports. Its package suite passed 85
+tests and a live retained USTB bundle verified. The PR is open: this is public integration
+proof, not adoption, endorsement, a partnership, or a deployed third-party consumer.
 
 ---
 
@@ -250,7 +261,7 @@ evidence or the refusal.
 | "Users" / "volume" / "TVL" | None. No product users are recorded. | No such metric exists in the tree |
 | "OKX / issuer partner" | Not claimed. Endorsement would need written confirmation. | `ROADMAP.md` |
 | "Name is clear" | Two live crypto projects use Touchstone; counsel opinion is not on file. | `docs/BRAND-CLEARANCE.md` |
-| "Signed release" | The builder emits unsigned JSON. | `scripts/build_release.py` |
+| "Signed release" | `v0.1.0` has a reporter-signed release set binding its manifest, project state, source archive, exact commit and successful CI run. The tag is annotated rather than cryptographically signed, and no independent audit is implied. | https://github.com/Ridwannurudeen/touchstone/releases/tag/v0.1.0 |
 | "Production host" | Observer and status timer active; publisher enabled on the same shared VPS since 2026-08-20, with two unattended daily slots recorded. That proves the path, not a reliability window. | `docs/OPERATIONS.md` |
 
 ---
@@ -264,8 +275,9 @@ Prepared in the repository, not attached to anything:
 - `docs/RELEASE-RUNBOOK.md`
 - `docs/CANARY-G1B.md` (historical canary runbook; testnet and mainnet canaries were executed under separate owner approvals)
 - `AI_USAGE.md`
-- A release document from `scripts/build_release.py` — **not yet cut**
-- A signed release manifest — **not implemented**
+- Reporter-signed release `v0.1.0`, including the release manifest, bound release set,
+  Ed25519 signature, checksums, deterministic source archive and project state
+- Public third-party integration proposal: https://github.com/anyathebrand-prog/blvck_protocol/pull/1
 
 Prepared since this list was written:
 

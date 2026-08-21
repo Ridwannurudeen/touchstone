@@ -29,10 +29,24 @@ The Terminal intentionally sends ordinary, unattributed calldata while `builderC
 
 ## External adoption
 
-Obtain one independently verifiable integration. Strong evidence is another X Layer project
+Public integration proposal prepared and opened:
+https://github.com/anyathebrand-prog/blvck_protocol/pull/1. The adapter verifies Touchstone
+bundles against an independently supplied reporter key and passed 85 package tests. This is
+verifiable integration work, not adoption, endorsement, or a partnership while the PR is open.
+
+Still obtain one independently operated integration. Strong evidence is another X Layer project
 importing `ITouchstoneGate` or `@touchstone/sdk`, operating its own consuming contract and
 wallet, performing a policy-bound action, and announcing the integration. Another wallet
 controlled by Touchstone is not external adoption.
+
+## Signed release
+
+- [x] Published reporter-signed release `v0.1.0`:
+  https://github.com/Ridwannurudeen/touchstone/releases/tag/v0.1.0
+- [x] Re-downloaded every release asset, verified every checksum, verified the Ed25519
+  signature over the exact release set, and matched its key to the active mainnet reporter.
+- [ ] Obtain an independent release or contract audit; a reporter signature proves origin and
+  integrity, not independent review.
 
 ## Operations and security
 

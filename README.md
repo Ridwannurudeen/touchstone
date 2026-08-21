@@ -37,3 +37,16 @@ and the dossier identifies them explicitly.
 slot unattended since 2026-08-20 — two daily slots are now recorded.
 
 Touchstone does not issue assets, custody funds, recommend investments, assign credit ratings, or claim facts beyond the evidence class it has actually verified.
+
+## Release and integration proof
+
+- [`v0.1.0`](https://github.com/Ridwannurudeen/touchstone/releases/tag/v0.1.0) is a
+  reproducible release of commit `c6908f00058c44f57251ca1dab446cbc16300ce6`. Its
+  release set is Ed25519-signed by the active reporter identity recorded in the X Layer
+  mainnet deployment manifest; the release includes the signature, checksums, deterministic
+  source archive, project state, and CI-bound manifest.
+- [Blvck Protocol PR #1](https://github.com/anyathebrand-prog/blvck_protocol/pull/1)
+  proposes an independently testable Touchstone evidence adapter. The open PR verifies
+  retained bundles against an out-of-band trusted key and rejects tampering, self-signed
+  attacker bundles, unsupported versions, and expired reports. It is integration proof, not
+  a claim of adoption or endorsement while the PR remains unmerged.
