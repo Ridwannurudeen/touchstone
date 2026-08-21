@@ -6,12 +6,12 @@
     "contracts_verified_on": "2026-08-20"
   },
   "counts": {
-    "reports_published": "17",
-    "confirmed_reports": "12",
-    "v2_attestations": "8",
-    "enforcement_txs": "6",
+    "reports_published": "20",
+    "confirmed_reports": "15",
+    "v2_attestations": "10",
+    "enforcement_txs": "8",
     "networks": "2",
-    "bundles_downloadable": "15",
+    "bundles_downloadable": "18",
     "python_tests": "1,985",
     "contract_tests": "111",
     "sdk_tests": "15",
@@ -140,9 +140,9 @@
     "gate_freshness": "0x0bc5c0cc879CE1b5AD23aEdA8fC42dB414eB8eE1",
     "guarded_permitted": "0xf6D53a9cD76C6777835a6b4070e88337199127Dc",
     "guarded_refused": "0x8641CF6d40524AC55aBd0a02601AfBd374EFB059",
-    "seq_asset_v1": "4",
-    "seq_freshness_v2": "1",
-    "seq_nav_v2": "1",
+    "seq_asset_v1": "5",
+    "seq_freshness_v2": "2",
+    "seq_nav_v2": "2",
     "confirmed_block": "38698679",
     "first_publication_block": "38526525",
     "first_publication_tx": "5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869",
@@ -162,7 +162,17 @@
       "nav_v2_tx": "d78803d257ae3f98226159a7f0f909bff591c6caaf9af7fc0568df915583d5e2",
       "nav_v2_block": "38707543",
       "freshness_v2_tx": "796dee43e0e285b6900e74ccd4d08a521df69fe52b34139241a87e97846d10f4",
-      "freshness_v2_block": "38708125"
+      "freshness_v2_block": "38708125",
+      "asset_5_tx": "47f53a74051e44faf607b5ae5591896fca80d5360774e86cbdc650d43a4ee099",
+      "asset_5_block": "38874950",
+      "freshness_2_tx": "036162b971201789dc31bc061b03c6cd0b89894c5b4ea60756678598ea0c5637",
+      "freshness_2_block": "38875052",
+      "nav_2_tx": "50b0501e3d624a1502e461c1865bbc16c0a996c4d2c956609fa963092e3edd0e",
+      "nav_2_block": "38875155",
+      "freshness_v2_2_tx": "bfa23e03369372924b6ae7b6b2151ece8a1c11cb431d13b9984d61aae6e48f30",
+      "freshness_v2_2_block": "38875785",
+      "nav_v2_2_tx": "79cdab7ee605e446a0b8dc8fcf07d7715c43b110b3211536d6f3c809803ef45d",
+      "nav_v2_2_block": "38875985"
     },
     "guarded_permitted_tx": "5b6e65b9f0878e65c149654e16729b91a11e58122431551048d65206f56b96cd",
     "guarded_permitted_block": "38700019",
@@ -174,7 +184,14 @@
     "gate_v1_max_age": "172800",
     "gate_freshness_root": "35dbfa3dfbae5a7dc6a2852264fca08b2674629bc51e6018be06b5c083158d73",
     "gate_freshness_max_age": "93600",
-    "oklink": "https://www.oklink.com/xlayer-test"
+    "oklink": "https://www.oklink.com/xlayer-test",
+    "gate_v2": "0xE1e2C897A43674bba6c3fbE6584a703a09939930",
+    "gate_v2_block": "38876261",
+    "admission": "0x1822Cde72cD1aB560d8fdD795Ac6971b122BbA28",
+    "admission_block": "38876477",
+    "admission_activate_tx": "2512893dddb5a14d9780dee5ec91303a77e0992a404948d6280498265499950e",
+    "admission_execute_tx": "f56817bd834639e9d0238eef3d6f2ef7a000248d57824da8b89b1f9a64e75e45",
+    "admission_refused_tx": "57b6077b847b72ddf56c73dc822f6b8501f85da161d505999837d7153057d7c7"
   },
   "story": {
     "refusal_date": "2026-08-18",
@@ -185,8 +202,8 @@
   "_comment_pubs": "Publication txs recovered from the workspaces' transparency logs on 2026-08-20 and cross-checked against known receipt blocks. asset_3 on testnet corrects asset_1 (same epoch); asset_2 on mainnet corrects asset_1. The v2 attestation txs and guarded-action txs are appended by the bounded chain scans (see git history).",
   "bundles": {
     "shared_ledger_digest": "3e1840a0a490d4b007c393d0f035c0008cbe46eb42f36aa86f0db727d3a78d5b",
-    "latest_policy_sha256": "fc9a24d62ea7008653bdbd45854688c5775dd703cc8eb1d6400719d553f4eb1c",
-    "latest_policy_file": "eip155-196-ustb-2026-08-21-3-policy-nav-settlement-1.json"
+    "latest_policy_sha256": "f0417174fbddb04252ae98c5bd6dec756a6930fb8007320cfeb6a95f539baad0",
+    "latest_policy_file": "eip155-1952-ustb-2026-08-21-2-policy-nav-settlement-1.json"
   },
   "repo": {
     "clone_url": "https://github.com/Ridwannurudeen/touchstone.git",

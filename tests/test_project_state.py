@@ -28,12 +28,14 @@ def test_project_state_is_assembled_from_verified_repository_facts(
         state["approval"]["approved_control_ids"]
     )
     assert state["reports"]["artifact_count"] == len(state["bundles"])
-    # Six, since 2026-08-21: three confirmed policy pairs are retained under site2/data
-    # and verified. These pinned zero right up until
-    # the product did the thing it was built to do, and the count only moves when another
-    # confirmed policy bundle is retained — which is exactly the event worth pinning.
-    assert state["reports"]["retained_verified_policy_bundle_count"] == 6
-    assert state["reports"]["confirmed_policy_bundle_count"] == 6
+    # Eight, since 2026-08-21 evening: four confirmed policy pairs are retained under
+    # site2/data and verified — the fourth is the first TESTNET pair with retained
+    # chain-aware bundle files, the very gap the dossier used to disclose. These pinned
+    # zero right up until the product did the thing it was built to do, and the count
+    # only moves when another confirmed policy bundle is retained — which is exactly
+    # the event worth pinning.
+    assert state["reports"]["retained_verified_policy_bundle_count"] == 8
+    assert state["reports"]["confirmed_policy_bundle_count"] == 8
     assert state["deployments"]
     output = tmp_path / "project-state.json"
     output.write_bytes(build.encode_state(state))
@@ -110,8 +112,7 @@ def test_public_truth_rejects_non_integer_chain_fact_counts() -> None:
     stats = {
         "reports_published": 14,
         "confirmed_reports": 9,
-        "reports": ([{"state": "CONFIRMED"}] * 9)
-        + ([{"state": "UNVERIFIABLE"}] * 5),
+        "reports": ([{"state": "CONFIRMED"}] * 9) + ([{"state": "UNVERIFIABLE"}] * 5),
     }
     readme = "Status: 14 published reports, 9 `CONFIRMED`."
 
@@ -139,7 +140,7 @@ def test_registry_latest_sequences_link_their_latest_publications() -> None:
         ("testnet.pubs.nav_v2_tx", "testnet.seq_nav_v2"),
     )
     for transaction, sequence in links:
-        assert f"0x{{{{fact:{transaction}}}}}\">{{{{fact:{sequence}}}}}</a>" in page
+        assert f'0x{{{{fact:{transaction}}}}}">{{{{fact:{sequence}}}}}</a>' in page
 
 
 def test_public_truth_rejects_a_stale_phrase_regardless_of_its_recorded_case(

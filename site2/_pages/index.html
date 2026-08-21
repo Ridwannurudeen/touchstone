@@ -50,6 +50,18 @@
   .hero-term .term-btn--ghost { color: var(--term-ink); }
   .hero-aside .case-line { margin-top: var(--s5); }
   .hero-trust { margin-top: var(--s5); color: var(--ink-500); }
+  .positioning { padding: var(--s5) 0; border-bottom: 1px solid var(--rule); }
+  .positioning-copy { max-width: 82ch; margin: 0; font-weight: 600; }
+  .positioning-strip {
+    margin: var(--s3) 0 0;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--t-micro);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow-x: auto;
+    color: var(--ink-500);
+  }
+  .positioning-strip strong { color: var(--copper); }
 
   /* Dark code panels: the global `code` rule paints a light chip background, which is cleared
      inside the dark block here rather than by editing the shared class. */
@@ -131,6 +143,13 @@
           </div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section class="positioning" aria-label="How Touchstone is different">
+    <div class="wrap">
+      <p class="positioning-copy">Other products help users discover, score, trade or automate RWAs. Touchstone determines whether the evidence policy required for an RWA action currently holds — and enforces the answer onchain.</p>
+      <p class="positioning-strip">Discover &middot; Score &middot; Trade &middot; Automate&nbsp; → &nbsp;<strong>Verify + Enforce</strong></p>
     </div>
   </section>
 

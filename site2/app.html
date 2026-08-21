@@ -210,25 +210,32 @@
           "label": "USTB · policy disclosure-freshness:1",
           "key": "0xa40f966944356ce543320f59f22ba003e3f0be28532bae029d4f9f9d05efc589",
           "registry": "v2",
-          "gate": "0x0bc5c0cc879CE1b5AD23aEdA8fC42dB414eB8eE1",
-          "bundle": "/data/ustb-2026-08-19-1-policy-disclosure-freshness-1.json"
+          "gate": "0xE1e2C897A43674bba6c3fbE6584a703a09939930",
+          "bundle": "/data/eip155-1952-ustb-2026-08-21-2-policy-disclosure-freshness-1.json"
         },
         "nav": {
           "label": "USTB · policy nav-settlement:1",
           "key": "0x3cd89b1b73d40adc47c25a1fbf2123dcf6839c92a446275db8f9268a146b62b8",
           "registry": "v2",
           "gate": null,
-          "bundle": "/data/ustb-2026-08-19-1-policy-nav-settlement-1.json"
+          "bundle": "/data/eip155-1952-ustb-2026-08-21-2-policy-nav-settlement-1.json"
         },
         "asset": {
           "label": "USTB · asset-wide verdict",
           "key": "0x82287f6355a79c8cf00b3c52090128ae7f13b61c65c95ae1c319910377054cc8",
           "registry": "v1",
           "gate": "0xAac48DC261B04737FDCB101D5049395121034a83",
-          "bundle": "/data/ustb-2026-08-19-4.json"
+          "bundle": "/data/eip155-1952-ustb-2026-08-21-5.json"
         }
       },
       "actions": {
+        "admission": {
+          "label": "RWAAdmissionController · execute the admitted USTB policy action",
+          "address": "0x1822Cde72cD1aB560d8fdD795Ac6971b122BbA28",
+          "kind": "admission",
+          "key": "0xa40f966944356ce543320f59f22ba003e3f0be28532bae029d4f9f9d05efc589",
+          "gate": "0xE1e2C897A43674bba6c3fbE6584a703a09939930"
+        },
         "permitted": {
           "label": "GuardedAction · freshness-pinned (permitted while CONFIRMED)",
           "address": "0xf6D53a9cD76C6777835a6b4070e88337199127Dc",

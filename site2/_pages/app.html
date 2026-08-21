@@ -192,25 +192,32 @@
           "label": "USTB · policy disclosure-freshness:1",
           "key": "0x{{fact:keys.freshness}}",
           "registry": "v2",
-          "gate": "{{fact:testnet.gate_freshness}}",
-          "bundle": "/data/ustb-2026-08-19-1-policy-disclosure-freshness-1.json"
+          "gate": "{{fact:testnet.gate_v2}}",
+          "bundle": "/data/eip155-1952-ustb-2026-08-21-2-policy-disclosure-freshness-1.json"
         },
         "nav": {
           "label": "USTB · policy nav-settlement:1",
           "key": "0x{{fact:keys.nav}}",
           "registry": "v2",
           "gate": null,
-          "bundle": "/data/ustb-2026-08-19-1-policy-nav-settlement-1.json"
+          "bundle": "/data/eip155-1952-ustb-2026-08-21-2-policy-nav-settlement-1.json"
         },
         "asset": {
           "label": "USTB · asset-wide verdict",
           "key": "0x{{fact:keys.asset}}",
           "registry": "v1",
           "gate": "{{fact:testnet.gate_v1}}",
-          "bundle": "/data/ustb-2026-08-19-4.json"
+          "bundle": "/data/eip155-1952-ustb-2026-08-21-5.json"
         }
       },
       "actions": {
+        "admission": {
+          "label": "RWAAdmissionController · execute the admitted USTB policy action",
+          "address": "{{fact:testnet.admission}}",
+          "kind": "admission",
+          "key": "0x{{fact:keys.freshness}}",
+          "gate": "{{fact:testnet.gate_v2}}"
+        },
         "permitted": {
           "label": "GuardedAction · freshness-pinned (permitted while CONFIRMED)",
           "address": "{{fact:testnet.guarded_permitted}}",

@@ -36,7 +36,7 @@ observed.
 | Requirement | State |
 |---|---|
 | AI in the product design | **Met.** A model compiles issuer disclosures into controls citing byte-exact spans. It never runs in the serving path, which is the point — the daily result is deterministic. |
-| Deployed on X Layer testnet | **Met.** Registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`, chain 1952, USTB sequences 1–4 (sequence 4 is `CONFIRMED`), plus both policy keys at sequence 1 with Registry v2 attestations on `0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720`. The legacy `AssetGate` at `0xAac48DC261B04737FDCB101D5049395121034a83` and a freshness-pinned gate at `0x0bc5c0cc879CE1b5AD23aEdA8fC42dB414eB8eE1` are live there. |
+| Deployed on X Layer testnet | **Met.** Registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`, chain 1952, USTB sequences 1–5 (sequence 5 is `CONFIRMED`), plus both policy keys at sequence 2 with Registry v2 attestations on `0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720`. `AssetGateV2` at `0xE1e2C897A43674bba6c3fbE6584a703a09939930` pins the approved policy, control-set root and signed approval digest and answered `(true, "allowed")` on deployment day; `RWAAdmissionController` at `0x1822Cde72cD1aB560d8fdD795Ac6971b122BbA28` consumes it with propose, activate, execute and a refused activation on chain. The legacy `AssetGate` and the freshness-pinned gate remain live beside them. |
 | Launched on X Layer mainnet | **MET, 2026-08-18.** Registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, chain 196, deployed at block 68291416 under a recorded owner approval; manifest `deployments/xlayer-mainnet.json`, `deployment_state: active`. USTB sequences 1–5 (sequence 5 is `CONFIRMED`, published unattended on 2026-08-21), both policy keys at sequence 3 with Registry v2 attestations on `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` (chain 196). ⚠️ Both registry addresses recur across chains — same deployer, aligned nonces — so the chain id is the only thing that identifies a deployment. `AssetGateV2` is live on mainnet at `0x8641CF6d40524AC55aBd0a02601AfBd374EFB059` (block 68427105), pinned to the approved policy, control-set root and signed approval-ledger digest; two independent RPCs returned `allowed` after the sequence-3 attestations. `RWAAdmissionController` at `0x5C5265392701A99cbB137aF8116E0F97f630329A` consumes the gate with permit and refusal transactions on chain. |
 | Dedicated X account, kept active | **Account created:** `@touch__stone`. "Kept active" is a continuing obligation, not a one-time step. |
 | Post mentioning @XLayerOfficial | **NOT PUBLISHED.** `docs/X-LAUNCH-POST.md` is a draft only. Publishing requires explicit owner approval; the resulting URL must be retained for the form. |
@@ -50,9 +50,9 @@ actually verified.
 
 ## 2. What was built
 
-A single USTB vertical across testnet and mainnet: 17 published reports
-across both chains, 9 of them `CONFIRMED`, spanning the asset key and two
-policy keys, with eight Registry v2 attestations and six enforcement
+A single USTB vertical across testnet and mainnet: 20 published reports
+across both chains, 15 of them `CONFIRMED`, spanning the asset key and two
+policy keys, with ten Registry v2 attestations and eight enforcement
 transactions. The first `CONFIRMED` state landed 2026-08-19; the
 2026-08-20 and 2026-08-21 mainnet slots were published unattended by the production host.
 
@@ -111,7 +111,7 @@ all `CONFIRMED`.
 X Layer testnet (chain 1952), deployed 2026-08-17 at block 38489602
 under a recorded owner approval. Publisher
 `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710` authorised. Holds USTB
-sequences 1–4 plus both policy keys at sequence 1; Registry v2 at
+sequences 1–5 plus both policy keys at sequence 2; Registry v2 at
 `0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720` holds their attestations.
 Predecessor `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d` is
 superseded and must not be published to.
@@ -179,7 +179,7 @@ attestation and must not be described as trustless.
 | Mainnet `AssetGateV2` | `0x8641CF6d40524AC55aBd0a02601AfBd374EFB059` — block 68427105, pins policy id, policy root, control-set root and the signed approval-ledger digest |
 | Mainnet `RWAAdmissionController` | `0x5C5265392701A99cbB137aF8116E0F97f630329A` — block 68427148; propose, activate, execute and a refused activation are all on-chain transactions |
 | Hero asset (off-chain identity) | USTB `eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e` |
-| Published reports | 17 across both chains, 12 `CONFIRMED`. First: USTB sequence 1, block 38526525, tx `0x5107140c…5be6b869`, X Layer testnet. Latest mainnet asset report: sequence 5, `CONFIRMED`, published unattended 2026-08-21. Full per-report table with transactions: https://touchstone.gudman.xyz/dossier |
+| Published reports | 20 across both chains, 15 `CONFIRMED`. First: USTB sequence 1, block 38526525, tx `0x5107140c…5be6b869`, X Layer testnet. Latest mainnet asset report: sequence 5, `CONFIRMED`, published unattended 2026-08-21. Full per-report table with transactions: https://touchstone.gudman.xyz/dossier |
 | Verification API | `not_deployed` — verification is offline and in-browser, by design |
 | Status page | https://touchstone.gudman.xyz/status — regenerated every five minutes from the observer's log; states its own generation time and that it may be stale |
 
@@ -240,7 +240,7 @@ evidence or the refusal.
 
 | Claim one might want | Honest substitute | Evidence |
 |---|---|---|
-| "Live on X Layer" | Registries v1 and v2 are live on both chains: 17 reports, 12 `CONFIRMED`. Live and verified-against-evidence are both accurate; "trustless" is not. | `docs/OPERATIONS.md`, https://touchstone.gudman.xyz/dossier |
+| "Live on X Layer" | Registries v1 and v2 are live on both chains: 20 reports, 15 `CONFIRMED`. Live and verified-against-evidence are both accurate; "trustless" is not. | `docs/OPERATIONS.md`, https://touchstone.gudman.xyz/dossier |
 | "Two live adapters" | One adapter. Not two assets. Its daily slot has run unattended on the production host since 2026-08-20 — two daily slots are recorded, not a track record. | `ROADMAP.md` completion table |
 | "Consumer contract in production" | `AssetGateV2` and `RWAAdmissionController` are live on **mainnet** with permit and refusal transactions; gates are live on testnet. No third party consumes them — every consumer is this project's own contract. | `contracts/scripts/deploy_gate.js`, `deploy_admission.js` |
 | "Autonomous canary" | The 2026-08-20 and 2026-08-21 mainnet slots were published unattended by the production host. The first attempt failed closed on a parse timeout the loaded host could not meet; the timeout was corrected and both recorded daily slots then published on their own. Two unattended days prove the path, not sustained continuity. | `docs/OPERATIONS.md` |

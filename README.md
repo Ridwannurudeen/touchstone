@@ -12,13 +12,13 @@ Touchstone is not a price oracle, credit rating, or legal-compliance oracle. It 
 whether a specific, predeclared evidence policy is currently supported and gives applications
 an enforceable answer.
 
-Status: **live on X Layer testnet and mainnet — 17 published reports, 12 `CONFIRMED` since 2026-08-19, v1 and v2 registries on both chains.** The registry is at `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` on X Layer testnet
+Status: **live on X Layer testnet and mainnet — 20 published reports, 15 `CONFIRMED` since 2026-08-19, v1 and v2 registries on both chains.** The registry is at `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` on X Layer testnet
 (chain 1952), deployed 2026-08-17 at block 38489602 under a recorded owner approval; see
 `docs/DEPLOYMENT-G1-EXECUTED.md`. Its predecessor, deployed 2026-08-15, is **superseded**: it
 predates the `epochKey` change that makes one-report-per-epoch enforceable on chain, so nothing
 may publish to it, and nothing ever did.
 
-**Fourteen reports have been published — nine of them `CONFIRMED`.** The system refused a
+**Twenty reports have been published — fifteen of them `CONFIRMED`.** The system refused a
 provisional NAV on the 18th and confirmed the same value, `11.18208300`, on the 19th once a
 second capture at least a day older still carried it unchanged: refusal and confirmation are
 one mechanism. Two consumer policies — `disclosure-freshness:1` and `nav-settlement:1` —
@@ -28,7 +28,7 @@ GuardedAction pair on each chain shows the consequence: one permitted transactio
 genuine on-chain revert. On mainnet, `AssetGateV2` pins the approved policy, control-set
 root and signed approval-ledger digest, and `RWAAdmissionController` consumes it — propose,
 activate, execute and a refused activation, all real transactions. Every report's bundle
-verifies offline; twelve of fourteen are downloadable from the dossier and the two gaps are
+verifies offline; eighteen of twenty are downloadable from the dossier and the two gaps are
 stated there plainly.
 
 **No claim of continuous operation is made.** The production host has published its daily

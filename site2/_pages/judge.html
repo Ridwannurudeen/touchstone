@@ -29,6 +29,23 @@
   .proof-line code { overflow-wrap: anywhere; }
   .addr-table td code { overflow-wrap: anywhere; }
   .closing-note { margin-top: var(--s6); color: var(--ink-400); font-size: var(--t-small); }
+  .positioning-block {
+    margin-top: var(--s6);
+    padding: var(--s4) 0;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .positioning-copy { max-width: 82ch; margin: 0; font-weight: 600; }
+  .positioning-strip {
+    margin: var(--s3) 0 0;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--t-micro);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow-x: auto;
+    color: var(--ink-500);
+  }
+  .positioning-strip strong { color: var(--copper); }
 </style>
 </head>
 <body>
@@ -43,6 +60,10 @@
       <p class="t-lead prose">Five things, in order: the problem, how a control gets written,
       what happened to one NAV figure, the contracts you can call right now, and the file to
       take away.</p>
+      <div class="positioning-block">
+        <p class="positioning-copy">Other products help users discover, score, trade or automate RWAs. Touchstone determines whether the evidence policy required for an RWA action currently holds — and enforces the answer onchain.</p>
+        <p class="positioning-strip">Discover &middot; Score &middot; Trade &middot; Automate&nbsp; → &nbsp;<strong>Verify + Enforce</strong></p>
+      </div>
     </div>
   </section>
 
@@ -156,7 +177,8 @@
       </div>
 
       <div class="cta-row">
-        <a class="cta" href="/app">Run the same check the contracts run</a>
+        <a class="cta" href="/app?replay=permitted">Replay permitted action</a>
+        <a class="cta-ghost" href="/app?replay=refused">Replay refused action</a>
       </div>
 
       <div class="table-scroll addr-table">

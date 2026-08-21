@@ -1533,6 +1533,18 @@ function refreshKeys() {
   readGate();
 }
 
+function initialize() {
+  const replay = new URLSearchParams(window.location.search).get("replay");
+  if (replay === "permitted" || replay === "refused") {
+    $("net-select").value = "mainnet";
+  }
+  refreshKeys();
+  if (replay === "permitted" || replay === "refused") {
+    $("action-select").value = replay;
+    simulate();
+  }
+}
+
 $("net-select").addEventListener("change", refreshKeys);
 $("key-select").addEventListener("change", () => {
   readReport();
@@ -1565,4 +1577,4 @@ $("verify-file").addEventListener("change", (event) => {
   if (event.target.files[0]) verifyBundle(event.target.files[0]);
 });
 
-refreshKeys();
+initialize();

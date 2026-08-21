@@ -51,6 +51,18 @@
   .hero-term .term-btn--ghost { color: var(--term-ink); }
   .hero-aside .case-line { margin-top: var(--s5); }
   .hero-trust { margin-top: var(--s5); color: var(--ink-500); }
+  .positioning { padding: var(--s5) 0; border-bottom: 1px solid var(--rule); }
+  .positioning-copy { max-width: 82ch; margin: 0; font-weight: 600; }
+  .positioning-strip {
+    margin: var(--s3) 0 0;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: var(--t-micro);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow-x: auto;
+    color: var(--ink-500);
+  }
+  .positioning-strip strong { color: var(--copper); }
 
   /* Dark code panels: the global `code` rule paints a light chip background, which is cleared
      inside the dark block here rather than by editing the shared class. */
@@ -111,8 +123,8 @@
           <a class="cta-ghost" href="/developers">Start Building</a>
         </div>
         <p class="mono t-small hero-trust">Live on X&nbsp;Layer mainnet and testnet &middot;
-        17 reports &middot;
-        12 confirmed &middot; policy enforcement proven onchain</p>
+        20 reports &middot;
+        15 confirmed &middot; policy enforcement proven onchain</p>
       </div>
 
       <div class="hero-aside">
@@ -152,6 +164,13 @@
     </div>
   </section>
 
+  <section class="positioning" aria-label="How Touchstone is different">
+    <div class="wrap">
+      <p class="positioning-copy">Other products help users discover, score, trade or automate RWAs. Touchstone determines whether the evidence policy required for an RWA action currently holds — and enforces the answer onchain.</p>
+      <p class="positioning-strip">Discover &middot; Score &middot; Trade &middot; Automate&nbsp; → &nbsp;<strong>Verify + Enforce</strong></p>
+    </div>
+  </section>
+
   <section class="trust-strip" aria-label="What is live">
     <div class="wrap trust-cells">
       <div class="trust-cell">
@@ -166,8 +185,8 @@
       </div>
       <div class="trust-cell">
         <p class="tc-k">PUBLIC PROOF</p>
-        <p><strong>17</strong> onchain reports &middot;
-        <strong>15</strong> downloadable bundles &middot;
+        <p><strong>20</strong> onchain reports &middot;
+        <strong>18</strong> downloadable bundles &middot;
         CI-verified claims</p>
       </div>
     </div>
@@ -181,17 +200,17 @@
         <p class="metric-q">mainnet and testnet, registry v1 and v2 on both</p>
       </div>
       <div class="metric">
-        <p class="metric-n">17</p>
+        <p class="metric-n">20</p>
         <p class="metric-l">Onchain reports published</p>
         <p class="metric-q">signed, sequenced and permanent</p>
       </div>
       <div class="metric">
-        <p class="metric-n">12</p>
+        <p class="metric-n">15</p>
         <p class="metric-l">Confirmed policy decisions</p>
         <p class="metric-q">verdicts a contract is willing to act on</p>
       </div>
       <div class="metric">
-        <p class="metric-n">6</p>
+        <p class="metric-n">8</p>
         <p class="metric-l">Permit/refuse enforcement transactions</p>
         <p class="metric-q">guarded actions that ran, or were stopped, on chain</p>
       </div>
