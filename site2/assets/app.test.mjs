@@ -66,11 +66,16 @@ function loadTerminal(config = { networks: {} }, cryptoImpl = webcrypto) {
       },
     },
     ethers: {
+      concat: (values) =>
+        Uint8Array.from(values.flatMap((value) => [...value])),
+      getBytes: (value) => Uint8Array.from(Buffer.from(value.slice(2), "hex")),
+      hexlify: (value) => `0x${Buffer.from(value).toString("hex")}`,
       Interface: class {
         encodeFunctionData() {
           return "0x1234";
         }
       },
+      toUtf8Bytes: (value) => new TextEncoder().encode(value),
     },
     window: {},
   });
@@ -81,7 +86,7 @@ function loadTerminal(config = { networks: {} }, cryptoImpl = webcrypto) {
     `${source}\n` +
       `globalThis.__terminalTest = {` +
       `canonicalJson, controlContentHashes, controlSetRootFromBundle, ` +
-      `evidenceRootFromBundle, simulate, verifyBundle, ` +
+      `evidenceRootFromBundle, simulate, verifyBundle, withBuilderCode, ` +
       `setRpc(value) { rpc = value; }, ` +
       `setVerifyActionBinding(value) { verifyActionBinding = value; }` +
       `};`,
@@ -338,4 +343,20 @@ test("simulation discards a binding failure after the selected action changes", 
   const rendered = textOf(elements.get("action-panel"));
   assert.match(rendered, /aborted/);
   assert.doesNotMatch(rendered, /old binding failed/);
+});
+
+test("configured Builder Code produces the exact ERC-8021 suffix", () => {
+  const page = fs.readFileSync(path.join(root, "site2/_pages/app.html"), "utf8");
+  const configText = page.match(
+    /<script type="application\/json" id="terminal-config">\s*([\s\S]*?)\s*<\/script>/,
+  )?.[1];
+  assert.ok(configText, "terminal config is present");
+  const config = JSON.parse(configText);
+  assert.equal(config.builderCode, "f0axgs7smtk2nfa7");
+
+  const { api } = loadTerminal(config);
+  assert.equal(
+    api.withBuilderCode("0x1234"),
+    "0x123466306178677337736d746b326e666137100080218021802180218021802180218021",
+  );
 });
