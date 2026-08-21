@@ -128,9 +128,14 @@ class TestItRefusesToOverclaim:
     def test_publication_claims_come_from_canonical_facts(
         self, workspace: Workspace
     ) -> None:
+        facts = json.loads(build_status.FACTS.read_text(encoding="utf-8"))
+        counts = facts["counts"]
         page = render(workspace)
-        assert "17 reports" in page
-        assert "<strong>12 reached\n<code>CONFIRMED</code></strong>" in page
+        assert f'{counts["reports_published"]} reports' in page
+        assert (
+            f'<strong>{counts["confirmed_reports"]} reached\n'
+            "<code>CONFIRMED</code></strong>"
+        ) in page
         assert "Unattended publication began\n<code>2026-08-20</code>" in page
         assert "every publication so far was operator-initiated" not in page
 

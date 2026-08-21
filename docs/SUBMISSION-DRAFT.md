@@ -25,7 +25,7 @@ observed.
 | Public dossier | **LIVE** — https://touchstone.gudman.xyz/dossier/ustb-2026-08-17 — the published report in full, every control and digest |
 | Demo URL | **LIVE** — https://touchstone.gudman.xyz/judge — retained replay and refusal path; the narrated replacement film is not uploaded |
 | Documentation site | **LIVE** — https://touchstone.gudman.xyz/docs — the project's committed documentation rendered in full |
-| X / social handles | **`@touch__stone`** — Premium account, verified directly on 2026-08-21 with zero posts. The first post is drafted in `docs/X-LAUNCH-POST.md` but has not been published. The rules require the account be *kept active*, which cannot be backdated. |
+| X / social handles | **`@touch__stone`** — Premium account. Launch post published 2026-08-21 and retained at https://x.com/TOUCH__STONE/status/2090844839055159485; it mentions `@XLayerOfficial`. Keeping the account active remains a continuing obligation. |
 | Domain | `gudman.xyz` subdomain, TLS via Let's Encrypt, certificate to 2026-11-16 |
 | Repository | `github.com/Ridwannurudeen/touchstone` — **PUBLIC since 2026-08-16**, per GitHub's own PublicEvent record (2026-08-16T14:10:51Z, no later visibility change), with `main` protected by the CI aggregate check (protection verified via the API on 2026-08-20). The private-until-deadline plan was superseded by the owner's decision to open it early. |
 | Submission venue | **OKX AI Season Hackathon**, X Layer. Google Form, deadline **2026-08-21 23:59 UTC**. |
@@ -39,7 +39,7 @@ observed.
 | Deployed on X Layer testnet | **Met.** Registry `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`, chain 1952, USTB sequences 1–5 (sequence 5 is `CONFIRMED`), plus both policy keys at sequence 2 with Registry v2 attestations on `0xBaE680e671e0451b95c9b09eD15F70C3E1EA7720`. `AssetGateV2` at `0xE1e2C897A43674bba6c3fbE6584a703a09939930` pins the approved policy, control-set root and signed approval digest and answered `(true, "allowed")` on deployment day; `RWAAdmissionController` at `0x1822Cde72cD1aB560d8fdD795Ac6971b122BbA28` consumes it with propose, activate, execute and a refused activation on chain. The legacy `AssetGate` and the freshness-pinned gate remain live beside them. |
 | Launched on X Layer mainnet | **MET, 2026-08-18.** Registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, chain 196, deployed at block 68291416 under a recorded owner approval; manifest `deployments/xlayer-mainnet.json`, `deployment_state: active`. USTB sequences 1–5 (sequence 5 is `CONFIRMED`, published unattended on 2026-08-21), both policy keys at sequence 3 with Registry v2 attestations on `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` (chain 196). ⚠️ Both registry addresses recur across chains — same deployer, aligned nonces — so the chain id is the only thing that identifies a deployment. `AssetGateV2` is live on mainnet at `0x8641CF6d40524AC55aBd0a02601AfBd374EFB059` (block 68427105), pinned to the approved policy, control-set root and signed approval-ledger digest; two independent RPCs returned `allowed` after the sequence-3 attestations. `RWAAdmissionController` at `0x5C5265392701A99cbB137aF8116E0F97f630329A` consumes the gate with permit and refusal transactions on chain. |
 | Dedicated X account, kept active | **Account created:** `@touch__stone`. "Kept active" is a continuing obligation, not a one-time step. |
-| Post mentioning @XLayerOfficial | **NOT PUBLISHED.** `docs/X-LAUNCH-POST.md` is a draft only. Publishing requires explicit owner approval; the resulting URL must be retained for the form. |
+| Post mentioning @XLayerOfficial | **PUBLISHED.** https://x.com/TOUCH__STONE/status/2090844839055159485 — the exact URL is retained for the form. |
 | Google Form by 2026-08-21 23:59 UTC | **NOT SUBMITTED.** The owner holds the form. Nothing is submitted without explicit approval. |
 
 Touchstone does not issue assets, custody funds, recommend investments,
@@ -121,7 +121,7 @@ superseded and must not be published to.
 the canonical project state, and a mutation harness. The workflow is
 given no project secret. The repository is public and `main` requires
 the aggregate `required` check. The verified local result at this
-revision is 1,985 passed / 1 skipped, 111 contract tests, 15 SDK tests,
+revision is 1,990 passed / 1 skipped, 111 contract tests, 15 SDK tests,
 and 125/125 mutants killed.
 
 **Release builder.** `scripts/build_release.py` writes an unsigned JSON

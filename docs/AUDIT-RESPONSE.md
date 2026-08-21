@@ -40,9 +40,10 @@ re-verified against the repository and the live chains before anything changed).
 | "Verify GuardedAction immutables and admission/gate binding before simulation or execution" | **CLOSED.** Both paths read the target's bindings back from the chain at a pinned block and compare them to config pins that were themselves read from both chains (all four GuardedActions' `gate()`/`assetKey()`, `admissionOf(freshness)`); mismatch aborts before any calldata is built. |
 | "Abort if the visible action changes during preflight" | **CLOSED.** A selection snapshot taken at click is re-checked after every await; a changed selection aborts with nothing sent. |
 | "Optional ERC-8021 Builder Code without inventing a code" | **CLOSED, inert.** `builderCode: null` in the page config; when the owner registers a real code the schema-0 suffix is appended to execute and to the simulation. The byte layout is `sdk/src/attribution.ts`'s, pinned by the SDK suite's canonical vector and cross-checked against an independent implementation; the in-page encoder was proven byte-identical before landing. |
-| "Expand browser verification" | **CLOSED for: versioned schema (fail-closed on unknown versions), complete nested canonical/report equality both directions (proven against all 12 retained bundles), policy identity, ledger↔compilation binding, and the stored on-chain report (one pinned read against the chain the attestation names, digest compared). DECLINED for: control-set and evidence root recomputation in the browser — re-deriving the canonical hashing scheme in JavaScript risks a checkmark that lies, and the panel's "not checked here" row continues to say so plainly; the CLI recipes on /verify remain the way to check roots. |
-| "Remove misleading mainnet bundle links from the two lost testnet policy entries" | **NOT APPLICABLE.** The dossier rows already read "No bundle file — see the note below" and link only their own testnet transactions; the finding described a tree five commits older than its own pin. |
-| Builder Code registration, X post/form evidence, external adoption, multi-day unattended window, custody, independent security review, brand clearance | **OPEN — owner.** As the package itself states, no code patch can perform these. |
+| "Expand browser verification" | **CLOSED for: versioned schema (fail-closed on unknown versions), complete nested canonical/report equality both directions (proven against all 18 retained bundles), policy identity, ledger↔compilation binding, and the stored on-chain report (one pinned read against the chain the attestation names, digest compared). DECLINED for: control-set and evidence root recomputation in the browser — re-deriving the canonical hashing scheme in JavaScript risks a checkmark that lies, and the panel's "not checked here" row continues to say so plainly; the CLI recipes on /verify remain the way to check roots. |
+| "Remove misleading mainnet bundle links from the two lost testnet policy entries" | **CLOSED for the current state.** Fresh chain-aware bundles for both testnet policies were retained on 2026-08-21 and are linked from the dossier. The two historical 2026-08-19 testnet artifacts remain unavailable and their rows link only their own transactions and attestations. |
+| X post evidence | **CLOSED.** The launch post mentions `@XLayerOfficial` and is retained at https://x.com/TOUCH__STONE/status/2090844839055159485. |
+| Builder Code registration, form evidence, external adoption, multi-day unattended window, custody, independent security review, brand clearance | **OPEN — owner.** As the package itself states, no code patch can perform these. |
 | "Second live asset (FOBXX)" | **DECLINED for Phase 1.** Contradicts the recorded scope decision; FOBXX remains the documented monthly contrast asset without an adapter. |
 
 ---
@@ -62,7 +63,7 @@ its snapshot. Deltas against its verdicts, each verifiable from chain or repo:
 | "GuardedAction imports the concrete V1 gate" | **CLOSED.** Depends on `ITouchstoneGate`; works against either generation. |
 | "main unprotected" | **CLOSED.** Required status check `required`, no force-push, no deletion. |
 | "GitHub About overclaims 'signed onchain attestation'" | **CLOSED.** Narrowed to publisher-authenticated commitment + offline-verifiable report. |
-| "Dossier lists one report; four reports lack public bundles" | **CLOSED with one stated gap.** At that review: 11 reports listed and 9 bundles retained. Current state: 17 reports and 15 retained bundles; the 2 absent testnet policy bundle files remain disclosed. |
+| "Dossier lists one report; four reports lack public bundles" | **CLOSED with one historical gap class.** At that review: 11 reports listed and 9 bundles retained. Current state: 20 reports and 18 retained bundles. Fresh chain-aware testnet policy bundles exist for 2026-08-21; only the two overwritten 2026-08-19 testnet policy artifacts remain unavailable and are disclosed. |
 | "Homepage count, OPERATIONS header, submission draft, judge 'Interactive' label stale" | **CLOSED**, this commit. |
 | "Approvals ledger unsigned legacy data" | **CLOSED 2026-08-19.** The owner reviewed all ten decisions and signed: `data/compilations/APPROVALS-SIGNED-2026-08-19.json`, approver `0x537873b0…fA16Bc` recoverable from every artifact, timestamped at signing — the ledger's own dates remain the record of when each decision was made, and nothing was backdated. Verified 10/10 against `verify_signed_approval` and against the ledger's own lists. |
 | "Every publication hand-started; publisher disabled" | **CLOSED for path proof, open for reliability.** The publisher was enabled under owner approval on 2026-08-20 and produced one unattended mainnet publication day. A multi-day operating window and production recovery remain unproven. |
@@ -83,10 +84,12 @@ its snapshot. Deltas against its verdicts, each verifiable from chain or repo:
 
 ## A. The nine blockers
 
-### Blocker 1 — "Proves skepticism better than usefulness" · **PARTIAL**
+### Blocker 1 — "Proves skepticism better than usefulness" · **CLOSED technically; adoption open**
 
-The audit's central finding, and the one everything else orbits: every report ends
-`UNVERIFIABLE`, so the only question answered is one nobody asked.
+The audit's central finding was that every report ended `UNVERIFIABLE`, so the only question
+answered was one nobody asked. That was true at the audit snapshot. The current archive has
+20 reports, 15 `CONFIRMED`, including both policy keys on both chains; external adoption remains
+open and is tracked separately under Blocker 4.
 
 **Built (commit `fbb0d2c`).** Policy profiles. Against the exact evidence that produced the
 published `UNVERIFIABLE`:
@@ -101,13 +104,11 @@ A policy is a versioned subset of approved controls that cannot extend the appro
 reinstate a declined control, alter a threshold, or be edited in place. `touchstone/policy.py`,
 `data/policies/*.json`, 31 tests.
 
-**Local mechanics complete:** schema v5 carries policy identity and manifest digest, bundle
+**Current mechanics complete:** schema v5 carries policy identity and manifest digest, bundle
 verification binds the policy before signature verification, and the publisher/service batch
-path uses one policy key and workspace per policy. One retained capture now produces three
-policy-scoped evaluations with one shared evidence root. All three correctly abstain for the
-checked-in evidence; no retained current-policy `CONFIRMED` result, signed three-report bundle,
-or live policy-key publication is claimed. The five historical v1 reports remain legacy and
-unchanged.
+path uses one policy key and workspace per policy. Current asset and policy reports share one
+evidence root, bind the signed approval ledger, verify offline and are published under their
+own keys. Historical v1 reports remain legacy and unchanged.
 **Re-audit verification:** run the policy evaluation over the retained capture and confirm three
 policy-scoped results share the evidence root; confirm `data/policies/` manifests are
 digest-committed and predate the evaluation, then inspect the v5 policy metadata in the bundle.
@@ -153,19 +154,25 @@ report states directly.
 ### Blocker 6 — "The onchain guarantee is narrower than the pitch" · **PARTIAL**
 True and verified for v1: `TouchstoneRegistry` contains no signature verification. The legacy
 contract proves *an authorized publisher posted these fields*, not that the status came from the
-signed report. `TouchstoneRegistryV2` now binds an EIP-712 report digest, policy roots, parent
-digest and signer identity in local Hardhat tests; it is not deployed or publicly claimed.
+signed report. `TouchstoneRegistryV2` binds an EIP-712 report digest, policy roots, parent
+digest and signer identity. It is deployed on both chains and carries ten current policy
+attestations; the legacy v1 guarantee remains narrower and is still described separately.
 
 Two paths, and the sequencing matters:
 1. **Immediately:** narrow every public claim to "publisher-authenticated onchain commitment
    with an offline-verifiable signed report." Never "trustless", never "onchain signature
    verification." This costs nothing and removes the overclaim today.
-2. **Then:** deploy and independently verify registry v2 under owner authorization. The contract and Python codec are built; deployment remains a live owner action.
-   onchain. Design open — see §D.
+2. **Completed:** registry v2 was deployed and source-verified on both chains under owner
+   authorization; current policy attestations are live. See §D and the deployment manifests.
 
 ### Blocker 7 — "Human approval is a mutable field" · **PARTIAL**
-Approvals now carry an EIP-712 signed artifact with approver identity, timestamp, decision, reason code, control digest and compilation digest. The verifier recovers the approver and binds the proposal exactly; the public judge renders the retained signature metadata. Existing published approvals are legacy and no fabricated replacement was written.
-**Verification:** local recovery/tamper tests pass; recovering an approval from a new live publication remains owner-gated.
+Approvals now carry an EIP-712 signed artifact with approver identity, timestamp, decision,
+reason code, control digest and compilation digest. The verifier recovers the approver and binds
+the proposal exactly; the public judge renders the retained signature metadata. Current policy
+reports and Registry V2 attestations bind the signed ledger digest; earlier publications remain
+historical legacy records.
+**Verification:** local recovery/tamper tests pass and the current published policy bundles bind
+the signed approval ledger.
 
 ### Blocker 8 — "Operational maturity is not production-grade" · **PARTIAL**
 
@@ -174,10 +181,10 @@ Eight sub-items:
 | Sub-item | Status |
 |---|---|
 | Run observation continuously | **CLOSED** — `touchstone-observer@xlayer-mainnet` is active and records all three USTB sources every 15 minutes |
-| Automate one complete publication without manual initiation | **OPEN** — every slot to date was hand-started |
+| Automate one complete publication without manual initiation | **CLOSED for path proof** — the 2026-08-20 and 2026-08-21 mainnet slots each published the asset and both policies unattended; a sustained reliability window remains open |
 | Place the owner key offline | **OWNER** |
-| Publisher key in a separate secret store or host | **PARTIAL** — separate Unix identity and unit exist, but the required `/etc/touchstone/xlayer-mainnet.env` is absent; no separate publisher host or secret store is configured |
-| Two independent RPC providers for pre-publication reads | **PARTIAL** — fail-closed quorum boundary implemented and tested; two production endpoints are not configured |
+| Publisher key in a separate secret store or host | **PARTIAL** — the root-owned production environment and separate service identity are configured, but the key remains on the shared production host without an HSM, KMS or separate publisher host |
+| Two independent RPC providers for pre-publication reads | **CLOSED for the current mainnet path** — fail-closed quorum is implemented and the 2026-08-21 gate and publication state were confirmed through two configured providers |
 | Schedule from UTC, not human-entered local time | **CLOSED** — the daemon schedules from `datetime.now(timezone.utc)`; the 20-minute miss was a human reading a local clock, not the scheduler |
 | Publish a measured operations window without exaggerating it | **CLOSED locally** — `scripts/build_operations_metrics.py` produced `docs/OPERATIONS-METRICS-2026-08-19.json`; it records the exact window and leaves continuity open |
 | Show completed, missed and corrected slot counts | **CLOSED locally** — recorded per workspace in `docs/OPERATIONS-METRICS-2026-08-19.json` without joining hash chains |
@@ -208,17 +215,17 @@ relevant trademarks. Contracts and deployment history can remain as legacy infra
 
 | Item | Status | Note |
 |---|---|---|
-| P0.1 retained demonstration set | **PARTIAL** | One unique retained v4 bundle is mirrored across two static sites; five unique retained bundles and a committed v5 bundle are not present |
-| P0.2 judge application | **PARTIAL** | `/judge` is live with retained replay and a refusal-oriented path; unaided external completion and live v2/gate transactions remain open |
-| P0.3 multi-policy proof | **PARTIAL** | One retained capture produces three policy-scoped evaluations sharing one evidence root; all abstain, and no current signed three-report bundle or live policy-key publication is retained |
-| P0.4 mainnet consumer | **PARTIAL** | `GuardedAction` and the policy-key consumer path are built and tested locally; no live mainnet permitted/refused pair is claimed |
+| P0.1 retained demonstration set | **CLOSED for the current archive** | 18 of 20 published reports have retained downloadable bundles. Fresh chain-aware bundles exist for both current testnet policies; the only unavailable files are the disclosed overwritten 2026-08-19 testnet policy artifacts |
+| P0.2 judge application | **PARTIAL** | `/judge` is live with retained replay, current policy proof and live v2/gate transactions; unaided external completion remains open |
+| P0.3 multi-policy proof | **CLOSED** | Current asset and policy reports share an evidence root, bind the signed approval ledger, verify offline and are published under their policy keys on both chains |
+| P0.4 mainnet consumer | **CLOSED** | `AssetGateV2`, the GuardedAction permit/refuse pair and `RWAAdmissionController` are live on mainnet with real permitted and refused transactions |
 | P0.5 make AI visible | **CLOSED** | `AI_USAGE.md` rewritten with measured outcomes and published at `/docs/ai` |
-| P0.6 green public CI run | OPEN | local suite is 1,958 passed / 1 skipped; a public Actions run remains owner evidence |
-| P0.7 administrative eligibility | OWNER | X account, post URL, explorer links, form receipt, repo access |
+| P0.6 green public CI run | **CLOSED at `d2d1668`** | 1,985 Python tests passed with 1 skipped, 111 contract tests, 15 SDK tests and 125/125 mutation targets; public required CI succeeded at https://github.com/Ridwannurudeen/touchstone/actions/runs/32508657320 |
+| P0.7 administrative eligibility | **PARTIAL / OWNER** | X account, launch post URL, explorer links and public repository are evidenced; form submission and receipt remain owner-controlled and open |
 | P1 Builder Code | OWNER + agent | |
 | P1 external integration | OWNER | |
 | P1 AI evaluation benchmark | **CLOSED locally** | 40 fixed compiler-boundary cases; 8 accepted, 6 abstained, 26 rejected, 100% hostile rejection; see `docs/AI-BENCHMARK.md` |
-| P1 sign approvals | **PARTIAL** | EIP-712 signed artifacts recover a named approver and bind the exact control and compilation digests; the retained approval ledger and published approvals remain legacy/unsigned |
+| P1 sign approvals | **CLOSED for current publications** | The signed approval ledger contains 10 recoverable EIP-712 decisions, and current policy reports and Registry V2 attestations bind its digest; earlier publications remain historical legacy records |
 | P1 five-minute SDK kit | **PARTIAL** | `sdk/` includes TypeScript clients, Solidity interface, policies, canonical correction-aware indexer, attribution suffix path and fixture; an independent timed integration remains unproven |
 | P2 second asset | **PARTIAL** | FOBXX SEC discovery/N-MFP3 normalizer, descriptor and hostile fixture tests ship; no live epoch/publication or daily issuer feed is claimed |
 

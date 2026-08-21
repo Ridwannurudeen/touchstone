@@ -35,7 +35,7 @@ function textOf(value) {
   return `${value.textContent}${value.children.map(textOf).join("")}`;
 }
 
-function loadTerminal(config = { networks: {} }) {
+function loadTerminal(config = { networks: {} }, cryptoImpl = webcrypto) {
   const elements = new Map([
     ["terminal-config", { textContent: JSON.stringify(config) }],
   ]);
@@ -57,7 +57,7 @@ function loadTerminal(config = { networks: {} }) {
     URL,
     Uint8Array,
     console,
-    crypto: webcrypto,
+    crypto: cryptoImpl,
     document: {
       createElement: (tag) => new FakeNode(tag),
       getElementById: (id) => {
@@ -81,7 +81,7 @@ function loadTerminal(config = { networks: {} }) {
     `${source}\n` +
       `globalThis.__terminalTest = {` +
       `canonicalJson, controlContentHashes, controlSetRootFromBundle, ` +
-      `evidenceRootFromBundle, simulate, ` +
+      `evidenceRootFromBundle, simulate, verifyBundle, ` +
       `setRpc(value) { rpc = value; }, ` +
       `setVerifyActionBinding(value) { verifyActionBinding = value; }` +
       `};`,
@@ -90,13 +90,134 @@ function loadTerminal(config = { networks: {} }) {
   return { api: context.__terminalTest, elements };
 }
 
+function retainedBundle() {
+  const directory = path.join(root, "site2/data");
+  const name = fs
+    .readdirSync(directory)
+    .find((entry) => entry.endsWith(".json") && entry !== "stats.json");
+  return JSON.parse(fs.readFileSync(path.join(directory, name), "utf8"));
+}
+
+function bundleFile(bundle, overrides = {}) {
+  const contents = JSON.stringify(bundle);
+  return {
+    name: "bundle.json",
+    size: Buffer.byteLength(contents),
+    async text() {
+      return contents;
+    },
+    ...overrides,
+  };
+}
+
+test("browser refuses a bundle whose report trust anchor is missing", async () => {
+  for (const missing of ["published_key", "signature"]) {
+    const { api, elements } = loadTerminal();
+    const bundle = retainedBundle();
+    if (missing === "published_key") delete bundle.published_key;
+    else delete bundle.signed_report.signature;
+    elements.set("verify-panel", new FakeNode());
+
+    await api.verifyBundle(bundleFile(bundle));
+
+    const rendered = textOf(elements.get("verify-panel"));
+    assert.match(rendered, /report signature/i, missing);
+    assert.match(rendered, /missing/i, missing);
+    assert.doesNotMatch(rendered, /canonical\/report agreement/i, missing);
+  }
+});
+
+test("browser refuses malformed report key and signature hex", async () => {
+  const { api, elements } = loadTerminal();
+  const bundle = retainedBundle();
+  bundle.published_key.public_key = "zz";
+  bundle.signed_report.signature = "01";
+  elements.set("verify-panel", new FakeNode());
+
+  await api.verifyBundle(bundleFile(bundle));
+
+  const rendered = textOf(elements.get("verify-panel"));
+  assert.match(rendered, /report signature/i);
+  assert.match(rendered, /malformed/i);
+  assert.doesNotMatch(rendered, /canonical\/report agreement/i);
+});
+
+test("browser refuses to continue when Ed25519 is unsupported", async () => {
+  const unsupportedCrypto = {
+    subtle: {
+      digest: (...args) => webcrypto.subtle.digest(...args),
+      importKey: async () => {
+        throw new Error("Ed25519 unsupported");
+      },
+    },
+  };
+  const { api, elements } = loadTerminal(
+    { networks: {} },
+    unsupportedCrypto,
+  );
+  elements.set("verify-panel", new FakeNode());
+
+  await api.verifyBundle(bundleFile(retainedBundle()));
+
+  const rendered = textOf(elements.get("verify-panel"));
+  assert.match(rendered, /cannot verify Ed25519/i);
+  assert.doesNotMatch(rendered, /canonical\/report agreement/i);
+});
+
+test("browser stops after a well-formed but incorrect report signature", async () => {
+  const { api, elements } = loadTerminal();
+  const bundle = retainedBundle();
+  const first = bundle.signed_report.signature.startsWith("00") ? "01" : "00";
+  bundle.signed_report.signature =
+    first + bundle.signed_report.signature.slice(2);
+  elements.set("verify-panel", new FakeNode());
+
+  await api.verifyBundle(bundleFile(bundle));
+
+  const rendered = textOf(elements.get("verify-panel"));
+  assert.match(rendered, /signature does NOT verify/i);
+  assert.doesNotMatch(rendered, /canonical\/report agreement/i);
+});
+
+test("browser verifies a retained signature before continuing", async () => {
+  const { api, elements } = loadTerminal();
+  elements.set("verify-panel", new FakeNode());
+
+  await api.verifyBundle(bundleFile(retainedBundle()));
+
+  const rendered = textOf(elements.get("verify-panel"));
+  assert.match(rendered, /Ed25519 verifies under key/i);
+  assert.match(rendered, /canonical\/report agreement/i);
+});
+
+test("browser rejects an oversized bundle before reading it", async () => {
+  const { api, elements } = loadTerminal();
+  let read = false;
+  elements.set("verify-panel", new FakeNode());
+  const file = bundleFile(retainedBundle(), {
+    size: 16_777_217,
+    async text() {
+      read = true;
+      return "{}";
+    },
+  });
+
+  await api.verifyBundle(file);
+
+  assert.equal(read, false);
+  assert.match(textOf(elements.get("verify-panel")), /exceeds 16777216 bytes/i);
+});
+
 test("browser recomputes every retained bundle's control and evidence roots", async () => {
   const { api } = loadTerminal();
   const directory = path.join(root, "site2/data");
   const bundles = fs
     .readdirSync(directory)
     .filter((name) => name.endsWith(".json") && name !== "stats.json");
-  assert.equal(bundles.length, 15);
+  const facts = JSON.parse(
+    fs.readFileSync(path.join(root, "site2/_data/facts.json"), "utf8"),
+  );
+  assert.equal(bundles.length, Number(facts.counts.bundles_downloadable));
 
   for (const name of bundles) {
     const bundle = JSON.parse(

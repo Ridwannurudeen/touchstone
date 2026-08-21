@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 dependencies = [
-    "cryptography==49.0.0",
+    "cryptography==50.0.0",
     # A runtime dependency, not a test one, and the distinction is the whole point.
     # `process_identity` reads `/proc/<pid>/stat` and falls back to psutil; with neither it
     # degrades to `<pid>:unknown`, and `verify` turns that into "the process identity could

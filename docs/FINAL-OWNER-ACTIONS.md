@@ -7,8 +7,9 @@ a form without the owner's explicit approval and account access.
 ## Eligibility — mandatory
 
 - [x] Dedicated Premium project X account created: `@touch__stone`.
-- [ ] Publish the reviewed launch post mentioning `@XLayerOfficial`.
-- [ ] Record the exact live X post URL in `docs/SUBMISSION-DRAFT.md`.
+- [x] Published the reviewed launch post mentioning `@XLayerOfficial`:
+  https://x.com/TOUCH__STONE/status/2090844839055159485
+- [x] Recorded the exact live X post URL in `docs/SUBMISSION-DRAFT.md`.
 - [ ] Add the owner's contact email and prize wallet to `docs/SUBMISSION-DRAFT.md`.
 - [x] Fresh mainnet policy publication confirmed 2026-08-21: both policy keys reached v1 and
   Registry V2 sequence 3, and two independent RPCs returned `allowed` from the live gate.
@@ -46,8 +47,9 @@ controlled by Touchstone is not external adoption.
 
 ## Product breadth
 
-- [ ] Publish a fresh chain-aware testnet policy bundle so the Terminal does not depend on a
-  missing historical artifact.
+- [x] Published fresh chain-aware testnet policy bundles for both current policies on
+  2026-08-21. The two overwritten 2026-08-19 testnet artifacts remain historical gaps and are
+  identified in the dossier; the Terminal no longer depends on them for the current policy state.
 - [ ] Complete a second live asset with a materially different authority class; FOBXX
   regulator filings remain the strongest documented candidate.
 - [ ] Resolve the documented Touchstone brand collisions before treating the name as a

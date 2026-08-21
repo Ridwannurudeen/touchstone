@@ -28,8 +28,10 @@ GuardedAction pair on each chain shows the consequence: one permitted transactio
 genuine on-chain revert. On mainnet, `AssetGateV2` pins the approved policy, control-set
 root and signed approval-ledger digest, and `RWAAdmissionController` consumes it — propose,
 activate, execute and a refused activation, all real transactions. Every report's bundle
-verifies offline; eighteen of twenty are downloadable from the dossier and the two gaps are
-stated there plainly.
+verifies offline; eighteen of twenty are downloadable from the dossier. Fresh chain-aware
+testnet policy bundles are available for the 2026-08-21 publications; only the two historical
+2026-08-19 testnet policy artifacts overwritten before chain-aware filenames remain unavailable,
+and the dossier identifies them explicitly.
 
 **No claim of continuous operation is made.** The production host has published its daily
 slot unattended since 2026-08-20 — two daily slots are now recorded.

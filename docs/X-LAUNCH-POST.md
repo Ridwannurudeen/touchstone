@@ -1,12 +1,14 @@
 # Touchstone X launch post
 
-**DRAFT — DO NOT POST WITHOUT EXPLICIT OWNER APPROVAL.**
+**PUBLISHED 2026-08-21:**
+https://x.com/TOUCH__STONE/status/2090844839055159485
 
-Verified 2026-08-21: `@TOUCH__STONE` is a Premium account with zero posts. The official
-hackathon rules require a project-account post mentioning `@XLayerOfficial`; this draft can
-serve that requirement only after it is actually published and its URL is retained.
+The live post mentions `@XLayerOfficial`, and its exact URL is retained above for the form.
+The repository has advanced since the post was prepared; the verified current totals are 20
+reports, 15 `CONFIRMED`, 10 Registry V2 attestations and 8 enforcement transactions. The post
+is an immutable launch-time snapshot, not the canonical source for changing totals.
 
-## Recommended first post
+## Exact published copy
 
 Meet Touchstone — the institutional RWA policy and control plane for X Layer.
 

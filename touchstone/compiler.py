@@ -268,6 +268,12 @@ class HTTPProvider:
         parsed = urlsplit(self.base_url)
         if parsed.scheme != "https" or not parsed.netloc:
             raise ValueError("TOUCHSTONE_MODEL_ENDPOINT must be an absolute HTTPS URL")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("TOUCHSTONE_MODEL_ENDPOINT must not contain credentials")
+        if parsed.query:
+            raise ValueError("TOUCHSTONE_MODEL_ENDPOINT must not contain a query")
+        if parsed.fragment:
+            raise ValueError("TOUCHSTONE_MODEL_ENDPOINT must not contain a fragment")
         self.timeout = finite_positive(timeout, "timeout")
 
     def propose_controls(

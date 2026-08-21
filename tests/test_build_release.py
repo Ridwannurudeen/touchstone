@@ -32,7 +32,7 @@ PYPROJECT = """\
 [project]
 requires-python = ">=3.11"
 dependencies = [
-    "cryptography==49.0.0",
+    "cryptography==50.0.0",
     "psutil==7.2.2",
 ]
 [project.optional-dependencies]
@@ -436,7 +436,7 @@ def test_python_pins_are_split_into_runtime_and_dev(tmp_path: Path) -> None:
     python = _document(out)["python"]
 
     assert python["requires_python"] == ">=3.11"
-    assert python["runtime"] == {"cryptography": "49.0.0", "psutil": "7.2.2"}
+    assert python["runtime"] == {"cryptography": "50.0.0", "psutil": "7.2.2"}
     assert python["dev"] == {"pytest": "8.3.3"}
     assert "pytest" not in python["runtime"]
     assert "cryptography" not in python["dev"]

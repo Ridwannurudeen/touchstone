@@ -375,6 +375,25 @@ def _http_provider(monkeypatch: pytest.MonkeyPatch) -> HTTPProvider:
     return HTTPProvider()
 
 
+@pytest.mark.parametrize(
+    ("endpoint", "reason"),
+    [
+        ("https://user:password@model.invalid/v1", "credentials"),
+        ("https://model.invalid/v1?api_key=secret", "query"),
+        ("https://model.invalid/v1#secret", "fragment"),
+    ],
+)
+def test_http_provider_refuses_secret_bearing_endpoint_components(
+    monkeypatch: pytest.MonkeyPatch, endpoint: str, reason: str
+) -> None:
+    monkeypatch.setenv("TOUCHSTONE_MODEL_ENDPOINT", endpoint)
+    monkeypatch.setenv("TOUCHSTONE_MODEL_KEY", "separate-secret")
+    monkeypatch.setenv("TOUCHSTONE_MODEL_NAME", "the-requested-model")
+
+    with pytest.raises(ValueError, match=reason):
+        HTTPProvider()
+
+
 def _answered(monkeypatch: pytest.MonkeyPatch, body: dict) -> None:
     """Make the provider's single HTTP call return exactly this body."""
     import io

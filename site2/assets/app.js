@@ -43,6 +43,7 @@ const ADMISSION_ABI = [
   "function useCount() view returns (uint256)",
 ];
 const STATUS_NAMES = ["CONFIRMED", "STALE", "INCONSISTENT", "UNVERIFIABLE"];
+const MAX_JSON_BYTES = 16_777_216;
 // The exact struct approval.py signs: snake_case field names, uint256 timestamp, and a
 // domain version that matches the artifact's own `version` field (2 = scoped, 1 = legacy).
 function approvalTypes(version) {
@@ -993,6 +994,17 @@ async function verifyBundle(file) {
   const panel = $("verify-panel");
   const lines = [];
   try {
+    if (file.size > MAX_JSON_BYTES) {
+      render(
+        panel,
+        verdict(
+          "bundle size",
+          false,
+          `file exceeds ${MAX_JSON_BYTES} bytes`,
+        ),
+      );
+      return;
+    }
     const text = await file.text();
     const bundle = JSON.parse(text);
     const report = bundle.signed_report?.report;
@@ -1035,45 +1047,89 @@ async function verifyBundle(file) {
 
     // 1. The Ed25519 signature over the exact canonical bytes the bundle carries.
     const canonicalBytes = new TextEncoder().encode(bundle.report_canonical);
-    const publicKeyHex = bundle.published_key?.public_key;
-    let signatureChecked = null;
-    if (publicKeyHex && bundle.signed_report.signature) {
-      try {
-        const key = await crypto.subtle.importKey(
-          "raw",
-          Uint8Array.from(publicKeyHex.match(/../g), (h) => parseInt(h, 16)),
-          { name: "Ed25519" },
-          false,
-          ["verify"],
-        );
-        signatureChecked = await crypto.subtle.verify(
-          "Ed25519",
-          key,
-          Uint8Array.from(bundle.signed_report.signature.match(/../g), (h) =>
-            parseInt(h, 16),
-          ),
-          canonicalBytes,
-        );
-      } catch (error) {
-        lines.push(
-          verdict(
-            "report signature",
-            null,
-            `this browser cannot verify Ed25519 (${error.message}); use the CLI recipe on /verify`,
-          ),
-        );
-      }
-    }
-    if (signatureChecked !== null) {
+    const keyRecord = bundle.published_key;
+    const envelope = bundle.signed_report;
+    if (!keyRecord || !keyRecord.public_key || !envelope.signature) {
       lines.push(
         verdict(
           "report signature",
-          signatureChecked,
-          signatureChecked
-            ? `Ed25519 verifies under key ${short(publicKeyHex)}`
-            : "signature does NOT verify over report_canonical",
+          false,
+          "missing published key or report signature",
         ),
       );
+      render(panel, lines);
+      return;
+    }
+    const publicKeyHex = keyRecord.public_key;
+    const signatureHex = envelope.signature;
+    const lowerHex = (value, length) =>
+      typeof value === "string" &&
+      value.length === length * 2 &&
+      /^[0-9a-f]+$/.test(value);
+    const keyShapeValid =
+      keyRecord.algorithm === "Ed25519" &&
+      keyRecord.version === 1 &&
+      envelope.algorithm === "Ed25519" &&
+      envelope.version === 1 &&
+      typeof keyRecord.kid === "string" &&
+      envelope.kid === keyRecord.kid &&
+      lowerHex(publicKeyHex, 32) &&
+      lowerHex(signatureHex, 64);
+    const publicKeyBytes = keyShapeValid
+      ? Uint8Array.from(publicKeyHex.match(/../g), (h) => parseInt(h, 16))
+      : null;
+    const expectedKid = publicKeyBytes
+      ? `ed25519:${await sha256hex(publicKeyBytes)}`
+      : null;
+    if (!keyShapeValid || keyRecord.kid !== expectedKid) {
+      lines.push(
+        verdict(
+          "report signature",
+          false,
+          "malformed key/signature metadata or key ID does not bind the published key",
+        ),
+      );
+      render(panel, lines);
+      return;
+    }
+    let signatureChecked;
+    try {
+      const key = await crypto.subtle.importKey(
+        "raw",
+        publicKeyBytes,
+        { name: "Ed25519" },
+        false,
+        ["verify"],
+      );
+      signatureChecked = await crypto.subtle.verify(
+        "Ed25519",
+        key,
+        Uint8Array.from(signatureHex.match(/../g), (h) => parseInt(h, 16)),
+        canonicalBytes,
+      );
+    } catch (error) {
+      lines.push(
+        verdict(
+          "report signature",
+          false,
+          `this browser cannot verify Ed25519 (${error.message}); use the CLI recipe on /verify`,
+        ),
+      );
+      render(panel, lines);
+      return;
+    }
+    lines.push(
+      verdict(
+        "report signature",
+        signatureChecked,
+        signatureChecked
+          ? `Ed25519 verifies under key ${short(publicKeyHex)}`
+          : "signature does NOT verify over report_canonical",
+      ),
+    );
+    if (!signatureChecked) {
+      render(panel, lines);
+      return;
     }
 
     // 2. The canonical text must BE the report — complete nested equality, both
