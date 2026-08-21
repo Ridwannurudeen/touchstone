@@ -22,6 +22,7 @@ for authored work.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -1385,13 +1386,17 @@ def run_tests(
     # that survives by never returning is named as `broken`, which is the honest verdict:
     # nothing judged it. Without this the run would stop only at the job's own cap, which
     # reports the whole job as timed out and says nothing about which mutant hung.
-    return subprocess.run(
-        command,
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        timeout=MUTATION_TIMEOUT_SECONDS,
-    )
+    with tempfile.TemporaryDirectory() as bytecode_cache:
+        environment = dict(os.environ)
+        environment["PYTHONPYCACHEPREFIX"] = bytecode_cache
+        return subprocess.run(
+            command,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=MUTATION_TIMEOUT_SECONDS,
+            env=environment,
+        )
 
 
 def wanted_nodes(tests: tuple[str, ...]) -> set[tuple[str, str]]:

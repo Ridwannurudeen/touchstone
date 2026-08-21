@@ -11,18 +11,21 @@ everything downstream of it is stated with more confidence than it was earned.
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 import sys
 from xml.etree import ElementTree
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
+import mutation_check  # noqa: E402
 from mutation_check import (  # noqa: E402
     EXPECTED_MUTATIONS,
     MUTATIONS,
     ROOT,
     classify,
     reported_outcomes,
+    run_tests,
     wanted_nodes,
 )
 
@@ -117,6 +120,22 @@ def test_a_parametrised_failure_is_matched_to_its_function(tmp_path: Path) -> No
 
 def test_a_passing_run_is_a_survivor() -> None:
     assert classify(0, ([], []), "")[0] == "survived"
+
+
+def test_each_test_run_uses_a_fresh_bytecode_cache(monkeypatch) -> None:
+    prefixes = []
+
+    def record_run(command, **kwargs):
+        prefixes.append(kwargs["env"]["PYTHONPYCACHEPREFIX"])
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(mutation_check.subprocess, "run", record_run)
+
+    run_tests(WANTED)
+    run_tests(WANTED)
+
+    assert len(set(prefixes)) == 2
+    assert all(not Path(prefix).exists() for prefix in prefixes)
 
 
 @pytest.mark.parametrize("mutation", MUTATIONS, ids=lambda m: m.name)
