@@ -22,6 +22,7 @@ for authored work.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib.util import cache_from_source
 import os
 from pathlib import Path
 import subprocess
@@ -1386,17 +1387,21 @@ def run_tests(
     # that survives by never returning is named as `broken`, which is the honest verdict:
     # nothing judged it. Without this the run would stop only at the job's own cap, which
     # reports the whole job as timed out and says nothing about which mutant hung.
-    with tempfile.TemporaryDirectory() as bytecode_cache:
-        environment = dict(os.environ)
-        environment["PYTHONPYCACHEPREFIX"] = bytecode_cache
-        return subprocess.run(
-            command,
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            timeout=MUTATION_TIMEOUT_SECONDS,
-            env=environment,
-        )
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    return subprocess.run(
+        command,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=MUTATION_TIMEOUT_SECONDS,
+        env=environment,
+    )
+
+
+def clear_bytecode_cache(path: Path) -> None:
+    if path.suffix == ".py":
+        Path(cache_from_source(str(path))).unlink(missing_ok=True)
 
 
 def wanted_nodes(tests: tuple[str, ...]) -> set[tuple[str, str]]:
@@ -1485,6 +1490,7 @@ def run_mutation(mutation: Mutation) -> tuple[str, str]:
         # clean-tree check then reports as unrestored work.
         report_path = Path(workspace) / "report.xml"
         try:
+            clear_bytecode_cache(target)
             write_exactly(target, original.replace(old, new))
             finished = run_tests(mutation.tests, report_path)
         except subprocess.TimeoutExpired:
@@ -1495,6 +1501,7 @@ def run_mutation(mutation: Mutation) -> tuple[str, str]:
             )
         finally:
             write_exactly(target, original)
+            clear_bytecode_cache(target)
         outcomes = reported_outcomes(report_path, mutation.tests)
 
     return classify(finished.returncode, outcomes, _diagnostic(finished))

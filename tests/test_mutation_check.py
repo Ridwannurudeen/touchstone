@@ -11,6 +11,7 @@ everything downstream of it is stated with more confidence than it was earned.
 from __future__ import annotations
 
 from pathlib import Path
+from importlib.util import cache_from_source
 import subprocess
 import sys
 from xml.etree import ElementTree
@@ -23,6 +24,7 @@ from mutation_check import (  # noqa: E402
     EXPECTED_MUTATIONS,
     MUTATIONS,
     ROOT,
+    clear_bytecode_cache,
     classify,
     reported_outcomes,
     run_tests,
@@ -122,11 +124,11 @@ def test_a_passing_run_is_a_survivor() -> None:
     assert classify(0, ([], []), "")[0] == "survived"
 
 
-def test_each_test_run_uses_a_fresh_bytecode_cache(monkeypatch) -> None:
-    prefixes = []
+def test_each_test_run_disables_bytecode_writes(monkeypatch) -> None:
+    settings = []
 
     def record_run(command, **kwargs):
-        prefixes.append(kwargs["env"]["PYTHONPYCACHEPREFIX"])
+        settings.append(kwargs["env"]["PYTHONDONTWRITEBYTECODE"])
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(mutation_check.subprocess, "run", record_run)
@@ -134,8 +136,19 @@ def test_each_test_run_uses_a_fresh_bytecode_cache(monkeypatch) -> None:
     run_tests(WANTED)
     run_tests(WANTED)
 
-    assert len(set(prefixes)) == 2
-    assert all(not Path(prefix).exists() for prefix in prefixes)
+    assert settings == ["1", "1"]
+
+
+def test_a_mutated_modules_bytecode_cache_is_removed(tmp_path: Path) -> None:
+    source = tmp_path / "module.py"
+    source.write_text("answer = 42\n", encoding="utf-8")
+    cache = Path(cache_from_source(str(source)))
+    cache.parent.mkdir()
+    cache.write_bytes(b"stale bytecode")
+
+    clear_bytecode_cache(source)
+
+    assert not cache.exists()
 
 
 @pytest.mark.parametrize("mutation", MUTATIONS, ids=lambda m: m.name)
