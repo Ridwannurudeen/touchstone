@@ -1,5 +1,10 @@
 # The remaining work, ranked
 
+> **Historical execution plan.** This file preserves the pre-confirmation diagnosis and the
+> work order that produced Registry V2, signed approvals, mainnet enforcement and unattended
+> publication. It is not current project status. Use `README.md`, `docs/OPERATIONS.md`,
+> `docs/LIMITATIONS.md` and `docs/SUBMISSION-DRAFT.md` for current facts.
+
 Three inputs produced this list: an external judge-perspective audit of the whole project, two
 Codex audits of the recent build, and defects found while working them. It is ordered by
 judge impact per hour, not by how interesting the work is.
@@ -10,8 +15,8 @@ build and fix everything properly, with the resources to finish it. So the cuts 
 are reinstated as sequenced work rather than dropped, and the ordering below optimises for a
 system that is correct and complete rather than for what fits before Friday.
 
-The submission is already in. Anything landing before Friday still helps a judge; everything
-after it still makes the product real.
+The submission is **not** in. The form and every public post remain owner-gated; the current
+state is recorded in `docs/SUBMISSION-DRAFT.md`.
 
 Each item says who can do it. **Owner** means it needs a decision or an account only the owner
 holds — those are not blocked on engineering and should be started first because they have the

@@ -119,6 +119,7 @@ def render(
     registry_address: str,
     project_state: dict[str, object] | None = None,
 ) -> str:
+    facts = json.loads(FACTS.read_text(encoding="utf-8"))
     latest = observation.latest_by_source(workspace.root / "observations.jsonl")
     total = len(observation.read_all(workspace.root / "observations.jsonl"))
     health = heartbeat.verify(
@@ -156,7 +157,22 @@ def render(
     )
 
     reports = project_state.get("reports", {}) if project_state else {}
-    latest_state = reports.get("latest_state", "UNVERIFIABLE")
+    if isinstance(reports, dict) and reports.get("latest_state"):
+        artifact_state = (
+            f"The supplied canonical artifact record contains "
+            f"<strong>{html.escape(str(reports.get('artifact_count', 'an unknown number of')))} "
+            f"retained, verified bundles</strong>; its latest retained bundle state is "
+            f"<code>{html.escape(str(reports['latest_state']))}</code>. This describes the "
+            f"retained artifact set, not a live registry read."
+        )
+    else:
+        artifact_state = (
+            "No canonical artifact state was supplied to this status build, so this page "
+            "does not invent one. Use the Coverage and Verify surfaces for retained "
+            "artifacts, and read the registry for current onchain state."
+        )
+    counts = facts["counts"]
+    asset = facts["asset"]
     body = f"""<h1>Status</h1>
 <p class="t-lead">What was last observed, and when. <strong>This page is a static
 snapshot generated at <code>{_stamp(now)}</code>.</strong> It cannot know when you are
@@ -183,29 +199,31 @@ declared expiry against the clock. It is not a status the daemon stored about it
 process that has stopped running cannot write down that it stopped.</p>
 
 <h2 id="window">The measured window</h2>
-<p>Publication history is derived from the transparency logs and the operations journal,
-never from memory: the committed snapshot at
-<code>docs/OPERATIONS-METRICS-2026-08-19.json</code> records completed, missed and corrected
-slots for the measured window it names. <strong>No uptime percentage is claimed</strong> —
-every publication so far was operator-initiated, and a claim of continuity would exceed the
-evidence. The observer's capture cadence above is the only continuously scheduled process.</p>
+<p>The canonical public facts record lists
+<strong>{html.escape(str(counts["reports_published"]))} reports</strong>, of which
+<strong>{html.escape(str(counts["confirmed_reports"]))} reached
+<code>CONFIRMED</code></strong>. Unattended publication began
+<code>{html.escape(str(asset["unattended_since"]))}</code>. That proves the unattended path
+ran; it does not establish a multi-day reliability record, and <strong>no uptime percentage
+is claimed</strong>.</p>
+<p><strong>This page does not publish an incident history.</strong> The repository implements
+an append-only incident log, but no incident-log projection is present in the canonical
+public site data consumed by this generator. Operational failures must not be presented as
+public history until such an artifact exists and is wired into this page.</p>
 
 <h2 id="reading">How to read a stale page</h2>
 <p><strong>An old timestamp above is not proof that the daemon is down.</strong> It proves
 that this page was not regenerated. Those are different failures: one is about the publisher,
 the other about whatever refreshes this file. Neither is evidence for the other, and this page
 will not guess which one happened.</p>
-<p>Nothing on this page asserts that an asset is verified. <strong>As of the generation
-time above</strong>, the canonical artifact record's latest report was
-<code>{html.escape(str(latest_state))}</code>, and the
-consumer gate on X&nbsp;Layer <em>testnet</em> refused the asset accordingly. That is a
-statement about this snapshot, not a standing guarantee: a later report can reach a different
-state while this file is still being served, so check
-<a href="/coverage">Coverage</a> and <a href="/verify">Verify</a> rather than treating this
-sentence as current.</p>
+<p>Nothing on this page asserts that an asset is safe or independently verified.
+<strong>As of the generation time above:</strong> {artifact_state} A later report can reach a
+different state while this file is still being served, so check <a href="/coverage">Coverage</a>,
+<a href="/verify">Verify</a>, and the live registry rather than treating this sentence as
+current.</p>
 <p class="secondary">The observations above are captured against the workspace named in this
-service's configuration; the gate result is a separate fact about the testnet consumer
-contract. Neither implies the other.</p>
+service's configuration; the retained artifact and public chain counts are separate facts.
+Neither implies the other.</p>
 """
     page = _chrome(TEMPLATE.read_text(encoding="utf-8"))
     page = page.replace("<!--DOC_TITLE-->", "Status")

@@ -28,12 +28,12 @@ def test_project_state_is_assembled_from_verified_repository_facts(
         state["approval"]["approved_control_ids"]
     )
     assert state["reports"]["artifact_count"] == len(state["bundles"])
-    # Four, since 2026-08-20: the 2026-08-19 pair plus the first unattended slot's pair,
-    # every one retained under site2/data and verified. These pinned zero right up until
+    # Six, since 2026-08-21: three confirmed policy pairs are retained under site2/data
+    # and verified. These pinned zero right up until
     # the product did the thing it was built to do, and the count only moves when another
     # confirmed policy bundle is retained — which is exactly the event worth pinning.
-    assert state["reports"]["retained_verified_policy_bundle_count"] == 4
-    assert state["reports"]["confirmed_policy_bundle_count"] == 4
+    assert state["reports"]["retained_verified_policy_bundle_count"] == 6
+    assert state["reports"]["confirmed_policy_bundle_count"] == 6
     assert state["deployments"]
     output = tmp_path / "project-state.json"
     output.write_bytes(build.encode_state(state))
@@ -50,6 +50,96 @@ def test_public_truth_rejects_a_stale_phrase(tmp_path: Path) -> None:
         assert "stale public phrase" in str(error)
     else:
         raise AssertionError("stale public copy was accepted")
+
+
+def _matching_chain_fact_surfaces() -> tuple[dict, dict, str]:
+    return (
+        {
+            "counts": {
+                "reports_published": "14",
+                "confirmed_reports": "9",
+            }
+        },
+        {
+            "reports_published": 14,
+            "confirmed_reports": 9,
+            "reports": ([{"state": "CONFIRMED"}] * 9)
+            + ([{"state": "UNVERIFIABLE"}] * 5),
+        },
+        "Status: 14 published reports, 9 `CONFIRMED`.",
+    )
+
+
+def test_public_truth_rejects_each_report_count_disagreement() -> None:
+    cases = []
+    facts, stats, readme = _matching_chain_fact_surfaces()
+    stats["reports_published"] = 11
+    cases.append((facts, stats, readme))
+
+    facts, stats, readme = _matching_chain_fact_surfaces()
+    stats["confirmed_reports"] = 6
+    cases.append((facts, stats, readme))
+
+    facts, stats, readme = _matching_chain_fact_surfaces()
+    stats["reports"].pop()
+    cases.append((facts, stats, readme))
+
+    facts, stats, readme = _matching_chain_fact_surfaces()
+    stats["reports"][0]["state"] = "UNVERIFIABLE"
+    cases.append((facts, stats, readme))
+
+    facts, stats, _ = _matching_chain_fact_surfaces()
+    cases.append((facts, stats, "Status: 11 published reports, 6 `CONFIRMED`."))
+
+    for facts, stats, readme in cases:
+        try:
+            assert_truth.assert_chain_fact_surfaces(facts, stats, readme)
+        except assert_truth.PublicTruthError:
+            pass
+        else:
+            raise AssertionError("a public report-count disagreement was accepted")
+
+
+def test_public_truth_rejects_non_integer_chain_fact_counts() -> None:
+    facts = {
+        "counts": {
+            "reports_published": 14.5,
+            "confirmed_reports": "9",
+        }
+    }
+    stats = {
+        "reports_published": 14,
+        "confirmed_reports": 9,
+        "reports": ([{"state": "CONFIRMED"}] * 9)
+        + ([{"state": "UNVERIFIABLE"}] * 5),
+    }
+    readme = "Status: 14 published reports, 9 `CONFIRMED`."
+
+    try:
+        assert_truth.assert_chain_fact_surfaces(facts, stats, readme)
+    except assert_truth.PublicTruthError as error:
+        assert "integers" in str(error)
+    else:
+        raise AssertionError("a non-integer chain fact count was accepted")
+
+
+def test_public_truth_accepts_report_counts_that_match_chain_facts() -> None:
+    facts, stats, readme = _matching_chain_fact_surfaces()
+    assert_truth.assert_chain_fact_surfaces(facts, stats, readme)
+
+
+def test_registry_latest_sequences_link_their_latest_publications() -> None:
+    page = (ROOT / "site2/_pages/products/registry.html").read_text(encoding="utf-8")
+    links = (
+        ("mainnet.pubs.asset_5_tx", "mainnet.seq_asset_v1"),
+        ("testnet.pubs.asset_4_tx", "testnet.seq_asset_v1"),
+        ("mainnet.pubs.freshness_v2_3_tx", "mainnet.seq_freshness_v2"),
+        ("testnet.pubs.freshness_v2_tx", "testnet.seq_freshness_v2"),
+        ("mainnet.pubs.nav_v2_3_tx", "mainnet.seq_nav_v2"),
+        ("testnet.pubs.nav_v2_tx", "testnet.seq_nav_v2"),
+    )
+    for transaction, sequence in links:
+        assert f"0x{{{{fact:{transaction}}}}}\">{{{{fact:{sequence}}}}}</a>" in page
 
 
 def test_public_truth_rejects_a_stale_phrase_regardless_of_its_recorded_case(

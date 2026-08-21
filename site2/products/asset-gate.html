@@ -91,27 +91,25 @@
 
   <section class="section">
     <div class="wrap">
-      <p class="eyebrow">Live decision</p>
-      <h2>What the mainnet gate answers today</h2>
+      <p class="eyebrow">Current block-time decision</p>
+      <h2>What the mainnet gate answers now</h2>
       <div class="gate-call gate-call--ok">
-        <p class="gate-label mono">0xAac48DC261B04737FDCB101D5049395121034a83 · chain 196</p>
+        <p class="gate-label mono">0x8641CF6d40524AC55aBd0a02601AfBd374EFB059 · chain 196 · block 68559234</p>
         <p class="gate-line mono">check(0xa40f966944356ce543320f59f22ba003e3f0be28532bae029d4f9f9d05efc589)</p>
         <p class="gate-result mono"><span class="gate-true">true</span>, <span class="gate-reason">&ldquo;allowed&rdquo;</span></p>
       </div>
       <p class="prose secondary">The <strong>disclosure-freshness:1</strong> verdict
       is CONFIRMED, the observation is inside the window the gate was constructed with, the
       publisher matches the lineage it requires, and the control-set root is the one it pins.
-      All five conditions hold, so the gate permits — which is why the guarded consumer bound
-      to that key was able to execute on chain, and the one bound to an unpublished key was
-      not.</p>
-      <p class="prose secondary">State of record 2026-08-20. Reports expire at end
-      of day UTC. When the current report passes its <code>validUntil</code>, this same call
-      answers <code>(false, &ldquo;observation too old&rdquo;)</code> until the next daily
-      window publishes a new one — the gate treats an expired report as unreported rather
-      than as last-known-good, which is the entire point of publishing an expiry.</p>
+      The additional v2 policy and approval pins also matched, so the gate returned allowed
+      at that block.</p>
+      <p class="prose secondary">Verified on 2026-08-21 through both
+      configured RPC providers. Registry V2 sequence 3 is valid through
+      <code>2026-08-23T23:59:59Z</code>. This remains a block-time result, not a promise about
+      a future block, so a consumer should read the registry at an explicit block before acting.</p>
       <div class="cta-row">
-        <a class="cta" href="/app">Run this check live</a>
-        <a class="cta-ghost" href="https://web3.okx.com/explorer/xlayer/address/0xAac48DC261B04737FDCB101D5049395121034a83">View the gate on the explorer</a>
+        <a class="cta" href="/app">Read the gate at a block</a>
+        <a class="cta-ghost" href="https://web3.okx.com/explorer/xlayer/address/0x8641CF6d40524AC55aBd0a02601AfBd374EFB059">View the gate on the explorer</a>
       </div>
     </div>
   </section>
@@ -192,11 +190,11 @@
     <div class="wrap">
       <p class="eyebrow">v1 and v2</p>
       <h2>Two generations of the same contract</h2>
-      <p class="prose secondary">AssetGate v1 is the deployed generation, reading a
+      <p class="prose secondary">AssetGate v1 is deployed on both chains, reading a
       first-generation registry with five conditions and five pins. AssetGateV2 reads a v2
       registry, adds four conditions and three more pins, and refuses at construction to be
-      deployed with any of them left blank. It is built and tested, and deploys at the next
-      publication window.</p>
+      deployed with any of them left blank. AssetGateV2 is live on mainnet at
+      <a href="https://web3.okx.com/explorer/xlayer/address/0x8641CF6d40524AC55aBd0a02601AfBd374EFB059"><code>0x8641CF6d40524AC55aBd0a02601AfBd374EFB059</code></a>.</p>
 
       <div class="table-scroll">
         <table>
@@ -290,8 +288,9 @@
       <p class="eyebrow">Enforcement on chain</p>
       <h2>One gate, one permitted action, one refused action</h2>
       <p class="prose secondary">Each chain carries a matched pair of guarded consumers
-      sharing one gate. The first is bound to a policy key whose verdict is CONFIRMED, so its
-      action executes and its counter moves. The second is bound to a key derived from an
+      sharing one gate. At the recorded execution block, the first was bound to a policy key
+      whose verdict was CONFIRMED, so its action executed and its counter moved. The second
+      is bound to a key derived from an
       identifier no report has ever been published under, so the gate answers
       <code>(false, &ldquo;unknown asset&rdquo;)</code> and the action reverts. The refusal
       was sent as a real transaction with a fixed gas limit rather than simulated, because a

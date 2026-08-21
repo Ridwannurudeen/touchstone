@@ -224,18 +224,18 @@
           <tbody>
             <tr>
               <td><strong>{{fact:asset.id}} asset</strong><span class="td-sub">the whole-asset disclosure state</span></td>
-              <td class="mono"><a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.asset_3_tx}}">{{fact:mainnet.seq_asset_v1}}</a> · CONFIRMED</td>
+              <td class="mono"><a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.asset_5_tx}}">{{fact:mainnet.seq_asset_v1}}</a> · CONFIRMED</td>
               <td class="mono"><a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.asset_4_tx}}">{{fact:testnet.seq_asset_v1}}</a> · CONFIRMED</td>
             </tr>
             <tr>
               <td><strong>{{fact:policies.freshness_id}}</strong><span class="td-sub">is the disclosure current enough to act on?</span></td>
-              <td class="mono"><a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.freshness_1_tx}}">{{fact:mainnet.seq_freshness_v2}}</a> · CONFIRMED</td>
-              <td class="mono"><a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.freshness_1_tx}}">{{fact:testnet.seq_freshness_v2}}</a> · CONFIRMED</td>
+              <td class="mono"><a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.freshness_v2_3_tx}}">{{fact:mainnet.seq_freshness_v2}}</a> · CONFIRMED</td>
+              <td class="mono"><a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.freshness_v2_tx}}">{{fact:testnet.seq_freshness_v2}}</a> · CONFIRMED</td>
             </tr>
             <tr>
               <td><strong>{{fact:policies.nav_id}}</strong><span class="td-sub">has the NAV actually settled?</span></td>
-              <td class="mono"><a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.nav_1_tx}}">{{fact:mainnet.seq_nav_v2}}</a> · CONFIRMED</td>
-              <td class="mono"><a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.nav_1_tx}}">{{fact:testnet.seq_nav_v2}}</a> · CONFIRMED</td>
+              <td class="mono"><a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.nav_v2_3_tx}}">{{fact:mainnet.seq_nav_v2}}</a> · CONFIRMED</td>
+              <td class="mono"><a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.nav_v2_tx}}">{{fact:testnet.seq_nav_v2}}</a> · CONFIRMED</td>
             </tr>
           </tbody>
         </table>
@@ -248,9 +248,15 @@
       window: freshness is the product, so a verdict that has aged out reads as expired
       rather than as last-known-good. The <a href="/app">Policy Terminal</a> reads all three
       keys live.</p>
-      <p class="t-small secondary under-table">The four v2 attestations, by receipt:
-      mainnet <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.freshness_v2_tx}}">{{fact:policies.freshness_id}}</a>
+      <p class="t-small secondary under-table">The eight v2 attestations, by receipt:
+      mainnet sequence 1 <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.freshness_v2_tx}}">{{fact:policies.freshness_id}}</a>
       &middot; <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.nav_v2_tx}}">{{fact:policies.nav_id}}</a>;
+      mainnet sequence 2, published 2026-08-20,
+      <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.freshness_v2_2_tx}}">{{fact:policies.freshness_id}}</a>
+      &middot; <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.nav_v2_2_tx}}">{{fact:policies.nav_id}}</a>;
+      mainnet sequence 3, published 2026-08-21,
+      <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.freshness_v2_3_tx}}">{{fact:policies.freshness_id}}</a>
+      &middot; <a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.nav_v2_3_tx}}">{{fact:policies.nav_id}}</a>;
       testnet <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.freshness_v2_tx}}">{{fact:policies.freshness_id}}</a>
       &middot; <a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.nav_v2_tx}}">{{fact:policies.nav_id}}</a>.
       On chain each carries a <span class="mono">policyId</span> distinct from its registry

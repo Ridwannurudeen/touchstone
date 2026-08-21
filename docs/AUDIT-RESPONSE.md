@@ -7,6 +7,10 @@ roadmap and trying to map it back.
 Every finding the audit raised appears below with the same name the auditor gave it. Nothing is
 quietly dropped: items we decline to build are listed as declined, with a reason.
 
+> **Chronological audit record.** Older sections preserve what was true at their review
+> commit; they are not current status. The newest repository facts live in `README.md`,
+> `docs/OPERATIONS.md`, `docs/LIMITATIONS.md` and `docs/SUBMISSION-DRAFT.md`.
+
 **Scope note.** This was drafted under a three-day deadline and re-scoped on 2026-08-19 when
 the owner directed that the deadline not constrain the work. Items previously cut for time are
 sequenced rather than dropped.
@@ -58,10 +62,10 @@ its snapshot. Deltas against its verdicts, each verifiable from chain or repo:
 | "GuardedAction imports the concrete V1 gate" | **CLOSED.** Depends on `ITouchstoneGate`; works against either generation. |
 | "main unprotected" | **CLOSED.** Required status check `required`, no force-push, no deletion. |
 | "GitHub About overclaims 'signed onchain attestation'" | **CLOSED.** Narrowed to publisher-authenticated commitment + offline-verifiable report. |
-| "Dossier lists one report; four reports lack public bundles" | **CLOSED with one stated gap.** All 11 reports listed; 9 bundles public and verified; the 2 testnet policy bundle *files* were overwritten by same-named mainnet ones (their signed reports remain in the transparency logs) — stated on the dossier, not hidden. |
+| "Dossier lists one report; four reports lack public bundles" | **CLOSED with one stated gap.** At that review: 11 reports listed and 9 bundles retained. Current state: 17 reports and 15 retained bundles; the 2 absent testnet policy bundle files remain disclosed. |
 | "Homepage count, OPERATIONS header, submission draft, judge 'Interactive' label stale" | **CLOSED**, this commit. |
 | "Approvals ledger unsigned legacy data" | **CLOSED 2026-08-19.** The owner reviewed all ten decisions and signed: `data/compilations/APPROVALS-SIGNED-2026-08-19.json`, approver `0x537873b0…fA16Bc` recoverable from every artifact, timestamped at signing — the ledger's own dates remain the record of when each decision was made, and nothing was backdated. Verified 10/10 against `verify_signed_approval` and against the ledger's own lists. |
-| "Every publication hand-started; publisher disabled" | **OPEN — owner** (`DEPLOY-SERVICE.md` §3c). Workspace migration is done, so enabling is safe when decided. |
+| "Every publication hand-started; publisher disabled" | **CLOSED for path proof, open for reliability.** The publisher was enabled under owner approval on 2026-08-20 and produced one unattended mainnet publication day. A multi-day operating window and production recovery remain unproven. |
 | "No external consumer / Builder Code / rebrand" | **OPEN — owner.** |
 | "Truth gate scope insufficient" | **PARTIAL.** OPERATIONS.md added to the scan this commit; chain-snapshot-in-CI still open. |
 
@@ -115,12 +119,13 @@ policy check, evidence, AI provenance, explorer links, integration snippet, trus
 **Verification:** the served file matches the tested local SHA-256 and returns HTTP 200; an independent person completing the loop unaided remains open.
 
 ### Blocker 3 — "X Layer is a publication destination, not the centre" · **PARTIAL**
-`PolicyGate` pinned to a frozen policy root, plus `GuardedAction` whose principal function
-cannot execute unless the gate permits it. The local contract suite proves one permitted and
-one refused action; the SDK carries ERC-8021 attribution bytes when an owner-registered code
-is supplied. No live mainnet pair or Builder Code registration is claimed.
-**Verification:** local tests are green; two explorer transactions and attribution visibility
-remain owner-gated evidence.
+`AssetGateV2` pins policy identity, policy root, control-set root and signed approval digest;
+`GuardedAction` and `RWAAdmissionController` cannot execute their protected actions unless the
+gate permits them. Permit/refuse transactions are live on mainnet. The SDK carries ERC-8021
+attribution bytes when an owner-registered code is supplied; Builder Code registration itself
+remains open.
+**Verification:** deployment facts and explorer transactions are indexed by the dossier;
+attribution visibility remains owner-gated evidence.
 
 ### Blocker 4 — "No external consumer or market proof" · **OWNER**
 Minimum acceptable: another X Layer project calling the gate, a public integration PR, a signed
@@ -138,12 +143,12 @@ one, so I checked every occurrence: the status page was listed `not_deployed` wh
 live, and "live explorer link" and "mainnet addresses" were listed as not prepared while both
 exist. Fixed — and the pattern is now four for four.
 
-**Hand-sweeping has missed something every single time it has been tried.** The real fix is
-mechanical: generate `project-state.json` from manifests, chain reads, transparency logs, the
-approval ledger and the bundles; render every public surface from it; and add a CI check that
-fails on a deployed contract called undeployed, a report count disagreeing with chain state, or
-a known stale phrase.
-**Verification:** delete a fact from a page and watch CI fail.
+**Hand-sweeping has missed something every single time it has been tried.** The mechanical
+state builder, generated site facts and CI truth gate now exist. The 2026-08-21 audit found one
+remaining hole: README and `site2/data/stats.json` could disagree numerically with committed
+chain facts while CI passed. The gate now compares those report counts and the enumerated
+report states directly.
+**Verification:** change either public count and `scripts/assert_public_truth.py` fails.
 
 ### Blocker 6 — "The onchain guarantee is narrower than the pitch" · **PARTIAL**
 True and verified for v1: `TouchstoneRegistry` contains no signature verification. The legacy
@@ -282,7 +287,7 @@ done before it arrived. Status of its required sequence:
 |---|---|---|
 | 1 | Create a new signed approval release | **DONE before the audit landed** — `APPROVALS-SIGNED-2026-08-19.json`, 10 EIP-712 decisions, one recovered approver. Then improved past the ask: the signatures are embedded in the ledger itself (version 2), so `approval_ledger_sha256` — the digest reports already bind and RegistryV2 already stores — now names signed decisions with no schema change. Every v2 entry must be signed and is bound to the exact compiler proposal it decides, declined entries included |
 | 2 | Produce new bundles binding the new approval digest | **DONE 2026-08-20** — the first unattended slot on the VPS produced all three reports (asset + both policies) CONFIRMED, sharing one evidence root and binding the signed ledger digest `4f2c7dd5…`; offline verification passes on every bundle. (Was: READY, gated on the next epoch — the pipeline binds the current ledger digest at report build; the next slot (2026-08-20, after the 86,400 s confirmation age) produces them. Publishing a same-day "correction" to rebind the digest was rejected: tonight's reports were true when signed, and a correction that restates a correct report manufactures an error |
-| 3 | Publish all three reports through Registry V2 | **DONE for the policy keys 2026-08-20 (mainnet; testnet follows its evening slot); asset-wide leg resolved by design, not publication** — both policies sit in v2 at sequence 2 as relayer-submitted attestations binding the signed ledger. The asset key deliberately does NOT enter v2: the contract accepts only `sequence == latest+1`, the asset's lineage stands at v1 sequence 4, and the only way to seat it in v2 would be a fabricated sequence-1 report colliding with the real 2026-08-17 one — manufactured lineage. v2 serves the asset's v1 history through `getLegacyLatestReport`/`getLegacyReport`, which is what those functions exist for; the zero-policy asset-wide semantics remain in the codebase for assets whose lineage begins after v2. (Was: UNBLOCKED — the v2 path was policy-only (`attestation_from_report` refused asset-wide reports); asset-wide semantics are now defined and tested: zero policy identity, legal only as a pair, unpinnable by construction because AssetGateV2 refuses zero pins. Publication follows item 2 |
+| 3 | Publish all three reports through Registry V2 | **DONE for the policy keys through sequence 3 on mainnet as of 2026-08-21; asset-wide leg resolved by design, not publication** — both policies sit in v2 as relayer-submitted attestations binding the signed ledger. The asset key deliberately does NOT enter v2: the contract accepts only `sequence == latest+1`, the asset's lineage now stands at v1 sequence 5, and the only way to seat it in v2 would be a fabricated sequence-1 report colliding with the real 2026-08-17 one — manufactured lineage. v2 serves the asset's v1 history through `getLegacyLatestReport`/`getLegacyReport`, which is what those functions exist for; the zero-policy asset-wide semantics remain in the codebase for assets whose lineage begins after v2. (Was: UNBLOCKED — the v2 path was policy-only (`attestation_from_report` refused asset-wide reports); asset-wide semantics are now defined and tested: zero policy identity, legal only as a pair, unpinnable by construction because AssetGateV2 refuses zero pins. Publication follows item 2 |
 | 4 | Redeploy hardened AssetGateV2 | **DONE on mainnet 2026-08-20** — `0x8641CF6d40524AC55aBd0a02601AfBd374EFB059`, all eight pins including approval digest `4f2c7dd5…` (the signed ledger), first live check `(true, "allowed")` against Registry v2; source verified on OKLink. Testnet follows its evening slot. (Was: WAITING on items 2–3 by design — the gate pins the approval digest exactly, and the only digest worth pinning is the signed ledger's. Pinning today's on-chain reports would pin the unsigned artifact the audits called weak |
 | 5 | Deploy the meaningful consumer | **LIVE on mainnet 2026-08-20** — `RWAAdmissionController` at `0x5C5265392701A99cbB137aF8116E0F97f630329A`, source verified; on-chain story complete: propose (admitted + never-reported key), activate on the gate's word, execute (useCount 1), and the refused activation as a real status-0 transaction. (Was: BUILT — `RWAAdmissionController`: proposer-bound gate per asset, activation only on the gate's word, suspension computed on every read and every privileged action rather than stored, admission history permanent. Nine tests cover the audit's four demonstration scenarios plus suspension-recovery with no state mutation. Deployment follows item 4 |
 | 6 | Verify source on OKLink | **DONE 2026-08-20** — the owner supplied the API key and all ten live contracts verified on OKLink, five per chain, each verification byte-proving its constructor arguments (including the original testnet gate's zero control-set root). Two traps closed on the way: the plugin's built-in list maps `xlayertest` to chain 195, the deprecated testnet — a `customChains` entry teaches it 1952 — and the plugin fetches its solc list from `solc-bin.ethereum.org`, which is dead; patched in node_modules to `binaries.soliditylang.org` (okverify is a local attended task, so CI never runs it). The superseded first registry stays unverified by decision. AssetGateV2 and the AdmissionController verify at deploy time |

@@ -32,6 +32,12 @@
     <article class="doc-body">
 <h1 id="touchstone-build-plan-roadmap">Touchstone — Build Plan &amp; Roadmap</h1>
 <blockquote>
+<p><strong>Status note (2026-08-21):</strong> the Phase 0/Phase 1 calendar below is a historical planning
+record, not current deployment or operations state. Statements such as “mainnet is
+unscheduled,” hand-started-only publication, and the scripted two-act demo describe the
+plan when written and have been superseded. Current verified state is recorded in
+<code>site2/_data/facts.json</code>, <code>site2/data/stats.json</code>, <code>docs/OPERATIONS.md</code>, and
+<code>docs/SUBMISSION-DRAFT.md</code>.</p>
 <p><strong>Name chosen by the owner on 2026-08-13: Touchstone</strong> — the stone assayers rubbed
 gold against to verify what it really was before anyone accepted it.
 That claim was corrected on 2026-08-14: <strong>existing crypto projects do use the name</strong> —
@@ -47,11 +53,13 @@ touchstone.finance, touchstonelabs.xyz, touchstone-rwa.com show no DNS records
 are likely taken. Domain purchase, handles, and any announcement remain owner actions.
 (Prior internal codename ARGUS retired — collision with Cobo Argus.)</p>
 </blockquote>
-<p><strong>Mission.</strong> Touchstone turns the disclosures behind real-world assets into executable
-intelligence. AI compiles issuer-published commitments into cited, machine-checkable
-controls. Deterministic surveillance evaluates those controls against current evidence.
-Signed results are published to X Layer, where applications can enforce freshness and
-verification requirements through a shared registry.</p>
+<p><strong>Mission.</strong> Touchstone is the policy and control plane for tokenized assets. It turns
+issuer, regulator, custodian, oracle and onchain evidence into explicit policy for the
+contracts, wallets and AI agents that act on it. The current USTB vertical begins with
+issuer-published evidence: AI proposes cited, machine-checkable controls; deterministic
+surveillance evaluates them; accountable humans approve policy; signed results are
+published to X Layer for enforcement.</p>
+<p><strong>Grant wedge.</strong> Touchstone makes RWA liquidity conditional on verifiable evidence.</p>
 <p>Touchstone does not issue assets, custody funds, recommend investments, assign credit
 ratings, or claim facts beyond the evidence class it has actually verified.</p>
 <p><strong>The sentence the project is built around:</strong></p>
@@ -114,6 +122,82 @@ X Layer registry
         ▼               ▼
    AssetGate      Living dossier
 </code></pre>
+<h2 id="category-and-product-boundary">Category and product boundary</h2>
+<p>Touchstone is not an oracle, credit rating or legal-compliance oracle. It determines
+whether a specific, predeclared evidence policy is currently supported and gives a
+consumer an enforceable answer. Price and NAV providers answer what value was reported;
+custodians answer how an asset is held; permissioned-token standards answer whether an
+investor or transfer is eligible. Touchstone answers whether the complete evidence policy
+required for this action currently holds.</p>
+<p>The long-term product spans the full policy lifecycle, while liquidity admission remains
+the first commercially legible application:</p>
+<pre><code class="language-text">Asset onboarding
+      â†“
+Evidence collection
+      â†“
+Policy compilation and accountable approval
+      â†“
+Market, collateral or agent admission
+      â†“
+Continuous surveillance and automatic suspension
+      â†“
+Recovery, reactivation, audit and governance
+</code></pre>
+<p>The north-star platform has eight connected layers. They are a sequence, not a claim that
+an enterprise suite exists today:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Current foundation</th>
+<th>Next proof required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Asset Passport</td>
+<td>USTB descriptor, dossier and policy history</td>
+<td>One canonical asset view covering authorities, dependencies, incidents and integrations</td>
+</tr>
+<tr>
+<td>Evidence Network</td>
+<td>Allowlisted bounded retrieval, content-addressed lineage, authority classes</td>
+<td>Required/corroborating/informational/fallback semantics and multiple live authority classes</td>
+</tr>
+<tr>
+<td>AI Policy Compiler</td>
+<td>Provenance-bound proposals, deterministic gates, benchmark, signed human decisions</td>
+<td>Model registry, critic evaluation, change control, rollback and NIST AI RMF mapping</td>
+</tr>
+<tr>
+<td>Policy Studio</td>
+<td>Versioned policy manifests and signed approval tooling</td>
+<td>Simulation, maker-checker review, activation, expiry, exceptions and approval packs</td>
+</tr>
+<tr>
+<td>Decision Network</td>
+<td>Registry v2 attestations, separated logical roles, relayer and chained reports</td>
+<td>Independent approvers, hardware-backed custody and quorum for material policies</td>
+</tr>
+<tr>
+<td>Enforcement Control Plane</td>
+<td>Policy-pinned gate and admission controller</td>
+<td>Reusable vault, permissioned-token, lending, issuance and agent adapters</td>
+</tr>
+<tr>
+<td>Institutional Console</td>
+<td>Public terminal and proof surfaces</td>
+<td>Authenticated organizations, RBAC, SSO, case management and private evidence</td>
+</tr>
+<tr>
+<td>Developer and Agent Platform</td>
+<td>Solidity and TypeScript clients plus event indexing</td>
+<td>Stable API, webhooks, MCP service and controlled Agentic Wallet flow</td>
+</tr>
+</tbody>
+</table>
+<p>No layer graduates because its UI exists. It graduates when an independently operated
+consumer uses it, its failure mode is measured, and its authority boundary is auditable.</p>
 <h2 id="evidence-status-entering-phase-0-as-of-2026-08-13">Evidence status entering Phase 0 (as of 2026-08-13)</h2>
 <p>Preliminary probes are encouraging but do not replace the formal audit:</p>
 <ul>
@@ -433,7 +517,9 @@ model; independent smart-contract audit; public compiler evaluation set; publish
 methodology-change process; publisher/key-rotation spec; xStocks-readiness research
 package (contingent on confirmed ecosystem direction — never presented as guaranteed);
 corporate-action control prototypes (separate from core); first non-Touchstone publisher
-sandbox.</p>
+sandbox; a NIST AI RMF / Generative AI Profile mapping for compiler governance; and an
+SSDF-based software-development control baseline. ISO/IEC 27001 remains a later management-
+system and certification path, not a badge earned by adding documentation.</p>
 <p><strong>Graduation metrics:</strong> 25 production-grade assets; 5 external integrations (≥2 live);
 3 external spec/adapter contributors; zero unresolved critical/high contract findings;
 public compiler evaluation with measured precision and abstention (≥90% precision on
@@ -591,6 +677,7 @@ Sept 1 operations plan.</p>
       <ol class="doc-toc-list">
         <li class="toc-2"><a href="#product-principles">Product principles</a></li>
         <li class="toc-2"><a href="#system-architecture">System architecture</a></li>
+        <li class="toc-2"><a href="#category-and-product-boundary">Category and product boundary</a></li>
         <li class="toc-2"><a href="#evidence-status-entering-phase-0-as-of-2026-08-13">Evidence status entering Phase 0 (as of 2026-08-13)</a></li>
         <li class="toc-2"><a href="#phase-0-evidence-and-brand-kill-gates-aug-1314">Phase 0 — Evidence and brand kill gates (Aug 13–14)</a></li>
         <li class="toc-2"><a href="#phase-1-hackathon-build-aug-1321">Phase 1 — Hackathon build (Aug 13–21)</a></li>

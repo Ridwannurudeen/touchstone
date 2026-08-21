@@ -4,12 +4,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Touchstone — RWA policy infrastructure for X Layer</title>
-<meta name="description" content="Touchstone turns RWA issuer and regulator disclosures into cited, machine-checkable policy, publishes deterministic reports to X Layer, and lets wallets, agents and protocols act only when the required evidence policy is satisfied.">
+<title>Touchstone — Institutional RWA policy and control plane for X Layer</title>
+<meta name="description" content="Touchstone turns RWA evidence into explicit, machine-checkable policy and enforceable decisions for X Layer contracts, wallets and AI agents.">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 <link rel="canonical" href="https://touchstone.gudman.xyz/">
-<meta property="og:title" content="Touchstone — RWA policy infrastructure for X Layer">
-<meta property="og:description" content="Turn RWA disclosures into enforceable onchain policy. Live on X Layer mainnet and testnet.">
+<meta property="og:title" content="Touchstone — Institutional RWA policy and control plane for X Layer">
+<meta property="og:description" content="Make RWA liquidity conditional on verifiable evidence. Live on X Layer mainnet and testnet.">
 <meta property="og:url" content="https://touchstone.gudman.xyz/">
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://touchstone.gudman.xyz/assets/og-card.png">
@@ -71,7 +71,7 @@
   .dev-grid > * { min-width: 0; }
 </style>
 <script type="application/ld+json">
-{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"Touchstone","url":"https://touchstone.gudman.xyz","description":"RWA policy infrastructure for X Layer: issuer and regulator disclosures compiled into cited controls, evaluated deterministically, and published as enforceable onchain policy.","logo":"https://touchstone.gudman.xyz/assets/mark.svg"},{"@type":"WebSite","name":"Touchstone","url":"https://touchstone.gudman.xyz"}]}
+{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"Touchstone","url":"https://touchstone.gudman.xyz","description":"Institutional RWA policy and control infrastructure for X Layer: evidence compiled into cited controls, evaluated deterministically, and published as enforceable onchain policy.","logo":"https://touchstone.gudman.xyz/assets/mark.svg"},{"@type":"WebSite","name":"Touchstone","url":"https://touchstone.gudman.xyz"}]}
 </script>
 </head>
 <body>
@@ -101,8 +101,8 @@
   <section class="hero">
     <div class="wrap hero-grid">
       <div class="hero-copy">
-        <p class="eyebrow">RWA policy infrastructure for X&nbsp;Layer</p>
-        <h1 class="hero-title">Turn RWA disclosures into enforceable onchain policy.</h1>
+        <p class="eyebrow">Institutional RWA policy and control plane for X&nbsp;Layer</p>
+        <h1 class="hero-title">Make RWA liquidity conditional on verifiable evidence.</h1>
         <p class="t-lead">AI converts issuer and regulator disclosures into cited controls.
         Deterministic reports let X&nbsp;Layer wallets, agents and protocols act only when the
         required evidence policy is satisfied.</p>
@@ -111,8 +111,8 @@
           <a class="cta-ghost" href="/developers">Start Building</a>
         </div>
         <p class="mono t-small hero-trust">Live on X&nbsp;Layer mainnet and testnet &middot;
-        14 reports &middot;
-        9 confirmed &middot; policy enforcement proven onchain</p>
+        17 reports &middot;
+        12 confirmed &middot; policy enforcement proven onchain</p>
       </div>
 
       <div class="hero-aside">
@@ -121,8 +121,8 @@
           <p class="term-name"><strong>USTB</strong>Superstate Short Duration U.S. Government Securities Fund</p>
           <div class="term-row"><span class="tr-k">Policy</span><span class="tr-v">nav-settlement:1</span></div>
           <div class="term-row"><span class="tr-k">State</span><span class="tr-v term-ok">CONFIRMED</span></div>
-          <div class="term-row"><span class="tr-k">Observed NAV</span><span class="tr-v">11.18208300</span></div>
-          <div class="term-row"><span class="tr-k">NAV as of</span><span class="tr-v">2026-08-17</span></div>
+          <div class="term-row"><span class="tr-k">Observed NAV</span><span class="tr-v">11.18316100</span></div>
+          <div class="term-row"><span class="tr-k">NAV as of</span><span class="tr-v">2026-08-18</span></div>
           <div class="term-row"><span class="tr-k">Valid until</span><span class="tr-v">end of day UTC, then re-published</span></div>
           <div class="term-row"><span class="tr-k">Networks</span><span class="tr-v">X Layer mainnet + testnet</span></div>
           <ul class="term-checks" aria-label="Checks that passed">
@@ -166,8 +166,8 @@
       </div>
       <div class="trust-cell">
         <p class="tc-k">PUBLIC PROOF</p>
-        <p><strong>14</strong> onchain reports &middot;
-        <strong>12</strong> downloadable bundles &middot;
+        <p><strong>17</strong> onchain reports &middot;
+        <strong>15</strong> downloadable bundles &middot;
         CI-verified claims</p>
       </div>
     </div>
@@ -181,12 +181,12 @@
         <p class="metric-q">mainnet and testnet, registry v1 and v2 on both</p>
       </div>
       <div class="metric">
-        <p class="metric-n">14</p>
+        <p class="metric-n">17</p>
         <p class="metric-l">Onchain reports published</p>
         <p class="metric-q">signed, sequenced and permanent</p>
       </div>
       <div class="metric">
-        <p class="metric-n">9</p>
+        <p class="metric-n">12</p>
         <p class="metric-l">Confirmed policy decisions</p>
         <p class="metric-q">verdicts a contract is willing to act on</p>
       </div>
@@ -352,7 +352,7 @@
         <div class="case-step cs-confirmed">
           <p class="cs-t">2026-08-19</p>
           <h3>CONFIRMED</h3>
-          <p>NAV 11.18208300, signed and published to both registries.</p>
+          <p>NAV 11.18316100, signed and published to both registries.</p>
         </div>
         <div class="case-step">
           <p class="cs-t">Step 05</p>
@@ -508,7 +508,7 @@ cd sdk &amp;&amp; npm ci &amp;&amp; npm run build</code></div>
       </div>
       <div class="stat-row">
         <div class="stat">
-          <p class="st-n">1,978</p>
+          <p class="st-n">1,985</p>
           <p class="st-l">Python tests</p>
         </div>
         <div class="stat">

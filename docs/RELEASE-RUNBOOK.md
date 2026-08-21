@@ -9,9 +9,10 @@ written `not_configured`.
 How a release is cut, what a reviewer must check in the document that records it,
 how a registry reaches X Layer testnet, and why a publication cannot be undone.
 
-Day-to-day running of a live service is `docs/OPERATIONS.md`. The one live
-publication that has been prepared and not run is `docs/CANARY-G1B.md`. This
-file does not replace either.
+Day-to-day running of the live service is `docs/OPERATIONS.md`.
+`docs/CANARY-G1B.md` is the historical canary runbook; testnet and mainnet
+canaries have since run under separate owner approvals. This file does not
+replace either record.
 
 ---
 
@@ -221,7 +222,7 @@ Current chain facts, recorded in `docs/OPERATIONS.md` and
 | Active registry | `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C`, block 38489602 |
 | Publisher | `0x86A100BDdF8754c95fec97BeC96dBFd64Be44710`, authorised, identity mapped to itself |
 | `deployment_state` | `active` |
-| Reports on this registry | **one.** USTB `latestSequence` is 1 — sequence 1, epoch `ustb-2026-08-17`, state `UNVERIFIABLE`, block 38526525, tx `0x5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869`. Every other asset key is still zero |
+| Reports on this registry | USTB asset sequences 1–4 plus both policy keys at sequence 1. Sequence 4 and both policy reports are `CONFIRMED`; Registry V2 on chain 1952 separately holds both policy attestations. |
 | Predecessor | `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, block 38369203, `deployment_state: superseded`. It predates `epochKey` and must not be published to. It published nothing. |
 
 **Do not redeploy because a release document was cut.** A second deploy to
@@ -276,10 +277,10 @@ canary epoch under its own owner gate, prepared in `docs/CANARY-G1B.md`
 and not authorised by a release document. `AssetGate` is not deployed on
 this chain; the deployment approval explicitly did not cover it.
 
-**Host packaging is `not_configured`.** `docs/OPERATIONS.md` records the
-host and supervisor units as unset; this runbook does not invent them.
-PLAN-T13 named systemd units as later packaging work. They are not in
-this tree.
+**Host packaging is live.** `docs/OPERATIONS.md` is the canonical record:
+the observer and status timer are active, and the mainnet publisher was
+enabled under owner approval on 2026-08-20. One unattended publication day
+proves the path, not continuity or production recovery.
 
 **Mainnet is deployed** as of 2026-08-18, and this passage previously said it
 was gated until the deployer and publisher keys sat on separate hosts. **They
@@ -338,11 +339,14 @@ file is not edited.
 - That a release has been cut. No release document is committed in this
   tree.
 - That tests passed a particular count. The builder will not invent one.
-- That the active registry has been published to more than the record shows.
-  Testnet holds three reports, mainnet two; all `UNVERIFIABLE`.
-- That `AssetGate` is on mainnet. It is live on testnet only.
-- That a production host or supervisor unit exists. Both are
-  `not_configured`, so **no continuity or reliability claim is available**:
-  every slot to date was hand-started.
+- That the active registries have been published to more than the record shows:
+  17 v1 reports across both chains, 12 `CONFIRMED`, plus 8 Registry V2
+  attestations. The dossier enumerates each transaction.
+- That mainnet enforcement is third-party adoption. `AssetGateV2` and
+  `RWAAdmissionController` are live on mainnet, but both are Touchstone's own
+  contracts.
+- That one unattended publication day is a reliability record. The production
+  host and supervisor units exist; a multi-day measured window and production
+  recovery remain unproven.
 - That cutting a release authorises a canary, a post, or a submission.
   Those remain owner gates, listed in `docs/OPERATIONS.md`.

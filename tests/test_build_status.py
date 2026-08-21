@@ -56,8 +56,18 @@ def workspace(tmp_path: Path) -> Workspace:
     return space
 
 
-def render(space: Workspace, *, now: datetime = AT) -> str:
-    return build_status.render(space, now=now, registry_address=REGISTRY)
+def render(
+    space: Workspace,
+    *,
+    now: datetime = AT,
+    project_state: dict[str, object] | None = None,
+) -> str:
+    return build_status.render(
+        space,
+        now=now,
+        registry_address=REGISTRY,
+        project_state=project_state,
+    )
 
 
 class TestItRefusesToOverclaim:
@@ -86,11 +96,50 @@ class TestItRefusesToOverclaim:
         page = render(workspace)
         assert "not proof that the daemon is down" in page
 
-    def test_it_never_claims_an_asset_is_verified(self, workspace: Workspace) -> None:
+    def test_missing_project_state_does_not_invent_an_asset_state(
+        self, workspace: Workspace
+    ) -> None:
         page = render(workspace)
-        assert "UNVERIFIABLE" in page
-        for forbidden in ("CONFIRMED", "verified and safe", "proof of reserves"):
+        assert "No canonical artifact state was supplied" in page
+        for forbidden in (
+            "latest report was <code>UNVERIFIABLE</code>",
+            "verified and safe",
+            "proof of reserves",
+        ):
             assert forbidden not in page
+
+    def test_current_artifact_state_comes_from_project_state(
+        self, workspace: Workspace
+    ) -> None:
+        page = render(
+            workspace,
+            project_state={
+                "reports": {
+                    "artifact_count": 12,
+                    "latest_state": "CONFIRMED",
+                    "states": ["CONFIRMED", "UNVERIFIABLE"],
+                }
+            },
+        )
+        assert "12 retained, verified bundles" in page
+        assert "latest retained bundle state is <code>CONFIRMED</code>" in page
+        assert "consumer gate on X&nbsp;Layer <em>testnet</em> refused" not in page
+
+    def test_publication_claims_come_from_canonical_facts(
+        self, workspace: Workspace
+    ) -> None:
+        page = render(workspace)
+        assert "17 reports" in page
+        assert "<strong>12 reached\n<code>CONFIRMED</code></strong>" in page
+        assert "Unattended publication began\n<code>2026-08-20</code>" in page
+        assert "every publication so far was operator-initiated" not in page
+
+    def test_it_does_not_claim_a_public_incident_history(
+        self, workspace: Workspace
+    ) -> None:
+        page = render(workspace)
+        assert "This page does not publish an incident history" in page
+        assert "public incident history" not in page.lower()
 
     def test_a_payload_change_is_not_described_as_a_change_in_the_data(
         self, workspace: Workspace

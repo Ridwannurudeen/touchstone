@@ -1,5 +1,12 @@
 # Phase 1 execution plan
 
+> **Historical execution record — not current status.** This plan preserves the staged
+> gates and audit reasoning as they stood during Phase 1. Its “prepared, not executed,”
+> mainnet-unscheduled, hand-started-only, and pre-release statements were superseded by
+> later owner-approved deployments and the unattended 2026-08-20 publication. Current
+> facts live in `site2/_data/facts.json`, `site2/data/stats.json`, `docs/OPERATIONS.md`, and
+> `docs/SUBMISSION-DRAFT.md`.
+
 **Issued 2026-08-14** by the project's review process, which sets the build order and
 audits each item before the next begins. Items are referenced elsewhere in the repository
 as `PLAN-T1` … `PLAN-T13`, distinct from the `T1` … `T27` threat identifiers in

@@ -208,6 +208,8 @@ jobs:
       # else in CI ever parses the file.
       - name: The Policy Terminal parses
         run: node --check site2/assets/app.js
+      - name: The Policy Terminal verifies roots and stale-selection refusal
+        run: node --test site2/assets/app.test.mjs
 
   local_e2e:
     name: managed local-chain E2E

@@ -1,5 +1,13 @@
 # Demo runbook
 
+> **Historical runbook — superseded after the 2026-08-20 mainnet release.** This file
+> preserves the original two-act rehearsal and the gaps that existed when it was written.
+> It is not the current demo specification: confirmed policy publications, mainnet
+> `AssetGateV2`, and the admission controller now exist. Use `/judge`, `/app`,
+> `site2/_data/facts.json`, and `docs/SUBMISSION-DRAFT.md` for the current evidence-backed
+> walkthrough. Historical “cannot be performed yet” statements below are retained only as
+> dated record.
+
 **Unpublished text in a file.** This is not a performance of the demo, not
 a public page, and not authorisation to publish, deploy, or submit. No
 step below that touches a public chain has been run from this document.

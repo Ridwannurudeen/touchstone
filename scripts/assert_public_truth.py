@@ -24,6 +24,8 @@ STALE_PHRASES = (
     "Every one of them reports `UNVERIFIABLE`",
     "no run has yet had one that qualified",
     "3 could not be",
+    "what the mainnet gate answers today",
+    "the four v2 attestations",
 )
 POLICY_STATES = ("CONFIRMED", "STALE", "INCONSISTENT", "UNVERIFIABLE")
 
@@ -64,6 +66,50 @@ class PolicyPanelParser(HTMLParser):
     def handle_data(self, data: str) -> None:
         if self._attributes is not None:
             self._text.append(data)
+
+
+def assert_chain_fact_surfaces(
+    facts: dict[str, object], stats: dict[str, object], readme: str
+) -> None:
+    counts = facts.get("counts")
+    if not isinstance(counts, dict):
+        raise PublicTruthError("chain facts have no counts object")
+    published_text = counts.get("reports_published")
+    confirmed_text = counts.get("confirmed_reports")
+    if (
+        not isinstance(published_text, str)
+        or not published_text.isdigit()
+        or not isinstance(confirmed_text, str)
+        or not confirmed_text.isdigit()
+    ):
+        raise PublicTruthError("chain report counts must be integers")
+    published = int(published_text)
+    confirmed = int(confirmed_text)
+
+    if stats.get("reports_published") != published:
+        raise PublicTruthError("public stats report count disagrees with chain facts")
+    if stats.get("confirmed_reports") != confirmed:
+        raise PublicTruthError(
+            "public stats confirmed-report count disagrees with chain facts"
+        )
+    reports = stats.get("reports")
+    if not isinstance(reports, list) or len(reports) != published:
+        raise PublicTruthError("public stats report list disagrees with its report count")
+    if sum(
+        isinstance(report, dict) and report.get("state") == "CONFIRMED"
+        for report in reports
+    ) != confirmed:
+        raise PublicTruthError(
+            "public stats report states disagree with its confirmed-report count"
+        )
+
+    headline = re.search(
+        r"^Status:.*?(\d+) published reports, (\d+) `CONFIRMED`",
+        readme,
+        flags=re.MULTILINE,
+    )
+    if headline is None or tuple(map(int, headline.groups())) != (published, confirmed):
+        raise PublicTruthError("README report count disagrees with chain facts")
 
 
 def assert_state(state: dict[str, object], public_paths: tuple[Path, ...]) -> None:
@@ -249,6 +295,23 @@ def main(argv: list[str] | None = None) -> int:
         state = json.loads(arguments.state.read_text(encoding="utf-8"))
         if not isinstance(state, dict):
             raise PublicTruthError("project state must be an object")
+        facts = json.loads(
+            (arguments.root / "site2" / "_data" / "facts.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        stats = json.loads(
+            (arguments.root / "site2" / "data" / "stats.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        if not isinstance(facts, dict) or not isinstance(stats, dict):
+            raise PublicTruthError("public fact files must be JSON objects")
+        assert_chain_fact_surfaces(
+            facts,
+            stats,
+            (arguments.root / "README.md").read_text(encoding="utf-8"),
+        )
         assert_state(state, paths)
     except (OSError, json.JSONDecodeError, PublicTruthError) as error:
         print(f"PUBLIC TRUTH FAIL: {error}", file=sys.stderr)

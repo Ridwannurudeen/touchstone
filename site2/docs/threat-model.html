@@ -148,7 +148,7 @@ assumptions are the product, so they are enumerated rather than minimised.</p>
 <td>B14</td>
 <td><strong>Control approver / release authority</strong></td>
 <td>Deciding which proposals become approved, evaluable controls</td>
-<td>This is the gate the compiler's output must pass, so it is the point where a hostile or careless approval enters the system. Today approval is a field on the record (<code>approval_state</code>) set by whoever edits the control set; there is no separate approver identity, no signature over the approval, and no four-eyes requirement</td>
+<td>Every live-ledger decision carries an EIP-712 signature bound to the exact proposal, decision, reason and timestamp. One recovered approver still holds the role; there is no four-eyes requirement</td>
 </tr>
 <tr>
 <td>B15</td>
@@ -158,9 +158,9 @@ assumptions are the product, so they are enumerated rather than minimised.</p>
 </tr>
 <tr>
 <td>B16</td>
-<td><strong>JSON-RPC endpoint</strong></td>
+<td><strong>JSON-RPC endpoints</strong></td>
 <td>Reporting chain state honestly</td>
-<td>Reads and writes go through one configured endpoint, so it can both accept a transaction and describe the resulting state. See R-12</td>
+<td>Registry V2 publication requires byte-identical reads from two configured providers and fails closed on disagreement or partial availability. Other tools may still use one endpoint. See R-12</td>
 </tr>
 </tbody>
 </table>
@@ -336,7 +336,7 @@ threat identifiers <code>T1</code>–<code>T27</code> used in this section.</p>
 <tr>
 <td>T27</td>
 <td><strong>Dishonest RPC endpoint</strong></td>
-<td><strong>Not defended — residual R-12.</strong> Every fact the publisher reconciles against — latest sequence, receipts, events, stored reports — is read back from the same single configured endpoint that it writes through</td>
+<td><strong>Mitigated for Registry V2 publication; residual elsewhere.</strong> Production publication requires two independent providers to return byte-identical reads and fails closed on disagreement or partial availability. Single-endpoint reads in other tools remain under R-12</td>
 </tr>
 </tbody>
 </table>
@@ -373,7 +373,7 @@ threat identifiers <code>T1</code>–<code>T27</code> used in this section.</p>
 <tr>
 <td>T26</td>
 <td><strong>UI claim inflation</strong> — the public surface implies more than the evidence proves</td>
-<td><strong>Partially implemented (PLAN-T9, 2026-08-18).</strong> The public surface exists at touchstone.gudman.xyz. It states each asset's real status including the ones with no approved control, carries every limitation string from the signed report verbatim, and names <code>AssetGate</code> as not deployed wherever the contract appears. What remains backlog is the visual separation requirement below, which has not been independently reviewed. Requirements: "verified" and "not verified" visually separated, deterministic explanations drawn only from accepted graph data, explorer links absent rather than fabricated when undeployed, and no ordinary NAV movement described as a risk event</td>
+<td><strong>Partially implemented (PLAN-T9, updated 2026-08-21).</strong> The public surface states each asset's real status, carries signed-report limitations, and identifies the policy-pinned gates and admission controller now live on their actual networks. Generated fact tokens and the public-truth gate cover addresses, report counts and policy states. Remaining risk: committed chain facts are reviewed snapshots rather than live reads, and visual separation has not had an independent accessibility review</td>
 </tr>
 </tbody>
 </table>
@@ -506,7 +506,7 @@ threat identifiers <code>T1</code>–<code>T27</code> used in this section.</p>
 </tr>
 <tr>
 <td>Public status and incident history</td>
-<td>Incident history <strong>implemented</strong> (PLAN-T7, <code>touchstone/incidents.py</code>); the <strong>public</strong> surface that exposes it is <strong>PLAN-T9</strong>, still open</td>
+<td><strong>Partial.</strong> The status surface is live, and the internal incident log is hash-chained (<code>touchstone/incidents.py</code>), but no incident-log projection is present in the canonical public site data. Public incident history is therefore <strong>not shipped</strong>; delivery and continuity limits remain documented</td>
 </tr>
 </tbody>
 </table>
@@ -643,15 +643,14 @@ threat identifiers <code>T1</code>–<code>T27</code> used in this section.</p>
   older qualifying one, or abstains when none exists. What is missing is two-sided
   validation, any cross-check for purely offchain decisions, and a monotonic guard against
   the clock moving backwards between epochs.</li>
-<li><strong>R-12 — Chain state is read from the endpoint it is written through.</strong> The publisher
-  reconciles against latest sequence, receipts, events and stored reports supplied by the
-  same single configured JSON-RPC endpoint used to submit transactions (B16). An endpoint
-  that answers dishonestly can report a publication that did not occur, or conceal one that
-  did, and every client-side consistency check would still agree. Endpoint pinning does not
-  address this; independent confirmation would require a second, independently operated
-  endpoint or a light-client proof. Neither exists in Phase 1.</li>
-<li><strong>R-8 — Source probes were run from a development machine.</strong> Repeated retrieval from the
-  eventual deployment host is unverified and remains parked behind the deployment gate.</li>
+<li><strong>R-12 — Independent RPC confirmation is scoped to the Registry V2 publisher.</strong> That
+  path requires two independently operated providers, compares the reads used for preflight
+  and reconciliation, and fails closed on disagreement or partial availability. Browser,
+  SDK and operator tools that use one endpoint still inherit that endpoint's view; no light-
+  client proof exists.</li>
+<li><strong>R-8 — Source retrieval is single-region.</strong> The production observer retrieves all three
+  USTB sources from the shared VPS every 15 minutes. Cross-region retrieval and a second host
+  remain unverified.</li>
 <li><strong>R-13 — Writing evidence is upstream of publishing, and the observer writes evidence.</strong>
   The continuous observer (<code>scripts/run_observer.py</code>) is described elsewhere as the process
   that "can do least": it holds no key, imports no signer or publisher, and since 2026-08-18

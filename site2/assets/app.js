@@ -611,42 +611,76 @@ async function simulate() {
         ? iface.encodeFunctionData("execute", [target.key])
         : iface.encodeFunctionData("execute", []),
     );
-    await rpc(net, "eth_call", [{ to: target.address, data }, "latest"]).then(
-      ({ endpoint }) => {
+    try {
+      const { endpoint } = await rpc(net, "eth_call", [
+        { to: target.address, data },
+        "latest",
+      ]);
+      if (selectionSnapshot() !== chosen) {
         render(
           panel,
-          bindingRow,
           row(
-            "simulation",
-            "would succeed — the gate currently permits this action",
-            "term-ok",
+            "aborted",
+            "the selected action changed while its simulation was running — the old result was discarded; click again",
+            "term-blocked",
           ),
-          row("via", endpoint),
         );
-      },
-      (error) => {
+        return;
+      }
+      render(
+        panel,
+        bindingRow,
+        row(
+          "simulation",
+          "would succeed — the gate currently permits this action",
+          "term-ok",
+        ),
+        row("via", endpoint),
+      );
+    } catch (error) {
+      if (selectionSnapshot() !== chosen) {
         render(
           panel,
-          bindingRow,
           row(
-            "simulation",
-            "would revert — the gate refuses this action right now",
+            "aborted",
+            "the selected action changed while its simulation was running — the old result was discarded; click again",
             "term-blocked",
-          ),
-          row(
-            "revert detail",
-            String(error.message || error).slice(0, 220),
-            "term-blocked",
-          ),
-          row(
-            "meaning",
-            "nothing was sent; this is the contract's answer, not the site's",
-            "term-pending",
           ),
         );
-      },
-    );
+        return;
+      }
+      render(
+        panel,
+        bindingRow,
+        row(
+          "simulation",
+          "would revert — the gate refuses this action right now",
+          "term-blocked",
+        ),
+        row(
+          "revert detail",
+          String(error.message || error).slice(0, 220),
+          "term-blocked",
+        ),
+        row(
+          "meaning",
+          "nothing was sent; this is the contract's answer, not the site's",
+          "term-pending",
+        ),
+      );
+    }
   } catch (error) {
+    if (selectionSnapshot() !== chosen) {
+      render(
+        panel,
+        row(
+          "aborted",
+          "the selected action changed while its simulation was running — the old result was discarded; click again",
+          "term-blocked",
+        ),
+      );
+      return;
+    }
     render(
       panel,
       row("simulate failed", String(error.message || error), "term-blocked"),
@@ -813,6 +847,109 @@ async function sha256hex(bytes) {
   ).join("");
 }
 
+function canonicalJson(value) {
+  if (value === null || typeof value === "string" || typeof value === "boolean")
+    return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value))
+      throw new Error("canonical JSON number is not finite");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value))
+    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  if (typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(",")}}`;
+  }
+  throw new Error("value is not canonical JSON");
+}
+
+async function orderedHashRoot(domain, items) {
+  const encoder = new TextEncoder();
+  let state = new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      encoder.encode(`touchstone-root-v1:${domain}`),
+    ),
+  );
+  for (const item of items) {
+    const encoded = encoder.encode(canonicalJson(item));
+    const payload = new Uint8Array(1 + state.length + encoded.length);
+    payload[0] = 1;
+    payload.set(state, 1);
+    payload.set(encoded, 1 + state.length);
+    state = new Uint8Array(await crypto.subtle.digest("SHA-256", payload));
+  }
+  return Array.from(state, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
+async function controlContentHashes(records) {
+  if (!Array.isArray(records))
+    throw new Error("control_records is not an array");
+  const hashes = new Map();
+  for (const record of records) {
+    if (!record || typeof record !== "object" || Array.isArray(record))
+      throw new Error("control record is not an object");
+    if (typeof record.control_id !== "string" || !record.control_id)
+      throw new Error("control record has no control_id");
+    if (hashes.has(record.control_id))
+      throw new Error(`duplicate control_id ${record.control_id}`);
+    hashes.set(
+      record.control_id,
+      await sha256hex(new TextEncoder().encode(canonicalJson(record))),
+    );
+  }
+  return hashes;
+}
+
+async function controlSetRootFromBundle(records) {
+  const hashes = await controlContentHashes(records);
+  const items = [...hashes]
+    .map(([control_id, content_hash]) => ({ content_hash, control_id }))
+    .sort((a, b) => a.control_id.localeCompare(b.control_id));
+  return orderedHashRoot("control-set", items);
+}
+
+async function evidenceRootFromBundle(records) {
+  if (!Array.isArray(records) || records.length === 0)
+    throw new Error("evidence_digests is not a nonempty array");
+  const expected = ["capture_role", "retrieved_at", "sha256", "source_id"];
+  const items = records.map((record) => {
+    if (
+      !record ||
+      typeof record !== "object" ||
+      Array.isArray(record) ||
+      !deepEqual(Object.keys(record).sort(), expected)
+    )
+      throw new Error("evidence reference fields do not match the schema");
+    if (!["current", "confirmation"].includes(record.capture_role))
+      throw new Error("evidence reference has an invalid capture_role");
+    return {
+      capture_role: record.capture_role,
+      retrieved_at: record.retrieved_at,
+      sha256: record.sha256,
+      source_id: record.source_id,
+    };
+  });
+  items.sort(
+    (a, b) =>
+      a.source_id.localeCompare(b.source_id) ||
+      a.capture_role.localeCompare(b.capture_role),
+  );
+  for (let index = 1; index < items.length; index += 1) {
+    if (
+      items[index - 1].source_id === items[index].source_id &&
+      items[index - 1].capture_role === items[index].capture_role
+    )
+      throw new Error("duplicate evidence source_id and capture_role");
+  }
+  return orderedHashRoot("evidence", items);
+}
+
 /* The bundle and report schemas this panel knows how to judge. Anything else is refused
  * outright rather than partially checked: a checkmark produced by code that does not
  * understand the file's schema is the exact lie this panel exists to avoid. */
@@ -970,6 +1107,61 @@ async function verifyBundle(file) {
           : "report_canonical differs from signed_report.report — the signed bytes describe a DIFFERENT report",
       ),
     );
+
+    // Recompute each control's canonical content hash, then both ordered roots exactly
+    // as the Python verifier does. These checks use this bundle's records; they do not
+    // fetch or replay the underlying evidence bytes.
+    try {
+      const hashes = await controlContentHashes(bundle.control_records);
+      const reported = new Map();
+      for (const item of report.controls || []) {
+        if (reported.has(item.control_id))
+          throw new Error(`duplicate reported control_id ${item.control_id}`);
+        reported.set(item.control_id, item.content_hash);
+      }
+      const hashesAgree =
+        hashes.size === reported.size &&
+        [...hashes].every(([id, digest]) => reported.get(id) === digest);
+      lines.push(
+        verdict(
+          "control content hashes",
+          hashesAgree,
+          hashesAgree
+            ? `${hashes.size} bundled control record(s) hash to the report's content hashes`
+            : "bundled control records do NOT hash to the report's control identities",
+        ),
+      );
+      const root = await controlSetRootFromBundle(bundle.control_records);
+      lines.push(
+        verdict(
+          "ordered control-set root",
+          root === report.control_set_root,
+          `${short(root)} vs committed ${short(report.control_set_root)}`,
+        ),
+      );
+    } catch (error) {
+      lines.push(
+        verdict(
+          "control hashes and ordered root",
+          false,
+          String(error.message || error),
+        ),
+      );
+    }
+    try {
+      const root = await evidenceRootFromBundle(bundle.evidence_digests);
+      lines.push(
+        verdict(
+          "ordered evidence root",
+          root === report.evidence_root,
+          `${short(root)} vs committed ${short(report.evidence_root)}`,
+        ),
+      );
+    } catch (error) {
+      lines.push(
+        verdict("ordered evidence root", false, String(error.message || error)),
+      );
+    }
 
     // 3. The approval ledger hashes to the digest the signed report commits to.
     if (bundle.approval_ledger) {
@@ -1311,7 +1503,7 @@ async function verifyBundle(file) {
     lines.push(
       row(
         "not checked here",
-        "control-set and evidence root recomputation, byte-span citation replay — the CLI recipes on /verify do those; this panel never claims them",
+        "byte-span citation replay — the CLI recipes on /verify do that; this panel never claims it",
         "term-pending",
       ),
     );

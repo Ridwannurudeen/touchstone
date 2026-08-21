@@ -48,9 +48,9 @@ assumptions are the product, so they are enumerated rather than minimised.
 | B11 | **Consumer contract** (`AssetGate`) | Enforcing its own freshness policy | A permissive policy admits stale state; the gate reacts to verification freshness, never to asset safety |
 | B12 | **Public projection** (dossier, heartbeat) | Displaying only signed, verified data | Claim inflation in the UI — see T26 |
 | B13 | **Viewer's browser** | Rendering | No wallet is required and no key material reaches the page |
-| B14 | **Control approver / release authority** | Deciding which proposals become approved, evaluable controls | This is the gate the compiler's output must pass, so it is the point where a hostile or careless approval enters the system. Today approval is a field on the record (`approval_state`) set by whoever edits the control set; there is no separate approver identity, no signature over the approval, and no four-eyes requirement |
+| B14 | **Control approver / release authority** | Deciding which proposals become approved, evaluable controls | Every live-ledger decision carries an EIP-712 signature bound to the exact proposal, decision, reason and timestamp. One recovered approver still holds the role; there is no four-eyes requirement |
 | B15 | **Host clock / time source** | Retrieval timestamps, freshness deadlines, confirmation windows | Every freshness and staleness decision and the 24h confirmation separation derive from it. The chain provides a partial check — the registry rejects an `observedAt` in the future against `block.timestamp` (`contracts/contracts/TouchstoneRegistry.sol:257`) and the gate measures age the same way — so a clock fast enough that `observedAt` is *still* ahead of chain time when the transaction executes is rejected. Publication delay masks a moderately fast clock, and offchain-only decisions are never checked. See R-10 |
-| B16 | **JSON-RPC endpoint** | Reporting chain state honestly | Reads and writes go through one configured endpoint, so it can both accept a transaction and describe the resulting state. See R-12 |
+| B16 | **JSON-RPC endpoints** | Reporting chain state honestly | Registry V2 publication requires byte-identical reads from two configured providers and fails closed on disagreement or partial availability. Other tools may still use one endpoint. See R-12 |
 
 Keys at B6, B7, B8 and B9 are **required to be four distinct identities**. **Amended
 2026-08-15 by PLAN-T6:** the separation is now enforced rather than stated. A deployment
@@ -113,7 +113,7 @@ threat identifiers `T1`–`T27` used in this section.
 | T19 | **Duplicate publication after a crash** | **Implemented, revised 2026-08-15.** The transaction is signed *before* anything is journalled, and the journal records the exact signed bytes and nonce, so recovery re-sends those bytes rather than re-signing: identical nonce, identical hash, at most one publication however many attempts occur. This also fixed two defects in the first T6 implementation — a definite pre-broadcast refusal used to leave a journal entry claiming an unknown broadcast outcome, and a dropped transaction had no path back. The journalled hash is recomputed from its bytes on load, so an edited journal is refused. Real subprocess-restart coverage is **PLAN-T7/PLAN-T12** |
 | T20 | **Chain or deployment mismatch** — publishing to the wrong chain or a wrong contract | **Partially implemented.** The registry stores an immutable expected chain id (`contracts/contracts/TouchstoneRegistry.sol:72`) and compares it on every report publication, including corrections (`contracts/contracts/TouchstoneRegistry.sol:239`); publisher-authorisation writes are not chain-checked. **Amended 2026-08-15:** client-side verification is now **implemented**. Before signing, the publisher compares the endpoint's own chain id, the runtime bytecode actually deployed at the registry address, and the chain id the registry was constructed with, against a committed deployment manifest, and refuses on any disagreement (`touchstone/publish.py`). Publisher **lineage** is verified too: `publisherIdentity` must match the manifest, so an owner who authorizes a replacement publisher directly instead of rotating — creating a second, unrelated lineage that reads as authorized — is refused |
 | T21 | **RPC failure** | **Partially implemented.** No value is ever invented on failure, and an interrupted send is reconciled rather than resent (see T19). **Amended 2026-08-15:** endpoint pinning and client-side chain-id and runtime-bytecode verification are **implemented** (see T20), and a typed `PreflightFailed` is raised without signing. Not built: retry/backoff on a failed submission (**PLAN-T7**) |
-| T27 | **Dishonest RPC endpoint** | **Not defended — residual R-12.** Every fact the publisher reconciles against — latest sequence, receipts, events, stored reports — is read back from the same single configured endpoint that it writes through |
+| T27 | **Dishonest RPC endpoint** | **Mitigated for Registry V2 publication; residual elsewhere.** Production publication requires two independent providers to return byte-identical reads and fails closed on disagreement or partial availability. Single-endpoint reads in other tools remain under R-12 |
 
 ### Operations and presentation
 
@@ -123,7 +123,7 @@ threat identifiers `T1`–`T27` used in this section.
 | T23 | **Scheduler stops on the first failure** | **Implemented (PLAN-T7).** A failed slot is caught and reported rather than swallowed, and the schedule continues (`touchstone/schedule.py:153`, with the reasoning recorded at `:342`). The recurring scheduler still does not overlap invocations |
 | T24 | **Backup loss** | **Implemented (PLAN-T8).** Encrypted backup and restore exist as `touchstone/backup.py` with `scripts/backup_workspace.py` and `scripts/restore_workspace.py`. Restore is exercised, not merely written |
 | T25 | **Incident deletion** — an embarrassing failure quietly disappears | **Implemented (PLAN-T7).** `touchstone/incidents.py` is a hash-chained JSON-lines log whose head **and entry count** are persisted separately, because truncation alone leaves a shorter chain that verifies (`:99`, `:222`). Recovery closes an incident with a new event (`:185`) rather than removing one, and hardlinked logs are refused (`:131`) |
-| T26 | **UI claim inflation** — the public surface implies more than the evidence proves | **Partially implemented (PLAN-T9, 2026-08-18).** The public surface exists at touchstone.gudman.xyz. It states each asset's real status including the ones with no approved control, carries every limitation string from the signed report verbatim, and names `AssetGate` as not deployed wherever the contract appears. What remains backlog is the visual separation requirement below, which has not been independently reviewed. Requirements: "verified" and "not verified" visually separated, deterministic explanations drawn only from accepted graph data, explorer links absent rather than fabricated when undeployed, and no ordinary NAV movement described as a risk event |
+| T26 | **UI claim inflation** — the public surface implies more than the evidence proves | **Partially implemented (PLAN-T9, updated 2026-08-21).** The public surface states each asset's real status, carries signed-report limitations, and identifies the policy-pinned gates and admission controller now live on their actual networks. Generated fact tokens and the public-truth gate cover addresses, report counts and policy states. Remaining risk: committed chain facts are reviewed snapshots rather than live reads, and visual separation has not had an independent accessibility review |
 
 ## 4. State semantics that this model depends on
 
@@ -174,7 +174,7 @@ These distinctions are load-bearing and must not be collapsed:
 | Full model/prompt version recording | Partially — see the row above and T11/R-11 |
 | Signed release manifests | Backlog: **PLAN-T13** |
 | Daily backups + tested restore | **Implemented (PLAN-T8)** — `touchstone/backup.py`, `scripts/backup_workspace.py`, `scripts/restore_workspace.py` |
-| Public status and incident history | Incident history **implemented** (PLAN-T7, `touchstone/incidents.py`); the **public** surface that exposes it is **PLAN-T9**, still open |
+| Public status and incident history | **Partial.** The status surface is live, and the internal incident log is hash-chained (`touchstone/incidents.py`), but no incident-log projection is present in the canonical public site data. Public incident history is therefore **not shipped**; delivery and continuity limits remain documented |
 
 ## 6. Residual limitations
 
@@ -312,15 +312,14 @@ These are accepted for Phase 1 and stated publicly rather than mitigated.
   older qualifying one, or abstains when none exists. What is missing is two-sided
   validation, any cross-check for purely offchain decisions, and a monotonic guard against
   the clock moving backwards between epochs.
-- **R-12 — Chain state is read from the endpoint it is written through.** The publisher
-  reconciles against latest sequence, receipts, events and stored reports supplied by the
-  same single configured JSON-RPC endpoint used to submit transactions (B16). An endpoint
-  that answers dishonestly can report a publication that did not occur, or conceal one that
-  did, and every client-side consistency check would still agree. Endpoint pinning does not
-  address this; independent confirmation would require a second, independently operated
-  endpoint or a light-client proof. Neither exists in Phase 1.
-- **R-8 — Source probes were run from a development machine.** Repeated retrieval from the
-  eventual deployment host is unverified and remains parked behind the deployment gate.
+- **R-12 — Independent RPC confirmation is scoped to the Registry V2 publisher.** That
+  path requires two independently operated providers, compares the reads used for preflight
+  and reconciliation, and fails closed on disagreement or partial availability. Browser,
+  SDK and operator tools that use one endpoint still inherit that endpoint's view; no light-
+  client proof exists.
+- **R-8 — Source retrieval is single-region.** The production observer retrieves all three
+  USTB sources from the shared VPS every 15 minutes. Cross-region retrieval and a second host
+  remain unverified.
 - **R-13 — Writing evidence is upstream of publishing, and the observer writes evidence.**
   The continuous observer (`scripts/run_observer.py`) is described elsewhere as the process
   that "can do least": it holds no key, imports no signer or publisher, and since 2026-08-18
