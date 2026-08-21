@@ -84,7 +84,17 @@ def target_for(route: str, site: Path) -> Path | None:
             site / f"{relative}.html",
             site / relative / "index.html",
         )
-    return next((candidate for candidate in candidates if candidate.is_file()), None)
+    return next(
+        (
+            candidate
+            for candidate in candidates
+            if candidate.is_file()
+            and not any(
+                part.startswith("_") for part in candidate.relative_to(site).parts
+            )
+        ),
+        None,
+    )
 
 
 def internal_url(reference: str, source_url: str) -> tuple[str, str] | None:
@@ -126,11 +136,7 @@ def check_site(site: Path = SITE) -> list[str]:
                 failures.append(f"{prefix} resolves to missing route {route!r}")
                 continue
             if fragment and target.suffix.lower() == ".html":
-                target_parser = parsed_pages.get(target)
-                if target_parser is None:
-                    target_parser = PageParser()
-                    target_parser.feed(target.read_text(encoding="utf-8"))
-                    parsed_pages[target] = target_parser
+                target_parser = parsed_pages[target]
                 if fragment not in target_parser.anchors:
                     failures.append(
                         f"{prefix} resolves to missing anchor #{fragment} in "

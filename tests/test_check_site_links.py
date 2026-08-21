@@ -61,8 +61,11 @@ def test_missing_anchor_reports_target(tmp_path: Path) -> None:
 
 
 def test_build_inputs_are_not_crawled(tmp_path: Path) -> None:
-    write(tmp_path / "index.html", "<h1>Home</h1>")
+    write(tmp_path / "index.html", '<h1>Home</h1><a href="/_pages/draft">Draft</a>')
     write(tmp_path / "_pages" / "draft.html", '<a href="/never-built">Draft</a>')
     write(tmp_path / "_template.html", '<a href="/not-public">Template</a>')
 
-    assert check_site_links.check_site(tmp_path) == []
+    assert check_site_links.check_site(tmp_path) == [
+        f"{tmp_path / 'index.html'}:1: href='/_pages/draft' resolves to missing route "
+        "'/_pages/draft'"
+    ]
