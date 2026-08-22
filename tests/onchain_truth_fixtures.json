@@ -1,0 +1,29 @@
+{
+  "agreement": {
+    "heads": [120, 121],
+    "endpoint_reports": [
+      {"sequence": 3, "status": 0},
+      {"sequence": 3, "status": 0}
+    ]
+  },
+  "status_disagreement": {
+    "site": {"sequence": 3, "status": "STALE"},
+    "chain": {"sequence": 3, "status": "CONFIRMED"}
+  },
+  "site_claims_more": {
+    "site": {"sequence": 4, "status": "CONFIRMED"},
+    "chain": {"sequence": 3, "status": "CONFIRMED"}
+  },
+  "chain_ahead_within_lag": {
+    "site": {"sequence": 2, "status": "STALE"},
+    "chain": {"sequence": 3, "status": "CONFIRMED"}
+  },
+  "endpoint_disagreement": {
+    "heads": [120, 121],
+    "endpoint_reports": [
+      {"sequence": 3, "status": 0},
+      {"sequence": 4, "status": 0}
+    ]
+  },
+  "short_return": "0x0000000000000000000000000000000000000000000000000000000000000020"
+}

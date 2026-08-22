@@ -11,6 +11,8 @@
  "doc_lines": 4840,
  "reports": [
   {
+   "chain_id": 1952,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
    "note": "xlayer-testnet-v1",
    "epoch_id": "ustb-2026-08-17",
    "sequence": 1,
@@ -22,6 +24,8 @@
    "observed_at": "2026-08-17T16:48:32.075003Z"
   },
   {
+   "chain_id": 1952,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
    "note": "xlayer-testnet-v1",
    "epoch_id": "ustb-2026-08-18",
    "sequence": 2,
@@ -33,6 +37,8 @@
    "observed_at": "2026-08-18T16:28:07.833801Z"
   },
   {
+   "chain_id": 1952,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
    "note": "xlayer-testnet-v1",
    "epoch_id": "ustb-2026-08-17",
    "sequence": 3,
@@ -44,6 +50,8 @@
    "observed_at": "2026-08-17T16:48:32.075003Z"
   },
   {
+   "chain_id": 1952,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
    "note": "xlayer-testnet-v1",
    "epoch_id": "ustb-2026-08-19",
    "sequence": 4,
@@ -55,6 +63,8 @@
    "observed_at": "2026-08-19T16:36:55.395580Z"
   },
   {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
    "note": "xlayer-mainnet-v1",
    "epoch_id": "ustb-2026-08-19",
    "sequence": 3,
@@ -66,6 +76,8 @@
    "observed_at": "2026-08-19T16:46:54.436771Z"
   },
   {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
    "note": "xlayer-mainnet-v1",
    "epoch_id": "ustb-2026-08-18",
    "sequence": 1,
@@ -77,6 +89,8 @@
    "observed_at": "2026-08-18T14:04:21.592662Z"
   },
   {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
    "note": "xlayer-mainnet-v1",
    "epoch_id": "ustb-2026-08-18",
    "sequence": 2,
@@ -88,6 +102,8 @@
    "observed_at": "2026-08-18T14:04:21.592662Z"
   },
   {
+   "chain_id": 1952,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:disclosure-freshness:1",
    "note": "policy:disclosure-freshness",
    "epoch_id": "ustb-2026-08-19",
    "sequence": 1,
@@ -99,6 +115,8 @@
    "observed_at": "2026-08-19T16:36:55.395580Z"
   },
   {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:disclosure-freshness:1",
    "note": "policy:disclosure-freshness",
    "epoch_id": "ustb-2026-08-19",
    "sequence": 1,
@@ -110,6 +128,8 @@
    "observed_at": "2026-08-19T16:46:54.436771Z"
   },
   {
+   "chain_id": 1952,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:nav-settlement:1",
    "note": "policy:nav-settlement",
    "epoch_id": "ustb-2026-08-19",
    "sequence": 1,
@@ -121,6 +141,8 @@
    "observed_at": "2026-08-19T16:36:55.395580Z"
   },
   {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:nav-settlement:1",
    "note": "policy:nav-settlement",
    "epoch_id": "ustb-2026-08-19",
    "sequence": 1,
@@ -132,6 +154,8 @@
    "observed_at": "2026-08-19T16:46:54.436771Z"
   },
   {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
    "note": "xlayer-mainnet-v1",
    "epoch_id": "ustb-2026-08-20",
    "sequence": 4,
@@ -143,6 +167,8 @@
    "observed_at": "2026-08-20T03:01:26.624074Z"
   },
   {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:disclosure-freshness:1",
    "note": "policy:disclosure-freshness",
    "epoch_id": "ustb-2026-08-20",
    "sequence": 2,
@@ -154,6 +180,8 @@
    "observed_at": "2026-08-20T03:01:26.624074Z"
   },
   {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:nav-settlement:1",
    "note": "policy:nav-settlement",
    "epoch_id": "ustb-2026-08-20",
    "sequence": 2,
@@ -165,6 +193,8 @@
    "observed_at": "2026-08-20T03:01:26.624074Z"
   },
   {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
    "note": "xlayer-mainnet-v1",
    "epoch_id": "ustb-2026-08-21",
    "sequence": 5,
@@ -176,6 +206,8 @@
    "observed_at": "2026-08-21T03:01:26.624074Z"
   },
   {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:disclosure-freshness:1",
    "note": "policy:disclosure-freshness",
    "epoch_id": "ustb-2026-08-21",
    "sequence": 3,
@@ -187,6 +219,8 @@
    "observed_at": "2026-08-21T03:01:26.624074Z"
   },
   {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:nav-settlement:1",
    "note": "policy:nav-settlement",
    "epoch_id": "ustb-2026-08-21",
    "sequence": 3,
@@ -198,6 +232,8 @@
    "observed_at": "2026-08-21T03:01:26.624074Z"
   },
   {
+   "chain_id": 1952,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
    "note": "xlayer-testnet-v1",
    "epoch_id": "ustb-2026-08-21",
    "sequence": 5,
@@ -209,6 +245,8 @@
    "observed_at": "2026-08-21T17:33:29.522765Z"
   },
   {
+   "chain_id": 1952,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:disclosure-freshness:1",
    "note": "policy:disclosure-freshness",
    "epoch_id": "ustb-2026-08-21",
    "sequence": 2,
@@ -220,6 +258,8 @@
    "observed_at": "2026-08-21T17:33:29.522765Z"
   },
   {
+   "chain_id": 1952,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:nav-settlement:1",
    "note": "policy:nav-settlement",
    "epoch_id": "ustb-2026-08-21",
    "sequence": 2,
@@ -231,6 +271,7 @@
    "observed_at": "2026-08-21T17:33:29.522765Z"
   },
   {
+   "chain_id": 1952,
    "note": "xlayer-testnet-v1",
    "asset_key": "eip155:1:0x3ddc84940ab509c11b20b76b466933f40b750dc9",
    "epoch_id": "fobxx-2026-08-22",
@@ -243,6 +284,7 @@
    "observed_at": "2026-08-22T04:45:02.736025Z"
   },
   {
+   "chain_id": 196,
    "note": "xlayer-mainnet-v1",
    "asset_key": "eip155:1:0x3ddc84940ab509c11b20b76b466933f40b750dc9",
    "epoch_id": "fobxx-2026-08-22",

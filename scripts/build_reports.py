@@ -87,8 +87,11 @@ def _policy_id(report: Mapping[str, object]) -> str | None:
 def _publication_key(
     record: Mapping[str, object], *, default_asset_key: str
 ) -> tuple[object, ...]:
+    asset_key = str(record.get("asset_key", default_asset_key)).split(
+        "#policy:", 1
+    )[0]
     return (
-        record.get("asset_key", default_asset_key),
+        asset_key,
         record.get("epoch_id"),
         record.get("sequence"),
         record.get("state"),
