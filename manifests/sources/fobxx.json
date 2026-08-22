@@ -1,12 +1,14 @@
 {
   "manifest_version": 1,
   "asset": {
-    "asset_key": "sec:cik:0001786958:series:S000067043",
+    "asset_key": "eip155:1:0x3ddc84940ab509c11b20b76b466933f40b750dc9",
+    "evidence_identity": "sec:cik:0001786958:series:S000067043",
+    "asset_identity_source": "https://digitalassets.franklintempleton.com/benji/benji-contracts/",
     "display_name": "Franklin OnChain U.S. Government Money Fund",
     "ticker": "FOBXX",
     "also_known_as": "BENJI",
     "role": "monthly regulator-backed contrast asset. DEMOTED 2026-08-15: the daily issuer feed is unreachable, so no daily-liveness or issuer-versus-regulator control may be claimed until repeatable production-host access is verified.",
-    "identity_basis": "SEC series identifier, not a token contract",
+    "identity_basis": "The canonical registry key is Franklin Templeton's Ethereum BENJI fund-token contract. Regulator evidence is independently bound to SEC CIK 0001786958 and series S000067043.",
     "identity_caveat": "Supply is fragmented across nine networks with a separate iBENJI share class and there is no NAV oracle on any chain. No onchain supply or oracle claim is made for this asset in Phase 1."
   },
   "publisher": {
@@ -125,7 +127,7 @@
     "max_redirects": 1,
     "redirect_policy": "same host and HTTPS only",
     "parse_timeout_seconds": 2.0,
-    "xml_entity_expansion": "must be disabled; external entity resolution must be refused (no XML path exists in the codebase yet)"
+    "xml_entity_expansion": "disabled: the parser refuses DTD, entity and CDATA declarations before parsing and never performs external resolution"
   },
   "fixtures": [
     {
@@ -157,7 +159,7 @@
   ],
   "residual_checks": [
     "The daily feed is unavailable from this environment; whether it is reachable from the production host is unknown and must be tested there.",
-    "No XML parsing path exists in the codebase; entity-expansion defences are specified but unimplemented.",
+    "The strict XML parser binds CIK, series ID, submission type and report date, enforces size/depth limits, and refuses DTD, entity and CDATA declarations.",
     "EDGAR terms of use permit automated access with an identifying User-Agent and a fair-access rate limit; the adapter must respect that limit.",
     "No claim is made about aggregate onchain supply for this asset in Phase 1."
   ]

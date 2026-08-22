@@ -11,11 +11,19 @@ adapter) rather than a new branch in each module.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
 
-from touchstone.normalize.fobxx import normalize_fobxx_payload
+from touchstone.normalize.fobxx import (
+    FOBXX_SOURCE_ID,
+    FOBXX_SUBMISSIONS_SOURCE_ID,
+    FobxxObservation,
+    FobxxSubmissionsObservation,
+    latest_nmfp3_filing,
+    latest_nmfp3_url,
+    normalize_fobxx_payload,
+)
 from touchstone.normalize.ustb import normalize_ustb_payload
 from touchstone.sources import FOBXX_SOURCES, SourceManifest, USTB_SOURCES
 
@@ -26,7 +34,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 # the two copies were what made "the engine is single-asset" a fact rather than a
 # temporary convenience.
 USTB_ASSET_KEY = "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
-FOBXX_ASSET_KEY = "sec:cik:0001786958:series:S000067043"
+FOBXX_ASSET_KEY = "eip155:1:0x3ddc84940ab509c11b20b76b466933f40b750dc9"
+FOBXX_EVIDENCE_IDENTITY = "sec:cik:0001786958:series:S000067043"
 
 # The names the control language records. They are not the adapter implementations —
 # those live in ``normalize`` — they are the strings a compiled control must carry
@@ -71,6 +80,7 @@ class AssetDescriptor:
     freshness_units: Mapping[str, str] = field(
         default_factory=lambda: MappingProxyType({})
     )
+    evidence_identity: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "adapters", MappingProxyType(dict(self.adapters)))
@@ -83,9 +93,7 @@ class AssetDescriptor:
 
     @property
     def source_by_id(self) -> Mapping[str, SourceManifest]:
-        return MappingProxyType(
-            {source.source_id: source for source in self.sources}
-        )
+        return MappingProxyType({source.source_id: source for source in self.sources})
 
 
 USTB = AssetDescriptor(
@@ -106,6 +114,20 @@ FOBXX = AssetDescriptor(
     adapters=FOBXX_ADAPTERS,
     epoch_id_prefix="fobxx",
     normalize=normalize_fobxx_payload,
+    evidence_identity=FOBXX_EVIDENCE_IDENTITY,
+    presence_fields={
+        "sec-edgar-fobxx-submissions": frozenset({"as_of_date", "cik", "entity_name"}),
+        "sec-edgar-fobxx-nmfp3": frozenset(
+            {
+                "as_of_date",
+                "report_date",
+                "cik",
+                "series_id",
+                "series_name",
+                "net_assets",
+            }
+        ),
+    },
     freshness_units={
         "sec-edgar-fobxx-submissions": "business_days",
         "sec-edgar-fobxx-nmfp3": "business_days",
@@ -128,3 +150,38 @@ def get_asset(asset_key: str) -> AssetDescriptor:
         return ASSET_BY_KEY[asset_key]
     except KeyError:
         raise ValueError(f"unknown asset_key: {asset_key}") from None
+
+
+def resolve_source_manifest(
+    asset: AssetDescriptor,
+    manifest: SourceManifest,
+    observations: Mapping[str, object],
+) -> SourceManifest:
+    """Resolve a source URL only from already-normalized authoritative discovery data."""
+    if manifest.source_id != FOBXX_SOURCE_ID:
+        return manifest
+    discovery = observations.get(FOBXX_SUBMISSIONS_SOURCE_ID)
+    if not isinstance(discovery, FobxxSubmissionsObservation):
+        raise ValueError("FOBXX filing source requires a submissions observation")
+    return replace(manifest, url=latest_nmfp3_url(discovery))
+
+
+def validate_source_observation(
+    manifest: SourceManifest,
+    observation: object,
+    observations: Mapping[str, object],
+) -> object:
+    """Bind a dynamically resolved response to the discovery record that selected it."""
+    if manifest.source_id != FOBXX_SOURCE_ID:
+        return observation
+    discovery = observations.get(FOBXX_SUBMISSIONS_SOURCE_ID)
+    if not isinstance(discovery, FobxxSubmissionsObservation) or not isinstance(
+        observation, FobxxObservation
+    ):
+        raise ValueError("FOBXX filing validation requires both SEC observations")
+    filing = latest_nmfp3_filing(discovery)
+    if observation.report_date != filing.report_date:
+        raise ValueError("FOBXX filing report date does not match SEC discovery")
+    if observation.submission_type != filing.form:
+        raise ValueError("FOBXX filing form does not match SEC discovery")
+    return replace(observation, filing_date=filing.filing_date)

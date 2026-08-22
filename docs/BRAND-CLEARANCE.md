@@ -3,6 +3,13 @@
 **Searches run:** 2026-08-14, 21:27–21:50 UTC (main sweep) and 23:47–23:56 UTC
 (registrar attempt §4, phonetic set §8.1, CoinMarketCap re-check §6) · **Compiled:** 2026-08-14
 
+> **2026-08-21 counsel-preparation update:** the evidence below has been converted into a
+> decision-ready brief at [`BRAND-COUNSEL-BRIEF.md`](BRAND-COUNSEL-BRIEF.md). That brief
+> recommends a controlled rebrand before commercial launch because the exact word is already
+> used by both a closely overlapping verification product and an RWA lending product. This is
+> a business recommendation, not a legal conclusion. No professional clearance opinion is on
+> file, and the unresolved registry searches in §2.2 and §9 remain unresolved.
+
 This is a record of searches performed and what they returned. **It is not a legal clearance
 opinion and must never be described as one.** Nothing here was registered, purchased,
 reserved, filed, or submitted; no accounts were created.

@@ -92,6 +92,17 @@ class Workspace:
         return self.root / "evidence"
 
     @property
+    def evidence_lock(self) -> Path:
+        """The short-lived lock around one evidence mutation or snapshot.
+
+        The observer's lifetime lock prevents a second observer. It cannot also provide
+        snapshot quiescence because an online backup would wait on it for the observer's
+        entire lifetime. This separate lock is held only for one capture pass, allowing a
+        backup either to obtain a stable evidence tree or to refuse immediately.
+        """
+        return self.evidence / ".capture.lock"
+
+    @property
     def bundles(self) -> Path:
         """Where each published report's offline verification bundle is written.
 

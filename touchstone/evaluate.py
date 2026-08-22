@@ -18,6 +18,7 @@ from touchstone.controls import (
     OperationalEvent,
     transition_state,
 )
+from touchstone.normalize.fobxx import FobxxObservation
 from touchstone.normalize.ustb import (
     USTB_HOLDINGS_SOURCE_ID,
     USTB_NAV_SOURCE_ID,
@@ -420,7 +421,7 @@ def _evaluate_control(
             control.control_id, EvaluationResult.UNEVALUABLE, None, None
         )
     if control.comparison_operator is ComparisonOperator.FRESH_WITHIN:
-        return _evaluate_freshness(control, observation, now)
+        return _evaluate_freshness(control, observation, now, asset)
     if control.source_id != USTB_NAV_SOURCE_ID:
         # Before the NAV route below, which returns None for any observation that is not a
         # NAV one and so silently made every non-freshness control on the other two sources
@@ -502,8 +503,33 @@ def _evaluate_presence(
 
 
 def _evaluate_freshness(
-    control: ControlRecord, observation: object, now: date
+    control: ControlRecord,
+    observation: object,
+    now: date,
+    asset: AssetDescriptor,
 ) -> ControlEvaluation:
+    if isinstance(observation, FobxxObservation):
+        observed_on = observation.filing_date
+        filing_deadline = business_day_deadline(
+            observation.report_date, control.grace_period
+        )
+        next_deadline = business_day_deadline(
+            _next_month_end(observation.report_date), control.grace_period
+        )
+        result = (
+            EvaluationResult.SATISFIED
+            if observed_on is not None
+            and observed_on <= filing_deadline
+            and observed_on <= now <= next_deadline
+            else EvaluationResult.UNEVALUABLE
+        )
+        return ControlEvaluation(
+            control.control_id,
+            result,
+            observation.report_date,
+            next_deadline,
+            observed_on,
+        )
     if isinstance(observation, USTBNavObservation):
         row = _latest_nav_row(observation)
         observed_on = row.observed_on if row is not None else None
@@ -519,15 +545,17 @@ def _evaluate_freshness(
         observed_on = observation.as_of_date
         deadline = observed_on + timedelta(days=control.grace_period)
     else:
-        # A non-USTB adapter publishes an as-of date the same way holdings does.
-        # Calendar arithmetic, not business days: that is the unit the descriptor
-        # already declared for any source that is not in `_FRESHNESS_UNIT`.
         observed_on = getattr(observation, "as_of_date", None)
         if type(observed_on) is not date:
             observed_on = None
             deadline = None
         else:
-            deadline = observed_on + timedelta(days=control.grace_period)
+            unit = asset.freshness_units.get(control.source_id)
+            deadline = (
+                business_day_deadline(observed_on, control.grace_period)
+                if unit == "business_days"
+                else observed_on + timedelta(days=control.grace_period)
+            )
     result = (
         EvaluationResult.SATISFIED
         if observed_on is not None and observed_on <= now <= deadline
@@ -536,6 +564,14 @@ def _evaluate_freshness(
     return ControlEvaluation(
         control.control_id, result, observed_on, deadline, observed_on
     )
+
+
+def _next_month_end(value: date) -> date:
+    next_month_start = (value.replace(day=28) + timedelta(days=4)).replace(day=1)
+    month_after_next = (next_month_start.replace(day=28) + timedelta(days=4)).replace(
+        day=1
+    )
+    return month_after_next - timedelta(days=1)
 
 
 def _confirmed_nav_row(

@@ -59,6 +59,13 @@ def main(argv: list[str] | None = None) -> int:
     # Digests prove the bytes survived the round trip. They do not prove the chains those
     # bytes form still verify, and that is the claim a restore actually has to make.
     workspace = Workspace(arguments.into)
+    if workspace.registry_v2_pending_journal.exists():
+        print(
+            "RESTORE FAIL: a pending v2 journal cannot be independently verified "
+            "without its signed report; the restored workspace was not activated",
+            file=sys.stderr,
+        )
+        return 1
     try:
         entries = TransparencyLog(workspace.transparency_log).verify()
         incidents = IncidentLog(workspace.incidents).verify()

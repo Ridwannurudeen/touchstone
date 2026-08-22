@@ -10,7 +10,12 @@ import json
 from pathlib import Path
 import tempfile
 
-from touchstone.assets import USTB, AssetDescriptor
+from touchstone.assets import (
+    USTB,
+    AssetDescriptor,
+    resolve_source_manifest,
+    validate_source_observation,
+)
 from touchstone.controls import AssetState, ControlRecord, EvaluationResult
 from touchstone.evidence import read_object, CaptureRecord, EvidenceStore
 from touchstone.evaluate import default_controls, evaluate
@@ -217,6 +222,7 @@ def run_epoch_reports(
     fetches: list[FetchResult] = []
     observations: dict[str, object] = {}
     for manifest in asset.sources:
+        manifest = resolve_source_manifest(asset, manifest, observations)
         fetched = _fetch_declared(
             manifest,
             store=store,
@@ -225,12 +231,14 @@ def run_epoch_reports(
         )
         fetches.append(fetched)
         raw = read_object(store, fetched.evidence_sha256)
-        observations[manifest.source_id] = asset.normalize(
+        observation = asset.normalize(
             manifest.source_id,
             raw,
             max_bytes=manifest.max_bytes,
             isolated=True,
         )
+        observation = validate_source_observation(manifest, observation, observations)
+        observations[manifest.source_id] = observation
 
     source_reports = tuple(
         EpochSourceReport(

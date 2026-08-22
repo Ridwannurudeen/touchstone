@@ -37,7 +37,7 @@ if str(ROOT) not in sys.path:
 
 from touchstone.deployment import DeploymentError, DeploymentManifest  # noqa: E402
 from touchstone.approval import load_approval_ledger  # noqa: E402
-from touchstone.assets import USTB  # noqa: E402
+from touchstone.assets import USTB, get_asset  # noqa: E402
 from touchstone.incidents import (  # noqa: E402
     EPOCH_FAILED,
     PUBLICATION_UNRESOLVED,
@@ -78,7 +78,7 @@ from touchstone.ustb_daemon import (  # noqa: E402
     require_verifying_bundle,
     write_bundle,
 )
-from touchstone.sources import SourceUnavailable  # noqa: E402,F401
+from touchstone.sources import LiveTransport, SourceUnavailable  # noqa: E402,F401
 from touchstone.signing import Ed25519Signer, frozen_snapshot  # noqa: E402
 from touchstone import backup, heartbeat  # noqa: E402
 from touchstone.backup import BackupError  # noqa: E402
@@ -250,14 +250,17 @@ class Service:
                     "the service is not holding its workspace lock; a cooperative "
                     "backup is only valid from inside the serving section"
                 )
-            archive = backup.create(
-                self._held,
-                Path(self.operations.directory).parent,
-                now=moment,
-                key=self.backup_key,
-                asset_key=self.asset_key,
-                registry_address=self.registry_address or "",
-            )
+            root = Workspace(Path(self.operations.directory).parent)
+            with exclusive_lock(root.evidence_lock) as evidence_held:
+                archive = backup.create(
+                    self._held,
+                    root.root,
+                    evidence_held=evidence_held,
+                    now=moment,
+                    key=self.backup_key,
+                    asset_key=self.asset_key,
+                    registry_address=self.registry_address or "",
+                )
             # The asset key is a CAIP identifier and contains colons, which are not legal
             # in a Windows filename — so naming the archive after it directly produced a
             # backup that silently never appeared. The identity is authenticated inside
@@ -268,7 +271,7 @@ class Service:
             temporary = destination.with_name(destination.name + ".tmp")
             temporary.write_bytes(archive)
             temporary.replace(destination)
-        except (BackupError, OSError, ValueError) as error:
+        except (BackupError, LockUnavailable, OSError, ValueError) as error:
             # An incident, not a crash. A failed backup is a reliability problem to be
             # seen, and the slot that just ran is unaffected by it.
             self._record_backup_failure(str(error))
@@ -845,7 +848,9 @@ class BatchService:
         try:
             produced = produce(scheduled_at)
         except SourceUnavailable as error:
-            return self._record_batch_incident(SOURCE_UNAVAILABLE, str(error), scheduled_at)
+            return self._record_batch_incident(
+                SOURCE_UNAVAILABLE, str(error), scheduled_at
+            )
         except Exception as error:  # noqa: BLE001 - a capture failure is an incident
             return self._record_batch_incident(EPOCH_FAILED, str(error), scheduled_at)
 
@@ -880,7 +885,9 @@ class BatchService:
                     epoch_of=epoch_of,
                 )
             )
-        first_failure = next((outcome for outcome in outcomes if not outcome.published), None)
+        first_failure = next(
+            (outcome for outcome in outcomes if not outcome.published), None
+        )
         if first_failure is not None:
             return first_failure
         return SlotOutcome(
@@ -1074,13 +1081,20 @@ def _serve_ustb(service: Service, arguments) -> int:
     right up until this function replaced it.
     """
     manifest = DeploymentManifest.load(arguments.manifest)
+    descriptor = get_asset(arguments.asset_key)
     # The public-network refusal is not here. It lives in `main`, ahead of `build_service`,
     # because construction reads the EVM publisher key and this check must hold on a host
     # that has none. Keeping a copy here as well left two guards for one rule, and a mutant
     # that disabled this one survived because the other still caught it — which is exactly
     # how a duplicated rule stops being tested.
-    transport = None
+    transport = LiveTransport(user_agent=arguments.source_user_agent)
     if arguments.fixtures:
+        if descriptor is not USTB:
+            print(
+                "SERVICE FAIL: committed fixture mode currently supports USTB only",
+                file=sys.stderr,
+            )
+            return 1
         from touchstone.epoch import FixtureTransport
 
         try:
@@ -1110,7 +1124,7 @@ def _serve_ustb(service: Service, arguments) -> int:
     try:
         ledger = load_approval_ledger()
         policies = tuple(
-            load_policy(path, approved=default_controls(USTB, ledger))
+            load_policy(path, approved=default_controls(descriptor, ledger))
             for path in policy_paths
         )
         for policy in policies:
@@ -1172,6 +1186,7 @@ def _serve_ustb(service: Service, arguments) -> int:
             policy_manifests=manifests,
             transport=transport,
             bundle_sink=write_bundle(workspace.bundles, manifest.chain_id),
+            asset=descriptor,
         )
     else:
         served_service = service
@@ -1185,6 +1200,7 @@ def _serve_ustb(service: Service, arguments) -> int:
             # workspace's other durable state. Without this the service published reports a
             # reader had no way to check, which is the one claim the project rests on.
             bundle_sink=write_bundle(workspace.bundles, manifest.chain_id),
+            asset=descriptor,
         )
 
     outcome = serve(
@@ -1195,7 +1211,7 @@ def _serve_ustb(service: Service, arguments) -> int:
         max_runs=arguments.max_runs,
         # The same derivation the producer names its report with, so the question asked of
         # the registry is about the epoch the slot would actually publish.
-        epoch_of=epoch_id_for,
+        epoch_of=lambda scheduled_at: epoch_id_for(scheduled_at, descriptor),
     )
     print(
         json.dumps(
@@ -1217,6 +1233,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--asset-key", required=True)
+    parser.add_argument(
+        "--source-user-agent",
+        default=None,
+        help="identifying HTTP User-Agent; required for SEC-backed assets",
+    )
     parser.add_argument(
         "--policy-manifest",
         action="append",
@@ -1252,7 +1273,8 @@ def main(argv: list[str] | None = None) -> int:
         "--fixtures",
         default=None,
         help="serve from committed fixtures instead of the live sources. For rehearsing "
-        "the unattended path without touching an issuer endpoint. Local manifests only.",
+        "the USTB unattended path without touching an issuer endpoint. Local manifests "
+        "only; FOBXX fixture service mode is not implemented.",
     )
     parser.add_argument(
         "--fixture-capture",
@@ -1321,6 +1343,7 @@ def main(argv: list[str] | None = None) -> int:
         LockUnavailable,
         OperationsError,
         PublicationError,
+        ValueError,
     ) as error:
         print(f"SERVICE FAIL: {error}", file=sys.stderr)
         return 1

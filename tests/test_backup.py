@@ -80,8 +80,11 @@ def archive_of(workspace: Workspace, **changes: object) -> bytes:
         "registry_address": REGISTRY,
     }
     arguments.update(changes)
-    with exclusive_lock(workspace.lock) as held:
-        return create(held, workspace.root, **arguments)
+    with (
+        exclusive_lock(workspace.lock) as held,
+        exclusive_lock(workspace.evidence_lock) as evidence_held,
+    ):
+        return create(held, workspace.root, evidence_held=evidence_held, **arguments)
 
 
 def test_an_archive_round_trips_every_file(tmp_path: Path) -> None:
@@ -111,6 +114,37 @@ def test_the_evidence_and_both_logs_are_in_the_archive(tmp_path: Path) -> None:
     assert "incidents.jsonl.head" in paths
     assert "evidence/index.jsonl" in paths
     assert any(path.startswith("evidence/objects/") for path in paths)
+
+
+def test_pending_v2_and_verification_bundles_are_in_the_archive(
+    tmp_path: Path,
+) -> None:
+    """Recovery must retain every unresolved publication and its offline proof."""
+    workspace = populated(tmp_path)
+    workspace.registry_v2_pending_journal.write_bytes(b'{"transaction":"0x01"}\n')
+    bundle = workspace.bundles / "196" / "report.json"
+    bundle.parent.mkdir(parents=True)
+    bundle.write_bytes(b'{"report":"signed"}\n')
+
+    paths = {member.path for member in members(workspace)}
+
+    assert "pending-v2.json" in paths
+    assert "bundles/196/report.json" in paths
+
+    restore(
+        archive_of(workspace),
+        tmp_path / "restored",
+        key=KEY,
+        asset_key=ASSET,
+        registry_address=REGISTRY,
+    )
+    restored = Workspace(tmp_path / "restored")
+    assert (
+        restored.registry_v2_pending_journal.read_bytes() == b'{"transaction":"0x01"}\n'
+    )
+    assert (restored.bundles / "196" / "report.json").read_bytes() == (
+        b'{"report":"signed"}\n'
+    )
 
 
 def test_the_lock_and_heartbeat_are_not_archived(tmp_path: Path) -> None:
@@ -168,10 +202,14 @@ def test_a_backup_taken_between_mutations_holds_one_consistent_instant(
     workspace = populated(tmp_path)
     log = TransparencyLog(workspace.transparency_log)
 
-    with exclusive_lock(workspace.lock) as held:
+    with (
+        exclusive_lock(workspace.lock) as held,
+        exclusive_lock(workspace.evidence_lock) as evidence_held,
+    ):
         before = create(
             held,
             workspace.root,
+            evidence_held=evidence_held,
             now=AT,
             key=KEY,
             asset_key=ASSET,
@@ -183,10 +221,14 @@ def test_a_backup_taken_between_mutations_holds_one_consistent_instant(
         transaction_hash="0x" + "bb" * 32,
         receipt={"block_number": 2, "status": 1},
     )
-    with exclusive_lock(workspace.lock) as held:
+    with (
+        exclusive_lock(workspace.lock) as held,
+        exclusive_lock(workspace.evidence_lock) as evidence_held,
+    ):
         after = create(
             held,
             workspace.root,
+            evidence_held=evidence_held,
             now=AT,
             key=KEY,
             asset_key=ASSET,
@@ -379,11 +421,16 @@ def test_a_valid_backup_key_is_returned_as_bytes() -> None:
 def test_an_empty_workspace_has_nothing_to_back_up(tmp_path: Path) -> None:
     (tmp_path / "asset").mkdir()
 
-    with exclusive_lock(Workspace(tmp_path / "asset").lock) as held:
+    workspace = Workspace(tmp_path / "asset")
+    with (
+        exclusive_lock(workspace.lock) as held,
+        exclusive_lock(workspace.evidence_lock) as evidence_held,
+    ):
         with pytest.raises(BackupError, match="nothing in this workspace"):
             create(
                 held,
                 tmp_path / "asset",
+                evidence_held=evidence_held,
                 now=AT,
                 key=KEY,
                 asset_key=ASSET,
@@ -524,6 +571,97 @@ def test_a_valid_archive_naming_one_path_twice_is_refused(tmp_path: Path) -> Non
             asset_key=ASSET,
             registry_address=REGISTRY,
         )
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ("bundles/Foo/report.json", "bundles/foo/report.json"),
+        ("bundles/196/report.json", "bundles\\196\\report.json"),
+    ],
+)
+def test_portable_path_aliases_are_refused_before_restore_writes(
+    tmp_path: Path, first: str, second: str
+) -> None:
+    import hashlib
+
+    raw = b"same destination"
+    member = {
+        "bytes": raw.hex(),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "size": len(raw),
+    }
+    archive = forged(
+        payload(files=[{**member, "path": first}, {**member, "path": second}])
+    )
+
+    with pytest.raises(BackupError, match="portable path alias"):
+        restore(
+            archive,
+            tmp_path / "restored",
+            key=KEY,
+            asset_key=ASSET,
+            registry_address=REGISTRY,
+        )
+
+    assert not (tmp_path / "restored").exists()
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "evidence/object.json.",
+        "evidence/object.json ",
+        "evidence/object.json:stream",
+        "evidence/a<.json",
+        "evidence/a>.json",
+        'evidence/a".json',
+        "evidence/a|.json",
+        "evidence/a?.json",
+        "evidence/a*.json",
+        "evidence/a\x01.json",
+        "evidence/CON",
+        "evidence/con.json",
+        "evidence/PRN",
+        "evidence/AUX.log",
+        "evidence/NUL",
+        "evidence/COM1.json",
+        "evidence/com².json",
+        "evidence/LPT9",
+        "evidence/lpt³.txt",
+        "evidence/CONIN$",
+        "evidence/conout$.json",
+    ],
+)
+def test_windows_invalid_or_aliasing_components_are_refused_before_any_write(
+    tmp_path: Path, path: str
+) -> None:
+    import hashlib
+
+    raw = b"unsafe on Windows"
+    archive = forged(
+        payload(
+            files=[
+                {
+                    "bytes": raw.hex(),
+                    "path": path,
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                    "size": len(raw),
+                }
+            ]
+        )
+    )
+
+    with pytest.raises(BackupError, match="unsafe archive path"):
+        restore(
+            archive,
+            tmp_path / "restored",
+            key=KEY,
+            asset_key=ASSET,
+            registry_address=REGISTRY,
+        )
+
+    assert not (tmp_path / "restored").exists()
 
 
 def test_a_live_observer_also_blocks_a_backup(tmp_path: Path) -> None:
@@ -674,38 +812,76 @@ def test_a_backup_requires_a_live_hold_on_this_workspaces_lock(tmp_path: Path) -
     other = Workspace(tmp_path / "elsewhere")
     other.root.mkdir(parents=True, exist_ok=True)
 
-    with pytest.raises(BackupError, match="requires the Held"):
-        create(
-            object(),
-            workspace.root,
-            now=AT,
-            key=KEY,
-            asset_key=ASSET,
-            registry_address=REGISTRY,
-        )
-
-    with exclusive_lock(workspace.lock) as held:
-        pass
-    with pytest.raises(BackupError, match="released"):
-        create(
-            held,
-            workspace.root,
-            now=AT,
-            key=KEY,
-            asset_key=ASSET,
-            registry_address=REGISTRY,
-        )
-
-    with exclusive_lock(other.lock) as elsewhere:
-        with pytest.raises(BackupError, match="not"):
+    with exclusive_lock(workspace.evidence_lock) as evidence_held:
+        with pytest.raises(BackupError, match="requires both Held values"):
             create(
-                elsewhere,
+                object(),
                 workspace.root,
+                evidence_held=evidence_held,
                 now=AT,
                 key=KEY,
                 asset_key=ASSET,
                 registry_address=REGISTRY,
             )
+
+    with exclusive_lock(workspace.evidence_lock) as evidence_held:
+        with exclusive_lock(workspace.lock) as held:
+            pass
+        with pytest.raises(BackupError, match="released"):
+            create(
+                held,
+                workspace.root,
+                evidence_held=evidence_held,
+                now=AT,
+                key=KEY,
+                asset_key=ASSET,
+                registry_address=REGISTRY,
+            )
+
+    with (
+        exclusive_lock(other.lock) as elsewhere,
+        exclusive_lock(workspace.evidence_lock) as evidence_held,
+    ):
+        with pytest.raises(BackupError, match="not"):
+            create(
+                elsewhere,
+                workspace.root,
+                evidence_held=evidence_held,
+                now=AT,
+                key=KEY,
+                asset_key=ASSET,
+                registry_address=REGISTRY,
+            )
+
+
+def test_a_backup_requires_a_live_hold_on_the_evidence_lock(tmp_path: Path) -> None:
+    workspace = populated(tmp_path)
+    other = Workspace(tmp_path / "elsewhere")
+    other.evidence.mkdir(parents=True)
+
+    with exclusive_lock(workspace.lock) as held:
+        with pytest.raises(BackupError, match="requires both Held values"):
+            create(
+                held,
+                workspace.root,
+                evidence_held=object(),
+                now=AT,
+                key=KEY,
+                asset_key=ASSET,
+                registry_address=REGISTRY,
+            )
+
+        with exclusive_lock(other.evidence_lock) as elsewhere:
+            with pytest.raises(BackupError, match="not"):
+                create(
+                    held,
+                    workspace.root,
+                    evidence_held=elsewhere,
+                    now=AT,
+                    key=KEY,
+                    asset_key=ASSET,
+                    registry_address=REGISTRY,
+                )
 
 
 def test_an_authenticated_archive_that_is_not_json_is_this_modules_failure(
@@ -773,7 +949,10 @@ def test_a_live_descriptor_borrowed_from_another_lock_is_refused(
     # the inode comparison — the branch under test — is never reached.
     target.lock.touch()
 
-    with exclusive_lock(other.lock) as borrowed:
+    with (
+        exclusive_lock(other.lock) as borrowed,
+        exclusive_lock(target.evidence_lock) as evidence_held,
+    ):
         forged = Held(path=target.lock.resolve(), descriptor=borrowed.descriptor)
         assert forged.active, "the descriptor really is live; that is the point"
 
@@ -781,6 +960,7 @@ def test_a_live_descriptor_borrowed_from_another_lock_is_refused(
             create(
                 forged,
                 target.root,
+                evidence_held=evidence_held,
                 now=AT,
                 key=KEY,
                 asset_key=ASSET,
@@ -805,7 +985,10 @@ def test_a_filesystem_with_no_file_identity_cannot_confirm_a_hold(
         st_ino = 0
         st_dev = 0
 
-    with exclusive_lock(workspace.lock) as held:
+    with (
+        exclusive_lock(workspace.lock) as held,
+        exclusive_lock(workspace.evidence_lock) as evidence_held,
+    ):
         # Only `fstat`. Patching `os.stat` as well recurses, because `Path.resolve()` calls
         # it — and one zero-identity operand is enough to make the comparison vacuous,
         # which is the condition under test.
@@ -815,6 +998,7 @@ def test_a_filesystem_with_no_file_identity_cannot_confirm_a_hold(
             create(
                 held,
                 workspace.root,
+                evidence_held=evidence_held,
                 now=AT,
                 key=KEY,
                 asset_key=ASSET,

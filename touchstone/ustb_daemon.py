@@ -39,7 +39,12 @@ from touchstone.evidence import EvidenceStore
 from touchstone.policy import Policy
 from touchstone.publish import asset_key_bytes  # noqa: F401 - re-exported for the CLI
 from touchstone.quantities import utc_instant
-from touchstone.report import build_observation_report, evidence_references
+from touchstone.report import (
+    FOBXX_LIMITATIONS,
+    USTB_LIMITATIONS,
+    build_observation_report,
+    evidence_references,
+)
 from touchstone.signing import Ed25519Signer, strict_json_loads
 from touchstone.sources import (
     LiveTransport,
@@ -70,9 +75,7 @@ class ProducedReports:
     reports: tuple[Mapping[str, object], ...]
 
 
-def epoch_id_for(
-    scheduled_at: datetime, asset: AssetDescriptor | None = None
-) -> str:
+def epoch_id_for(scheduled_at: datetime, asset: AssetDescriptor | None = None) -> str:
     """The epoch a slot at this instant is a statement about.
 
     One derivation, used by the producer that names the report and by the slot runner that
@@ -161,6 +164,11 @@ def make_producer(
         # individual check passed because each was consistent with the read next to it.
         ledger = ledger_bytes() if frozen_ledger is None else frozen_ledger
         controls = default_controls(descriptor, ledger_from_bytes(ledger))
+        if not controls:
+            raise EpochProductionError(
+                f"{descriptor.display_name} has no approved controls; refusing to "
+                "sign or publish an empty policy decision"
+            )
 
         try:
             prior_states = {
@@ -205,7 +213,9 @@ def make_producer(
             policy = None if index == 0 else policies[index - 1]
             key = descriptor.asset_key if policy is None else policy.key
             sequence = (
-                next_sequence_for(key) if next_sequence_for is not None else next_sequence()
+                next_sequence_for(key)
+                if next_sequence_for is not None
+                else next_sequence()
             )
             prior_state = (
                 previous_state(observed_on)
@@ -214,8 +224,12 @@ def make_producer(
             )
             report = build_observation_report(
                 epoch,
-                controls if policy is None else tuple(
-                    control for control in controls if control.control_id in policy.control_ids
+                controls
+                if policy is None
+                else tuple(
+                    control
+                    for control in controls
+                    if control.control_id in policy.control_ids
                 ),
                 epoch_id=epoch_id,
                 sequence=sequence,
@@ -228,6 +242,11 @@ def make_producer(
                 ),
                 approval_ledger=ledger,
                 policy=policy,
+                limitations=(
+                    USTB_LIMITATIONS
+                    if descriptor.asset_key == USTB.asset_key
+                    else FOBXX_LIMITATIONS
+                ),
             )
             signed = signer.sign_report(report)
             if bundle_sink is not None:
@@ -239,8 +258,12 @@ def make_producer(
                 bundle = create_bundle(
                     signed,
                     signer.public_key_record(),
-                    controls if policy is None else tuple(
-                        control for control in controls if control.control_id in policy.control_ids
+                    controls
+                    if policy is None
+                    else tuple(
+                        control
+                        for control in controls
+                        if control.control_id in policy.control_ids
                     ),
                     evidence_references(epoch),
                     approval_ledger=ledger,
@@ -326,7 +349,9 @@ def _bundle_name(report: Mapping[str, object], chain_id: int) -> str:
     policy = report.get("policy")
     suffix = ""
     if isinstance(policy, Mapping):
-        suffix = f"-policy-{_path_component(policy['policy_id'])}-{policy['policy_version']}"
+        suffix = (
+            f"-policy-{_path_component(policy['policy_id'])}-{policy['policy_version']}"
+        )
     return f"eip155-{chain_id}-{_path_component(report['epoch_id'])}-{report['sequence']}{suffix}.json"
 
 
@@ -373,13 +398,15 @@ def report_uri(signed_report: Mapping[str, object]) -> str:
     report = signed_report["report"]
     if not isinstance(report, Mapping):
         raise EpochProductionError("a signed report must carry its report")
+    epoch_id = _path_component(report["epoch_id"])
+    namespace = epoch_id.split("-", 1)[0].lower()
     policy = report.get("policy")
     if isinstance(policy, Mapping):
         return (
-            f"urn:touchstone:ustb:policy:{policy['policy_id']}:{policy['policy_version']}"
-            f":{report['epoch_id']}:{report['sequence']}"
+            f"urn:touchstone:{namespace}:policy:{policy['policy_id']}:"
+            f"{policy['policy_version']}:{epoch_id}:{report['sequence']}"
         )
-    return f"urn:touchstone:ustb:{report['epoch_id']}:{report['sequence']}"
+    return f"urn:touchstone:{namespace}:{epoch_id}:{report['sequence']}"
 
 
 def asset_key() -> str:

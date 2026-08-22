@@ -24,6 +24,9 @@ from touchstone.observation import (
     stamp,
     validate_interval,
 )
+from touchstone.assets import USTB_ASSET_KEY
+from touchstone.locking import exclusive_lock
+from touchstone.workspace import Workspace
 
 AT = datetime(2026, 8, 18, 9, 0, tzinfo=timezone.utc)
 SOURCE = "superstate-ustb-nav-daily"
@@ -257,3 +260,31 @@ class TestWatcherCannotPublish:
             text = (Path(__file__).parents[1] / relative).read_text(encoding="utf-8")
             assert "TOUCHSTONE_PUBLISHER_PRIVATE_KEY" not in text
             assert "TOUCHSTONE_SIGNING_SEED" not in text
+
+
+def test_a_backup_evidence_snapshot_skips_one_pass_without_stopping_the_observer(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A short snapshot collision is not a second observer or a source observation."""
+    from scripts.run_observer import main
+
+    workspace = Workspace(tmp_path / "asset")
+    with exclusive_lock(workspace.evidence_lock):
+        result = main(
+            [
+                "--workspace",
+                str(workspace.root),
+                "--asset-key",
+                USTB_ASSET_KEY,
+                "--interval-seconds",
+                str(MINIMUM_INTERVAL_SECONDS),
+                "--max-runs",
+                "1",
+            ]
+        )
+
+    output = capsys.readouterr()
+    assert result == 0
+    assert "evidence snapshot is in progress; observation pass skipped" in output.err
+    assert "another observer" not in output.err
+    assert not workspace.observation_log.exists()

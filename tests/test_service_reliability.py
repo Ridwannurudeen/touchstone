@@ -18,6 +18,7 @@ import pytest
 from touchstone.backup import open_archive
 from touchstone.heartbeat import read as read_heartbeat, verify as verify_heartbeat
 from touchstone.incidents import IncidentLog
+from touchstone.locking import exclusive_lock
 from touchstone.operations import OperationsStore
 from touchstone.publish import PublisherClient
 from touchstone.translog import TransparencyLog
@@ -177,6 +178,23 @@ def test_serving_takes_the_daily_backup_from_inside_its_own_lock(
     assert "transparency.jsonl" in paths, "the archive is missing the durable record"
 
 
+def test_online_backup_refuses_while_the_observer_is_mutating_evidence(
+    tmp_path: Path,
+) -> None:
+    """Publisher quiescence alone does not make the shared evidence tree stable."""
+    service, workspace, _ = served(tmp_path)
+
+    with exclusive_lock(workspace.evidence_lock):
+        outcome = run(service, workspace)
+
+    assert outcome.completed == 1, "a refused backup must not fail the publication slot"
+    assert not sorted((tmp_path / "archives").glob("*.archive"))
+    assert any(
+        "backup" in entry["detail"]
+        for entry in IncidentLog(workspace.incidents).verify()
+    )
+
+
 def test_the_backup_is_taken_once_a_day_not_once_a_slot(tmp_path: Path) -> None:
     service, workspace, _ = served(tmp_path)
 
@@ -290,11 +308,16 @@ def test_the_daemon_stays_alive_through_a_daily_idle_period(tmp_path: Path) -> N
     published: list[datetime] = []
     serve(
         service,
-        lambda scheduled_at: (published.append(scheduled_at), _signed_report(len(published) + 1))[1],
+        lambda scheduled_at: (
+            published.append(scheduled_at),
+            _signed_report(len(published) + 1),
+        )[1],
         report_uri=uri,
         interval_seconds=86_400.0,
         max_runs=2,
-        monotonic=lambda: (clock["t"] - datetime(2026, 8, 15, tzinfo=timezone.utc)).total_seconds(),
+        monotonic=lambda: (
+            clock["t"] - datetime(2026, 8, 15, tzinfo=timezone.utc)
+        ).total_seconds(),
         sleep=sleep,
         now=now,
     )

@@ -51,6 +51,15 @@ USTB_LIMITATIONS = (
     "replay normalization or prove that a reported row occurs inside an artifact.",
     "This report does not verify an onchain NAV oracle or token supply.",
 )
+FOBXX_LIMITATIONS = (
+    "SEC-hosted N-MFP3 evidence proves only what the issuer filed; Touchstone does not "
+    "independently audit the fund, its assets, or issuer accuracy.",
+    "N-MFP3 evidence is monthly and arrives after period end; it is not a daily NAV or "
+    "liquidity feed.",
+    "The Ethereum BENJI contract is the canonical registry identity, while the SEC "
+    "evidence applies to fund series S000067043 across its supported recordkeeping chains.",
+    "This report does not verify token supply, an onchain NAV oracle, or daily issuer data.",
+)
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 
 

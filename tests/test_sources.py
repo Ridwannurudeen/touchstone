@@ -14,6 +14,8 @@ import pytest
 import touchstone.sources as sources_module
 from touchstone.evidence import EvidenceStore
 from touchstone.sources import (
+    FOBXX_SOURCES,
+    LiveTransport,
     USTB_SOURCES,
     SourcePolicyError,
     SourceResponseError,
@@ -719,7 +721,10 @@ def test_a_source_from_another_asset_gets_the_same_hardening(tmp_path: Path) -> 
         {
             "https://probe.example/daily": response(
                 b"{}",
-                headers={"Content-Type": "application/json", "Content-Encoding": "gzip"},
+                headers={
+                    "Content-Type": "application/json",
+                    "Content-Encoding": "gzip",
+                },
             )
         }
     )
@@ -733,7 +738,9 @@ def test_a_source_from_another_asset_gets_the_same_hardening(tmp_path: Path) -> 
         )
 
 
-def test_a_supplied_manifest_must_name_the_source_it_is_passed_for(tmp_path: Path) -> None:
+def test_a_supplied_manifest_must_name_the_source_it_is_passed_for(
+    tmp_path: Path,
+) -> None:
     """The manifest parameter is a widening of the allowlist, not a hole in it.
 
     Without this, a caller could fetch under one source_id while the bytes were stored and
@@ -747,3 +754,43 @@ def test_a_supplied_manifest_must_name_the_source_it_is_passed_for(tmp_path: Pat
             retrieved_at=RETRIEVED_AT,
             manifest=_foreign_manifest(url="https://probe.example/daily"),
         )
+
+
+def test_sec_transport_refuses_a_non_identifying_user_agent_before_network() -> None:
+    transport = LiveTransport()
+
+    with pytest.raises(SourcePolicyError, match="identifying User-Agent"):
+        transport.get(FOBXX_SOURCES[0].url, timeout=1.0, max_bytes=1024)
+
+
+def test_sec_transport_sends_the_configured_identifying_user_agent(monkeypatch) -> None:
+    requests = []
+
+    class Response:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self, size):
+            del size
+            return b"{}"
+
+        def getcode(self):
+            return 200
+
+    class Opener:
+        def open(self, request, *, timeout):
+            del timeout
+            requests.append(request)
+            return Response()
+
+    monkeypatch.setattr(sources_module, "build_opener", lambda *args: Opener())
+    transport = LiveTransport(user_agent="Touchstone ops@example.com")
+
+    transport.get(FOBXX_SOURCES[0].url, timeout=1.0, max_bytes=1024)
+
+    assert requests[0].get_header("User-agent") == "Touchstone ops@example.com"

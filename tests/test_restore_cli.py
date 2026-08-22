@@ -65,10 +65,14 @@ def archived(workspace: Workspace, manifest_path: Path, tmp_path: Path) -> Path:
     from touchstone.deployment import DeploymentManifest
 
     manifest = DeploymentManifest.load(str(manifest_path))
-    with exclusive_lock(workspace.lock) as held:
+    with (
+        exclusive_lock(workspace.lock) as held,
+        exclusive_lock(workspace.evidence_lock) as evidence_held,
+    ):
         archive = create(
             held,
             workspace.root,
+            evidence_held=evidence_held,
             now=AT,
             key=KEY,
             asset_key=ASSET,
@@ -173,3 +177,17 @@ def test_an_existing_target_is_refused_by_the_command(tmp_path: Path) -> None:
     (tmp_path / "out").mkdir()
 
     assert run(tmp_path, manifest_path, archive, "out") == 1
+
+
+def test_a_pending_v2_journal_fails_closed_until_it_can_be_verified(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    manifest_path = written_manifest(tmp_path)
+    workspace = workspace_with(tmp_path)
+    workspace.registry_v2_pending_journal.write_bytes(b'{"not":"verified"}\n')
+    archive = archived(workspace, manifest_path, tmp_path)
+
+    assert run(tmp_path, manifest_path, archive, "out") == 1
+    assert (
+        "pending v2 journal cannot be independently verified" in capsys.readouterr().err
+    )

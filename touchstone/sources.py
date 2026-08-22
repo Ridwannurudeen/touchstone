@@ -10,6 +10,7 @@ from typing import Mapping, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+import re
 
 from touchstone.evidence import EvidenceStore
 from touchstone.quantities import finite_positive, utc_instant
@@ -18,6 +19,8 @@ from touchstone.quantities import finite_positive, utc_instant
 DEFAULT_TIMEOUT_SECONDS = 10.0
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _MISSING_CONTENT_TYPE = "<missing>"
+_SEC_HOSTS = frozenset({"data.sec.gov", "www.sec.gov"})
+_CONTACT_EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,14 +181,33 @@ class _NoRedirectHandler(HTTPRedirectHandler):
 class LiveTransport:
     """Stdlib HTTPS transport that exposes redirects to the policy layer."""
 
+    def __init__(self, *, user_agent: str | None = None) -> None:
+        self.user_agent = user_agent
+
     def get(self, url: str, *, timeout: float, max_bytes: int) -> TransportResponse:
+        hostname = urlsplit(url).hostname
+        if hostname in _SEC_HOSTS:
+            if (
+                not isinstance(self.user_agent, str)
+                or not self.user_agent.strip()
+                or _CONTACT_EMAIL.search(self.user_agent) is None
+            ):
+                raise SourcePolicyError(
+                    "SEC retrieval requires an identifying User-Agent with a contact "
+                    "email address"
+                )
+            user_agent = self.user_agent.strip()
+        else:
+            user_agent = (
+                self.user_agent.strip() if self.user_agent else "touchstone/0.1.0"
+            )
         request = Request(
             url,
             method="GET",
             headers={
                 "Accept": "application/json",
                 "Accept-Encoding": "identity",
-                "User-Agent": "touchstone/0.1.0",
+                "User-Agent": user_agent,
             },
         )
         opener = build_opener(_NoRedirectHandler())

@@ -32,7 +32,8 @@ Two things it deliberately does not do:
 
 Run it as::
 
-    python scripts/run_observer.py --workspace <dir> [--interval-seconds 900]
+    python scripts/run_observer.py --workspace <dir> --asset-key <key> \
+        [--interval-seconds 900]
 """
 
 from __future__ import annotations
@@ -49,7 +50,12 @@ if str(ROOT) not in sys.path:
 from dataclasses import asdict  # noqa: E402
 
 from touchstone import observation  # noqa: E402
-from touchstone.assets import USTB  # noqa: E402
+from touchstone.assets import (  # noqa: E402
+    AssetDescriptor,
+    get_asset,
+    resolve_source_manifest,
+    validate_source_observation,
+)
 from touchstone.evidence import EvidenceStore  # noqa: E402
 from touchstone.locking import LockUnavailable, exclusive_lock  # noqa: E402
 from touchstone.schedule import run_schedule  # noqa: E402
@@ -62,16 +68,18 @@ from touchstone.sources import (  # noqa: E402
 from touchstone.workspace import Workspace  # noqa: E402
 
 
-def normalized_digest(source_id: str, raw: bytes) -> str | None:
+def normalized_digest(
+    asset: AssetDescriptor, source_id: str, raw: bytes
+) -> tuple[str | None, object | None]:
     """Digest of the normalized observation, or ``None`` if it would not normalize."""
     try:
-        parsed = USTB.normalize(source_id, raw)
+        parsed = asset.normalize(source_id, raw)
     except Exception:
         # Deliberately broad, and deliberately not re-raised. A normalizer refusing a
         # payload is an observation about the source, not a failure of the watcher, and a
         # watcher that exits on it stops watching the other sources too.
-        return None
-    return observation.canonical_digest(asdict(parsed))
+        return None, None
+    return observation.canonical_digest(asdict(parsed)), parsed
 
 
 def look_once(
@@ -80,13 +88,16 @@ def look_once(
     transport: object,
     log_path: Path,
     now: datetime,
+    asset: AssetDescriptor,
 ) -> list[observation.Observation]:
     """One pass over every source. Each source is recorded independently."""
     previous = observation.latest_by_source(log_path)
     seen: list[observation.Observation] = []
+    parsed_observations: dict[str, object] = {}
 
-    for manifest in USTB.sources:
-        source_id = manifest.source_id
+    for declared_manifest in asset.sources:
+        manifest = declared_manifest
+        source_id = declared_manifest.source_id
         prior = previous.get(source_id, {})
         prior_payload = prior.get("payload_sha256")
         prior_normalized = prior.get("normalized_sha256")
@@ -98,6 +109,7 @@ def look_once(
         failed = False
 
         try:
+            manifest = resolve_source_manifest(asset, manifest, parsed_observations)
             result = fetch_source(
                 source_id,
                 store=store,
@@ -107,20 +119,25 @@ def look_once(
             )
             payload_sha256 = result.evidence_sha256
             byte_size = result.byte_size
-        except (SourceUnavailable, SourceFetchError, OSError) as error:
-            failed = True
-            detail = f"{type(error).__name__}: {error}"
-
-        if payload_sha256 is not None:
+            raw = (store.objects_dir / payload_sha256).read_bytes()
+            computed_digest, parsed = normalized_digest(asset, source_id, raw)
+            if parsed is not None:
+                parsed = validate_source_observation(
+                    manifest, parsed, parsed_observations
+                )
+                parsed_observations[source_id] = parsed
             if payload_sha256 == prior_payload:
                 # Same bytes, so the normalized form is the same by construction. Re-parsing
-                # to prove that would burn CPU to reach a conclusion the digest already has.
+                # to prove that would reach a conclusion the digest already has. The parse
+                # still supplies authoritative discovery data for a dependent source URL.
                 normalized_sha256 = prior_normalized
             else:
-                raw = (store.objects_dir / payload_sha256).read_bytes()
-                normalized_sha256 = normalized_digest(source_id, raw)
+                normalized_sha256 = computed_digest
                 if normalized_sha256 is None:
                     detail = "artifact stored, normalizer refused it"
+        except (SourceUnavailable, SourceFetchError, OSError, ValueError) as error:
+            failed = True
+            detail = f"{type(error).__name__}: {error}"
 
         transition = observation.classify(
             payload_sha256=payload_sha256,
@@ -149,6 +166,12 @@ def look_once(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", required=True)
+    parser.add_argument("--asset-key", required=True)
+    parser.add_argument(
+        "--source-user-agent",
+        default=None,
+        help="identifying HTTP User-Agent; required for SEC-backed assets",
+    )
     parser.add_argument(
         "--interval-seconds",
         type=float,
@@ -168,6 +191,12 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
 
     try:
+        asset = get_asset(arguments.asset_key)
+    except ValueError as error:
+        print(f"OBSERVER FAIL: {error}", file=sys.stderr)
+        return 1
+
+    try:
         interval = observation.validate_interval(arguments.interval_seconds)
     except (TypeError, ValueError) as error:
         print(f"OBSERVER FAIL: {error}", file=sys.stderr)
@@ -176,13 +205,35 @@ def main(argv: list[str] | None = None) -> int:
     workspace = Workspace(arguments.workspace)
     workspace.root.mkdir(parents=True, exist_ok=True)
     store = EvidenceStore(workspace.evidence)
-    transport = LiveTransport()
+    transport = LiveTransport(user_agent=arguments.source_user_agent)
     log_path = workspace.observation_log
 
     def job(scheduled_at: datetime) -> None:
-        for entry in look_once(
-            store=store, transport=transport, log_path=log_path, now=scheduled_at
-        ):
+        evidence_lock_acquired = False
+        try:
+            with exclusive_lock(workspace.evidence_lock):
+                evidence_lock_acquired = True
+                entries = look_once(
+                    store=store,
+                    transport=transport,
+                    log_path=log_path,
+                    now=scheduled_at,
+                    asset=asset,
+                )
+        except LockUnavailable:
+            if evidence_lock_acquired:
+                raise
+            # A daemon-owned backup takes this short-lived lock between mutations. It is
+            # neither a source failure nor a second observer, so record no observation and
+            # let the next scheduled pass try again.
+            print(
+                f"{observation.stamp(scheduled_at)}  evidence snapshot is in progress; "
+                "observation pass skipped",
+                file=sys.stderr,
+                flush=True,
+            )
+            return
+        for entry in entries:
             print(
                 f"{entry.observed_at}  {entry.source_id:<28} {entry.transition.value}"
                 + (f"  ({entry.detail})" if entry.detail else ""),
@@ -190,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     print(
-        f"observing {len(USTB.sources)} sources every {interval:.0f}s into {log_path}",
+        f"observing {len(asset.sources)} sources every {interval:.0f}s into {log_path}",
         flush=True,
     )
     try:

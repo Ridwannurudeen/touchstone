@@ -26,6 +26,7 @@ UMask=0002
 WorkingDirectory=/opt/touchstone
 ExecStart=/opt/touchstone/.venv/bin/python /opt/touchstone/scripts/run_observer.py \
     --workspace /var/lib/touchstone/%i/ustb \
+    --asset-key eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e \
     --interval-seconds 900
 
 # The issuer is a third party. A crash loop that reconnected instantly would become a burst

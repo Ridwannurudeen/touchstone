@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import json
+import re
 from xml.etree import ElementTree
 
 
@@ -17,6 +18,8 @@ DEFAULT_SUBMISSIONS_MAX_BYTES = 8_388_608
 DEFAULT_MAX_BYTES = 4_194_304
 DEFAULT_MAX_DEPTH = 48
 _FORBIDDEN_XML_MARKERS = (b"<!DOCTYPE", b"<!ENTITY", b"<![CDATA[")
+_ACCESSION = re.compile(r"[0-9]{10}-[0-9]{2}-[0-9]{6}")
+_N_MFP3_FORMS = frozenset({"N-MFP3", "N-MFP3/A"})
 
 
 class FobxxNormalizationError(ValueError):
@@ -40,6 +43,12 @@ class FobxxObservation:
     series_name: str
     net_assets: Decimal
     liquidity_rows: tuple[FobxxLiquidityRow, ...]
+    submission_type: str
+    filing_date: date | None = None
+
+    @property
+    def as_of_date(self) -> date:
+        return self.report_date
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +65,36 @@ class FobxxSubmissionsObservation:
     cik: str
     entity_name: str
     filings: tuple[FobxxSubmission, ...]
+
+    @property
+    def as_of_date(self) -> date:
+        return max(filing.report_date for filing in self.filings)
+
+
+def latest_nmfp3_url(observation: FobxxSubmissionsObservation) -> str:
+    """Derive the raw XML URL for the newest filing in retained SEC discovery data."""
+    filing = latest_nmfp3_filing(observation)
+    accession = filing.accession_number.replace("-", "")
+    return (
+        f"https://www.sec.gov/Archives/edgar/data/1786958/{accession}/primary_doc.xml"
+    )
+
+
+def latest_nmfp3_filing(
+    observation: FobxxSubmissionsObservation,
+) -> FobxxSubmission:
+    """Select the newest discovered filing and validate its path components."""
+    if not isinstance(observation, FobxxSubmissionsObservation):
+        raise TypeError("FOBXX filing discovery requires a submissions observation")
+    filing = max(
+        observation.filings,
+        key=lambda item: (item.report_date, item.filing_date, item.accession_number),
+    )
+    if _ACCESSION.fullmatch(filing.accession_number) is None:
+        raise FobxxNormalizationError("N-MFP3 accession has an invalid format")
+    if filing.primary_document.rsplit("/", 1)[-1] != "primary_doc.xml":
+        raise FobxxNormalizationError("N-MFP3 primary document is not primary_doc.xml")
+    return filing
 
 
 def parse_submissions(
@@ -77,7 +116,9 @@ def parse_submissions(
         raise FobxxNormalizationError("FOBXX submissions root must be an object")
     cik = payload.get("cik")
     if cik != FOBXX_CIK:
-        raise FobxxNormalizationError("FOBXX submissions CIK does not match the manifest")
+        raise FobxxNormalizationError(
+            "FOBXX submissions CIK does not match the manifest"
+        )
     entity_name = payload.get("name")
     if not isinstance(entity_name, str) or not entity_name.strip():
         raise FobxxNormalizationError("FOBXX submissions name must be non-empty text")
@@ -86,11 +127,19 @@ def parse_submissions(
         raise FobxxNormalizationError("FOBXX submissions filings must be an object")
     recent = filings.get("recent")
     if not isinstance(recent, dict):
-        raise FobxxNormalizationError("FOBXX submissions recent filings must be an object")
+        raise FobxxNormalizationError(
+            "FOBXX submissions recent filings must be an object"
+        )
 
     fields = {
         name: recent.get(name)
-        for name in ("accessionNumber", "form", "filingDate", "reportDate", "primaryDocument")
+        for name in (
+            "accessionNumber",
+            "form",
+            "filingDate",
+            "reportDate",
+            "primaryDocument",
+        )
     }
     if any(not isinstance(value, list) for value in fields.values()):
         raise FobxxNormalizationError("FOBXX submission columns must be arrays")
@@ -101,7 +150,7 @@ def parse_submissions(
     submissions: list[FobxxSubmission] = []
     seen_accessions: set[str] = set()
     for index, form in enumerate(fields["form"]):
-        if form != "N-MFP3":
+        if form not in _N_MFP3_FORMS:
             continue
         accession = fields["accessionNumber"][index]
         primary_document = fields["primaryDocument"][index]
@@ -149,7 +198,9 @@ def parse_nmfp3(
         raise FobxxNormalizationError("FOBXX filing exceeds its byte limit")
     upper = content.upper()
     if any(marker in upper for marker in _FORBIDDEN_XML_MARKERS):
-        raise FobxxNormalizationError("FOBXX XML must not contain DTD, entity, or CDATA")
+        raise FobxxNormalizationError(
+            "FOBXX XML must not contain DTD, entity, or CDATA"
+        )
     try:
         root = ElementTree.fromstring(content)
     except (ElementTree.ParseError, UnicodeDecodeError) as error:
@@ -168,8 +219,11 @@ def parse_nmfp3(
     if cik != FOBXX_CIK:
         raise FobxxNormalizationError("FOBXX filing CIK does not match the manifest")
     if series_id != FOBXX_SERIES_ID:
-        raise FobxxNormalizationError("FOBXX filing series id does not match the manifest")
-    if _text(header, "submissionType") != "N-MFP3":
+        raise FobxxNormalizationError(
+            "FOBXX filing series id does not match the manifest"
+        )
+    submission_type = _text(header, "submissionType")
+    if submission_type not in _N_MFP3_FORMS:
         raise FobxxNormalizationError("FOBXX filing is not N-MFP3")
 
     rows: list[FobxxLiquidityRow] = []
@@ -178,7 +232,9 @@ def parse_nmfp3(
     if not details:
         raise FobxxNormalizationError("FOBXX filing has no liquidity series")
     for index, item in enumerate(details):
-        row_date = _date(_text(item, "totalLiquidAssetsNearPercentDate"), "liquidity date")
+        row_date = _date(
+            _text(item, "totalLiquidAssetsNearPercentDate"), "liquidity date"
+        )
         if row_date in seen_dates:
             raise FobxxNormalizationError(f"liquidity date repeats: {row_date}")
         seen_dates.add(row_date)
@@ -191,7 +247,9 @@ def parse_nmfp3(
             _text(item, "percentageWeeklyLiquidAssets"), "weekly percentage"
         )
         if min(daily, weekly, daily_percentage, weekly_percentage) < 0:
-            raise FobxxNormalizationError(f"liquidity row {index} contains a negative value")
+            raise FobxxNormalizationError(
+                f"liquidity row {index} contains a negative value"
+            )
         if daily_percentage > 1 or weekly_percentage > 1:
             raise FobxxNormalizationError(f"liquidity row {index} percentage exceeds 1")
         rows.append(
@@ -211,6 +269,7 @@ def parse_nmfp3(
         series_name=_text(general, "nameOfSeries"),
         net_assets=_decimal(_text(series, "netAssetOfSeries"), "net assets"),
         liquidity_rows=tuple(rows),
+        submission_type=submission_type,
     )
 
 

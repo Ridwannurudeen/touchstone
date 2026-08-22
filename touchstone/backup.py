@@ -42,6 +42,41 @@ BACKUP_KEY_ENV = "TOUCHSTONE_BACKUP_KEY"
 NONCE_BYTES = 12
 KEY_BYTES = 32
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
+WINDOWS_INVALID_MEMBER_CHARACTERS = frozenset('<>:"|?*')
+WINDOWS_RESERVED_MEMBER_NAMES = frozenset(
+    {
+        "AUX",
+        "COM1",
+        "COM2",
+        "COM3",
+        "COM4",
+        "COM5",
+        "COM6",
+        "COM7",
+        "COM8",
+        "COM9",
+        "COM¹",
+        "COM²",
+        "COM³",
+        "CON",
+        "CONIN$",
+        "CONOUT$",
+        "LPT1",
+        "LPT2",
+        "LPT3",
+        "LPT4",
+        "LPT5",
+        "LPT6",
+        "LPT7",
+        "LPT8",
+        "LPT9",
+        "LPT¹",
+        "LPT²",
+        "LPT³",
+        "NUL",
+        "PRN",
+    }
+)
 
 
 class BackupError(RuntimeError):
@@ -141,6 +176,7 @@ def _candidates(workspace: Workspace) -> list[Path]:
     paths = [
         workspace.transparency_log,
         workspace.pending_journal,
+        workspace.registry_v2_pending_journal,
         workspace.incidents,
         workspace.incidents.with_name(workspace.incidents.name + ".head"),
         # The watcher's history. Omitting it made a restore silently lose every recorded
@@ -153,6 +189,9 @@ def _candidates(workspace: Workspace) -> list[Path]:
     operations = workspace.operations
     if operations.is_dir():
         paths.extend(sorted(path for path in operations.rglob("*") if path.is_file()))
+    bundles = workspace.bundles
+    if bundles.is_dir():
+        paths.extend(sorted(path for path in bundles.rglob("*") if path.is_file()))
     return paths
 
 
@@ -160,6 +199,7 @@ def create(
     held: Held,
     workspace: str | Path,
     *,
+    evidence_held: Held,
     now: datetime,
     key: bytes,
     asset_key: str,
@@ -168,18 +208,19 @@ def create(
 ) -> bytes:
     """Build one encrypted archive from one reading of the workspace.
 
-    Requires the live `Held` that `exclusive_lock` yields, and checks it is a hold on
-    *this* workspace's lock. A caller who never took the lock cannot produce one, and a
-    caller whose block has exited holds one that refuses.
+    Requires the live `Held` values that `exclusive_lock` yields, and checks they hold
+    *this* workspace's service and evidence locks. A caller who never took either lock
+    cannot produce one, and a caller whose block has exited holds one that refuses.
     """
-    if not isinstance(held, Held):
+    if not isinstance(held, Held) or not isinstance(evidence_held, Held):
         raise BackupError(
-            "a backup requires the Held that exclusive_lock yields, as proof the "
-            "workspace lock is actually held"
+            "a backup requires both Held values that exclusive_lock yields, as proof "
+            "the workspace and evidence locks are actually held"
         )
     root = Workspace(workspace)
     try:
         held.verify(root.lock)
+        evidence_held.verify(root.evidence_lock)
     except LockUnavailable as error:
         raise BackupError(str(error)) from error
     captured_at = utc_instant(now, "now")
@@ -280,6 +321,7 @@ def restore(
 
     verified: list[Member] = []
     seen: set[str] = set()
+    portable_paths: dict[tuple[str, ...], str] = {}
     for item in tuple(files):
         if not isinstance(item, Mapping):
             raise BackupError("each archive member must be a mapping")
@@ -287,6 +329,13 @@ def restore(
         if member.path in seen:
             raise BackupError(f"the archive names {member.path} twice")
         seen.add(member.path)
+        portable = tuple(part.casefold() for part in PureWindowsPath(member.path).parts)
+        alias = portable_paths.get(portable)
+        if alias is not None:
+            raise BackupError(
+                f"the archive names portable path aliases {alias} and {member.path}"
+            )
+        portable_paths[portable] = member.path
         try:
             raw = bytes.fromhex(str(item["bytes"]))
         except ValueError as error:
@@ -322,6 +371,7 @@ def _member(item: Mapping[str, object]) -> Member:
     # so a single-flavour check would let a POSIX-absolute member through on one host and
     # refuse it on another — and an archive written on one is restored on the other.
     posix, windows = PurePosixPath(path), PureWindowsPath(path)
+    windows_components = path.replace("\\", "/").split("/")
     if (
         posix.is_absolute()
         or windows.is_absolute()
@@ -333,6 +383,22 @@ def _member(item: Mapping[str, object]) -> Member:
         # Traversal in an archive is how a restore writes outside its target. The check is
         # on the parts rather than the string, so "a/../../b" cannot slip past either.
         raise BackupError(f"refusing an unsafe archive path: {path}")
+    for component in windows_components:
+        reserved_stem = component.partition(".")[0].upper()
+        if (
+            not component
+            or component in {".", ".."}
+            or component.endswith((" ", "."))
+            or any(
+                character in WINDOWS_INVALID_MEMBER_CHARACTERS or ord(character) < 32
+                for character in component
+            )
+            or reserved_stem in WINDOWS_RESERVED_MEMBER_NAMES
+        ):
+            # Win32 maps trailing dots/spaces and device names onto other objects, treats
+            # a colon as an alternate data stream, and refuses the remaining characters.
+            # Validate that portable meaning before creating even the restore directory.
+            raise BackupError(f"refusing an unsafe archive path: {path}")
     size = item.get("size")
     digest = item.get("sha256")
     if type(size) is not int or size < 0:
@@ -362,19 +428,25 @@ def take_offline(
     a second process copying a live workspace is how an archive ends up holding files from
     three different instants.
 
-    **Both locks, not just the daemon's.** The observer writes evidence into this workspace
+    **All locks, not just the daemon's.** The observer writes evidence into this workspace
     and deliberately does not hold the daemon's lock — it could not, because the daemon holds
     that one for its whole lifetime. Taking only the daemon lock therefore proved the daemon
     was stopped and said nothing about the watcher, so an archive could be taken mid-append
     and the quiescence this function exists to establish would simply not have been
-    established.
+    established. The short-lived evidence lock is then taken in the same service-to-evidence
+    order as an online backup, making the snapshot requirement explicit in `create` itself.
     """
     root = Workspace(workspace)
     try:
-        with exclusive_lock(root.lock) as held, exclusive_lock(root.observer_lock):
+        with (
+            exclusive_lock(root.lock) as held,
+            exclusive_lock(root.observer_lock),
+            exclusive_lock(root.evidence_lock) as evidence_held,
+        ):
             return create(
                 held,
                 root.root,
+                evidence_held=evidence_held,
                 now=now,
                 key=key,
                 asset_key=asset_key,
