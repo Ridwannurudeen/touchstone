@@ -136,6 +136,10 @@ class TestItRefusesToOverclaim:
             f'<strong>{counts["confirmed_reports"]} reached\n'
             "<code>CONFIRMED</code></strong>"
         ) in page
+        assert (
+            f'<strong>{counts["enforcement_txs"]}</strong> permit/refuse enforcement '
+            "transactions"
+        ) in " ".join(page.split())
         assert "Unattended publication began\n<code>2026-08-20</code>" in page
         assert "every publication so far was operator-initiated" not in page
 

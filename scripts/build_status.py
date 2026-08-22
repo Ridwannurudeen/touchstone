@@ -202,7 +202,9 @@ process that has stopped running cannot write down that it stopped.</p>
 <p>The canonical public facts record lists
 <strong>{html.escape(str(counts["reports_published"]))} reports</strong>, of which
 <strong>{html.escape(str(counts["confirmed_reports"]))} reached
-<code>CONFIRMED</code></strong>. Unattended publication began
+<code>CONFIRMED</code></strong>, and records
+<strong>{html.escape(str(counts["enforcement_txs"]))}</strong> permit/refuse enforcement
+transactions. Unattended publication began
 <code>{html.escape(str(asset["unattended_since"]))}</code>. That proves the unattended path
 ran; it does not establish a multi-day reliability record, and <strong>no uptime percentage
 is claimed</strong>.</p>

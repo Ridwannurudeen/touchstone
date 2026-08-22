@@ -13,17 +13,15 @@
 <header class="site-head">
   <div class="wrap head-row">
     <a class="wordmark" href="/"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><rect width="32" height="32" rx="7" fill="#101214"/><g stroke-linecap="round" fill="none"><path d="M7.5 24 L14.5 9" stroke="#5A6167" stroke-width="2.6"/><path d="M14.75 24 L21.75 9" stroke="#C2703F" stroke-width="4.2"/><path d="M23 24 L27.5 13.5" stroke="#5A6167" stroke-width="2.6"/></g></svg><span>Touchstone</span></a>
-    <input type="checkbox" id="nav-open" class="nav-open" aria-hidden="true" tabindex="-1">
-    <label for="nav-open" class="nav-burger" aria-hidden="true"><span class="burger-bar"></span><span class="burger-bar"></span><span class="burger-bar"></span></label>
-    <nav class="site-nav" aria-label="Site">
-      <a href="/products">Products</a>
-      <a href="/solutions">Solutions</a>
+    <input type="checkbox" id="nav-open" class="nav-open" aria-controls="site-navigation">
+    <label for="nav-open" class="nav-burger"><span class="sr">Toggle navigation</span><span class="burger-bar" aria-hidden="true"></span><span class="burger-bar" aria-hidden="true"></span><span class="burger-bar" aria-hidden="true"></span></label>
+    <nav class="site-nav" id="site-navigation" aria-label="Site">
       <a href="/assets-covered">Assets</a>
+      <a href="/reports">Reports</a>
       <a href="/developers">Developers</a>
-      <a href="/security">Security</a>
-      <a class="nav-cta nav-cta--menu" href="/app">Launch Terminal</a>
+      <a href="/judge">Judge Proof</a>
+      <a class="nav-cta header-terminal" href="/app">Terminal</a>
     </nav>
-    <a class="nav-cta" href="/app">Launch Terminal</a>
   </div>
 </header>
 
@@ -334,6 +332,8 @@ transient outage from being described as issuer inconsistency.</p>
     <div class="foot-grid">
       <div class="foot-col">
         <p class="foot-h">Products</p>
+        <a href="/products">Product overview</a>
+        <a href="/solutions">Solutions</a>
         <a href="/app">Policy Terminal</a>
         <a href="/products/registry">Registry</a>
         <a href="/products/asset-gate">AssetGate</a>
@@ -349,6 +349,7 @@ transient outage from being described as issuer inconsistency.</p>
       </div>
       <div class="foot-col">
         <p class="foot-h">Proof</p>
+        <a href="/reports">Transparency log</a>
         <a href="/dossier">Published reports</a>
         <a href="/judge">The 90-second proof</a>
         <a href="/changelog">Changelog</a>

@@ -99,6 +99,8 @@ jobs:
       # The rendered pages must match their sources and the canonical facts exactly —
       # a hand edit to a generated file, or a fact changed without a rebuild, fails here.
       - run: python scripts/build_site.py --check
+      - run: python scripts/build_docs.py --project-state "${{ runner.temp }}/project-state.json"
+      - run: git diff --exit-code -- site2/docs.html site2/docs
 
   site_quality:
     name: generated site quality
@@ -113,6 +115,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
       - run: python scripts/build_site.py --check
       - run: python scripts/check_site_links.py
       - run: python scripts/check_public_truth.py --offline
