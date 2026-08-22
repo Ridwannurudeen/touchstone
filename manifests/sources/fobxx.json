@@ -77,8 +77,8 @@
       "purpose": "Filing discovery. This is the endpoint that tells the adapter a NEW N-MFP3 exists; the archive URL below only serves one already-known filing. Probing only the historical filing would say nothing about whether future filings can be found.",
       "status": {
         "search_execution": "complete",
-        "verified_utc": "2026-08-15T00:01Z",
-        "finding": "HTTP 200, 29,354 bytes. The 2026-07-31 filing was discovered here, accession 0002071691-26-017542."
+        "verified_utc": "2026-08-22T02:09:41Z",
+        "finding": "HTTP 200 from the production host with a descriptive User-Agent, 29,520 bytes. The latest N-MFP3 was the 2026-07-31 report, filed 2026-08-06 as accession 0002071691-26-017542."
       },
       "failure_semantics": "SOURCE_ERROR on retrieval failure. Discovery being unavailable is never an assertion about the fund.",
       "retention": "content-addressed, never deleted",
@@ -102,8 +102,8 @@
       "grace_period_business_days": 10,
       "status": {
         "search_execution": "complete",
-        "verified_utc": "2026-08-15T00:01Z",
-        "finding": "HTTP 200. The 2026-07-31 filing was retrieved. Net assets 720,928,224.29 and series S000067043 match the prior audit. Liquidity is a dated series of 22 business-day rows, not a single figure: 2026-07-01 is 67.42% daily / 74.62% weekly and 2026-07-31 is 65.28% daily / 74.55% weekly."
+        "verified_utc": "2026-08-22T02:13:38Z",
+        "finding": "HTTP 200 from the production host with a descriptive User-Agent, text/xml, 167,751 bytes. SHA-256 763d0116755049f97f804ca41b05a2f297f000d10229088658ef45a023995c5a exactly matched the retained 2026-07-31 filing; series S000067043 and stablePricePerShare 1.0000 were present. Liquidity is a dated series of 22 business-day rows, not a single figure: 2026-07-01 is 67.42% daily / 74.62% weekly and 2026-07-31 is 65.28% daily / 74.55% weekly."
       },
       "failure_semantics": "SOURCE_ERROR on retrieval failure. A filing that has not yet appeared within its window is a freshness matter, not a breach.",
       "retention": "content-addressed, never deleted",

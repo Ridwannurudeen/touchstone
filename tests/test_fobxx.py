@@ -7,14 +7,16 @@ from dataclasses import replace
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+import sys
 
 import pytest
 
-from touchstone.approval import ledger_bytes
+from touchstone.approval import LEDGER_VERSION_V1, ledger_bytes
 from touchstone.assets import (
     FOBXX,
     FOBXX_ASSET_KEY,
     FOBXX_EVIDENCE_IDENTITY,
+    USTB,
     get_asset,
 )
 from touchstone.controls import (
@@ -23,9 +25,15 @@ from touchstone.controls import (
     ControlRecord,
     EvaluationResult,
 )
+from touchstone.compiler import (
+    CompilationStatus,
+    DeterministicFixtureProvider,
+    compile_evidence,
+)
 from touchstone.epoch import run_epoch
 from touchstone.evidence import EvidenceStore
 from touchstone.evaluate import evaluate, supports
+from touchstone.incidents import IncidentLog
 from touchstone.normalize.fobxx import (
     FOBXX_CIK,
     FOBXX_HISTORY_SOURCE_ID,
@@ -41,11 +49,27 @@ from touchstone.normalize.fobxx import (
     parse_nmfp3,
     parse_submissions,
 )
-from touchstone.publish import asset_key_bytes
+from touchstone.operations import OperationsStore
+from touchstone.publish import PublisherClient, asset_key_bytes
 from touchstone.report import FOBXX_LIMITATIONS, USTB_LIMITATIONS
 from touchstone.signing import Ed25519Signer
 from touchstone.sources import TransportResponse
-from touchstone.ustb_daemon import EpochProductionError, make_producer, report_uri
+from touchstone.translog import TransparencyLog
+from touchstone.ustb_daemon import (
+    EpochProductionError,
+    epoch_id_for,
+    make_producer,
+    report_uri,
+    write_bundle,
+)
+from touchstone.verify import verify_bundle
+from touchstone.workspace import Workspace
+
+sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
+from run_service import Service, serve  # noqa: E402
+from test_publish import FakeBackend  # noqa: E402
+from test_service import Clock  # noqa: E402
 
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
@@ -85,6 +109,95 @@ def fobxx_control(
             "compilation_sha256": "00" * 32,
         }
     )
+
+
+def compiled_fobxx_controls(tmp_path: Path) -> tuple[str, bytes, bytes]:
+    """Fixture-only compilation and legacy ledger for the publication boundary test."""
+    retrieved_at = datetime(2026, 8, 22, 2, 20, tzinfo=timezone.utc)
+    raw = (FIXTURES / "fobxx-price-history-20260822.json").read_bytes()
+    source = FOBXX.source_by_id[FOBXX_HISTORY_SOURCE_ID]
+    store = EvidenceStore(tmp_path / "compiler")
+    evidence_digest = store.store(
+        raw,
+        source_id=source.source_id,
+        source_url=source.url,
+        retrieved_at=retrieved_at,
+        declared_mime=source.expected_mime,
+    )
+    controls = []
+    for control in (
+        fobxx_control(
+            control_id="fobxx-issuer-row-fresh",
+            source_id=FOBXX_HISTORY_SOURCE_ID,
+            adapter="fobxx-price-history",
+            authority="issuer-api",
+            span='"navdate":"2026-08-21"',
+            operator="fresh_within",
+            expected_value={"business_days": 3},
+            grace_period=3,
+        ),
+        fobxx_control(
+            control_id="fobxx-issuer-nav-peg",
+            source_id=FOBXX_HISTORY_SOURCE_ID,
+            adapter="fobxx-price-history",
+            authority="issuer-api",
+            span='"navstd":"1.00000000"',
+            operator="eq",
+            expected_value={"field": "nav_std", "value": "1.00000000"},
+        ),
+        fobxx_control(
+            control_id="fobxx-nav-reconciliation",
+            source_id=FOBXX_HISTORY_SOURCE_ID,
+            adapter="fobxx-price-history",
+            authority="issuer-api",
+            span='"navstd":"1.00000000"',
+            operator="reconciles_with",
+            expected_value={
+                "field": "nav_std",
+                "comparison_source_id": "sec-edgar-fobxx-nmfp3",
+                "comparison_field": "stable_price_per_share",
+                "tolerance": "0",
+            },
+        ),
+    ):
+        candidate = control.to_mapping()
+        candidate.update(
+            {
+                "effective_from": "2026-08-22",
+                "approval_state": "proposed",
+            }
+        )
+        candidate.pop("compilation_sha256")
+        controls.append(candidate)
+    result = compile_evidence(
+        DeterministicFixtureProvider(
+            json.dumps({"controls": controls}, separators=(",", ":"))
+        ),
+        evidence_sha256=evidence_digest,
+        source_manifest=source,
+        store=store,
+        retrieved_at=retrieved_at,
+        asset=FOBXX,
+    )
+    assert all(
+        outcome.status is CompilationStatus.ACCEPTED for outcome in result.outcomes
+    ), [(outcome.status, outcome.reason) for outcome in result.outcomes]
+    artifact = (store.objects_dir / result.compilation_sha256).read_bytes()
+    ledger = json.dumps(
+        {
+            "version": LEDGER_VERSION_V1,
+            "approved": [
+                {
+                    "control_id": control["control_id"],
+                    "compilation_sha256": result.compilation_sha256,
+                }
+                for control in controls
+            ],
+            "declined": [],
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return result.compilation_sha256, artifact, ledger
 
 
 class FobxxFixtureTransport:
@@ -700,6 +813,112 @@ def test_fobxx_has_asset_specific_report_limitations() -> None:
     assert FOBXX_LIMITATIONS
     assert FOBXX_LIMITATIONS != USTB_LIMITATIONS
     assert all("Superstate" not in limitation for limitation in FOBXX_LIMITATIONS)
+
+
+def test_fobxx_unattended_publication_path_writes_a_verifying_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import touchstone.approval as approval
+    import touchstone.verify as verification
+
+    digest, artifact, approval_ledger = compiled_fobxx_controls(tmp_path)
+    artifacts = {digest: artifact}
+    monkeypatch.setattr(
+        approval,
+        "from_directory",
+        lambda directory=None: approval.from_mapping(artifacts),
+    )
+    monkeypatch.setattr(
+        verification, "compilation_bytes", lambda requested: artifacts[requested]
+    )
+
+    scheduled_at = datetime(2026, 8, 22, 2, 20, tzinfo=timezone.utc)
+    backend = FakeBackend()
+    workspace = Workspace(tmp_path / "fobxx")
+    workspace.root.mkdir(parents=True, exist_ok=True)
+    operations = OperationsStore(workspace.operations, now=lambda: scheduled_at)
+    service = Service(
+        PublisherClient(
+            backend,
+            TransparencyLog(workspace.transparency_log),
+            workspace.pending_journal,
+        ),
+        operations,
+        IncidentLog(workspace.incidents),
+        asset_key=FOBXX.asset_key,
+        lock_path=workspace.lock,
+        sleep=lambda seconds: None,
+        now=lambda: scheduled_at,
+        heartbeat_path=workspace.heartbeat,
+        registry_address=backend.manifest.registry_address,
+    )
+    signer = Ed25519Signer.from_seed(bytes(range(32)))
+    produce = make_producer(
+        store=EvidenceStore(workspace.evidence),
+        signer=signer,
+        next_sequence=lambda: backend.latest_sequence(
+            asset_key_bytes(FOBXX.asset_key)
+        )
+        + 1,
+        previous_state=lambda on: (
+            AssetState.UNVERIFIABLE
+            if operations.load_state(FOBXX.asset_key) is None
+            else operations.load_state(FOBXX.asset_key).projected(on)
+        ),
+        transport=FobxxFixtureTransport(),
+        bundle_sink=write_bundle(workspace.bundles, backend.manifest.chain_id),
+        approval_ledger=approval_ledger,
+        asset=FOBXX,
+    )
+    clock = Clock()
+
+    outcome = serve(
+        service,
+        produce,
+        report_uri=report_uri,
+        interval_seconds=86_400,
+        max_runs=1,
+        epoch_of=lambda at: epoch_id_for(at, FOBXX),
+        monotonic=clock.monotonic,
+        sleep=clock.sleep,
+        now=lambda: scheduled_at,
+    )
+
+    assert outcome.completed == 1
+    assert not outcome.failed
+    assert len(backend.submissions) == 1
+    written = list(workspace.bundles.glob("*.json"))
+    assert [path.name for path in written] == [
+        f"eip155-{backend.manifest.chain_id}-fobxx-2026-08-22-1.json"
+    ]
+    report = verify_bundle(json.loads(written[0].read_text(encoding="utf-8")))
+    assert report["asset_key"] == FOBXX.asset_key
+    assert report["epoch_id"] == "fobxx-2026-08-22"
+    assert [item["control_id"] for item in report["controls"]] == [
+        "fobxx-issuer-nav-peg",
+        "fobxx-issuer-row-fresh",
+        "fobxx-nav-reconciliation",
+    ]
+
+
+def test_fobxx_systemd_units_invoke_the_shared_asset_paths() -> None:
+    root = Path(__file__).parents[1] / "deploy" / "systemd"
+    publisher = (root / "touchstone-fobxx-publisher@.service").read_text(
+        encoding="utf-8"
+    )
+    observer = (root / "touchstone-fobxx-observer@.service").read_text(
+        encoding="utf-8"
+    )
+
+    assert "scripts/run_service.py" in publisher
+    assert "--workspace /var/lib/touchstone/%i/fobxx" in publisher
+    assert f"--asset-key {FOBXX.asset_key}" in publisher
+    assert "EnvironmentFile=/etc/touchstone/%i.env" in publisher
+    assert "EnvironmentFile=/etc/touchstone/%i-fobxx-source.env" in publisher
+    assert "--source-user-agent=${TOUCHSTONE_SEC_USER_AGENT}" in publisher
+    assert "--policy-manifest" not in publisher
+    assert USTB.asset_key not in publisher
+    assert "Touchstone FOBXX source observer" in observer
 
 
 def test_fobxx_producer_refuses_to_sign_without_approved_controls(

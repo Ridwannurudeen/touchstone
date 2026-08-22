@@ -1,29 +1,32 @@
 [Unit]
-Description=Touchstone FOBXX source observer (%i)
+Description=Touchstone FOBXX daily epoch service (%i)
 Documentation=file:/opt/touchstone/docs/DEPLOY-SERVICE.md
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=touchstone-observer
+User=touchstone
 Group=touchstone-data
 UMask=0002
 WorkingDirectory=/opt/touchstone
-# Public operator identity, not key material. SEC fair-access policy requires a named
-# requester and monitored contact address in the User-Agent.
+EnvironmentFile=/etc/touchstone/%i.env
+# Public operator identity required by SEC fair-access policy; contains no key material.
 EnvironmentFile=/etc/touchstone/%i-fobxx-source.env
-ExecStart=/opt/touchstone/.venv/bin/python /opt/touchstone/scripts/run_observer.py \
+Environment=PYTHONUNBUFFERED=1
+
+ExecStart=/opt/touchstone/.venv/bin/python /opt/touchstone/scripts/run_service.py \
+    --manifest /opt/touchstone/deployments/%i.json \
     --workspace /var/lib/touchstone/%i/fobxx \
     --asset-key eip155:1:0x3ddc84940ab509c11b20b76b466933f40b750dc9 \
-    --source-user-agent=${TOUCHSTONE_SEC_USER_AGENT} \
-    --interval-seconds 900
+    --source-user-agent=${TOUCHSTONE_SEC_USER_AGENT}
 
 Restart=always
-RestartSec=120
-TimeoutStopSec=30
+RestartSec=300
+TimeoutStopSec=120
 ReadWritePaths=/var/lib/touchstone/%i
 StateDirectory=touchstone
+
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
@@ -43,8 +46,9 @@ CapabilityBoundingSet=
 AmbientCapabilities=
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
-MemoryMax=512M
-CPUQuota=25%
+
+MemoryMax=1G
+CPUQuota=50%
 TasksMax=64
 
 [Install]

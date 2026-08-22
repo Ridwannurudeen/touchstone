@@ -401,8 +401,13 @@ def normalize_fobxx_payload(
     max_bytes: int = DEFAULT_MAX_BYTES,
     isolated: bool = False,
     **_: object,
-) -> FobxxObservation:
-    """Normalize only the allowlisted FOBXX regulator sources."""
+) -> (
+    FobxxProductLookupObservation
+    | FobxxPriceHistoryObservation
+    | FobxxSubmissionsObservation
+    | FobxxObservation
+):
+    """Normalize only the allowlisted FOBXX issuer and regulator sources."""
     if source_id == FOBXX_LOOKUP_SOURCE_ID:
         del isolated
         return parse_product_lookup(raw, max_bytes=max_bytes)
