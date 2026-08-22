@@ -123,27 +123,72 @@ def _gate_sentence(stats: dict[str, object]) -> str:
     )
 
 
+def _state_class(state: object) -> str:
+    return {
+        "CONFIRMED": "chip-live",
+        "STALE": "chip-blocked",
+        "INCONSISTENT": "chip-suspended",
+        "UNVERIFIABLE": "chip-unverifiable",
+    }.get(str(state), "chip-unverifiable")
+
+
+def _current_source_ids(bundle: dict[str, object], path: Path) -> set[str]:
+    evidence = bundle.get("evidence_digests")
+    if not isinstance(evidence, list):
+        raise SystemExit(f"{path}: evidence digests are unavailable")
+    return {
+        str(item["source_id"])
+        for item in evidence
+        if isinstance(item, dict)
+        and item.get("capture_role") == "current"
+        and isinstance(item.get("source_id"), str)
+    }
+
+
 def site_facts() -> dict[str, str]:
     committed = _committed_facts()
     stats = _stats()
-    bundles = [
-        (path, bundle, _report(bundle, path))
-        for path, bundle in _bundles()
-        if path.name.startswith("eip155-196-")
-    ]
-    base = [entry for entry in bundles if entry[2].get("policy") is None]
-    if not base:
-        raise SystemExit("no retained mainnet USTB asset report is available")
-    path, bundle, report = max(
-        base,
-        key=lambda entry: (
-            str(entry[2].get("observed_at", "")),
-            int(entry[2].get("sequence", 0)),
-        ),
-    )
-    controls = report.get("controls")
+    base_by_chain: dict[int, dict[str, tuple[Path, dict[str, object], dict[str, object]]]] = {}
+    for path, bundle in _bundles():
+        match = re.match(r"eip155-(\d+)-", path.name)
+        if match is None:
+            continue
+        report = _report(bundle, path)
+        if report.get("policy") is not None:
+            continue
+        asset_key = report.get("asset_key")
+        if not isinstance(asset_key, str):
+            raise SystemExit(f"{path}: report asset key is unavailable")
+        chain_id = int(match.group(1))
+        current = base_by_chain.setdefault(chain_id, {}).get(asset_key)
+        candidate = (path, bundle, report)
+        if current is None or (
+            str(report.get("observed_at", "")), int(report.get("sequence", 0))
+        ) > (
+            str(current[2].get("observed_at", "")),
+            int(current[2].get("sequence", 0)),
+        ):
+            base_by_chain[chain_id][asset_key] = candidate
+
+    assets = stats.get("assets")
+    if not isinstance(assets, list):
+        raise SystemExit("stats.json asset collection is unavailable")
+    asset_keys = {
+        item.get("ticker"): item.get("canonical_asset_key", item.get("asset_key"))
+        for item in assets
+        if isinstance(item, dict)
+    }
+    try:
+        ustb_key = str(asset_keys["USTB"])
+        fobxx_key = str(asset_keys["FOBXX"])
+        ustb_path, ustb_bundle, ustb_report = base_by_chain[196][ustb_key]
+        fobxx_path, fobxx_bundle, fobxx_report = base_by_chain[196][fobxx_key]
+    except KeyError as error:
+        raise SystemExit(f"no retained mainnet report is available for {error.args[0]}") from error
+
+    controls = ustb_report.get("controls")
     if not isinstance(controls, list):
-        raise SystemExit(f"{path}: report controls are unavailable")
+        raise SystemExit(f"{ustb_path}: report controls are unavailable")
     nav = next(
         (
             control.get("evaluation")
@@ -155,17 +200,9 @@ def site_facts() -> dict[str, str]:
         None,
     )
     if not isinstance(nav, dict):
-        raise SystemExit(f"{path}: USTB NAV control is unavailable")
-    evidence = bundle.get("evidence_digests")
-    if not isinstance(evidence, list):
-        raise SystemExit(f"{path}: evidence digests are unavailable")
-    source_ids = {
-        item.get("source_id")
-        for item in evidence
-        if isinstance(item, dict)
-        and item.get("capture_role") == "current"
-        and isinstance(item.get("source_id"), str)
-    }
+        raise SystemExit(f"{ustb_path}: USTB NAV control is unavailable")
+    ustb_sources = _current_source_ids(ustb_bundle, ustb_path)
+    fobxx_sources = _current_source_ids(fobxx_bundle, fobxx_path)
     networks = stats.get("networks_live")
     reports = stats.get("reports")
     if not isinstance(networks, list) or not isinstance(reports, list):
@@ -173,6 +210,28 @@ def site_facts() -> dict[str, str]:
     confirmed = sum(
         isinstance(item, dict) and item.get("state") == "CONFIRMED" for item in reports
     )
+    fobxx_publications = {
+        network: sum(
+            isinstance(item, dict)
+            and item.get("asset_key") == fobxx_key
+            and item.get("policy") is None
+            and item.get("note") == f"xlayer-{network}-v1"
+            for item in reports
+        )
+        for network in ("mainnet", "testnet")
+    }
+    live_assets = {
+        asset_key
+        for asset_key, entry in base_by_chain.get(196, {}).items()
+        if entry[2].get("state") == "CONFIRMED"
+        and base_by_chain.get(1952, {}).get(asset_key, ({}, {}, {}))[2].get("state")
+        == "CONFIRMED"
+    }
+    if stats.get("assets_live") != len(live_assets):
+        raise SystemExit(
+            f"stats.json assets_live is {stats.get('assets_live')!r}; retained bundles "
+            f"derive {len(live_assets)}"
+        )
     counts = committed.get("counts")
     if not isinstance(counts, dict):
         raise SystemExit("facts.json homepage counts are unavailable")
@@ -185,23 +244,37 @@ def site_facts() -> dict[str, str]:
                 f"facts.json {key} is {counts.get(key)!r}; stats.json derives {expected}"
             )
     return {
-        "homepage.live_assets": str(stats.get("assets_live", "not available")),
-        "homepage.evidence_sources": str(len(source_ids)),
+        "homepage.live_assets": str(len(live_assets)),
+        "homepage.evidence_sources": str(len(ustb_sources | fobxx_sources)),
         "homepage.networks": str(len(networks)),
         "homepage.confirmed_reports": str(confirmed),
-        "homepage.ustb.state": str(report.get("state", "not available")),
-        "homepage.ustb.state_class": {
-            "CONFIRMED": "chip-live",
-            "STALE": "chip-blocked",
-            "INCONSISTENT": "chip-suspended",
-            "UNVERIFIABLE": "chip-unverifiable",
-        }.get(str(report.get("state")), "chip-unverifiable"),
+        "homepage.ustb.state": str(ustb_report.get("state", "not available")),
+        "homepage.ustb.state_class": _state_class(ustb_report.get("state")),
         "homepage.ustb.nav": str(nav.get("observed_value", "not available")),
         "homepage.ustb.nav_date": str(nav.get("observed_on", "not available")),
-        "homepage.ustb.evidence_as_of": str(report.get("observed_at", "not available")),
-        "homepage.ustb.valid_until": str(report.get("valid_until", "not available")),
-        "homepage.ustb.source_count": str(len(source_ids)),
+        "homepage.ustb.evidence_as_of": str(
+            ustb_report.get("observed_at", "not available")
+        ),
+        "homepage.ustb.valid_until": str(
+            ustb_report.get("valid_until", "not available")
+        ),
+        "homepage.ustb.source_count": str(len(ustb_sources)),
+        "homepage.ustb.control_count": str(len(controls)),
         "homepage.ustb.gate_sentence": _gate_sentence(stats),
+        "homepage.fobxx.state": str(fobxx_report.get("state", "not available")),
+        "homepage.fobxx.state_class": _state_class(fobxx_report.get("state")),
+        "homepage.fobxx.evidence_as_of": str(
+            fobxx_report.get("observed_at", "not available")
+        ),
+        "homepage.fobxx.valid_until": str(
+            fobxx_report.get("valid_until", "not available")
+        ),
+        "homepage.fobxx.source_count": str(len(fobxx_sources)),
+        "homepage.fobxx.control_count": str(len(fobxx_report.get("controls", []))),
+        "homepage.fobxx.history_summary": (
+            f"{fobxx_publications['mainnet']} publication on mainnet and "
+            f"{fobxx_publications['testnet']} publication on testnet"
+        ),
     }
 
 
@@ -283,7 +356,16 @@ def assert_homepage_truth(rendered: str) -> None:
         key.removeprefix("homepage."): value
         for key, value in site_facts().items()
         if key.startswith("homepage.")
-        and key not in {"homepage.ustb.state_class", "homepage.ustb.gate_sentence"}
+        and key
+        not in {
+            "homepage.ustb.state_class",
+            "homepage.ustb.gate_sentence",
+            "homepage.fobxx.state_class",
+            "homepage.fobxx.source_count",
+            "homepage.fobxx.control_count",
+            "homepage.fobxx.history_summary",
+            "homepage.ustb.control_count",
+        }
     }
     parser = _HomepageFactsParser()
     parser.feed(rendered)
@@ -426,6 +508,10 @@ def main(argv: list[str] | None = None) -> int:
 
     subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "build_reports.py")], check=True
+    )
+    subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "build_fobxx_dossier.py")],
+        check=True,
     )
     sources = sorted(PAGES.rglob("*.html"))
     if not sources:

@@ -84,8 +84,11 @@ def _policy_id(report: Mapping[str, object]) -> str | None:
     return policy["policy_id"]
 
 
-def _publication_key(record: Mapping[str, object]) -> tuple[object, ...]:
+def _publication_key(
+    record: Mapping[str, object], *, default_asset_key: str
+) -> tuple[object, ...]:
     return (
+        record.get("asset_key", default_asset_key),
         record.get("epoch_id"),
         record.get("sequence"),
         record.get("state"),
@@ -97,6 +100,7 @@ def _publication_key(record: Mapping[str, object]) -> tuple[object, ...]:
 
 def _report_key(report: Mapping[str, object]) -> tuple[object, ...]:
     return (
+        str(report["asset_key"]).split("#policy:", 1)[0],
         report["epoch_id"],
         report["sequence"],
         report["state"],
@@ -120,10 +124,21 @@ def load_rows(
     asset_facts = facts_document.get("asset")
     if not isinstance(asset_facts, Mapping):
         raise ValueError("site facts must contain asset facts")
-    asset = asset_facts.get("id")
-    asset_key = asset_facts.get("asset_key_text")
-    if not isinstance(asset, str) or not isinstance(asset_key, str):
+    default_asset_key = asset_facts.get("asset_key_text")
+    if not isinstance(default_asset_key, str):
         raise ValueError("site asset facts must contain id and asset_key_text")
+
+    assets = stats_document.get("assets")
+    if not isinstance(assets, list) or any(
+        not isinstance(record, Mapping) for record in assets
+    ):
+        raise ValueError("report statistics must contain an assets array")
+    asset_names: dict[str, str] = {}
+    for record in assets:
+        asset_key = record.get("canonical_asset_key", record.get("asset_key"))
+        ticker = record.get("ticker")
+        if isinstance(asset_key, str) and isinstance(ticker, str):
+            asset_names[asset_key] = ticker
 
     networks: dict[str, tuple[int, str]] = {}
     for name in ("mainnet", "testnet"):
@@ -139,14 +154,14 @@ def load_rows(
             raise ValueError(f"{name} explorer must be text")
         networks[name] = (chain_id, explorer.rstrip("/"))
 
-    network_at: dict[str, str] = {}
     indexed: dict[tuple[object, ...], Mapping[str, object]] = {}
+    network_at: dict[str, str] = {}
     for record in publications:
         observed_at = record.get("observed_at")
         note = record.get("note")
         if isinstance(observed_at, str) and note in _NETWORK_NOTES:
             network_at[observed_at] = _NETWORK_NOTES[note]
-        key = _publication_key(record)
+        key = _publication_key(record, default_asset_key=default_asset_key)
         if key in indexed:
             raise ValueError(f"duplicate report publication metadata for {key!r}")
         indexed[key] = record
@@ -170,12 +185,13 @@ def load_rows(
             raise ValueError(f"retained bundle {path.name} has no publication metadata")
 
         base_asset_key = str(report["asset_key"]).split("#policy:", 1)[0]
-        if base_asset_key != asset_key:
-            raise ValueError(f"retained bundle {path.name} identifies another asset")
-        observed_at = report["observed_at"]
-        if not isinstance(observed_at, str) or observed_at not in network_at:
+        asset = asset_names.get(base_asset_key)
+        if asset is None:
+            raise ValueError(f"retained bundle {path.name} identifies an unknown asset")
+        note = publication.get("note")
+        network_name = _NETWORK_NOTES.get(str(note), network_at.get(str(report["observed_at"])))
+        if network_name is None:
             raise ValueError(f"retained bundle {path.name} has no network anchor")
-        network_name = network_at[observed_at]
         chain_id, explorer = networks[network_name]
 
         transaction_hash = publication.get("transaction_hash")
@@ -198,7 +214,7 @@ def load_rows(
         ):
             raise ValueError(f"retained bundle {path.name} has an invalid sequence")
 
-        published_at = _timestamp(observed_at, f"{path.name} observed_at")
+        published_at = _timestamp(report["observed_at"], f"{path.name} observed_at")
         report_canonical = bundle.get("report_canonical")
         if not isinstance(report_canonical, str):
             raise ValueError(f"retained bundle {path.name} has no canonical report")

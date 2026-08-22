@@ -190,9 +190,9 @@
         <p><strong>{{fact:counts.reports_published}}</strong> reports published across
         {{fact:counts.networks}} chains, {{fact:counts.confirmed_reports}} of them confirmed,
         each one a signed artifact rather than a page rendering.</p>
-        <p><strong>{{fact:counts.controls_approved}}</strong> controls approved and
-        <strong>{{fact:counts.controls_declined}}</strong> declined against
-        {{fact:counts.evidence_sources}} monitored sources; the approval ledger is signed by
+        <p><strong>{{fact:derived.approved_count}}</strong> controls approved and
+        <strong>{{fact:derived.declined_count}}</strong> declined against
+        {{fact:homepage.evidence_sources}} monitored sources; the approval ledger is signed by
         <span class="mono">{{fact:approval.approver}}</span> and digests to
         <span class="mono">0x{{fact:derived.ledger_sha256}}</span>.</p>
         <p>Touchstone reads public issuer and regulator disclosures. Starting needs no feed,

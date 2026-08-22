@@ -61,3 +61,18 @@ def test_empty_state_renders() -> None:
     page = _module().render([])
 
     assert "No reports yet" in page
+
+
+def test_live_rows_include_fobxx_on_both_networks_newest_first() -> None:
+    rows = _module().load_rows()
+
+    assert [(row.asset, row.chain_id, row.sequence) for row in rows[:2]] == [
+        ("FOBXX", 196, 1),
+        ("FOBXX", 1952, 1),
+    ]
+    assert rows[0].transaction_url.startswith(
+        "https://web3.okx.com/explorer/xlayer/tx/"
+    )
+    assert rows[1].transaction_url.startswith(
+        "https://web3.okx.com/explorer/xlayer-test/tx/"
+    )

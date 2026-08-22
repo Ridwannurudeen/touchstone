@@ -1,11 +1,11 @@
 {
- "reports_published": 20,
+ "reports_published": 22,
  "controls_evaluated": 8,
  "evidence_captures": 9,
- "assets_live": 1,
+ "assets_live": 2,
  "assets_manifested": 4,
- "approved_controls_current": 5,
- "declined_controls_current": 5,
+ "approved_controls_current": 9,
+ "declined_controls_current": 7,
  "modules": 28,
  "contracts": 2,
  "doc_lines": 4840,
@@ -229,6 +229,30 @@
    "transaction_hash": "0x50b0501e3d624a1502e461c1865bbc16c0a996c4d2c956609fa963092e3edd0e",
    "block": 38875155,
    "observed_at": "2026-08-21T17:33:29.522765Z"
+  },
+  {
+   "note": "xlayer-testnet-v1",
+   "asset_key": "eip155:1:0x3ddc84940ab509c11b20b76b466933f40b750dc9",
+   "epoch_id": "fobxx-2026-08-22",
+   "sequence": 1,
+   "state": "CONFIRMED",
+   "policy": null,
+   "correction_of": null,
+   "transaction_hash": "0x4e84d9523a528d91a58afe49a9632e8456b92f3d26587be6c11998b55625b42f",
+   "block": 38915144,
+   "observed_at": "2026-08-22T04:45:02.736025Z"
+  },
+  {
+   "note": "xlayer-mainnet-v1",
+   "asset_key": "eip155:1:0x3ddc84940ab509c11b20b76b466933f40b750dc9",
+   "epoch_id": "fobxx-2026-08-22",
+   "sequence": 1,
+   "state": "CONFIRMED",
+   "policy": null,
+   "correction_of": null,
+   "transaction_hash": "0x93ad57ed49bfbbd8b244fb32a6e60d5280e8c6745d871ac1270d9556e165660e",
+   "block": 68605325,
+   "observed_at": "2026-08-22T04:51:45.401050Z"
   }
  ],
  "assets": [
@@ -236,7 +260,8 @@
    "ticker": "FOBXX",
    "name": "Franklin OnChain U.S. Government Money Fund",
    "asset_key": "sec:cik:0001786958:series:S000067043",
-   "role": "monthly regulator-backed contrast asset. DEMOTED 2026-08-15: the daily issuer feed is unreachable, so no daily-liveness or issuer-versus-regulator control may be claimed until repeatable production-host access is verified.",
+   "canonical_asset_key": "eip155:1:0x3ddc84940ab509c11b20b76b466933f40b750dc9",
+   "role": "live issuer- and regulator-backed asset; one confirmed publication per network",
    "sources": [
     "franklin-fobxx-price-performance",
     "sec-edgar-fobxx-submissions",
@@ -283,7 +308,7 @@
   "xlayer-mainnet",
   "xlayer-testnet"
  ],
- "confirmed_reports": 15,
+ "confirmed_reports": 17,
  "first_confirmed_at": "2026-08-19T16:36:55Z",
  "policies": [
   {

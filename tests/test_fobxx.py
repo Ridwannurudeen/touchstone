@@ -1052,13 +1052,19 @@ def test_fobxx_systemd_units_invoke_the_shared_asset_paths() -> None:
 def test_fobxx_producer_refuses_to_sign_without_approved_controls(
     tmp_path: Path,
 ) -> None:
+    ledger = json.loads(ledger_bytes())
+    ledger["approved"] = [
+        entry
+        for entry in ledger["approved"]
+        if not entry["control_id"].startswith("fobxx-")
+    ]
     produce = make_producer(
         store=EvidenceStore(tmp_path),
         signer=Ed25519Signer.from_seed(bytes(range(32))),
         next_sequence=lambda: 1,
         previous_state=lambda on: AssetState.UNVERIFIABLE,
         transport=FobxxFixtureTransport(),
-        approval_ledger=ledger_bytes(),
+        approval_ledger=json.dumps(ledger).encode("utf-8"),
         asset=FOBXX,
     )
 

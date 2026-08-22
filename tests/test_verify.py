@@ -627,7 +627,12 @@ def test_the_production_control_set_is_derived_from_the_ledger_not_filtered_by_i
     property the absent check relies on. Widen `default_ustb_controls` to accept an override,
     or let it return anything the ledger has not approved, and this fails.
     """
-    from touchstone.approval import APPROVED_KEY, load_approval_ledger
+    from touchstone.approval import (
+        APPROVED_KEY,
+        approved_control,
+        load_approval_ledger,
+    )
+    from touchstone.assets import USTB
 
     # The shipped ledger and the shipped controls, deliberately. This is the production
     # lane: it asserts what actually ships and is meant to move when the approved set moves.
@@ -635,7 +640,11 @@ def test_the_production_control_set_is_derived_from_the_ledger_not_filtered_by_i
     # shipped ledger against a set that is not derived from it -- the assertion still passed
     # and had stopped meaning anything.
     ledger = load_approval_ledger()
-    approved = {entry["control_id"] for entry in ledger[APPROVED_KEY]}
+    approved = {
+        entry["control_id"]
+        for entry in ledger[APPROVED_KEY]
+        if approved_control(entry, ledger=ledger).asset_key == USTB.asset_key
+    }
     produced = {control.control_id for control in default_ustb_controls()}
 
     assert produced == approved

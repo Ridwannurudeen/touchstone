@@ -23,15 +23,22 @@ build_site = _module()
 def test_homepage_facts_come_from_stats_and_latest_mainnet_bundle() -> None:
     facts = build_site.site_facts()
 
-    assert facts["homepage.live_assets"] == "1"
-    assert facts["homepage.evidence_sources"] == "3"
+    assert facts["homepage.live_assets"] == "2"
+    assert facts["homepage.evidence_sources"] == "7"
     assert facts["homepage.networks"] == "2"
-    assert facts["homepage.confirmed_reports"] == "15"
+    assert facts["homepage.confirmed_reports"] == "17"
     assert facts["homepage.ustb.state"] == "CONFIRMED"
     assert facts["homepage.ustb.nav"] == "11.18316100"
     assert facts["homepage.ustb.nav_date"] == "2026-08-18"
     assert facts["homepage.ustb.valid_until"] == "2026-08-23T23:59:59Z"
     assert facts["homepage.ustb.source_count"] == "3"
+    assert facts["homepage.fobxx.state"] == "CONFIRMED"
+    assert facts["homepage.fobxx.evidence_as_of"] == "2026-08-22T04:51:45.401050Z"
+    assert facts["homepage.fobxx.valid_until"] == "2026-08-26T23:59:59Z"
+    assert facts["homepage.fobxx.source_count"] == "4"
+    assert facts["homepage.fobxx.history_summary"] == (
+        "1 publication on mainnet and 1 publication on testnet"
+    )
     assert facts["homepage.ustb.gate_sentence"] == (
         "A configured admission contract may refuse USTB right now because the gate "
         "result is not available."
@@ -59,15 +66,15 @@ def test_homepage_numeric_truth_rejects_rendered_drift() -> None:
     build_site.assert_homepage_truth(rendered)
 
     altered = rendered.replace(
-        'data-homepage-fact="confirmed_reports">15<',
-        'data-homepage-fact="confirmed_reports">14<',
+        'data-homepage-fact="confirmed_reports">17<',
+        'data-homepage-fact="confirmed_reports">16<',
     )
     with pytest.raises(SystemExit, match="homepage fact confirmed_reports"):
         build_site.assert_homepage_truth(altered)
 
 
 def test_live_status_gate_rejects_report_count_divergence() -> None:
-    with pytest.raises(SystemExit, match=r"local 20/15.*live /status 17/12"):
+    with pytest.raises(SystemExit, match=r"local 22/17.*live /status 17/12"):
         build_site.assert_live_status_counts(
             "<strong>17 reports</strong>, of which "
             "<strong>12 reached\n<code>CONFIRMED</code></strong>."

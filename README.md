@@ -6,7 +6,7 @@ against retained evidence, and publishes signed results to an append-only on-cha
 registry — where consumer contracts, wallets and AI agents act only when the required
 evidence policy is satisfied.
 
-Status: **live on X Layer testnet and mainnet — 20 published reports, 15 `CONFIRMED` since 2026-08-19, v1 and v2 registries, pinned gates and admission controllers on both chains.**
+Status: **USTB and FOBXX are live on X Layer testnet and mainnet — 22 published reports, 17 `CONFIRMED` since 2026-08-19, v1 and v2 registries, pinned gates and admission controllers on both chains.**
 
 - **Website:** https://touchstone.gudman.xyz · [dossier](https://touchstone.gudman.xyz/dossier) · [Policy Terminal](https://touchstone.gudman.xyz/app) · [the 90-second proof](https://touchstone.gudman.xyz/judge)
 - **X:** [@touch__stone](https://x.com/TOUCH__STONE) — [launch post](https://x.com/TOUCH__STONE/status/2090844839055159485)

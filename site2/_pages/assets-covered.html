@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Assets — Touchstone</title>
-<meta name="description" content="USTB is live on X Layer mainnet and testnet with both policies confirmed. OUSG, FOBXX and USDY are in research, each with the retrieval work that opens it stated in a line.">
+<meta name="description" content="USTB and FOBXX are live on X Layer mainnet and testnet. OUSG and USDY remain in research.">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 <link rel="canonical" href="https://touchstone.gudman.xyz/assets-covered">
 <meta property="og:title" content="Assets — Touchstone">
-<meta property="og:description" content="USTB is live on X Layer mainnet and testnet with both policies confirmed. OUSG, FOBXX and USDY are in research, each with a named retrieval problem.">
+<meta property="og:description" content="USTB and FOBXX are live on X Layer mainnet and testnet. OUSG and USDY remain in research.">
 <meta property="og:url" content="https://touchstone.gudman.xyz/assets-covered">
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://touchstone.gudman.xyz/assets/og-card.png">
@@ -46,11 +46,12 @@
   <section class="page-head">
     <div class="wrap">
       <p class="eyebrow">Assets</p>
-      <h1>USTB is live on X&nbsp;Layer. The rest is research.</h1>
-      <p class="t-lead prose">USTB publishes to X&nbsp;Layer mainnet and testnet every day, and
-      both of its policies currently read CONFIRMED. OUSG, FOBXX and USDY are research, each
-      with the exact retrieval problem that stands between it and a daily publication. Statuses here are facts, not aspirations: an asset is called live only once
-      a signed report for it is on chain.</p>
+      <h1>USTB and FOBXX are live on X&nbsp;Layer.</h1>
+      <p class="t-lead prose">Both assets have signed reports on X&nbsp;Layer mainnet and
+      testnet. USTB has a daily publication history; FOBXX has exactly
+      {{fact:homepage.fobxx.history_summary}}. OUSG and USDY remain research. Statuses here
+      are facts, not aspirations: an
+      asset is called live only once a signed report for it is on chain.</p>
     </div>
   </section>
 
@@ -71,7 +72,25 @@
           </div>
           <dl class="a-facts">
             <div><dt>Policies</dt><dd>Both policies confirmed</dd></div>
-            <div><dt>Evidence</dt><dd>{{fact:counts.evidence_sources}} issuer evidence sources</dd></div>
+            <div><dt>Evidence</dt><dd>{{fact:homepage.ustb.source_count}} issuer evidence sources</dd></div>
+            <div><dt>Networks</dt><dd>X&nbsp;Layer mainnet + testnet</dd></div>
+          </dl>
+        </article>
+        <article class="persona a-live">
+          <div>
+            <p class="p-for">Covered asset</p>
+            <h3>FOBXX <span class="chip {{fact:homepage.fobxx.state_class}}"><i class="dot" aria-hidden="true"></i>{{fact:homepage.fobxx.state}}</span></h3>
+            <p class="a-sub">Franklin OnChain U.S. Government Money Fund</p>
+            <p>Touchstone evaluates issuer NAV evidence and the fund's SEC N-MFP3 filing,
+            then publishes the same four-control verdict to both X&nbsp;Layer registries.
+            This is the first retained FOBXX publication on each network, not a daily history.</p>
+            <p class="p-cta a-open"><a href="/assets/fobxx">Open dossier →</a></p>
+          </div>
+          <dl class="a-facts">
+            <div><dt>State</dt><dd>{{fact:homepage.fobxx.state}}</dd></div>
+            <div><dt>Evidence</dt><dd>{{fact:homepage.fobxx.source_count}} retained evidence sources</dd></div>
+            <div><dt>Evidence as of</dt><dd class="mono">{{fact:homepage.fobxx.evidence_as_of}}</dd></div>
+            <div><dt>Fresh through</dt><dd class="mono">{{fact:homepage.fobxx.valid_until}}</dd></div>
             <div><dt>Networks</dt><dd>X&nbsp;Layer mainnet + testnet</dd></div>
           </dl>
         </article>
@@ -99,16 +118,6 @@
 
         <article class="persona">
           <p class="p-for">Research</p>
-          <h3>FOBXX</h3>
-          <p class="a-sub">Franklin OnChain U.S. Government Money Fund</p>
-          <p>The daily issuer endpoint is refused at the production host — Cloudflare answers
-          403 — so the daily path is closed. A monthly path through the fund's SEC N-MFP3
-          filings is scoped and carries a committed fixture: evidence filed with a regulator,
-          at the cadence a money-market fund files it.</p>
-        </article>
-
-        <article class="persona">
-          <p class="p-for">Research</p>
           <h3>USDY</h3>
           <p class="a-sub">Ondo U.S. Dollar Yield</p>
           <p>The issuer source is one 260&nbsp;MB unbounded archive. A daily window cannot be
@@ -130,9 +139,9 @@
           <div class="prose">
             <p>A live asset has a signed report on both X&nbsp;Layer registries, published by a
             run that read the issuer at a named moment and stored every fetch as a
-            digest-addressed capture. Reports expire at the end of the UTC day and re-publish
-            at the daily window, so a reader is never handed yesterday's answer dressed as
-            today's. Freshness is the product, not a caveat.</p>
+            digest-addressed capture. Each report carries its own evidence deadline and
+            validity window; those dates come from the evaluated controls rather than a
+            site-wide daily assumption.</p>
             <p>Adding an asset is retrieval work, not contract work: the registry is already
             multi-asset and the control language is already asset-agnostic. The constraint is a
             single operator running one daily window, and it is published here rather than
@@ -150,7 +159,7 @@
             <div><dt>Confirmed</dt><dd>{{fact:counts.confirmed_reports}}</dd></div>
             <div><dt>v2 attestations</dt><dd>{{fact:counts.v2_attestations}}</dd></div>
             <div><dt>Networks</dt><dd>{{fact:counts.networks}} — X&nbsp;Layer mainnet and testnet</dd></div>
-            <div><dt>Controls</dt><dd>{{fact:counts.controls_approved}} approved · {{fact:counts.controls_declined}} declined</dd></div>
+            <div><dt>Controls</dt><dd>{{fact:derived.approved_count}} approved · {{fact:derived.declined_count}} declined</dd></div>
           </dl>
         </div>
       </div>
