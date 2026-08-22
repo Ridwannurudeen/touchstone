@@ -10,11 +10,11 @@ a form without the owner's explicit approval and account access.
 - [x] Published the reviewed launch post mentioning `@XLayerOfficial`:
   https://x.com/TOUCH__STONE/status/2090844839055159485
 - [x] Recorded the exact live X post URL in `docs/SUBMISSION-DRAFT.md`.
-- [ ] Add the owner's contact email and prize wallet to `docs/SUBMISSION-DRAFT.md`.
+- [x] Contact email entered on the form by the owner at filing; the prize wallet is supplied at payout, not recorded in the repository.
 - [x] Fresh mainnet policy publication confirmed 2026-08-21: both policy keys reached v1 and
   Registry V2 sequence 3, and two independent RPCs returned `allowed` from the live gate.
-- [ ] Submit the official Google Form before **2026-08-21 23:59 UTC**.
-- [ ] Preserve the form receipt and final submitted text.
+- [x] Official Google Form submitted by the owner on 2026-08-21, before **23:59 UTC**.
+- [ ] Preserve the form receipt and final submitted text — held by the owner outside the repository; keep them somewhere durable.
 
 ## X Layer ecosystem attribution
 

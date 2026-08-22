@@ -1,10 +1,12 @@
 # Submission draft
 
-**DRAFT — NOT SUBMITTED.**
+**SUBMITTED 2026-08-21, before the 23:59 UTC deadline — confirmed by the owner.**
 
-Unpublished text in a file. This is not a submission. It has not been
-sent to any organiser, form, portal, or judge. Filling a field below
-does not file it. Owner gate G5 in `docs/PHASE-1-PLAN.md` remains open.
+The OKX AI Season Google Form was filed by the owner from their own account. The
+form receipt and the exact submitted text are retained by the owner and are not
+stored in this repository; the description below is the reviewed text the owner
+pasted, and the field values are those recorded at filing time. Owner gate G5 in
+`docs/PHASE-1-PLAN.md` is closed.
 
 Where a URL or address does not exist, the field is `not_deployed`.
 Where this repository does not name a value, the field is `unknown`.
@@ -40,7 +42,7 @@ observed.
 | Launched on X Layer mainnet | **MET, 2026-08-18.** Registry `0xc9d58e4496bF061C3177301Ff02518eBB70AD30d`, chain 196, deployed at block 68291416 under a recorded owner approval; manifest `deployments/xlayer-mainnet.json`, `deployment_state: active`. USTB sequences 1–5 (sequence 5 is `CONFIRMED`, published unattended on 2026-08-21), both policy keys at sequence 3 with Registry v2 attestations on `0x0dAb4A5B7dd24434Ab6564734E26d3d76985352C` (chain 196). ⚠️ Both registry addresses recur across chains — same deployer, aligned nonces — so the chain id is the only thing that identifies a deployment. `AssetGateV2` is live on mainnet at `0x8641CF6d40524AC55aBd0a02601AfBd374EFB059` (block 68427105), pinned to the approved policy, control-set root and signed approval-ledger digest; two independent RPCs returned `allowed` after the sequence-3 attestations. `RWAAdmissionController` at `0x5C5265392701A99cbB137aF8116E0F97f630329A` consumes the gate with permit and refusal transactions on chain. Builder Code `f0axgs7smtk2nfa7` is live in the Terminal and visible on the attributed mainnet execution at https://web3.okx.com/explorer/xlayer/tx/0xb48cf6182b7bf87df78817401c7fefc2e8a319b341b96e572552775361fa9a1e. |
 | Dedicated X account, kept active | **Account created:** `@touch__stone`. "Kept active" is a continuing obligation, not a one-time step. |
 | Post mentioning @XLayerOfficial | **PUBLISHED.** https://x.com/TOUCH__STONE/status/2090844839055159485 — the exact URL is retained for the form. |
-| Google Form by 2026-08-21 23:59 UTC | **NOT SUBMITTED.** The owner holds the form. Nothing is submitted without explicit approval. |
+| Google Form by 2026-08-21 23:59 UTC | **SUBMITTED 2026-08-21** by the owner, ahead of the deadline. Receipt retained by the owner, outside this repository. |
 
 Touchstone does not issue assets, custody funds, recommend investments,
 assign credit ratings, or claim facts beyond the evidence class it has
@@ -296,14 +298,14 @@ Not prepared, and not to be invented:
 
 ---
 
-## 9. Owner action still required
+## 9. Filing record
 
-This file does not submit. A real filing needs a fresh explicit owner
-approval in the then-current context (product principle 8,
-`ROADMAP.md`; gate G5). The named venue is the **OKX AI Season Hackathon
-X Layer Google Form**, with the recorded deadline **2026-08-21 23:59
-UTC**. The form receipt and final submitted text remain unknown because
-no submission has been made from this repository.
+The **OKX AI Season Hackathon X Layer Google Form** was submitted by the owner on
+**2026-08-21**, ahead of the recorded **23:59 UTC** deadline, under the explicit
+owner approval that product principle 8 (`ROADMAP.md`) and gate G5 require. The
+launch post that the rules require is
+https://x.com/TOUCH__STONE/status/2090844839055159485 and mentions
+`@XLayerOfficial`. The receipt and the verbatim submitted text are held by the
+owner; this repository records the filing, not the receipt.
 
-Do not send this draft. Do not paste it into a form. Do not imply that
-because the draft exists, the misses above have closed.
+Filing does not close the misses listed above. They remain open work.

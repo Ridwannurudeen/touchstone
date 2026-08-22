@@ -54,6 +54,29 @@ ssh, which is equivalent here only because the file sets were compared first:
 
 Extract-over-top does not remove files that have been deleted locally, which `rsync --delete`
 would. **So compare the two file lists before uploading** and delete any orphan explicitly.
+
+⚠️ **The host keeps a second copy of three site inputs, and the status timer reads that
+copy, not the served tree.** `touchstone-status@xlayer-mainnet.service` runs
+`/opt/touchstone/scripts/build_status.py` with `WorkingDirectory=/opt/touchstone`, so it
+renders `/status` from `/opt/touchstone/site2/_data/facts.json` and
+`/opt/touchstone/site2/_partials/*.html` — the *code* checkout, which `/opt/touchstone` holds
+as a plain tar-deployed directory, not a git checkout. Uploading `site2/` updates only
+`/opt/touchstone-site`. On 2026-08-21 this left the homepage at 20 reports while `/status`
+still said 17, from the same repository. Whenever `facts.json`, a partial, or
+`scripts/build_status.py` changes, sync those files into the code checkout as part of the
+content update, back up first, then regenerate and require `Result=success`:
+
+    ts=$(date -u +%Y%m%dT%H%M%SZ)
+    for f in site2/_data/facts.json site2/_partials/header.html site2/_partials/footer.html scripts/build_status.py; do
+      cp -a /opt/touchstone/$f /opt/touchstone/$f.bak-$ts
+      install -m 0644 /opt/touchstone-site/${f#site2/} /opt/touchstone/$f 2>/dev/null || install -m 0644 <local copy> /opt/touchstone/$f
+    done
+    systemctl start touchstone-status@xlayer-mainnet.service
+    systemctl show touchstone-status@xlayer-mainnet.service -p Result   # must be Result=success
+
+`scripts/build_status.py` is not in the served tree, so it is shipped from the local checkout
+directly. Then confirm from outside that `/status` and `/` show the same counts and the same
+header before calling the content update complete.
 Sort both with `LC_ALL=C` — Git Bash and the host disagree on collation otherwise, and `comm`
 will report differences that do not exist.
 
