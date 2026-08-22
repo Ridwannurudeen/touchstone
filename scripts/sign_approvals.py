@@ -53,9 +53,13 @@ APPROVER_KEY_ENV = "TOUCHSTONE_APPROVER_PRIVATE_KEY"
 RELEASE_VERSION = "touchstone.signed-approval-release.v1"
 
 
-def _proposed_digest(compilation_digest: str, control_id: str) -> str:
+def _proposed_digest(
+    compilation_digest: str, control_id: str, *, directory: str | Path | None = None
+) -> str:
     """The content hash of the candidate exactly as the compiler proposed it."""
-    compilation = load_compilation(compilation_digest)
+    compilation = load_compilation(
+        compilation_digest, directory=directory or ROOT / "data" / "compilations"
+    )
     for candidate in accepted_candidates(compilation):
         if candidate["control_id"] == control_id:
             return ControlRecord.from_mapping(candidate).content_hash

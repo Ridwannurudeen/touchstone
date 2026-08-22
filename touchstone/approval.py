@@ -382,7 +382,9 @@ def _validated_ledger(ledger: object) -> Mapping[str, list]:
     return ledger
 
 
-def load_approval_ledger(path: str | Path = LEDGER) -> Mapping[str, list]:
+def load_approval_ledger(
+    path: str | Path = LEDGER, *, directory: str | Path = COMPILATIONS
+) -> Mapping[str, list]:
     """Read the committed record of what was approved and what was declined."""
     location = Path(path)
     try:
@@ -398,7 +400,7 @@ def load_approval_ledger(path: str | Path = LEDGER) -> Mapping[str, list]:
     # needs, not the publisher's whole compilation store — so its reader binds whatever
     # the bundle holds and says so, in `verify._verify_approval_ledger`.
     if validated.get("version") == LEDGER_VERSION:
-        resolve = from_directory()
+        resolve = from_directory(directory)
         for key in (APPROVED_KEY, DECLINED_KEY):
             for entry in validated[key]:
                 assert_entry_proposal(entry, resolve=resolve)
