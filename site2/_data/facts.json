@@ -204,6 +204,8 @@
   "story": {
     "refusal_date": "2026-08-18",
     "confirmation_date": "2026-08-19",
+    "confirmed_nav": "11.18208300",
+    "nav_row_date": "2026-08-17",
     "confirmation_interval_hours": "24",
     "settlement_floor_business_days": "2"
   },
