@@ -18,7 +18,12 @@ from touchstone.controls import (
     OperationalEvent,
     transition_state,
 )
-from touchstone.normalize.fobxx import FobxxObservation
+from touchstone.normalize.fobxx import (
+    FOBXX_HISTORY_SOURCE_ID,
+    FOBXX_SOURCE_ID,
+    FobxxObservation,
+    FobxxPriceHistoryObservation,
+)
 from touchstone.normalize.ustb import (
     USTB_HOLDINGS_SOURCE_ID,
     USTB_NAV_SOURCE_ID,
@@ -89,6 +94,9 @@ _EXPECTED_KEYS: Mapping[ComparisonOperator, frozenset[str]] = {
     ),
     ComparisonOperator.WITHIN_TOLERANCE: frozenset(
         {"field", "value", "tolerance", "minimum_row_age_business_days"}
+    ),
+    ComparisonOperator.RECONCILES_WITH: frozenset(
+        {"field", "comparison_source_id", "comparison_field", "tolerance"}
     ),
 }
 
@@ -173,6 +181,9 @@ def supports(
             return False
         return type(windows[0]) is int and windows[0] >= 0
 
+    if source_id in {FOBXX_HISTORY_SOURCE_ID, FOBXX_SOURCE_ID}:
+        return _supports_fobxx(source_id, operator, expected_value)
+
     field = _expected_field(expected_value)
     if field is None:
         return False
@@ -193,6 +204,48 @@ def supports(
         tolerance = _expected_decimal(expected_value, "tolerance")
         return tolerance is not None and tolerance >= 0
     return operator in {ComparisonOperator.EQ, ComparisonOperator.NON_DECREASING}
+
+
+def _supports_fobxx(
+    source_id: str,
+    operator: ComparisonOperator,
+    expected_value: FrozenJSONValue,
+) -> bool:
+    field = _expected_field(expected_value)
+    if field is None:
+        return False
+    if operator is ComparisonOperator.RECONCILES_WITH:
+        if source_id != FOBXX_HISTORY_SOURCE_ID or not isinstance(
+            expected_value, Mapping
+        ):
+            return False
+        pairs = {
+            "nav_std": "stable_price_per_share",
+            "daily_liquid_asset_ratio": "daily_percentage",
+            "weekly_liquid_asset_ratio": "weekly_percentage",
+        }
+        tolerance = _expected_decimal(expected_value, "tolerance")
+        return (
+            expected_value.get("comparison_source_id") == FOBXX_SOURCE_ID
+            and expected_value.get("comparison_field") == pairs.get(field)
+            and tolerance is not None
+            and tolerance >= 0
+        )
+    allowed = {
+        FOBXX_HISTORY_SOURCE_ID: {
+            "nav_std": ComparisonOperator.EQ,
+            "daily_liquid_asset_ratio": ComparisonOperator.NON_DECREASING,
+            "weekly_liquid_asset_ratio": ComparisonOperator.NON_DECREASING,
+        },
+        FOBXX_SOURCE_ID: {
+            "stable_price_per_share": ComparisonOperator.EQ,
+            "daily_percentage": ComparisonOperator.NON_DECREASING,
+            "weekly_percentage": ComparisonOperator.NON_DECREASING,
+        },
+    }
+    return allowed[source_id].get(field) is operator and _expected_decimal(
+        expected_value, "value"
+    ) is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -334,6 +387,7 @@ def evaluate(
             prior.get(control.source_id),
             now,
             asset,
+            observed,
         )
         for control in records
     )
@@ -409,6 +463,7 @@ def _evaluate_control(
     prior_observation: object | None,
     now: date,
     asset: AssetDescriptor,
+    observations: Mapping[str, object],
 ) -> ControlEvaluation:
     if now < control.effective_from or (
         control.effective_until is not None and now > control.effective_until
@@ -422,6 +477,10 @@ def _evaluate_control(
         )
     if control.comparison_operator is ComparisonOperator.FRESH_WITHIN:
         return _evaluate_freshness(control, observation, now, asset)
+    if asset.asset_key != USTB.asset_key:
+        return _evaluate_fobxx_control(
+            control, observation, observations, now, asset
+        )
     if control.source_id != USTB_NAV_SOURCE_ID:
         # Before the NAV route below, which returns None for any observation that is not a
         # NAV one and so silently made every non-freshness control on the other two sources
@@ -458,6 +517,167 @@ def _evaluate_control(
             result = EvaluationResult.UNEVALUABLE
     return ControlEvaluation(
         control.control_id, result, observed, None, row.observed_on
+    )
+
+
+def _evaluate_fobxx_control(
+    control: ControlRecord,
+    observation: object,
+    observations: Mapping[str, object],
+    now: date,
+    asset: AssetDescriptor,
+) -> ControlEvaluation:
+    if not supports(
+        control.source_id,
+        control.comparison_operator,
+        control.expected_value,
+        presence_fields=asset.presence_fields,
+        freshness_units=asset.freshness_units,
+    ):
+        return ControlEvaluation(
+            control.control_id, EvaluationResult.UNEVALUABLE, None, None
+        )
+    if isinstance(observation, FobxxPriceHistoryObservation):
+        if control.comparison_operator is ComparisonOperator.RECONCILES_WITH:
+            return _evaluate_fobxx_reconciliation(
+                control, observation, observations.get(FOBXX_SOURCE_ID), now, asset
+            )
+        row = max(
+            (candidate for candidate in observation.rows if candidate.date <= now),
+            key=lambda candidate: candidate.date,
+            default=None,
+        )
+        if row is None:
+            return ControlEvaluation(
+                control.control_id, EvaluationResult.UNEVALUABLE, None, None
+            )
+        deadline = business_day_deadline(
+            row.date, asset.source_by_id[control.source_id].grace_period
+        )
+        value = getattr(row, _expected_field(control.expected_value), None)
+        return _fobxx_comparison(control, value, deadline, row.date)
+    if isinstance(observation, FobxxObservation):
+        deadline = business_day_deadline(
+            _next_month_end(observation.report_date),
+            asset.source_by_id[control.source_id].grace_period,
+        )
+        field = _expected_field(control.expected_value)
+        if field == "stable_price_per_share":
+            return _fobxx_comparison(
+                control,
+                observation.stable_price_per_share,
+                deadline,
+                observation.report_date,
+            )
+        if field in {"daily_percentage", "weekly_percentage"}:
+            present = [
+                (row.date, getattr(row, field))
+                for row in observation.liquidity_rows
+                if getattr(row, field) is not None
+            ]
+            if not present:
+                return ControlEvaluation(
+                    control.control_id,
+                    EvaluationResult.UNEVALUABLE,
+                    None,
+                    deadline,
+                    observation.report_date,
+                )
+            observed_on, value = min(present, key=lambda item: item[1])
+            return _fobxx_comparison(control, value, deadline, observed_on)
+    return ControlEvaluation(
+        control.control_id, EvaluationResult.UNEVALUABLE, None, None
+    )
+
+
+def _fobxx_comparison(
+    control: ControlRecord,
+    value: object,
+    deadline: date,
+    observed_on: date,
+) -> ControlEvaluation:
+    expected = _expected_decimal(control.expected_value, "value")
+    if not isinstance(value, Decimal) or expected is None:
+        result = EvaluationResult.UNEVALUABLE
+        observed = None
+    elif control.comparison_operator is ComparisonOperator.EQ:
+        result = _comparison_result(value == expected)
+        observed = value
+    elif control.comparison_operator is ComparisonOperator.NON_DECREASING:
+        result = _comparison_result(value >= expected)
+        observed = value
+    else:
+        result = EvaluationResult.UNEVALUABLE
+        observed = None
+    return ControlEvaluation(
+        control.control_id, result, observed, deadline, observed_on
+    )
+
+
+def _evaluate_fobxx_reconciliation(
+    control: ControlRecord,
+    issuer: FobxxPriceHistoryObservation,
+    regulator: object,
+    now: date,
+    asset: AssetDescriptor,
+) -> ControlEvaluation:
+    if not isinstance(regulator, FobxxObservation) or regulator.report_date > now:
+        return ControlEvaluation(
+            control.control_id, EvaluationResult.UNEVALUABLE, None, None
+        )
+    row = next(
+        (item for item in issuer.rows if item.date == regulator.report_date), None
+    )
+    deadline = business_day_deadline(
+        _next_month_end(regulator.report_date),
+        asset.source_by_id[FOBXX_SOURCE_ID].grace_period,
+    )
+    if row is None or not isinstance(control.expected_value, Mapping):
+        return ControlEvaluation(
+            control.control_id,
+            EvaluationResult.UNEVALUABLE,
+            None,
+            deadline,
+            regulator.report_date,
+        )
+    issuer_value = getattr(row, _expected_field(control.expected_value), None)
+    regulator_field = control.expected_value.get("comparison_field")
+    if regulator_field in {"daily_percentage", "weekly_percentage"}:
+        regulator_row = next(
+            (
+                item
+                for item in regulator.liquidity_rows
+                if item.date == regulator.report_date
+            ),
+            None,
+        )
+        regulator_value = (
+            getattr(regulator_row, regulator_field, None)
+            if regulator_row is not None
+            else None
+        )
+    else:
+        regulator_value = getattr(regulator, str(regulator_field), None)
+    tolerance = _expected_decimal(control.expected_value, "tolerance")
+    if (
+        not isinstance(issuer_value, Decimal)
+        or not isinstance(regulator_value, Decimal)
+        or tolerance is None
+    ):
+        return ControlEvaluation(
+            control.control_id,
+            EvaluationResult.UNEVALUABLE,
+            None,
+            deadline,
+            regulator.report_date,
+        )
+    difference = abs(issuer_value - regulator_value)
+    return ControlEvaluation(
+        control.control_id,
+        _comparison_result(difference <= tolerance),
+        difference,
+        deadline,
+        regulator.report_date,
     )
 
 
@@ -516,13 +736,17 @@ def _evaluate_freshness(
         next_deadline = business_day_deadline(
             _next_month_end(observation.report_date), control.grace_period
         )
-        result = (
-            EvaluationResult.SATISFIED
-            if observed_on is not None
-            and observed_on <= filing_deadline
-            and observed_on <= now <= next_deadline
-            else EvaluationResult.UNEVALUABLE
-        )
+        if (
+            not _is_month_end(observation.report_date)
+            or observed_on is None
+            or observed_on > now
+            or now > next_deadline
+        ):
+            result = EvaluationResult.UNEVALUABLE
+        elif observed_on > filing_deadline:
+            result = EvaluationResult.CONTRADICTED
+        else:
+            result = EvaluationResult.SATISFIED
         return ControlEvaluation(
             control.control_id,
             result,
@@ -572,6 +796,12 @@ def _next_month_end(value: date) -> date:
         day=1
     )
     return month_after_next - timedelta(days=1)
+
+
+def _is_month_end(value: date) -> bool:
+    return value == (value.replace(day=28) + timedelta(days=4)).replace(
+        day=1
+    ) - timedelta(days=1)
 
 
 def _confirmed_nav_row(

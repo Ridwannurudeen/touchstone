@@ -32,6 +32,7 @@ class ComparisonOperator(str, Enum):
     EQ = "eq"
     WITHIN_TOLERANCE = "within_tolerance"
     NON_DECREASING = "non_decreasing"
+    RECONCILES_WITH = "reconciles_with"
 
 
 class AssetState(str, Enum):

@@ -743,6 +743,15 @@ def _verify_capture_roles(
         by_role[(source_id, role)] = reference
 
     sources = {record.source_id for record in records}
+    for record in records:
+        if (
+            record.comparison_operator is ComparisonOperator.RECONCILES_WITH
+            and isinstance(record.expected_value, Mapping)
+            and isinstance(
+                record.expected_value.get("comparison_source_id"), str
+            )
+        ):
+            sources.add(record.expected_value["comparison_source_id"])
     for source_id in sources:
         if (source_id, "current") not in by_role:
             raise VerificationError(

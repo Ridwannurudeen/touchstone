@@ -62,8 +62,8 @@ class FobxxLiquidityRow:
     date: date
     daily_liquid_assets: Decimal
     weekly_liquid_assets: Decimal
-    daily_percentage: Decimal
-    weekly_percentage: Decimal
+    daily_percentage: Decimal | None
+    weekly_percentage: Decimal | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +73,7 @@ class FobxxObservation:
     series_id: str
     series_name: str
     net_assets: Decimal
+    stable_price_per_share: Decimal
     liquidity_rows: tuple[FobxxLiquidityRow, ...]
     submission_type: str
     filing_date: date | None = None
@@ -352,17 +353,22 @@ def parse_nmfp3(
         seen_dates.add(row_date)
         daily = _decimal(_text(item, "totalValueDailyLiquidAssets"), "daily assets")
         weekly = _decimal(_text(item, "totalValueWeeklyLiquidAssets"), "weekly assets")
-        daily_percentage = _decimal(
-            _text(item, "percentageDailyLiquidAssets"), "daily percentage"
+        daily_percentage = _optional_xml_decimal(
+            item, "percentageDailyLiquidAssets", "daily percentage"
         )
-        weekly_percentage = _decimal(
-            _text(item, "percentageWeeklyLiquidAssets"), "weekly percentage"
+        weekly_percentage = _optional_xml_decimal(
+            item, "percentageWeeklyLiquidAssets", "weekly percentage"
         )
-        if min(daily, weekly, daily_percentage, weekly_percentage) < 0:
+        percentages = tuple(
+            value
+            for value in (daily_percentage, weekly_percentage)
+            if value is not None
+        )
+        if min((daily, weekly, *percentages)) < 0:
             raise FobxxNormalizationError(
                 f"liquidity row {index} contains a negative value"
             )
-        if daily_percentage > 1 or weekly_percentage > 1:
+        if any(value > 1 for value in percentages):
             raise FobxxNormalizationError(f"liquidity row {index} percentage exceeds 1")
         rows.append(
             FobxxLiquidityRow(
@@ -380,6 +386,9 @@ def parse_nmfp3(
         series_id=series_id,
         series_name=_text(general, "nameOfSeries"),
         net_assets=_decimal(_text(series, "netAssetOfSeries"), "net assets"),
+        stable_price_per_share=_decimal(
+            _text(series, "stablePricePerShare"), "stable price per share"
+        ),
         liquidity_rows=tuple(rows),
         submission_type=submission_type,
     )
@@ -469,6 +478,15 @@ def _text(parent: ElementTree.Element, name: str) -> str:
     if value is None or not value.strip():
         raise FobxxNormalizationError(f"{name} must contain non-empty text")
     return value.strip()
+
+
+def _optional_xml_decimal(
+    parent: ElementTree.Element, name: str, field: str
+) -> Decimal | None:
+    value = _child(parent, name).text
+    if value is None or not value.strip():
+        return None
+    return _decimal(value.strip(), field)
 
 
 def _date(value: str, field: str) -> date:

@@ -27,6 +27,9 @@ from touchstone.sources import SourceManifest
 # provenance records the returned model identity beside the requested one, and the prompt
 # carries the Control Language schema instead of naming it.
 #
+# 0.4.0 adds the FOBXX issuer and regulator observation shapes, including exact same-date
+# reconciliation. Artifacts compiled under 0.3.0 could not express those controls.
+#
 # 0.3.0 changed what the deterministic gates accept, which is a different thing from what the
 # prompt asks for and is not distinguished by the prompt hash. Candidates may now carry
 # `minimum_row_age_business_days`; an `expected_value` may not carry keys its operator does
@@ -34,7 +37,7 @@ from touchstone.sources import SourceManifest
 # manifest's declared policy in its declared unit; and `grace_period` must be 0 for every
 # non-freshness operator. Artifacts compiled under 0.2.0 were accepted under weaker rules,
 # and two versions sharing a number would have hidden that.
-COMPILER_VERSION = "0.3.0"
+COMPILER_VERSION = "0.4.0"
 DEFAULT_EXCERPT_LIMIT = 8_192
 MAX_PROVIDER_OUTPUT_BYTES = 1_048_576
 MAX_PROVIDER_OUTPUT_DEPTH = 32
@@ -73,7 +76,7 @@ Every candidate must be an object carrying all seventeen fields below and no oth
   grace_period             int    >= 0, in the unit implied by the operator
   observation_adapter      str    fixed, given in the request
   comparison_operator      str    one of: exists, fresh_within, eq, within_tolerance,
-                                  non_decreasing
+                                  non_decreasing, reconciles_with
   expected_value           any    JSON shaped for the operator (see below)
   effective_from           str    ISO date; use the retrieved_at date given in the request
   effective_until          null   use null
@@ -92,9 +95,15 @@ can reach; a candidate outside them is rejected however well it cites its eviden
   eq                 {"field": "<name>", "value": "<numeric literal as a string>"}
   within_tolerance   {"field": "<name>", "value": "<numeric>", "tolerance": <number>}
   non_decreasing     {"field": "<name>", "value": "<numeric>"}
+  reconciles_with    {"field": "<name>", "comparison_source_id": "<source id>",
+                      "comparison_field": "<name>", "tolerance": <number>}
 
 `eq`, `within_tolerance` and `non_decreasing` compare decimals, so their `value` must be a \
 number or a numeric string. A non-numeric expected value cannot be evaluated at all.
+
+`reconciles_with` joins the two observations on the exact SEC report date and compares their
+normalised decimal values. Use tolerance 0 unless the evidence itself establishes a non-zero
+tolerance. A missing same-date row or blank value is no-data, never a pass or breach.
 
 On superstate-ustb-nav-daily only, and for any operator except fresh_within, \
 `expected_value` may additionally carry:
@@ -134,9 +143,17 @@ is a source policy rather than a property of an operator:
   superstate-ustb-yield       fresh_within, and exists on as_of_date, thirty_day,
                               seven_day or one_day
   superstate-ustb-holdings    fresh_within, and exists on as_of_date
+  franklin-fobxx-price-history
+                              fresh_within; eq on nav_std; non_decreasing on
+                              daily_liquid_asset_ratio or weekly_liquid_asset_ratio; and
+                              reconciles_with those three fields against the matching SEC
+                              fields on sec-edgar-fobxx-nmfp3
+  sec-edgar-fobxx-nmfp3       fresh_within; eq on stable_price_per_share; and
+                              non_decreasing on daily_liquid_asset_ratio or
+                              weekly_liquid_asset_ratio
 
 Nothing else is decidable. In particular there is no way to express a control over the \
-holdings collection itself.
+holdings collection itself or over a blank FOBXX ratio.
 
 Only propose what the excerpt actually shows. A candidate is a proposal: it is validated \
 deterministically afterwards and approved by a human, so an over-confident guess is worse \
@@ -618,7 +635,7 @@ def _validate_candidate_policy(
             "control source authority class does not match source manifest"
         )
     if control.asset_key != asset.asset_key:
-        raise ValueError("control asset_key does not identify USTB")
+        raise ValueError("control asset_key does not identify the selected asset")
     if control.predicate_type != "observation":
         raise ValueError("predicate_type is not allowed")
     if control.approval_state != "proposed":

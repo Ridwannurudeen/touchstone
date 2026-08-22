@@ -17,10 +17,15 @@ from touchstone.assets import (
     FOBXX_EVIDENCE_IDENTITY,
     get_asset,
 )
-from touchstone.controls import AssetState, ControlRecord, EvaluationResult
+from touchstone.controls import (
+    AssetState,
+    ComparisonOperator,
+    ControlRecord,
+    EvaluationResult,
+)
 from touchstone.epoch import run_epoch
 from touchstone.evidence import EvidenceStore
-from touchstone.evaluate import evaluate
+from touchstone.evaluate import evaluate, supports
 from touchstone.normalize.fobxx import (
     FOBXX_CIK,
     FOBXX_HISTORY_SOURCE_ID,
@@ -44,6 +49,42 @@ from touchstone.ustb_daemon import EpochProductionError, make_producer, report_u
 
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
+
+
+def fobxx_control(
+    *,
+    control_id: str,
+    source_id: str,
+    adapter: str,
+    authority: str,
+    span: str,
+    operator: str,
+    expected_value: dict[str, object],
+    grace_period: int = 0,
+) -> ControlRecord:
+    source = FOBXX.source_by_id[source_id]
+    return ControlRecord.from_mapping(
+        {
+            "asset_key": FOBXX.asset_key,
+            "control_id": control_id,
+            "control_version": 1,
+            "predicate_type": "observation",
+            "subject": control_id,
+            "source_id": source_id,
+            "source_authority_class": authority,
+            "evidence_span": span,
+            "cadence": source.cadence,
+            "grace_period": grace_period,
+            "observation_adapter": adapter,
+            "comparison_operator": operator,
+            "expected_value": expected_value,
+            "effective_from": "2026-07-31",
+            "effective_until": None,
+            "compiler_confidence": 1.0,
+            "approval_state": "approved",
+            "compilation_sha256": "00" * 32,
+        }
+    )
 
 
 class FobxxFixtureTransport:
@@ -144,6 +185,267 @@ def test_franklin_parsers_refuse_schema_drift() -> None:
 
 def test_franklin_source_ids_are_distinct_operations() -> None:
     assert FOBXX_LOOKUP_SOURCE_ID != FOBXX_HISTORY_SOURCE_ID
+
+
+def test_fobxx_issuer_nav_and_freshness_controls_use_the_latest_row() -> None:
+    history = parse_price_history(
+        (FIXTURES / "fobxx-price-history-20260822.json").read_bytes()
+    )
+    controls = (
+        fobxx_control(
+            control_id="fobxx-issuer-row-fresh",
+            source_id=FOBXX_HISTORY_SOURCE_ID,
+            adapter="fobxx-price-history",
+            authority="issuer-api",
+            span='"navdate":"2026-08-21"',
+            operator="fresh_within",
+            expected_value={"business_days": 3},
+            grace_period=3,
+        ),
+        fobxx_control(
+            control_id="fobxx-issuer-nav-peg",
+            source_id=FOBXX_HISTORY_SOURCE_ID,
+            adapter="fobxx-price-history",
+            authority="issuer-api",
+            span='"navstd":"1.00000000"',
+            operator="eq",
+            expected_value={"field": "nav_std", "value": "1.00000000"},
+        ),
+    )
+
+    report = evaluate(
+        FOBXX,
+        controls,
+        {FOBXX_HISTORY_SOURCE_ID: history},
+        prior_observations={},
+        now=date(2026, 8, 26),
+    )
+
+    assert [item.result for item in report.evaluations] == [
+        EvaluationResult.SATISFIED,
+        EvaluationResult.SATISFIED,
+    ]
+    assert all(
+        item.evidence_deadline == date(2026, 8, 26)
+        for item in report.evaluations
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "threshold"),
+    [
+        ("daily_liquid_asset_ratio", "0.25"),
+        ("weekly_liquid_asset_ratio", "0.50"),
+    ],
+)
+def test_blank_latest_issuer_ratio_is_no_data_never_a_breach(
+    field: str, threshold: str
+) -> None:
+    history = parse_price_history(
+        (FIXTURES / "fobxx-price-history-20260822.json").read_bytes()
+    )
+    control = fobxx_control(
+        control_id=f"fobxx-issuer-{field}-floor",
+        source_id=FOBXX_HISTORY_SOURCE_ID,
+        adapter="fobxx-price-history",
+        authority="issuer-api",
+        span=f'"{field.replace("_liquid_asset_ratio", "liquidassetratio")}":""',
+        operator="non_decreasing",
+        expected_value={"field": field, "value": threshold},
+    )
+
+    evaluation = evaluate(
+        FOBXX,
+        (control,),
+        {FOBXX_HISTORY_SOURCE_ID: history},
+        prior_observations={},
+        now=date(2026, 8, 22),
+    ).evaluations[0]
+
+    assert evaluation.result is EvaluationResult.UNEVALUABLE
+    assert evaluation.observed_value is None
+
+
+def test_present_issuer_ratio_below_the_current_floor_is_contradicted() -> None:
+    history = parse_price_history(
+        (FIXTURES / "fobxx-price-history-20260822.json").read_bytes()
+    )
+    latest = replace(
+        history.rows[0], daily_liquid_asset_ratio=Decimal("0.249999")
+    )
+    observation = replace(history, rows=(latest, *history.rows[1:]))
+    control = fobxx_control(
+        control_id="fobxx-issuer-daily-floor",
+        source_id=FOBXX_HISTORY_SOURCE_ID,
+        adapter="fobxx-price-history",
+        authority="issuer-api",
+        span='"dailyliquidassetratio":"63.7387"',
+        operator="non_decreasing",
+        expected_value={"field": "daily_liquid_asset_ratio", "value": "0.25"},
+    )
+
+    evaluation = evaluate(
+        FOBXX,
+        (control,),
+        {FOBXX_HISTORY_SOURCE_ID: observation},
+        prior_observations={},
+        now=date(2026, 8, 22),
+    ).evaluations[0]
+
+    assert evaluation.result is EvaluationResult.CONTRADICTED
+
+
+def test_fobxx_control_shapes_are_deterministically_decidable() -> None:
+    assert supports(
+        FOBXX_HISTORY_SOURCE_ID,
+        ComparisonOperator.EQ,
+        {"field": "nav_std", "value": "1.00000000"},
+        presence_fields=FOBXX.presence_fields,
+        freshness_units=FOBXX.freshness_units,
+    )
+    assert supports(
+        FOBXX_HISTORY_SOURCE_ID,
+        ComparisonOperator.RECONCILES_WITH,
+        {
+            "field": "nav_std",
+            "comparison_source_id": "sec-edgar-fobxx-nmfp3",
+            "comparison_field": "stable_price_per_share",
+            "tolerance": "0",
+        },
+        presence_fields=FOBXX.presence_fields,
+        freshness_units=FOBXX.freshness_units,
+    )
+    assert not supports(
+        FOBXX_HISTORY_SOURCE_ID,
+        ComparisonOperator.RECONCILES_WITH,
+        {
+            "field": "daily_liquid_asset_ratio",
+            "comparison_source_id": "sec-edgar-fobxx-nmfp3",
+            "comparison_field": "stable_price_per_share",
+            "tolerance": "0",
+        },
+        presence_fields=FOBXX.presence_fields,
+        freshness_units=FOBXX.freshness_units,
+    )
+
+
+def test_sec_stable_price_and_reported_liquidity_floors_are_supported() -> None:
+    filing = replace(
+        parse_nmfp3((FIXTURES / "fobxx-nmfp3-20260731.xml").read_bytes()),
+        filing_date=date(2026, 8, 6),
+    )
+    controls = (
+        fobxx_control(
+            control_id="fobxx-sec-stable-price",
+            source_id="sec-edgar-fobxx-nmfp3",
+            adapter="fobxx-nmfp3",
+            authority="regulator-filing",
+            span="<stablePricePerShare>1.0000</stablePricePerShare>",
+            operator="eq",
+            expected_value={"field": "stable_price_per_share", "value": "1.0000"},
+        ),
+        fobxx_control(
+            control_id="fobxx-sec-daily-floor",
+            source_id="sec-edgar-fobxx-nmfp3",
+            adapter="fobxx-nmfp3",
+            authority="regulator-filing",
+            span=(
+                "<percentageDailyLiquidAssets>0.6463"
+                "</percentageDailyLiquidAssets>"
+            ),
+            operator="non_decreasing",
+            expected_value={"field": "daily_percentage", "value": "0.25"},
+        ),
+        fobxx_control(
+            control_id="fobxx-sec-weekly-floor",
+            source_id="sec-edgar-fobxx-nmfp3",
+            adapter="fobxx-nmfp3",
+            authority="regulator-filing",
+            span=(
+                "<percentageWeeklyLiquidAssets>0.7305"
+                "</percentageWeeklyLiquidAssets>"
+            ),
+            operator="non_decreasing",
+            expected_value={"field": "weekly_percentage", "value": "0.50"},
+        ),
+    )
+
+    report = evaluate(
+        FOBXX,
+        controls,
+        {"sec-edgar-fobxx-nmfp3": filing},
+        prior_observations={},
+        now=date(2026, 8, 22),
+    )
+
+    assert all(
+        item.result is EvaluationResult.SATISFIED for item in report.evaluations
+    )
+    assert all(
+        item.evidence_deadline == date(2026, 9, 14)
+        for item in report.evaluations
+    )
+
+
+def test_same_date_issuer_sec_reconciliation_reports_real_disagreement() -> None:
+    history = parse_price_history(
+        (FIXTURES / "fobxx-price-history-20260822.json").read_bytes()
+    )
+    filing = replace(
+        parse_nmfp3((FIXTURES / "fobxx-nmfp3-20260731.xml").read_bytes()),
+        filing_date=date(2026, 8, 6),
+    )
+    controls = tuple(
+        fobxx_control(
+            control_id=f"fobxx-reconcile-{issuer_field}",
+            source_id=FOBXX_HISTORY_SOURCE_ID,
+            adapter="fobxx-price-history",
+            authority="issuer-api",
+            span=span,
+            operator="reconciles_with",
+            expected_value={
+                "field": issuer_field,
+                "comparison_source_id": "sec-edgar-fobxx-nmfp3",
+                "comparison_field": sec_field,
+                "tolerance": "0",
+            },
+        )
+        for issuer_field, sec_field, span in (
+            ("nav_std", "stable_price_per_share", '"navstd":"1.00000000"'),
+            (
+                "daily_liquid_asset_ratio",
+                "daily_percentage",
+                '"dailyliquidassetratio":"63.7420"',
+            ),
+            (
+                "weekly_liquid_asset_ratio",
+                "weekly_percentage",
+                '"weeklyliquidassetratio":"73.4485"',
+            ),
+        )
+    )
+
+    report = evaluate(
+        FOBXX,
+        controls,
+        {
+            FOBXX_HISTORY_SOURCE_ID: history,
+            "sec-edgar-fobxx-nmfp3": filing,
+        },
+        prior_observations={},
+        now=date(2026, 8, 22),
+    )
+
+    assert [item.result for item in report.evaluations] == [
+        EvaluationResult.SATISFIED,
+        EvaluationResult.CONTRADICTED,
+        EvaluationResult.CONTRADICTED,
+    ]
+    assert all(item.observed_on == date(2026, 7, 31) for item in report.evaluations)
+    assert all(
+        item.evidence_deadline == date(2026, 9, 14)
+        for item in report.evaluations
+    )
 
 
 def test_fobxx_asset_identity_crosses_the_publication_boundary() -> None:
@@ -383,7 +685,7 @@ def test_fobxx_filing_freshness_refuses_a_late_filing() -> None:
         previous=AssetState.UNVERIFIABLE,
     )
 
-    assert report.evaluations[0].result is EvaluationResult.UNEVALUABLE
+    assert report.evaluations[0].result is EvaluationResult.CONTRADICTED
     assert report.evaluations[0].evidence_deadline == date(2026, 9, 14)
 
 
