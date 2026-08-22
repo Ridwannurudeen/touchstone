@@ -8,7 +8,7 @@ so a consumer reads real contracts out of the box.
 ## Five-minute integration
 
 ```sh
-npm install @touchstone/sdk ethers
+npm install touchstone-sdk ethers
 ```
 
 Or from a checkout of this repository:
@@ -29,7 +29,7 @@ import {
   DEPLOYMENTS,
   GuardedActionClient,
   POLICIES,
-} from "@touchstone/sdk";
+} from "touchstone-sdk";
 
 const provider = new JsonRpcProvider(process.env.RPC_URL, 1952);
 const wallet = new Wallet(process.env.PRIVATE_KEY!, provider);
@@ -56,7 +56,7 @@ executes the guarded action.
 
 ```ts
 import { JsonRpcProvider } from "ethers";
-import { DEPLOYMENTS, indexPublished } from "@touchstone/sdk";
+import { DEPLOYMENTS, indexPublished } from "touchstone-sdk";
 
 const deployment = DEPLOYMENTS.xlayerMainnet;
 const events = await indexPublished(

@@ -20,7 +20,7 @@ import {
   policyIdDigest,
   registryAssetKey,
   toBuilderCodeSuffix,
-} from "@touchstone/sdk";
+} from "touchstone-sdk";
 
 const ADDRESS = "0x1111111111111111111111111111111111111111";
 const HASH = `0x${"11".repeat(32)}`;

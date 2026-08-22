@@ -1,5 +1,5 @@
 {
-  "name": "@touchstone/sdk",
+  "name": "touchstone-sdk",
   "version": "0.1.0",
   "description": "Read Touchstone RWA policy gates and Registry v2 reports on X Layer, and execute guarded actions only when a gate permits",
   "license": "Apache-2.0",

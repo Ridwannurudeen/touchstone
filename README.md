@@ -113,7 +113,7 @@ the canonical chain facts. `main` requires the aggregate check.
 |---|---|
 | `touchstone/` | the engine: evidence store, evaluator, signing, publication, verification |
 | `contracts/` | Solidity: registries, gates, admission controller, Hardhat suite |
-| `sdk/` | TypeScript SDK (`@touchstone/sdk`): clients, indexer, ERC-8021 attribution |
+| `sdk/` | TypeScript SDK (`touchstone-sdk`): clients, indexer, ERC-8021 attribution |
 | `scripts/` | operational entry points — the daemon, publishers, release builder, gates |
 | `site2/` | the public site, generated from sources + one canonical facts file |
 | `docs/` | runbooks, threat model, limitations, audit traceability, submission draft |
