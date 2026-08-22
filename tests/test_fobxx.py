@@ -440,6 +440,25 @@ def test_fobxx_control_shapes_are_deterministically_decidable() -> None:
         presence_fields=FOBXX.presence_fields,
         freshness_units=FOBXX.freshness_units,
     )
+    assert not supports(
+        FOBXX_HISTORY_SOURCE_ID,
+        ComparisonOperator.EQ,
+        {"field": "nav_std", "value": "0.9999"},
+        presence_fields=FOBXX.presence_fields,
+        freshness_units=FOBXX.freshness_units,
+    )
+    assert not supports(
+        FOBXX_HISTORY_SOURCE_ID,
+        ComparisonOperator.RECONCILES_WITH,
+        {
+            "field": "nav_std",
+            "comparison_source_id": "sec-edgar-fobxx-nmfp3",
+            "comparison_field": "stable_price_per_share",
+            "tolerance": "0.01",
+        },
+        presence_fields=FOBXX.presence_fields,
+        freshness_units=FOBXX.freshness_units,
+    )
 
 
 def test_sec_stable_price_and_reported_liquidity_floors_are_supported() -> None:

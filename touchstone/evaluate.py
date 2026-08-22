@@ -229,23 +229,34 @@ def _supports_fobxx(
             expected_value.get("comparison_source_id") == FOBXX_SOURCE_ID
             and expected_value.get("comparison_field") == pairs.get(field)
             and tolerance is not None
-            and tolerance >= 0
+            and tolerance == 0
         )
     allowed = {
         FOBXX_HISTORY_SOURCE_ID: {
-            "nav_std": ComparisonOperator.EQ,
-            "daily_liquid_asset_ratio": ComparisonOperator.NON_DECREASING,
-            "weekly_liquid_asset_ratio": ComparisonOperator.NON_DECREASING,
+            "nav_std": (ComparisonOperator.EQ, Decimal("1")),
+            "daily_liquid_asset_ratio": (
+                ComparisonOperator.NON_DECREASING,
+                Decimal("0.25"),
+            ),
+            "weekly_liquid_asset_ratio": (
+                ComparisonOperator.NON_DECREASING,
+                Decimal("0.50"),
+            ),
         },
         FOBXX_SOURCE_ID: {
-            "stable_price_per_share": ComparisonOperator.EQ,
-            "daily_percentage": ComparisonOperator.NON_DECREASING,
-            "weekly_percentage": ComparisonOperator.NON_DECREASING,
+            "stable_price_per_share": (ComparisonOperator.EQ, Decimal("1")),
+            "daily_percentage": (
+                ComparisonOperator.NON_DECREASING,
+                Decimal("0.25"),
+            ),
+            "weekly_percentage": (
+                ComparisonOperator.NON_DECREASING,
+                Decimal("0.50"),
+            ),
         },
     }
-    return allowed[source_id].get(field) is operator and _expected_decimal(
-        expected_value, "value"
-    ) is not None
+    expected = _expected_decimal(expected_value, "value")
+    return allowed[source_id].get(field) == (operator, expected)
 
 
 @dataclass(frozen=True, slots=True)

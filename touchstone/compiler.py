@@ -102,8 +102,8 @@ can reach; a candidate outside them is rejected however well it cites its eviden
 number or a numeric string. A non-numeric expected value cannot be evaluated at all.
 
 `reconciles_with` joins the two observations on the exact SEC report date and compares their
-normalised decimal values. Use tolerance 0 unless the evidence itself establishes a non-zero
-tolerance. A missing same-date row or blank value is no-data, never a pass or breach.
+normalised decimal values. FOBXX reconciliation requires tolerance 0; no non-zero tolerance
+is established. A missing same-date row or blank value is no-data, never a pass or breach.
 
 On superstate-ustb-nav-daily only, and for any operator except fresh_within, \
 `expected_value` may additionally carry:
@@ -144,13 +144,14 @@ is a source policy rather than a property of an operator:
                               seven_day or one_day
   superstate-ustb-holdings    fresh_within, and exists on as_of_date
   franklin-fobxx-price-history
-                              fresh_within; eq on nav_std; non_decreasing on
-                              daily_liquid_asset_ratio or weekly_liquid_asset_ratio; and
+                              fresh_within; eq on nav_std with value 1; non_decreasing on
+                              daily_liquid_asset_ratio with value 0.25 or
+                              weekly_liquid_asset_ratio with value 0.50; and
                               reconciles_with those three fields against the matching SEC
-                              fields on sec-edgar-fobxx-nmfp3
-  sec-edgar-fobxx-nmfp3       fresh_within; eq on stable_price_per_share; and
-                              non_decreasing on daily_liquid_asset_ratio or
-                              weekly_liquid_asset_ratio
+                              fields on sec-edgar-fobxx-nmfp3 with tolerance 0
+  sec-edgar-fobxx-nmfp3       fresh_within; eq on stable_price_per_share with value 1; and
+                              non_decreasing on daily_percentage with value 0.25 or
+                              weekly_percentage with value 0.50
 
 Nothing else is decidable. In particular there is no way to express a control over the \
 holdings collection itself or over a blank FOBXX ratio.
