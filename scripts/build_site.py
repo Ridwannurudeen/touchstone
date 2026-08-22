@@ -594,10 +594,7 @@ def check_live_status() -> None:
         with urlopen(request, timeout=10) as response:
             status_html = response.read().decode("utf-8")
     except (OSError, UnicodeError, URLError) as error:
-        raise SystemExit(
-            f"SITE TRUTH FAIL: live /status could not be read: {error}; "
-            "use --offline only in explicitly offline CI"
-        ) from error
+        raise SystemExit(f"SITE TRUTH FAIL: live /status could not be read: {error}") from error
     assert_live_status_counts(status_html)
 
 
@@ -637,9 +634,9 @@ def main(argv: list[str] | None = None) -> int:
         help="verify the rendered files match the sources without writing",
     )
     parser.add_argument(
-        "--offline",
+        "--live-status",
         action="store_true",
-        help="skip the default live /status count comparison for explicitly offline CI",
+        help="also compare repository counts with the deployed /status page",
     )
     arguments = parser.parse_args(argv)
 
@@ -687,7 +684,9 @@ def main(argv: list[str] | None = None) -> int:
         assert_live_asset_evidence()
         assert_page_links(SITE / "index.html")
         assert_page_links(SITE / "reports.html")
-        if not arguments.offline:
+        # Push CI checks the new checkout before that checkout is deployed. Keep the build
+        # hermetic by default; live drift remains a failing, explicit operator check.
+        if arguments.live_status:
             check_live_status()
         print(f"{len(sources)} rendered pages match their sources")
         return 0

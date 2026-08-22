@@ -134,6 +134,28 @@ def test_homepage_numeric_truth_rejects_rendered_drift() -> None:
         build_site.assert_homepage_truth(altered)
 
 
+def test_check_does_not_call_live_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse_network() -> None:
+        raise AssertionError("--check attempted a live-status network call")
+
+    monkeypatch.setattr(build_site, "check_live_status", refuse_network)
+
+    assert build_site.main(["--check"]) == 0
+
+
+def test_check_calls_live_status_when_requested(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    def record_live_check() -> None:
+        nonlocal calls
+        calls += 1
+
+    monkeypatch.setattr(build_site, "check_live_status", record_live_check)
+
+    assert build_site.main(["--check", "--live-status"]) == 0
+    assert calls == 1
+
+
 def test_live_status_gate_rejects_report_count_divergence() -> None:
     with pytest.raises(SystemExit, match=r"local 25/20.*live /status 17/12"):
         build_site.assert_live_status_counts(

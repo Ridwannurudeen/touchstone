@@ -47,6 +47,15 @@ uses, and the vhost is installed only once the file it references exists.
 The vhost, certificate and nginx configuration are already in place, so a content update is
 steps 1 and 6 only — nothing shared is touched and no reload is needed.
 
+Push and deployment are separate, ordered steps. Push the repository first; push CI then checks
+that checkout hermetically while production may still serve the preceding commit. Deploy the
+generated content and the separately hosted status inputs described below only after CI passes.
+Finally, dispatch `.github/workflows/site-live-truth.yml` and require both the public and on-chain
+truth jobs to converge. If that workflow is dispatched before deployment, repository-to-site lag
+is expected until the deploy lands. The comparison remains strict: a mismatch after deployment is
+genuine drift and must continue to fail the live-truth workflow rather than being weakened to make
+the build green.
+
 **There is no `rsync` on the authoring machine.** The upload is therefore a tar stream over
 ssh, which is equivalent here only because the file sets were compared first:
 
