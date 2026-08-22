@@ -28,12 +28,19 @@ if str(ROOT) not in sys.path:
 
 from touchstone.compiler import (  # noqa: E402
     CompilationStatus,
+    FOBXX_EXCERPT_LIMIT,
     HTTPProvider,
     compile_evidence,
 )
-from touchstone.epoch import FIXTURE_RETRIEVED_AT, FixtureTransport, run_ustb_epoch  # noqa: E402
+from touchstone.assets import FOBXX, USTB, AssetDescriptor  # noqa: E402
+from touchstone.epoch import (  # noqa: E402
+    FIXTURE_RETRIEVED_AT,
+    FixtureTransport,
+    run_epoch,
+    run_ustb_epoch,
+)
 from touchstone.evidence import EvidenceStore  # noqa: E402
-from touchstone.sources import USTB_SOURCES, LiveTransport  # noqa: E402
+from touchstone.sources import LiveTransport, TransportResponse  # noqa: E402
 
 
 COMPILATIONS = ROOT / "data" / "compilations"
@@ -42,21 +49,77 @@ COMPILATIONS = ROOT / "data" / "compilations"
 # confirmed across two captures and the store must already hold the earlier one.
 SEED_CAPTURE = date(2026, 8, 13)
 COMPILE_CAPTURE = date(2026, 8, 14)
+FOBXX_CAPTURE = date(2026, 8, 22)
+FOBXX_RETRIEVED_AT = datetime(2026, 8, 22, 3, 4, 44, 564845, tzinfo=timezone.utc)
+ASSET_BY_NAME = {"ustb": USTB, "fobxx": FOBXX}
 
 
-def compile_all(*, live: bool, fixtures: Path) -> dict[str, str]:
-    """Compile every USTB source and persist each artifact. Returns source -> digest."""
+class FobxxFixtureTransport:
+    """Serve the four retained FOBXX captures through their declared requests."""
+
+    def __init__(self, fixtures: Path) -> None:
+        self.fixtures = fixtures.resolve()
+
+    def get(self, url: str, *, timeout: float, max_bytes: int) -> TransportResponse:
+        del timeout
+        if url == FOBXX.sources[2].url:
+            fixture = "fobxx-submissions-20260815.json"
+            content_type = "application/json"
+        elif url == FOBXX.sources[3].url:
+            fixture = "fobxx-nmfp3-20260731.xml"
+            content_type = "text/xml"
+        else:
+            raise ValueError("fixture transport received an unregistered GET URL")
+        return self._response(fixture, content_type, max_bytes)
+
+    def post(
+        self, url: str, body: bytes, *, timeout: float, max_bytes: int
+    ) -> TransportResponse:
+        del timeout
+        if url != FOBXX.sources[0].url:
+            raise ValueError("fixture transport received an unregistered POST URL")
+        if body == FOBXX.sources[0].request_body:
+            fixture = "fobxx-product-lookup-20260822.json"
+        elif b"PricesHistoryFOBXX" in body:
+            fixture = "fobxx-price-history-90d-20260822.json"
+        else:
+            raise ValueError("fixture transport received an unregistered POST body")
+        return self._response(fixture, "application/json", max_bytes)
+
+    def _response(
+        self, fixture: str, content_type: str, max_bytes: int
+    ) -> TransportResponse:
+        raw = (self.fixtures / fixture).read_bytes()
+        if len(raw) > max_bytes:
+            raise ValueError("committed fixture exceeds source manifest byte cap")
+        return TransportResponse(
+            status_code=200,
+            headers={"Content-Type": content_type},
+            body=raw,
+        )
+
+
+def compile_all(
+    *,
+    asset: AssetDescriptor,
+    live: bool,
+    fixtures: Path,
+    source_user_agent: str | None = None,
+) -> dict[str, str]:
+    """Compile every source for one selected asset and persist each artifact."""
     workspace = Path(tempfile.mkdtemp(prefix="touchstone-compile-"))
     store = EvidenceStore(workspace / "evidence")
     if live:
         retrieved_at = datetime.now(timezone.utc)
-        epoch = run_ustb_epoch(
-            transport=LiveTransport(),
+        epoch = run_epoch(
+            asset,
+            transport=LiveTransport(user_agent=source_user_agent),
             store=store,
             now=retrieved_at.date(),
             retrieved_at=retrieved_at,
+            controls=(),
         )
-    else:
+    elif asset is USTB:
         run_ustb_epoch(
             transport=FixtureTransport(fixtures, SEED_CAPTURE),
             store=store,
@@ -70,6 +133,18 @@ def compile_all(*, live: bool, fixtures: Path) -> dict[str, str]:
             now=COMPILE_CAPTURE,
             retrieved_at=retrieved_at,
         )
+    elif asset is FOBXX:
+        retrieved_at = FOBXX_RETRIEVED_AT
+        epoch = run_epoch(
+            FOBXX,
+            transport=FobxxFixtureTransport(fixtures),
+            store=store,
+            now=FOBXX_CAPTURE,
+            retrieved_at=retrieved_at,
+            controls=(),
+        )
+    else:
+        raise ValueError("asset is not supported by the compilation entry point")
 
     evidence_by_source = {
         source.source_id: source.evidence_sha256 for source in epoch.sources
@@ -81,7 +156,12 @@ def compile_all(*, live: bool, fixtures: Path) -> dict[str, str]:
     COMPILATIONS.mkdir(parents=True, exist_ok=True)
     digests: dict[str, str] = {}
 
-    for manifest in USTB_SOURCES:
+    comparison_evidence = (
+        {FOBXX.sources[3].source_id: evidence_by_source[FOBXX.sources[3].source_id]}
+        if asset is FOBXX
+        else None
+    )
+    for manifest in asset.sources:
         print(f"\n=== {manifest.source_id} ===", flush=True)
         result = compile_evidence(
             provider,
@@ -89,6 +169,15 @@ def compile_all(*, live: bool, fixtures: Path) -> dict[str, str]:
             source_manifest=manifest,
             store=store,
             retrieved_at=retrieved_at,
+            excerpt_limit=(
+                FOBXX_EXCERPT_LIMIT
+                if asset is FOBXX and manifest is FOBXX.sources[3]
+                else 8_192
+            ),
+            asset=asset,
+            comparison_evidence_sha256=(
+                comparison_evidence if manifest is FOBXX.sources[1] else None
+            ),
         )
         # The stored object's exact bytes, copied rather than re-serialised: the digest is
         # over these bytes and a round trip through json would be a different file that no
@@ -109,14 +198,29 @@ def compile_all(*, live: bool, fixtures: Path) -> dict[str, str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--asset",
+        choices=tuple(ASSET_BY_NAME),
+        default="ustb",
+        help="compile one asset only (default: ustb)",
+    )
+    parser.add_argument(
         "--live",
         action="store_true",
         help="retrieve evidence from the issuer instead of the committed capture",
     )
     parser.add_argument("--fixtures", default=str(ROOT / "fixtures"))
+    parser.add_argument(
+        "--source-user-agent",
+        help="identifying User-Agent with contact email required for live SEC retrieval",
+    )
     arguments = parser.parse_args(argv)
 
-    digests = compile_all(live=arguments.live, fixtures=Path(arguments.fixtures))
+    digests = compile_all(
+        asset=ASSET_BY_NAME[arguments.asset],
+        live=arguments.live,
+        fixtures=Path(arguments.fixtures),
+        source_user_agent=arguments.source_user_agent,
+    )
     print("\n=== artifacts written ===")
     print(json.dumps(digests, indent=2, sort_keys=True))
     print(

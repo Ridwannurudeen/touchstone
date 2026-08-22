@@ -126,6 +126,14 @@ def compiled_fobxx_controls(tmp_path: Path) -> tuple[str, bytes, bytes]:
         retrieved_at=retrieved_at,
         declared_mime=source.expected_mime,
     )
+    comparison_source = FOBXX.source_by_id["sec-edgar-fobxx-nmfp3"]
+    comparison_digest = store.store(
+        (FIXTURES / "fobxx-nmfp3-20260731.xml").read_bytes(),
+        source_id=comparison_source.source_id,
+        source_url=comparison_source.url,
+        retrieved_at=retrieved_at,
+        declared_mime=comparison_source.expected_mime,
+    )
     controls = []
     for control in (
         fobxx_control(
@@ -143,7 +151,7 @@ def compiled_fobxx_controls(tmp_path: Path) -> tuple[str, bytes, bytes]:
             source_id=FOBXX_HISTORY_SOURCE_ID,
             adapter="fobxx-price-history",
             authority="issuer-api",
-            span='"navstd":"1.00000000"',
+            span='"navdate":"2026-08-21","navstd":"1.00000000"',
             operator="eq",
             expected_value={"field": "nav_std", "value": "1.00000000"},
         ),
@@ -152,7 +160,7 @@ def compiled_fobxx_controls(tmp_path: Path) -> tuple[str, bytes, bytes]:
             source_id=FOBXX_HISTORY_SOURCE_ID,
             adapter="fobxx-price-history",
             authority="issuer-api",
-            span='"navstd":"1.00000000"',
+            span='"navdate":"2026-07-31","navstd":"1.00000000"',
             operator="reconciles_with",
             expected_value={
                 "field": "nav_std",
@@ -180,6 +188,7 @@ def compiled_fobxx_controls(tmp_path: Path) -> tuple[str, bytes, bytes]:
         store=store,
         retrieved_at=retrieved_at,
         asset=FOBXX,
+        comparison_evidence_sha256={comparison_source.source_id: comparison_digest},
     )
     assert all(
         outcome.status is CompilationStatus.ACCEPTED for outcome in result.outcomes

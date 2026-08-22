@@ -14,7 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from touchstone.assets import USTB, AssetDescriptor
+from touchstone.assets import ASSET_BY_KEY, FOBXX, USTB, AssetDescriptor
 from touchstone.controls import ComparisonOperator, ControlRecord
 from touchstone.evaluate import supports
 from touchstone.evidence import EvidenceStore
@@ -38,7 +38,9 @@ from touchstone.sources import SourceManifest
 # non-freshness operator. Artifacts compiled under 0.2.0 were accepted under weaker rules,
 # and two versions sharing a number would have hidden that.
 COMPILER_VERSION = "0.4.0"
+FOBXX_COMPILER_VERSION = "0.5.0"
 DEFAULT_EXCERPT_LIMIT = 8_192
+FOBXX_EXCERPT_LIMIT = 16_384
 MAX_PROVIDER_OUTPUT_BYTES = 1_048_576
 MAX_PROVIDER_OUTPUT_DEPTH = 32
 MAX_PROPOSALS = 32
@@ -159,6 +161,21 @@ holdings collection itself or over a blank FOBXX ratio.
 Only propose what the excerpt actually shows. A candidate is a proposal: it is validated \
 deterministically afterwards and approved by a human, so an over-confident guess is worse \
 than an abstention."""
+
+_FOBXX_PROMPT_TEMPLATE = (
+    _PROMPT_TEMPLATE.replace(
+        "franklin-fobxx-price-history", "franklin-fobxx-price-performance"
+    )
+    + """
+
+For FOBXX, cite the exact observation the evaluator will use. Issuer NAV and liquidity \
+controls read only the latest row: include its navdate and the tested field in one contiguous \
+evidence_span, and propose no issuer liquidity-floor control when that latest ratio is blank. \
+SEC liquidity controls read the minimum reported value in the monthly series, so cite that \
+exact minimum, not an earlier or period-end value. A reconciliation span must begin with the \
+issuer navdate matching the SEC report date and continue through the compared issuer field. \
+The compilation record separately binds the matching SEC capture and exact SEC value span."""
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -309,7 +326,7 @@ class HTTPProvider:
         request_body = {
             "model": self.model_name,
             "messages": [
-                {"role": "system", "content": _PROMPT_TEMPLATE},
+                {"role": "system", "content": _prompt_template(source_manifest)},
                 {
                     "role": "user",
                     "content": json.dumps(
@@ -449,36 +466,51 @@ def compile_evidence(
     retrieved_at: datetime,
     excerpt_limit: int = DEFAULT_EXCERPT_LIMIT,
     asset: AssetDescriptor | None = None,
+    comparison_evidence_sha256: Mapping[str, str] | None = None,
 ) -> CompilationResult:
     """Compile one stored artifact, validate every proposal, and persist the record."""
     if not isinstance(source_manifest, SourceManifest):
         raise TypeError("source_manifest must be a SourceManifest")
     asset = USTB if asset is None else asset
+    asset = ASSET_BY_KEY.get(asset.asset_key, asset)
+    compiler_version = FOBXX_COMPILER_VERSION if asset is FOBXX else COMPILER_VERSION
     # Normalised once and used everywhere below. The offset was previously read to
     # validate awareness and read again by each `astimezone`, so a `tzinfo` that answered
     # only the first read let the provenance record and the evidence match be resolved
     # against two different zones.
     retrieved_at = utc_instant(retrieved_at, "retrieved_at")
+    maximum_excerpt = (
+        FOBXX_EXCERPT_LIMIT
+        if asset is FOBXX and source_manifest.source_id == "sec-edgar-fobxx-nmfp3"
+        else DEFAULT_EXCERPT_LIMIT
+    )
     if (
         type(excerpt_limit) is not int
         or excerpt_limit <= 0
-        or excerpt_limit > DEFAULT_EXCERPT_LIMIT
+        or excerpt_limit > maximum_excerpt
     ):
         raise ValueError(
-            f"excerpt_limit must be an integer from 1 through {DEFAULT_EXCERPT_LIMIT}"
+            f"excerpt_limit must be an integer from 1 through {maximum_excerpt}"
         )
     evidence, stored_source_url = _load_verified_evidence(
         store, evidence_sha256, source_manifest, retrieved_at
     )
+    comparison_evidence = _load_comparison_evidence(
+        comparison_evidence_sha256,
+        asset=asset,
+        store=store,
+        retrieved_at=retrieved_at,
+    )
     excerpt_bytes, excerpt = _bounded_utf8_excerpt(evidence, excerpt_limit)
     bindings = request_bindings(source_manifest, retrieved_at, asset)
+    prompt_template = _prompt_template(source_manifest)
     prompt_hash = hashlib.sha256(
         _canonical_bytes(
             {
-                "compiler_version": COMPILER_VERSION,
+                "compiler_version": compiler_version,
                 "evidence_excerpt": excerpt,
                 "fixed_bindings": bindings,
-                "prompt": _PROMPT_TEMPLATE,
+                "prompt": prompt_template,
                 "source_manifest": _manifest_mapping(source_manifest),
             }
         )
@@ -498,15 +530,21 @@ def compile_evidence(
         provider_response_sha256=hashlib.sha256(
             answer.raw_response.encode("utf-8")
         ).hexdigest(),
-        compiler_version=COMPILER_VERSION,
+        compiler_version=compiler_version,
         prompt_sha256=prompt_hash,
         input_evidence_sha256=evidence_sha256,
         raw_output_sha256=hashlib.sha256(raw_output.encode("utf-8")).hexdigest(),
         source_url=stored_source_url,
         retrieved_at=retrieved_at,
     )
-    outcomes = _validate_output(
-        raw_output, evidence, excerpt_bytes, source_manifest, provenance, asset
+    outcomes, comparison_bindings = _validate_output(
+        raw_output,
+        evidence,
+        excerpt_bytes,
+        source_manifest,
+        provenance,
+        asset,
+        comparison_evidence,
     )
     record = {
         "outcomes": [_outcome_mapping(outcome) for outcome in outcomes],
@@ -516,6 +554,8 @@ def compile_evidence(
         "provider_response": answer.raw_response,
         "raw_output": raw_output,
     }
+    if comparison_bindings:
+        record["comparison_evidence"] = comparison_bindings
     record_bytes = _canonical_bytes(record)
     compilation_sha256 = store.store(
         record_bytes,
@@ -534,20 +574,27 @@ def _validate_output(
     source_manifest: SourceManifest,
     provenance: CompilationProvenance,
     asset: AssetDescriptor,
-) -> tuple[CompilationOutcome, ...]:
+    comparison_evidence: Mapping[str, tuple[str, bytes]],
+) -> tuple[tuple[CompilationOutcome, ...], list[dict[str, object]]]:
     if len(raw_output.encode("utf-8")) > MAX_PROVIDER_OUTPUT_BYTES:
         return (
-            _outcome(
-                CompilationStatus.REJECTED,
-                f"provider output exceeds {MAX_PROVIDER_OUTPUT_BYTES} bytes",
-                None,
-                provenance,
+            (
+                _outcome(
+                    CompilationStatus.REJECTED,
+                    f"provider output exceeds {MAX_PROVIDER_OUTPUT_BYTES} bytes",
+                    None,
+                    provenance,
+                ),
             ),
+            [],
         )
     try:
         _check_json_depth(raw_output.encode("utf-8"), MAX_PROVIDER_OUTPUT_DEPTH)
     except ValueError as error:
-        return (_outcome(CompilationStatus.REJECTED, str(error), None, provenance),)
+        return (
+            (_outcome(CompilationStatus.REJECTED, str(error), None, provenance),),
+            [],
+        )
     try:
         parsed = json.loads(
             raw_output,
@@ -562,18 +609,25 @@ def _validate_output(
         if len(proposals) > MAX_PROPOSALS:
             raise ValueError(f"compiler output exceeds {MAX_PROPOSALS} proposals")
     except (json.JSONDecodeError, TypeError, ValueError) as error:
-        return (_outcome(CompilationStatus.REJECTED, str(error), None, provenance),)
+        return (
+            (_outcome(CompilationStatus.REJECTED, str(error), None, provenance),),
+            [],
+        )
     if not proposals:
         return (
-            _outcome(
-                CompilationStatus.ABSTAINED,
-                "provider proposed no controls",
-                None,
-                provenance,
+            (
+                _outcome(
+                    CompilationStatus.ABSTAINED,
+                    "provider proposed no controls",
+                    None,
+                    provenance,
+                ),
             ),
+            [],
         )
 
     outcomes: list[CompilationOutcome] = []
+    comparison_bindings: list[dict[str, object]] = []
     for proposal in proposals:
         try:
             if not isinstance(proposal, Mapping):
@@ -592,6 +646,12 @@ def _validate_output(
                 raise ValueError("evidence span is not byte-exact present in artifact")
             if control.evidence_span.encode("utf-8") not in excerpt:
                 raise ValueError("evidence span is outside the provider excerpt")
+            comparison_binding = _validate_fobxx_evidence(
+                control,
+                evidence,
+                asset=asset,
+                comparison_evidence=comparison_evidence,
+            )
         except (
             TypeError,
             ValueError,
@@ -621,7 +681,255 @@ def _validate_output(
                 provenance,
             )
         )
-    return tuple(outcomes)
+        if comparison_binding is not None:
+            comparison_bindings.append(comparison_binding)
+    return tuple(outcomes), comparison_bindings
+
+
+def _prompt_template(source_manifest: SourceManifest) -> str:
+    if source_manifest.source_id in FOBXX.source_by_id:
+        return _FOBXX_PROMPT_TEMPLATE
+    return _PROMPT_TEMPLATE
+
+
+def _load_comparison_evidence(
+    requested: Mapping[str, str] | None,
+    *,
+    asset: AssetDescriptor,
+    store: EvidenceStore,
+    retrieved_at: datetime,
+) -> dict[str, tuple[str, bytes]]:
+    if requested is None:
+        return {}
+    if not isinstance(requested, Mapping):
+        raise TypeError("comparison_evidence_sha256 must be a mapping")
+    loaded: dict[str, tuple[str, bytes]] = {}
+    for source_id, digest in requested.items():
+        if not isinstance(source_id, str) or not isinstance(digest, str):
+            raise TypeError("comparison evidence must map source ids to digests")
+        manifest = asset.source_by_id.get(source_id)
+        if manifest is None:
+            raise ValueError("comparison evidence source is not declared by the asset")
+        raw, _ = _load_verified_evidence(store, digest, manifest, retrieved_at)
+        loaded[source_id] = (digest, raw)
+    return loaded
+
+
+def _validate_fobxx_evidence(
+    control: ControlRecord,
+    evidence: bytes,
+    *,
+    asset: AssetDescriptor,
+    comparison_evidence: Mapping[str, tuple[str, bytes]],
+) -> dict[str, object] | None:
+    if asset is not FOBXX:
+        return None
+    if control.source_id == "franklin-fobxx-price-performance":
+        return _validate_fobxx_history_evidence(
+            control, evidence, asset=asset, comparison_evidence=comparison_evidence
+        )
+    if control.source_id == "sec-edgar-fobxx-nmfp3":
+        _validate_fobxx_filing_evidence(control, evidence, asset=asset)
+    return None
+
+
+def _validate_fobxx_history_evidence(
+    control: ControlRecord,
+    evidence: bytes,
+    *,
+    asset: AssetDescriptor,
+    comparison_evidence: Mapping[str, tuple[str, bytes]],
+) -> dict[str, object] | None:
+    observation = asset.normalize(
+        control.source_id,
+        evidence,
+        max_bytes=asset.source_by_id[control.source_id].max_bytes,
+        isolated=True,
+    )
+    payload = json.loads(evidence)
+    rows = payload["data"]["PricesHistory"]["prices"]
+    latest_date = observation.as_of_date.isoformat()
+    if control.comparison_operator is ComparisonOperator.FRESH_WITHIN:
+        required = f'"navdate":"{latest_date}"'
+        _require_exact_span(control, required)
+        return None
+
+    if not isinstance(control.expected_value, Mapping):
+        raise ValueError("FOBXX expected_value must be an object")
+    field = control.expected_value.get("field")
+    raw_field = {
+        "nav_std": "navstd",
+        "daily_liquid_asset_ratio": "dailyliquidassetratio",
+        "weekly_liquid_asset_ratio": "weeklyliquidassetratio",
+    }.get(field)
+    if raw_field is None:
+        raise ValueError("FOBXX issuer field is not evidence-bindable")
+
+    if control.comparison_operator is ComparisonOperator.RECONCILES_WITH:
+        comparison_source = control.expected_value.get("comparison_source_id")
+        bound = comparison_evidence.get(str(comparison_source))
+        if bound is None:
+            raise ValueError("FOBXX reconciliation requires bound comparison evidence")
+        comparison_digest, comparison_raw = bound
+        filing = asset.normalize(
+            str(comparison_source),
+            comparison_raw,
+            max_bytes=asset.source_by_id[str(comparison_source)].max_bytes,
+            isolated=True,
+        )
+        row_date = filing.report_date.isoformat()
+        row = _fobxx_json_row(rows, row_date)
+        required = _fobxx_history_span(row, raw_field)
+        _require_exact_span(control, required)
+        comparison_field = control.expected_value.get("comparison_field")
+        comparison_span = _fobxx_comparison_span(
+            filing, comparison_field, row_date, comparison_raw
+        )
+        report_span = f"<reportDate>{row_date}</reportDate>"
+        if report_span.encode("utf-8") not in comparison_raw:
+            raise ValueError("FOBXX comparison report-date span is not byte-exact")
+        return {
+            "control_id": control.control_id,
+            "evidence_spans": [report_span, comparison_span],
+            "sha256": comparison_digest,
+            "source_id": str(comparison_source),
+        }
+
+    row = _fobxx_json_row(rows, latest_date)
+    if control.comparison_operator is ComparisonOperator.NON_DECREASING:
+        value = row[raw_field]
+        if value == "":
+            label = "daily" if raw_field.startswith("daily") else "weekly"
+            raise ValueError(f"latest FOBXX issuer {label} liquidity ratio is blank")
+    required = _fobxx_history_span(row, raw_field)
+    _require_exact_span(control, required)
+    return None
+
+
+def _validate_fobxx_filing_evidence(
+    control: ControlRecord, evidence: bytes, *, asset: AssetDescriptor
+) -> None:
+    observation = asset.normalize(
+        control.source_id,
+        evidence,
+        max_bytes=asset.source_by_id[control.source_id].max_bytes,
+        isolated=True,
+    )
+    if control.comparison_operator is ComparisonOperator.FRESH_WITHIN:
+        required = f"<reportDate>{observation.report_date}</reportDate>"
+        _require_exact_span(control, required)
+        return
+    if not isinstance(control.expected_value, Mapping):
+        raise ValueError("FOBXX expected_value must be an object")
+    field = control.expected_value.get("field")
+    if field == "stable_price_per_share":
+        required = (
+            f"<stablePricePerShare>{observation.stable_price_per_share}"
+            "</stablePricePerShare>"
+        )
+    elif field in {"daily_percentage", "weekly_percentage"}:
+        values = [
+            getattr(row, str(field))
+            for row in observation.liquidity_rows
+            if getattr(row, str(field)) is not None
+        ]
+        if not values:
+            raise ValueError("FOBXX filing liquidity series has no reported value")
+        tag = (
+            "percentageDailyLiquidAssets"
+            if field == "daily_percentage"
+            else "percentageWeeklyLiquidAssets"
+        )
+        required = f"<{tag}>{min(values)}</{tag}>"
+    else:
+        raise ValueError("FOBXX filing field is not evidence-bindable")
+    if control.evidence_span != required:
+        raise ValueError(
+            f"FOBXX filing evidence span must cite the series minimum: {required}"
+        )
+
+
+def _fobxx_json_row(rows: object, row_date: str) -> Mapping[str, object]:
+    if not isinstance(rows, list):
+        raise ValueError("FOBXX history rows must be an array")
+    matches = [row for row in rows if row.get("navdate") == row_date]
+    if not matches:
+        raise ValueError(f"FOBXX history has no row for {row_date}")
+    present = {
+        field: {row[field] for row in matches if row[field] != ""}
+        for field in (
+            "navstd",
+            "dailyliquidassetratio",
+            "weeklyliquidassetratio",
+        )
+    }
+    if any(len(values) > 1 for values in present.values()):
+        raise ValueError(f"FOBXX history conflicts on {row_date}")
+    return {
+        "navdate": row_date,
+        **{field: next(iter(values), "") for field, values in present.items()},
+    }
+
+
+def _fobxx_history_span(row: Mapping[str, object], raw_field: str) -> str:
+    fields = ["navdate", "navstd"]
+    if raw_field == "dailyliquidassetratio":
+        fields.append(raw_field)
+    elif raw_field == "weeklyliquidassetratio":
+        fields.extend(("dailyliquidassetratio", raw_field))
+    return ",".join(f'"{field}":"{row[field]}"' for field in fields)
+
+
+def _fobxx_comparison_span(
+    filing: object, field: object, row_date: str, comparison_raw: bytes
+) -> str:
+    if field == "stable_price_per_share":
+        span = (
+            f"<stablePricePerShare>{filing.stable_price_per_share}"
+            "</stablePricePerShare>"
+        )
+        if span.encode("utf-8") not in comparison_raw:
+            raise ValueError("FOBXX comparison value span is not byte-exact")
+        return span
+    row = next(
+        (item for item in filing.liquidity_rows if item.date.isoformat() == row_date),
+        None,
+    )
+    if row is None:
+        raise ValueError("FOBXX filing has no period-end liquidity row")
+    if field == "daily_percentage":
+        value_span = (
+            f"<percentageDailyLiquidAssets>{row.daily_percentage}"
+            "</percentageDailyLiquidAssets>"
+        )
+    elif field == "weekly_percentage":
+        value_span = (
+            f"<percentageWeeklyLiquidAssets>{row.weekly_percentage}"
+            "</percentageWeeklyLiquidAssets>"
+        )
+    else:
+        raise ValueError("FOBXX comparison field is not evidence-bindable")
+    text = comparison_raw.decode("utf-8")
+    row_end_token = f"<totalLiquidAssetsNearPercentDate>{row_date}"
+    row_end_start = text.find(row_end_token)
+    row_start = text.rfind("<liquidAssetsDetails>", 0, row_end_start)
+    block_end = text.find("</liquidAssetsDetails>", row_end_start)
+    if row_end_start < 0 or row_start < 0 or block_end < 0:
+        raise ValueError("FOBXX comparison row span is not byte-exact")
+    block_end += len("</liquidAssetsDetails>")
+    value_start = text.find(value_span, row_start, block_end)
+    if value_start < 0:
+        raise ValueError("FOBXX comparison value is not in the period-end row")
+    row_end = text.find("</totalLiquidAssetsNearPercentDate>", row_end_start)
+    if row_end < 0:
+        raise ValueError("FOBXX comparison row date is not closed")
+    row_end += len("</totalLiquidAssetsNearPercentDate>")
+    return text[value_start:row_end]
+
+
+def _require_exact_span(control: ControlRecord, required: str) -> None:
+    if control.evidence_span != required:
+        raise ValueError(f"FOBXX evidence span must be exactly: {required}")
 
 
 def _validate_candidate_policy(
