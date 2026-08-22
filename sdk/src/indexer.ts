@@ -16,14 +16,28 @@ export interface PublishedEvent {
   readonly logIndex: number;
 }
 
+export interface IndexOptions {
+  /**
+   * Blocks per eth_getLogs request. The public X Layer RPC rejects ranges above 100
+   * blocks ("block range greater than 100 max"), so that is the default; raise it for a
+   * provider that allows wider windows.
+   */
+  readonly blockRange?: number;
+}
+
 export async function indexPublished(
   provider: Provider,
   registryAddress: string,
   fromBlock: number,
-  toBlock: number | string = "latest"
+  toBlock: number | string = "latest",
+  options: IndexOptions = {}
 ): Promise<PublishedEvent[]> {
   if (!Number.isInteger(fromBlock) || fromBlock < 0) {
     throw new Error("fromBlock must be a non-negative integer");
+  }
+  const blockRange = options.blockRange ?? 100;
+  if (!Number.isInteger(blockRange) || blockRange < 1) {
+    throw new Error("blockRange must be a positive integer");
   }
   const contract = new Contract(registryAddress, REGISTRY_V2_ABI, provider);
   const iface = new Interface(REGISTRY_V2_ABI);
@@ -32,12 +46,23 @@ export async function indexPublished(
   if (published === null || corrected === null) {
     throw new Error("Registry v2 ABI is missing publication events");
   }
-  const logs = await provider.getLogs({
-    address: await contract.getAddress(),
-    topics: [[published.topicHash, corrected.topicHash]],
-    fromBlock,
-    toBlock,
-  });
+  const address = await contract.getAddress();
+  const topics = [[published.topicHash, corrected.topicHash]];
+  let lastBlock: number;
+  if (typeof toBlock === "number") {
+    lastBlock = toBlock;
+  } else {
+    const block = await provider.getBlock(toBlock);
+    if (block === null) {
+      throw new Error(`block ${toBlock} could not be resolved`);
+    }
+    lastBlock = block.number;
+  }
+  const logs = [];
+  for (let start = fromBlock; start <= lastBlock; start += blockRange) {
+    const end = Math.min(start + blockRange - 1, lastBlock);
+    logs.push(...(await provider.getLogs({ address, topics, fromBlock: start, toBlock: end })));
+  }
   return logs.map((log): PublishedEvent => {
     const parsed = iface.parseLog({ data: log.data, topics: log.topics });
     if (parsed === null) {

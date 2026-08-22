@@ -220,8 +220,8 @@ jobs:
           npm test 2>&1 | tee sdk-test.log
           passing=$(grep -oE '(#|ℹ) pass [0-9]+' sdk-test.log | head -1 | grep -oE '[0-9]+')
           echo "node --test reported ${passing:-0} passing"
-          if [ "${passing:-0}" -ne 15 ]; then
-            echo "expected exactly 15 passing SDK tests, got ${passing:-0}"
+          if [ "${passing:-0}" -ne 18 ]; then
+            echo "expected exactly 18 passing SDK tests, got ${passing:-0}"
             echo "if this change is intended, update the number here in the same commit"
             exit 1
           fi
