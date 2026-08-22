@@ -196,9 +196,34 @@ def parse_price_history(
             ),
         )
         prior = rows_by_date.get(row.date)
-        if prior is not None and prior != row:
-            raise FobxxNormalizationError(
-                f"PricesHistory date repeats with different values: {row.date}"
+        if prior is not None:
+            daily_conflicts = (
+                prior.daily_liquid_asset_ratio is not None
+                and row.daily_liquid_asset_ratio is not None
+                and prior.daily_liquid_asset_ratio != row.daily_liquid_asset_ratio
+            )
+            weekly_conflicts = (
+                prior.weekly_liquid_asset_ratio is not None
+                and row.weekly_liquid_asset_ratio is not None
+                and prior.weekly_liquid_asset_ratio != row.weekly_liquid_asset_ratio
+            )
+            if prior.nav_std != row.nav_std or daily_conflicts or weekly_conflicts:
+                raise FobxxNormalizationError(
+                    f"PricesHistory date repeats with different values: {row.date}"
+                )
+            row = FobxxPriceRow(
+                date=row.date,
+                nav_std=row.nav_std,
+                daily_liquid_asset_ratio=(
+                    prior.daily_liquid_asset_ratio
+                    if prior.daily_liquid_asset_ratio is not None
+                    else row.daily_liquid_asset_ratio
+                ),
+                weekly_liquid_asset_ratio=(
+                    prior.weekly_liquid_asset_ratio
+                    if prior.weekly_liquid_asset_ratio is not None
+                    else row.weekly_liquid_asset_ratio
+                ),
             )
         rows_by_date[row.date] = row
     return FobxxPriceHistoryObservation(

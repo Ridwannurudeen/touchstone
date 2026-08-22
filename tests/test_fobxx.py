@@ -18,6 +18,7 @@ from touchstone.assets import (
     FOBXX_EVIDENCE_IDENTITY,
     USTB,
     get_asset,
+    resolve_source_manifest,
 )
 from touchstone.controls import (
     AssetState,
@@ -73,6 +74,7 @@ from test_service import Clock  # noqa: E402
 
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
+FOBXX_HISTORY_FIXTURE = FIXTURES / "fobxx-price-history-90d-20260822.json"
 
 
 def fobxx_control(
@@ -114,7 +116,7 @@ def fobxx_control(
 def compiled_fobxx_controls(tmp_path: Path) -> tuple[str, bytes, bytes]:
     """Fixture-only compilation and legacy ledger for the publication boundary test."""
     retrieved_at = datetime(2026, 8, 22, 2, 20, tzinfo=timezone.utc)
-    raw = (FIXTURES / "fobxx-price-history-20260822.json").read_bytes()
+    raw = FOBXX_HISTORY_FIXTURE.read_bytes()
     source = FOBXX.source_by_id[FOBXX_HISTORY_SOURCE_ID]
     store = EvidenceStore(tmp_path / "compiler")
     evidence_digest = store.store(
@@ -228,7 +230,7 @@ class FobxxFixtureTransport:
         if body == FOBXX.sources[0].request_body:
             fixture = "fobxx-product-lookup-20260822.json"
         elif b"PricesHistoryFOBXX" in body:
-            fixture = "fobxx-price-history-20260822.json"
+            fixture = FOBXX_HISTORY_FIXTURE.name
         else:
             raise ValueError("fixture transport received an unregistered POST body")
         return TransportResponse(
@@ -271,9 +273,7 @@ def test_franklin_lookup_uses_the_verified_shclcode_field() -> None:
 
 
 def test_franklin_history_normalizes_percent_ratios_and_preserves_blanks() -> None:
-    observation = parse_price_history(
-        (FIXTURES / "fobxx-price-history-20260822.json").read_bytes()
-    )
+    observation = parse_price_history(FOBXX_HISTORY_FIXTURE.read_bytes())
 
     assert isinstance(observation, FobxxPriceHistoryObservation)
     assert observation.rows[0].date == date(2026, 8, 21)
@@ -283,6 +283,91 @@ def test_franklin_history_normalizes_percent_ratios_and_preserves_blanks() -> No
     july = next(row for row in observation.rows if row.date == date(2026, 7, 31))
     assert july.daily_liquid_asset_ratio == Decimal("0.637420")
     assert july.weekly_liquid_asset_ratio == Decimal("0.734485")
+
+
+def test_live_franklin_history_fixture_matches_the_declared_request_shape() -> None:
+    raw = FOBXX_HISTORY_FIXTURE.read_bytes()
+    prices = json.loads(raw)["data"]["PricesHistory"]["prices"]
+    dates = [row["navdate"] for row in prices]
+    manifest = json.loads(
+        (Path(__file__).parents[1] / "manifests" / "sources" / "fobxx.json").read_text()
+    )
+    fixture = next(
+        item
+        for item in manifest["fixtures"]
+        if item["file"] == "fixtures/fobxx-price-history-90d-20260822.json"
+    )
+
+    assert len(prices) == 65
+    assert len(set(dates)) == 63
+    assert sorted(date for date in set(dates) if dates.count(date) > 1) == [
+        "2026-06-18",
+        "2026-07-02",
+    ]
+    assert (fixture["request_start"], fixture["request_end"]) == (
+        "2026-05-24",
+        "2026-08-22",
+    )
+    assert (fixture["rows"], fixture["distinct_dates"]) == (65, 63)
+    assert len(parse_price_history(raw).rows) == 63
+
+
+def test_retained_370_day_capture_merges_live_complementary_rows_in_any_order(
+) -> None:
+    raw = (FIXTURES / "fobxx-price-history-370d-20260822.json").read_bytes()
+    payload = json.loads(raw)
+
+    observation = parse_price_history(raw)
+    payload["data"]["PricesHistory"]["prices"].reverse()
+    reversed_observation = parse_price_history(json.dumps(payload).encode())
+
+    assert len(observation.rows) == 253
+    assert reversed_observation == observation
+    may_22 = next(row for row in observation.rows if row.date == date(2026, 5, 22))
+    assert may_22.nav_std == Decimal("1.00000000")
+    assert may_22.daily_liquid_asset_ratio == Decimal("0.738346")
+    assert may_22.weekly_liquid_asset_ratio == Decimal("0.821525")
+
+
+def test_franklin_history_merges_complementary_same_date_rows() -> None:
+    payload = json.loads((FIXTURES / "fobxx-price-history-20260822.json").read_text())
+    populated = payload["data"]["PricesHistory"]["prices"][-1]
+    blank = {
+        **populated,
+        "dailyliquidassetratio": "",
+        "weeklyliquidassetratio": "",
+    }
+    payload["data"]["PricesHistory"]["prices"].append(blank)
+
+    observation = parse_price_history(json.dumps(payload).encode())
+
+    july_rows = [row for row in observation.rows if row.date == date(2026, 7, 31)]
+    assert len(july_rows) == 1
+    assert july_rows[0].nav_std == Decimal("1.00000000")
+    assert july_rows[0].daily_liquid_asset_ratio == Decimal("0.637420")
+    assert july_rows[0].weekly_liquid_asset_ratio == Decimal("0.734485")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("navstd", "0.99990000"),
+        ("dailyliquidassetratio", "63.7421"),
+        ("weeklyliquidassetratio", "73.4486"),
+    ],
+)
+def test_franklin_history_refuses_conflicting_present_same_date_values(
+    field: str, value: str
+) -> None:
+    payload = json.loads((FIXTURES / "fobxx-price-history-20260822.json").read_text())
+    duplicate = {**payload["data"]["PricesHistory"]["prices"][-1], field: value}
+    payload["data"]["PricesHistory"]["prices"].append(duplicate)
+
+    with pytest.raises(
+        FobxxNormalizationError,
+        match="PricesHistory date repeats with different values: 2026-07-31",
+    ):
+        parse_price_history(json.dumps(payload).encode())
 
 
 def test_franklin_parsers_refuse_schema_drift() -> None:
@@ -298,6 +383,21 @@ def test_franklin_parsers_refuse_schema_drift() -> None:
 
 def test_franklin_source_ids_are_distinct_operations() -> None:
     assert FOBXX_LOOKUP_SOURCE_ID != FOBXX_HISTORY_SOURCE_ID
+
+
+def test_franklin_history_request_is_bounded_to_90_calendar_days() -> None:
+    lookup = parse_product_lookup(
+        (FIXTURES / "fobxx-product-lookup-20260822.json").read_bytes()
+    )
+
+    resolved = resolve_source_manifest(
+        FOBXX,
+        FOBXX.source_by_id[FOBXX_HISTORY_SOURCE_ID],
+        {FOBXX_LOOKUP_SOURCE_ID: lookup},
+        date(2026, 8, 22),
+    )
+
+    assert b"startdate:20260524, enddate:20260822" in resolved.request_body
 
 
 def test_fobxx_issuer_nav_and_freshness_controls_use_the_latest_row() -> None:

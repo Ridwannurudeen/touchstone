@@ -175,7 +175,7 @@ def resolve_source_manifest(
             )
         if type(observed_on) is not date:
             raise TypeError("observed_on must be a date")
-        start = observed_on - timedelta(days=370)
+        start = observed_on - timedelta(days=90)
         query = (
             "query PricesHistoryFOBXX { PricesHistory("
             f'fundid:"{lookup.fund_id}", '

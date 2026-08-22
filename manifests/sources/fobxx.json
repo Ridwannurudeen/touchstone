@@ -43,13 +43,14 @@
       "url": "https://www.franklintempleton.com/api/pds/price-and-performance",
       "method": "POST",
       "auth": "none",
-      "request_semantics": "An allowlisted PricesHistory projection only, using the fundid and shclcode returned by the preceding ProductLookup observation. Date arguments are bounded to the retrieval date and the preceding 370 calendar days; callers cannot supply GraphQL text.",
+      "request_semantics": "An allowlisted PricesHistory projection only, using the fundid and shclcode returned by the preceding ProductLookup observation. Date arguments are bounded to the retrieval date and the preceding 90 calendar days; callers cannot supply GraphQL text. Ninety days retains the current and two preceding month ends needed to reconcile the latest available monthly N-MFP3 while reducing the former 370-day payload and exposure to historical duplicate rows.",
       "expected_mime": "application/json",
       "max_bytes": 262144,
       "cadence": "business-daily, T-1",
       "timezone": "not stated; row dates are calendar dates",
       "grace_period_business_days": 3,
       "blank_value_rule": "Daily and weekly liquidity ratios are intermittently blank. A blank is UNEVALUABLE \u2014 no data \u2014 and must NEVER be read as a breach of a liquidity floor.",
+      "same_date_row_rule": "Franklin may return the same navdate twice, including one row with blank liquidity ratios and one populated row. Such rows are merged field by field only when every value present in both rows is identical; a blank contributes no observation and the populated value is retained. Any disagreement between two present navstd, dailyliquidassetratio, or weeklyliquidassetratio values is contradictory source data and the normalizer refuses the response. The 2026-05-22 live response evidenced the honest merge case: both rows reported navstd 1.00000000, while one had blank ratios and the other reported 73.8346 daily and 82.1525 weekly.",
       "omitted_control": "The seven-day yield is deliberately omitted. The schema exists but returned empty for this fund and was never verified.",
       "status": {
         "search_execution": "complete",
@@ -164,7 +165,35 @@
       "sha256": "6f9b4b028795f0ea2b5d02961fcf893b6bd6e7433460e047cf08a55292abfcdf",
       "period": "2026-07-31 through 2026-08-21",
       "source_id": "franklin-fobxx-price-performance",
-      "note": "Bounded retained projection. Ratios are percentage points in the response and exact empty strings mean no-data."
+      "note": "Legacy 16-row bounded projection retained for focused value tests. It was not a faithful capture of the then-declared 370-day request and is not the live-shape regression fixture."
+    },
+    {
+      "file": "fixtures/fobxx-price-history-90d-20260822.json",
+      "captured_utc": "2026-08-22T03:04:44.564845Z",
+      "bytes": 10107,
+      "sha256": "31891e58aea23644e1e433934f1d0ca5f95e7903aca48c48508a349b8dc18dc9",
+      "request_start": "2026-05-24",
+      "request_end": "2026-08-22",
+      "returned_period": "2026-05-22 through 2026-08-21",
+      "rows": 65,
+      "distinct_dates": 63,
+      "duplicate_dates": ["2026-07-02", "2026-06-18"],
+      "source_id": "franklin-fobxx-price-performance",
+      "note": "Byte-for-byte observer capture of the declared 90-day request. The source returned two exact blank-ratio duplicates; normalization produces one row per date."
+    },
+    {
+      "file": "fixtures/fobxx-price-history-370d-20260822.json",
+      "captured_utc": "2026-08-22T03:03:04.787000Z",
+      "bytes": 41238,
+      "sha256": "4f8db667cd7d6a744c249b29466d59aec268e148da0243d9f6834d0bc6da382e",
+      "request_start": "2025-08-17",
+      "request_end": "2026-08-22",
+      "returned_period": "2025-08-18 through 2026-08-21",
+      "rows": 264,
+      "distinct_dates": 253,
+      "duplicate_date_count": 11,
+      "source_id": "franklin-fobxx-price-performance",
+      "note": "Byte-for-byte observer capture of the former declared 370-day request. Nine duplicate dates contain one blank-ratio row and one populated row with identical NAV, including 2026-05-22 at 73.8346% daily and 82.1525% weekly; this retained regression evidence exercises the fieldwise merge rule."
     },
     {
       "file": "fixtures/fobxx-nmfp3-20260731.xml",
