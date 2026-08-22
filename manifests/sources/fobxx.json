@@ -8,6 +8,12 @@
     "ticker": "FOBXX",
     "also_known_as": "BENJI",
     "role": "daily issuer-backed and monthly regulator-backed contrast asset. PROMOTED 2026-08-22 after repeatable production-host verification restored the daily issuer feed and made same-date issuer-versus-regulator reconciliation observable.",
+    "publication_status": {
+      "state": "live",
+      "label": "LIVE",
+      "summary": "Live on X Layer mainnet + testnet",
+      "reason": "Verified signed reports are retained with publication transactions on X Layer mainnet and testnet."
+    },
     "identity_basis": "The canonical registry key is Franklin Templeton's Ethereum BENJI fund-token contract. Regulator evidence is independently bound to SEC CIK 0001786958 and series S000067043.",
     "identity_caveat": "Supply is fragmented across nine networks with a separate iBENJI share class and there is no NAV oracle on any chain. No onchain supply or oracle claim is made for this asset in Phase 1."
   },

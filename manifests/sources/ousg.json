@@ -9,8 +9,14 @@
     "asset_key": "eip155:1:0x1b19c19393e2d034d8ff31ff34c81252fcbbee92",
     "display_name": "Ondo Short-Term U.S. Government Treasuries",
     "ticker": "OUSG",
-    "role": "CANDIDATE second daily asset, opened 2026-08-15 because USDY has no bounded retrieval",
+    "role": "research only — not promoted; the Phase 1 second-adapter candidacy was cut 2026-08-16",
     "promotion_state": "not promoted \u2014 qualification is incomplete, see qualification below",
+    "publication_status": {
+      "state": "research",
+      "label": "RESEARCH",
+      "summary": "Research \u2014 not promoted and no live publication",
+      "reason": "Qualification is incomplete: the oracle cross-check is unverified, no fixture or extraction anchors are pinned, and no control is implemented."
+    },
     "identity_basis": "ERC-20 token contract on Ethereum mainnet",
     "identity_caveat": "OUSG is issued on more than one chain; this manifest covers the Ethereum deployment only."
   },

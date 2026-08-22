@@ -28,7 +28,7 @@
 <main id="main">
   <div class="wrap doc-layout">
     <article class="doc-body">
-<h1 id="usdy-retrieval-measured-and-the-bounded-path-that-opens-it">USDY retrieval: measured, and the bounded path that opens it</h1>
+<h1 id="usdy-retrieval-research-one-bounded-candidate-source-suspension-unchanged">USDY retrieval research: one bounded candidate source, suspension unchanged</h1><aside class="doc-status" aria-labelledby="current-asset-status"><h2 id="current-asset-status">Current publication status</h2><p>This block is rendered from the source manifests. Dated passages below preserve the audit history; this block is the current ruling.</p><ul><li><strong>USTB</strong> — <span data-asset-status="USTB">LIVE</span>. Verified signed reports are retained with publication transactions on X Layer mainnet and testnet.</li><li><strong>FOBXX</strong> — <span data-asset-status="FOBXX">LIVE</span>. Verified signed reports are retained with publication transactions on X Layer mainnet and testnet.</li><li><strong>OUSG</strong> — <span data-asset-status="OUSG">RESEARCH</span>. Qualification is incomplete: the oracle cross-check is unverified, no fixture or extraction anchors are pinned, and no control is implemented.</li><li><strong>USDY</strong> — <span data-asset-status="USDY">RESEARCH · SUSPENDED</span>. The attestation source is one 260 MB unbounded archive, and no bounded retrieval route has been verified.</li></ul></aside>
 <p><code>manifests/sources/usdy.json</code> suspended this asset because one observation required pulling a
 260 MB archive. That is still true of the <strong>attestation</strong> archive. It was never true of USDY's
 daily portfolio data, and this document records what was measured on 2026-08-18 rather than
@@ -66,9 +66,11 @@ what was assumed.</p>
 </ul>
 <p>The archive stays exactly as the manifest describes it: unbounded, and unusable on a daily
 schedule.</p>
-<h2 id="the-part-that-was-wrong">The part that was wrong</h2>
-<p>The suspension treated USDY as a single source. It is two, with different cadences and very
-different retrieval costs, and only one of them is unbounded.</p>
+<h2 id="what-the-second-source-changes-and-what-it-does-not">What the second source changes — and what it does not</h2>
+<p>The first suspension analysis treated USDY as a single source. It has two surfaces, with
+different cadences and retrieval costs. Finding a bounded issuer page makes that page a
+research candidate; it does not lift the asset suspension because the third-party attestation
+route remains unbounded and no USDY parser, fixture, approved control or adapter exists.</p>
 <p><code>https://ondo.finance/usdy</code> serves a <strong>structured portfolio dataset inline in the HTML</strong>, and it
 carries considerably more than USTB's sources do. Observed on 2026-08-18, as of <code>2026-08-14</code>:</p>
 <pre><code>asOfDate               2026-08-14
@@ -125,9 +127,9 @@ links are stripped, since the portfolio payload is not credential-bearing.</p>
 persisted, and nothing here needs it.</p>
 <h2 id="what-is-still-genuinely-out-of-reach">What is still genuinely out of reach</h2>
 <p>Daily third-party attestations. They exist only inside the 260 MB archive, and no bounded route
-to a single member was found. USDY can therefore ship daily <strong>portfolio and coverage</strong> controls
-now, and cannot ship a daily <strong>attestation</strong> control at all. Saying otherwise on the dossier
-would be the exact failure this project exists to refuse.</p>
+to a single member was found. The bounded issuer page may support future portfolio-control
+research only after its field discrepancy is resolved and a strict parser, sanitised fixture
+and approved controls exist. USDY remains suspended, with no adapter or live publication.</p>
 <hr />
 <h2 id="fobxx-the-regulator-path-was-never-closed">FOBXX: the regulator path was never closed</h2>
 <p>Recorded here rather than in a second file because it is the same lesson: a status that says
@@ -148,14 +150,16 @@ Chainlink's and RedStone's disclosure feeds read issuer APIs, not filings.</p>
 so FOBXX carries <strong>monthly</strong> controls. The daily-liveness control and the
 issuer-versus-regulator reconciliation both need the issuer feed and are the only things
 actually waiting on it.</p>
-<p>Stating that as "unavailable" understated the asset. The correct statement is that FOBXX ships
-monthly on filed evidence, and one class of control on it is waiting for a route to the issuer.</p>
+<p>That 2026-08-18 measurement later became one input to the FOBXX adapter. The current
+publication status is rendered from <code>manifests/sources/fobxx.json</code> above; this section preserves
+the research sequence rather than restating today's status by hand.</p>
     </article>
     <aside class="doc-toc" aria-label="On this page">
       <p class="foot-h">On this page</p>
       <ol class="doc-toc-list">
+        <li class="toc-2"><a href="#current-asset-status">Current publication status</a></li>
         <li class="toc-2"><a href="#what-was-tested-and-what-each-attempt-actually-returned">What was tested, and what each attempt actually returned</a></li>
-        <li class="toc-2"><a href="#the-part-that-was-wrong">The part that was wrong</a></li>
+        <li class="toc-2"><a href="#what-the-second-source-changes-and-what-it-does-not">What the second source changes — and what it does not</a></li>
         <li class="toc-2"><a href="#why-this-matters-beyond-unblocking-one-asset">Why this matters beyond unblocking one asset</a></li>
         <li class="toc-2"><a href="#what-this-changes-in-the-manifest">What this changes in the manifest</a></li>
         <li class="toc-2"><a href="#what-is-still-genuinely-out-of-reach">What is still genuinely out of reach</a></li>

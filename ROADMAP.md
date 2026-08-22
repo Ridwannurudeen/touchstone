@@ -316,15 +316,15 @@ verifiable; all contract authorization boundaries tested; public interface walle
 watchdog + incident history + reconciliation operational; every scheduled epoch through
 Sept 1 completed or publicly recorded as an incident.
 
-**Standing as of 2026-08-16.** The targets are not restated downward; what is missed is
-recorded as missed.
+**Current completion counts.** Counts below render from repository data where available. The
+targets are not restated downward; what is missed is recorded as missed.
 
 | Metric | Target | Actual |
 |---|---|---|
-| Accepted controls | ≥6 | **8 — met.** Each is a candidate a model proposed from issuer bytes, bound by digest to the compilation that accepted it |
-| Assets documented | 3 | **3 — met.** USTB, USDY and FOBXX source manifests with golden fixtures |
-| Fully autonomous live adapters | ≥2 | **1 — MISSED.** ⚠️ This row read "0 proven live… has never run against live sources" until 2026-08-18, by which point USTB had published five reports across two chains from live issuer retrieval. The row was stale, not conservative. The count is **one**: USTB runs against live sources. It is still a miss against a target of two, and **no continuity claim attaches to it** — every slot so far was hand-started, so the daemon has never held a sustained schedule. USDY is blocked on unbounded retrieval *and* an unreconciled issuer arithmetic discrepancy; FOBXX is a documented monthly contrast asset, not an adapter. **Phase 1 deliberately ships one flawless vertical rather than two hurried ones** |
-| Live consumer contract gating on state | 1 | **1 — met on testnet, 2026-08-18.** `AssetGate` at `0xAac48DC261B04737FDCB101D5049395121034a83`, X Layer testnet, block 38602126. `check(USTB)` returns `(false, "status not allowed")` — it refuses, because the latest report is `UNVERIFIABLE` and the mask admits `CONFIRMED` only. Not deployed on mainnet: `requiredControlSetRoot` is immutable and the approved set is still moving |
+| Accepted controls | ≥6 | **{{fact:derived.approved_count}} — met.** The count is derived from the signed approval ledger; {{fact:derived.declined_count}} declined candidates remain recorded with reasons. |
+| Assets documented | 3 | **{{fact:coverage.manifested_assets}} — met.** The count is derived from the source manifests. A manifest does not imply a golden fixture; USDY explicitly has none because retrieval remains unbounded. |
+| Fully autonomous live adapters | ≥2 | **1 — missed.** USTB has an unattended production record. FOBXX has an adapter and signed reports on both chains, but sustained scheduled operation is not proven. USDY is suspended and OUSG remains research; their current publication status is rendered from their manifests above. |
+| Live consumer contract gating on state | 1 | **Met on both chains.** AssetGateV2 and RWAAdmissionController are recorded at `{{fact:mainnet.gate_v2}}` / `{{fact:mainnet.admission}}` on mainnet and `{{fact:testnet.gate_v2}}` / `{{fact:testnet.admission}}` on testnet. |
 | Production canary epoch | 1 | **1 — met on mainnet, 2026-08-18.** USTB sequence 1 on X Layer mainnet (chain 196), epoch `ustb-2026-08-18`, state `UNVERIFIABLE`, later restated by sequence 2 (a correction). Mainnet holds two reports, testnet three. A testnet canary preceded both on 2026-08-17, block 38526525 |
 | Claims span-cited and hash-bound | 100% | Met for every accepted control |
 

@@ -129,25 +129,14 @@
     <div class="wrap">
       <p class="eyebrow">Test evidence</p>
       <h2>What the suites actually prove</h2>
-      <div class="stat-row">
-        <div class="stat">
-          <p class="st-n">{{fact:counts.python_tests}}</p>
-          <p class="st-l">Python tests<br>compiler, evidence, publisher, verifier</p>
-        </div>
-        <div class="stat">
-          <p class="st-n">{{fact:counts.contract_tests}}</p>
-          <p class="st-l">Contract tests<br>registries, gates, guarded actions</p>
-        </div>
-        <div class="stat">
-          <p class="st-n">{{fact:counts.sdk_tests}}</p>
-          <p class="st-l">SDK tests<br>clients, key derivation, indexer</p>
-        </div>
-        <div class="stat">
-          <p class="st-n">{{fact:counts.mutations}}</p>
-          <p class="st-l">Mutation targets<br>one per shipped fix</p>
-        </div>
-      </div>
-      <p class="layer-note" style="margin-top:var(--s6)">A green suite says the code passes
+      <ul class="prose">
+        <li>The Python suite exercises the compiler, evidence store, publisher and verifier.</li>
+        <li>The contract suite exercises registries, gates, guarded actions and admission.</li>
+        <li>The SDK and Terminal suites exercise clients, key derivation, indexing and browser verification.</li>
+        <li>The mutation harness removes each pinned fix and requires its regression test to fail.</li>
+      </ul>
+      <p class="layer-note" style="margin-top:var(--s6)">Current run totals belong in CI output,
+      not durable site copy. A green suite says the code passes
       its tests; it does not say the tests would notice if the code stopped being correct. So
       the mutation harness removes each shipped fix, one at a time, and requires the tests
       named for that fix to fail. A surviving mutant is a finding either way — the regression
@@ -237,6 +226,16 @@
             </tr>
             <tr>
               <td class="chain-cell">{{fact:mainnet.chain_id}}</td>
+              <td>AssetGateV2</td>
+              <td><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.gate_v2}}">{{fact:mainnet.gate_v2}}</a></td>
+            </tr>
+            <tr>
+              <td class="chain-cell">{{fact:mainnet.chain_id}}</td>
+              <td>RWAAdmissionController</td>
+              <td><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.admission}}">{{fact:mainnet.admission}}</a></td>
+            </tr>
+            <tr>
+              <td class="chain-cell">{{fact:mainnet.chain_id}}</td>
               <td>GuardedAction &mdash; permitted</td>
               <td><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.guarded_permitted}}">{{fact:mainnet.guarded_permitted}}</a></td>
             </tr>
@@ -267,6 +266,16 @@
             </tr>
             <tr>
               <td class="chain-cell">{{fact:testnet.chain_id}}</td>
+              <td>AssetGateV2</td>
+              <td><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.gate_v2}}">{{fact:testnet.gate_v2}}</a></td>
+            </tr>
+            <tr>
+              <td class="chain-cell">{{fact:testnet.chain_id}}</td>
+              <td>RWAAdmissionController</td>
+              <td><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.admission}}">{{fact:testnet.admission}}</a></td>
+            </tr>
+            <tr>
+              <td class="chain-cell">{{fact:testnet.chain_id}}</td>
               <td>GuardedAction &mdash; permitted</td>
               <td><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.guarded_permitted}}">{{fact:testnet.guarded_permitted}}</a></td>
             </tr>
@@ -287,6 +296,8 @@
       <a href="{{fact:mainnet.oklink}}/address/{{fact:mainnet.registry_v2}}#code">Registry&nbsp;v2</a> &middot;
       <a href="{{fact:mainnet.oklink}}/address/{{fact:mainnet.registry_v1}}#code">Registry&nbsp;v1</a> &middot;
       <a href="{{fact:mainnet.oklink}}/address/{{fact:mainnet.gate_freshness}}#code">AssetGate</a> &middot;
+      <a href="{{fact:mainnet.oklink}}/address/{{fact:mainnet.gate_v2}}#code">AssetGateV2</a> &middot;
+      <a href="{{fact:mainnet.oklink}}/address/{{fact:mainnet.admission}}#code">RWAAdmissionController</a> &middot;
       <a href="{{fact:mainnet.oklink}}/address/{{fact:mainnet.guarded_permitted}}#code">GuardedAction (permitted)</a> &middot;
       <a href="{{fact:mainnet.oklink}}/address/{{fact:mainnet.guarded_refused}}#code">GuardedAction (refused)</a>.
       Testnet:
@@ -294,6 +305,8 @@
       <a href="{{fact:testnet.oklink}}/address/{{fact:testnet.registry_v1}}#code">Registry&nbsp;v1</a> &middot;
       <a href="{{fact:testnet.oklink}}/address/{{fact:testnet.gate_v1}}#code">AssetGate (original)</a> &middot;
       <a href="{{fact:testnet.oklink}}/address/{{fact:testnet.gate_freshness}}#code">AssetGate (policy)</a> &middot;
+      <a href="{{fact:testnet.oklink}}/address/{{fact:testnet.gate_v2}}#code">AssetGateV2</a> &middot;
+      <a href="{{fact:testnet.oklink}}/address/{{fact:testnet.admission}}#code">RWAAdmissionController</a> &middot;
       <a href="{{fact:testnet.oklink}}/address/{{fact:testnet.guarded_permitted}}#code">GuardedAction (permitted)</a> &middot;
       <a href="{{fact:testnet.oklink}}/address/{{fact:testnet.guarded_refused}}#code">GuardedAction (refused)</a>.
       The superseded first testnet registry is deliberately not verified against current

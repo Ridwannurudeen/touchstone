@@ -224,6 +224,16 @@ curl -s https://rpc.xlayer.tech -H <span class="c-string">'content-type: applica
                 <td>block {{fact:mainnet.gate_freshness_block}}</td>
               </tr>
               <tr>
+                <td><strong>AssetGateV2</strong><span class="td-sub">Pins policy, control-set root and approval digest</span></td>
+                <td><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.gate_v2}}">{{fact:mainnet.gate_v2}}</a></td>
+                <td>block {{fact:mainnet.gate_v2_block}}</td>
+              </tr>
+              <tr>
+                <td><strong>RWAAdmissionController</strong><span class="td-sub">Activates and executes only on the gate's answer</span></td>
+                <td><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.admission}}">{{fact:mainnet.admission}}</a></td>
+                <td>block {{fact:mainnet.admission_block}}</td>
+              </tr>
+              <tr>
                 <td><strong>GuardedAction &mdash; permitted</strong><span class="td-sub">The consumer whose gate answers <span class="mono">allowed</span></span></td>
                 <td><a href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.guarded_permitted}}">{{fact:mainnet.guarded_permitted}}</a></td>
                 <td>block {{fact:mainnet.guarded_permitted_block}}</td>
@@ -279,6 +289,16 @@ curl -s https://rpc.xlayer.tech -H <span class="c-string">'content-type: applica
                 <td><strong>AssetGate &mdash; first generation</strong><span class="td-sub">Pinned to the asset key rather than a policy key; kept live as the earlier generation</span></td>
                 <td><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.gate_v1}}">{{fact:testnet.gate_v1}}</a></td>
                 <td>block {{fact:testnet.gate_v1_block}}</td>
+              </tr>
+              <tr>
+                <td><strong>AssetGateV2</strong><span class="td-sub">Pins policy, control-set root and approval digest</span></td>
+                <td><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.gate_v2}}">{{fact:testnet.gate_v2}}</a></td>
+                <td>block {{fact:testnet.gate_v2_block}}</td>
+              </tr>
+              <tr>
+                <td><strong>RWAAdmissionController</strong><span class="td-sub">Activates and executes only on the gate's answer</span></td>
+                <td><a href="{{fact:testnet.explorer}}/address/{{fact:testnet.admission}}">{{fact:testnet.admission}}</a></td>
+                <td>block {{fact:testnet.admission_block}}</td>
               </tr>
               <tr>
                 <td><strong>GuardedAction &mdash; permitted</strong><span class="td-sub">The consumer whose gate answers <span class="mono">allowed</span></span></td>

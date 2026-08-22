@@ -28,7 +28,7 @@
 <main id="main">
   <div class="wrap doc-layout">
     <article class="doc-body">
-<h1 id="touchstone-build-plan-roadmap">Touchstone — Build Plan &amp; Roadmap</h1>
+<h1 id="touchstone-build-plan-roadmap">Touchstone — Build Plan &amp; Roadmap</h1><aside class="doc-status" aria-labelledby="current-asset-status"><h2 id="current-asset-status">Current publication status</h2><p>This block is rendered from the source manifests. Dated passages below preserve the audit history; this block is the current ruling.</p><ul><li><strong>USTB</strong> — <span data-asset-status="USTB">LIVE</span>. Verified signed reports are retained with publication transactions on X Layer mainnet and testnet.</li><li><strong>FOBXX</strong> — <span data-asset-status="FOBXX">LIVE</span>. Verified signed reports are retained with publication transactions on X Layer mainnet and testnet.</li><li><strong>OUSG</strong> — <span data-asset-status="OUSG">RESEARCH</span>. Qualification is incomplete: the oracle cross-check is unverified, no fixture or extraction anchors are pinned, and no control is implemented.</li><li><strong>USDY</strong> — <span data-asset-status="USDY">RESEARCH · SUSPENDED</span>. The attestation source is one 260 MB unbounded archive, and no bounded retrieval route has been verified.</li></ul></aside>
 <blockquote>
 <p><strong>Status note (2026-08-21):</strong> the Phase 0/Phase 1 calendar below is a historical planning
 record, not current deployment or operations state. Statements such as “mainnet is
@@ -346,8 +346,8 @@ live consumer contract gating on Touchstone state; every transition independentl
 verifiable; all contract authorization boundaries tested; public interface wallet-free;
 watchdog + incident history + reconciliation operational; every scheduled epoch through
 Sept 1 completed or publicly recorded as an incident.</p>
-<p><strong>Standing as of 2026-08-16.</strong> The targets are not restated downward; what is missed is
-recorded as missed.</p>
+<p><strong>Current completion counts.</strong> Counts below render from repository data where available. The
+targets are not restated downward; what is missed is recorded as missed.</p>
 <table>
 <thead>
 <tr>
@@ -360,22 +360,22 @@ recorded as missed.</p>
 <tr>
 <td>Accepted controls</td>
 <td>≥6</td>
-<td><strong>8 — met.</strong> Each is a candidate a model proposed from issuer bytes, bound by digest to the compilation that accepted it</td>
+<td><strong>9 — met.</strong> The count is derived from the signed approval ledger; 7 declined candidates remain recorded with reasons.</td>
 </tr>
 <tr>
 <td>Assets documented</td>
 <td>3</td>
-<td><strong>3 — met.</strong> USTB, USDY and FOBXX source manifests with golden fixtures</td>
+<td><strong>4 — met.</strong> The count is derived from the source manifests. A manifest does not imply a golden fixture; USDY explicitly has none because retrieval remains unbounded.</td>
 </tr>
 <tr>
 <td>Fully autonomous live adapters</td>
 <td>≥2</td>
-<td><strong>1 — MISSED.</strong> ⚠️ This row read "0 proven live… has never run against live sources" until 2026-08-18, by which point USTB had published five reports across two chains from live issuer retrieval. The row was stale, not conservative. The count is <strong>one</strong>: USTB runs against live sources. It is still a miss against a target of two, and <strong>no continuity claim attaches to it</strong> — every slot so far was hand-started, so the daemon has never held a sustained schedule. USDY is blocked on unbounded retrieval <em>and</em> an unreconciled issuer arithmetic discrepancy; FOBXX is a documented monthly contrast asset, not an adapter. <strong>Phase 1 deliberately ships one flawless vertical rather than two hurried ones</strong></td>
+<td><strong>1 — missed.</strong> USTB has an unattended production record. FOBXX has an adapter and signed reports on both chains, but sustained scheduled operation is not proven. USDY is suspended and OUSG remains research; their current publication status is rendered from their manifests above.</td>
 </tr>
 <tr>
 <td>Live consumer contract gating on state</td>
 <td>1</td>
-<td><strong>1 — met on testnet, 2026-08-18.</strong> <code>AssetGate</code> at <code>0xAac48DC261B04737FDCB101D5049395121034a83</code>, X Layer testnet, block 38602126. <code>check(USTB)</code> returns <code>(false, "status not allowed")</code> — it refuses, because the latest report is <code>UNVERIFIABLE</code> and the mask admits <code>CONFIRMED</code> only. Not deployed on mainnet: <code>requiredControlSetRoot</code> is immutable and the approved set is still moving</td>
+<td><strong>Met on both chains.</strong> AssetGateV2 and RWAAdmissionController are recorded at <code>0x8641CF6d40524AC55aBd0a02601AfBd374EFB059</code> / <code>0x5C5265392701A99cbB137aF8116E0F97f630329A</code> on mainnet and <code>0xE1e2C897A43674bba6c3fbE6584a703a09939930</code> / <code>0x1822Cde72cD1aB560d8fdD795Ac6971b122BbA28</code> on testnet.</td>
 </tr>
 <tr>
 <td>Production canary epoch</td>
@@ -673,6 +673,7 @@ Sept 1 operations plan.</p>
     <aside class="doc-toc" aria-label="On this page">
       <p class="foot-h">On this page</p>
       <ol class="doc-toc-list">
+        <li class="toc-2"><a href="#current-asset-status">Current publication status</a></li>
         <li class="toc-2"><a href="#product-principles">Product principles</a></li>
         <li class="toc-2"><a href="#system-architecture">System architecture</a></li>
         <li class="toc-2"><a href="#category-and-product-boundary">Category and product boundary</a></li>

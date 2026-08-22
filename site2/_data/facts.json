@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical chain facts for the public site. Every address was re-verified from chain on 2026-08-19 by classifying each contract at the deployer's CREATE addresses (see docs/OPERATIONS.md for the collision table - several addresses exist on BOTH chains as different contracts; the chain id is the only discriminator). scripts/build_site.py renders these into the pages; edit here, rebuild, redeploy. 32-byte values are stored WITHOUT their 0x prefix; a page source writes 0x{{fact:...}} - a session hook refuses any file carrying a 0x-prefixed 64-hex literal, and the convention keeps sources writable. Test counts record the 2026-08-21 local runs: 1,990 Python passed with 1 skipped, 111 contract tests passed, 15 SDK tests passed, and 125/125 mutation targets killed.",
+  "_comment": "Canonical chain facts for the public site. Every address was re-verified from chain on 2026-08-19 by classifying each contract at the deployer's CREATE addresses (see docs/OPERATIONS.md for the collision table - several addresses exist on BOTH chains as different contracts; the chain id is the only discriminator). scripts/build_site.py renders these into the pages; edit here, rebuild, redeploy. 32-byte values are stored WITHOUT their 0x prefix; a page source writes 0x{{fact:...}} - a session hook refuses any file carrying a 0x-prefixed 64-hex literal, and the convention keeps sources writable. Test totals are intentionally not site facts; they belong to the exact CI or local run that produced them.",
   "site": {
     "updated": "2026-08-21",
     "url": "https://touchstone.gudman.xyz",
@@ -12,10 +12,6 @@
     "enforcement_txs": "9",
     "networks": "2",
     "bundles_downloadable": "20",
-    "python_tests": "2,090",
-    "contract_tests": "111",
-    "sdk_tests": "18",
-    "mutations": "125",
     "controls_approved": "9",
     "controls_declined": "7",
     "evidence_sources": "7",

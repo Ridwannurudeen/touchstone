@@ -129,6 +129,13 @@ def test_public_truth_accepts_report_counts_that_match_chain_facts() -> None:
     assert_truth.assert_chain_fact_surfaces(facts, stats, readme)
 
 
+def test_public_truth_accepts_readme_that_defers_live_counts_to_generated_site() -> None:
+    facts, stats, _ = _matching_chain_fact_surfaces()
+    assert_truth.assert_chain_fact_surfaces(
+        facts, stats, "Current counts are rendered from retained data on the site."
+    )
+
+
 def test_registry_latest_sequences_link_their_latest_publications() -> None:
     page = (ROOT / "site2/_pages/products/registry.html").read_text(encoding="utf-8")
     links = (

@@ -5,11 +5,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Assets — Touchstone</title>
-<meta name="description" content="USTB and FOBXX are live on X Layer mainnet and testnet. OUSG and USDY remain in research.">
+<meta name="description" content="USTB: Live on X Layer mainnet + testnet. FOBXX: Live on X Layer mainnet + testnet. OUSG: Research — not promoted and no live publication. USDY: Research — suspended; no adapter or live publication.">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 <link rel="canonical" href="https://touchstone.gudman.xyz/assets-covered">
 <meta property="og:title" content="Assets — Touchstone">
-<meta property="og:description" content="USTB and FOBXX are live on X Layer mainnet and testnet. OUSG and USDY remain in research.">
+<meta property="og:description" content="USTB: Live on X Layer mainnet + testnet. FOBXX: Live on X Layer mainnet + testnet. OUSG: Research — not promoted and no live publication. USDY: Research — suspended; no adapter or live publication.">
 <meta property="og:url" content="https://touchstone.gudman.xyz/assets-covered">
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://touchstone.gudman.xyz/assets/og-card.png">
@@ -65,7 +65,9 @@
       <h1>USTB and FOBXX are live on X&nbsp;Layer.</h1>
       <p class="t-lead prose">Both assets have signed reports on X&nbsp;Layer mainnet and
       testnet. USTB has a daily publication history; FOBXX has exactly
-      1 publication on mainnet and 1 publication on testnet. OUSG and USDY remain research. Statuses here
+      1 publication on mainnet and 1 publication on testnet. OUSG is
+      <strong data-asset-status="OUSG">RESEARCH</strong>; USDY is
+      <strong data-asset-status="USDY">RESEARCH · SUSPENDED</strong>. Statuses here
       are facts, not aspirations: an
       asset is called live only once a signed report for it is on chain.</p>
     </div>
@@ -78,7 +80,7 @@
         <article class="persona a-live">
           <div>
             <p class="p-for">Covered asset</p>
-            <h3>USTB <span class="chip chip-live"><i class="dot" aria-hidden="true"></i>LIVE</span></h3>
+            <h3>USTB <span class="chip chip-live"><i class="dot" aria-hidden="true"></i><span data-asset-status="USTB">LIVE</span></span></h3>
             <p class="a-sub">Superstate Short Duration U.S. Government Securities Fund</p>
             <p>Touchstone reads the issuer's public Superstate disclosures each day, compiles
             the approved controls over the captured bytes, and publishes a signed report to
@@ -95,7 +97,7 @@
         <article class="persona a-live">
           <div>
             <p class="p-for">Covered asset</p>
-            <h3>FOBXX <span class="chip chip-live"><i class="dot" aria-hidden="true"></i>CONFIRMED</span></h3>
+            <h3>FOBXX <span class="chip chip-live"><i class="dot" aria-hidden="true"></i><span data-asset-status="FOBXX">LIVE</span></span></h3>
             <p class="a-sub">Franklin OnChain U.S. Government Money Fund</p>
             <p>Touchstone evaluates issuer NAV evidence and the fund's SEC N-MFP3 filing,
             then publishes the same four-control verdict to both X&nbsp;Layer registries.
@@ -123,22 +125,17 @@
 
       <div class="persona-grid">
         <article class="persona">
-          <p class="p-for">Research</p>
+          <p class="p-for" data-asset-status="OUSG">RESEARCH</p>
           <h3>OUSG</h3>
           <p class="a-sub">Ondo Short-Term U.S. Government Treasuries</p>
-          <p>The fastest credible second asset: a bounded issuer page with real business-day
-          movement and no archive dependency. Its evidence is issuer-published HTML rather than
-          a documented JSON API, so extraction anchors have to be selected and pinned before a
-          control can quote a byte span from them.</p>
+          <p>Qualification is incomplete: the oracle cross-check is unverified, no fixture or extraction anchors are pinned, and no control is implemented.</p>
         </article>
 
         <article class="persona">
-          <p class="p-for">Research</p>
+          <p class="p-for" data-asset-status="USDY">RESEARCH · SUSPENDED</p>
           <h3>USDY</h3>
           <p class="a-sub">Ondo U.S. Dollar Yield</p>
-          <p>The issuer source is one 260&nbsp;MB unbounded archive. A daily window cannot be
-          pointed at an unbounded retrieval, so USDY stays in research until a bounded route is
-          proven and measured.</p>
+          <p>The attestation source is one 260 MB unbounded archive, and no bounded retrieval route has been verified.</p>
           <p class="p-cta"><a href="/docs/usdy-retrieval">The USDY retrieval measurements →</a></p>
         </article>
       </div>

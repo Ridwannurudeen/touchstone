@@ -66,8 +66,8 @@
     <div class="wrap">
       <p class="eyebrow">Current state</p>
       <h2>Where the record stands</h2>
-      <p class="prose secondary">One asset and two policies, published to both chains. State
-      of record {{fact:site.updated}}; reports expire at end of day UTC and the next daily
+      <p class="prose secondary">{{fact:homepage.live_assets}} assets and two USTB policies
+      are published to both chains. State of record {{fact:site.updated}}; USTB reports expire at end of day UTC and the next daily
       window republishes, so this table is a snapshot of a record that keeps moving.</p>
 
       <div class="table-scroll">
@@ -85,6 +85,11 @@
               <td><strong>{{fact:asset.id}}</strong><span class="td-sub">{{fact:asset.name}}</span></td>
               <td>sequence <span class="mono">{{fact:mainnet.seq_asset_v1}}</span> · <span class="chip chip-satisfied"><i class="dot" aria-hidden="true"></i>CONFIRMED</span></td>
               <td>sequence <span class="mono">{{fact:testnet.seq_asset_v1}}</span> · <span class="chip chip-satisfied"><i class="dot" aria-hidden="true"></i>CONFIRMED</span></td>
+            </tr>
+            <tr>
+              <td><strong>FOBXX</strong><span class="td-sub">Franklin OnChain U.S. Government Money Fund</span></td>
+              <td>sequence <span class="mono">{{fact:coverage.fobxx.mainnet_sequence}}</span> · <span class="chip chip-satisfied"><i class="dot" aria-hidden="true"></i>{{fact:homepage.fobxx.state}}</span></td>
+              <td>sequence <span class="mono">{{fact:coverage.fobxx.testnet_sequence}}</span> · <span class="chip chip-satisfied"><i class="dot" aria-hidden="true"></i>{{fact:coverage.fobxx.testnet_state}}</span></td>
             </tr>
             <tr>
               <td><strong>{{fact:policies.freshness_id}}</strong><span class="td-sub">is the disclosure current enough to act on?</span></td>

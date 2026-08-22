@@ -108,7 +108,10 @@ def assert_chain_fact_surfaces(
         readme,
         flags=re.MULTILINE,
     )
-    if headline is None or tuple(map(int, headline.groups())) != (published, confirmed):
+    if headline is not None and tuple(map(int, headline.groups())) != (
+        published,
+        confirmed,
+    ):
         raise PublicTruthError("README report count disagrees with chain facts")
 
 

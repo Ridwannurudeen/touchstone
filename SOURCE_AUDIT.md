@@ -293,13 +293,13 @@ key contracts by (chain, address) — Superstate reuses addresses across chains.
 
 ---
 
-## Portfolio selection — **CLOSED 2026-08-16**
+## Portfolio selection — **2026-08-16 ruling, superseded by FOBXX promotion 2026-08-22**
 
-**Final for Phase 1: USTB alone.** No second adapter, no contrast adapter. USDY is cut
-(unbounded retrieval), FOBXX is retained as a documented monthly contrast asset with no
-adapter, and OUSG is cut — the second-adapter metric is recorded as missed in `ROADMAP.md`
-rather than chased with a hurried asset. The build order in `docs/PHASE-1-PLAN.md` is
-authoritative.
+The 2026-08-16 ruling shipped USTB alone and cut USDY and OUSG rather than rushing a second
+adapter. On 2026-08-22, FOBXX was promoted after its production-host issuer route and regulator
+path were verified; it now has signed reports on both chains. Current publication status is
+rendered from the source manifests above. The dated selection record below is retained as audit
+history, not current coverage.
 
 Everything below is the record of how the selection moved, retained because the reasoning is
 the audit trail. **None of it describes an open decision.**

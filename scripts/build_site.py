@@ -36,14 +36,26 @@ from urllib.request import Request, urlopen
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.build_reports import load_rows  # noqa: E402
+
 SITE = ROOT / "site2"
 PAGES = SITE / "_pages"
 PARTIALS = SITE / "_partials"
 FACTS = SITE / "_data" / "facts.json"
 STATS = SITE / "data" / "stats.json"
+SOURCE_MANIFESTS = ROOT / "manifests" / "sources"
 LIVE_STATUS = "https://touchstone.gudman.xyz/status"
 
 _TOKEN = re.compile(r"\{\{\s*(>\s*([a-z0-9-]+)|fact:([a-z0-9_.-]+))\s*\}\}")
+_ASSET_STATES = {"live", "research", "suspended"}
+_ASSET_STATE_CLASSES = {
+    "live": "chip-live",
+    "research": "chip-pending",
+    "suspended": "chip-suspended",
+}
 
 BANNER = (
     "<!-- Generated from site2/_pages/{source} by scripts/build_site.py. Do not edit this "
@@ -88,6 +100,64 @@ def _stats() -> dict[str, object]:
     if not isinstance(value, dict):
         raise SystemExit("stats.json must contain an object")
     return value
+
+
+def _asset_statuses() -> dict[str, dict[str, str]]:
+    statuses: dict[str, dict[str, str]] = {}
+    for path in sorted(SOURCE_MANIFESTS.glob("*.json")):
+        value = json.loads(path.read_text(encoding="utf-8"))
+        asset = value.get("asset") if isinstance(value, dict) else None
+        if not isinstance(asset, dict):
+            raise SystemExit(f"{path}: asset must be an object")
+        ticker = asset.get("ticker")
+        status = asset.get("publication_status")
+        if not isinstance(ticker, str) or not ticker:
+            raise SystemExit(f"{path}: asset ticker is unavailable")
+        if not isinstance(status, dict):
+            raise SystemExit(f"{path}: asset publication_status must be an object")
+        fields = {key: status.get(key) for key in ("state", "label", "summary", "reason")}
+        if any(not isinstance(item, str) or not item.strip() for item in fields.values()):
+            raise SystemExit(
+                f"{path}: publication_status requires non-empty state, label, summary and reason"
+            )
+        state = str(fields["state"])
+        if state not in _ASSET_STATES:
+            raise SystemExit(f"{path}: unsupported publication status {state!r}")
+        key = ticker.lower()
+        if key in statuses:
+            raise SystemExit(f"duplicate source manifest ticker {ticker}")
+        statuses[key] = {"ticker": ticker, **{key: str(item) for key, item in fields.items()}}
+    if not statuses:
+        raise SystemExit(f"no source manifests under {SOURCE_MANIFESTS}")
+    return statuses
+
+
+def asset_status_facts() -> dict[str, str]:
+    facts: dict[str, str] = {}
+    for key, status in _asset_statuses().items():
+        prefix = f"asset_status.{key}"
+        facts[f"{prefix}.ticker"] = status["ticker"]
+        for field in ("state", "label", "summary", "reason"):
+            facts[f"{prefix}.{field}"] = status[field]
+        facts[f"{prefix}.class"] = _ASSET_STATE_CLASSES[status["state"]]
+    return facts
+
+
+def assert_live_asset_evidence() -> None:
+    networks_by_asset: dict[str, set[int]] = {}
+    for row in load_rows():
+        networks_by_asset.setdefault(row.asset, set()).add(row.chain_id)
+    network_names = {196: "mainnet", 1952: "testnet"}
+    for status in _asset_statuses().values():
+        if status["state"] != "live":
+            continue
+        missing = set(network_names) - networks_by_asset.get(status["ticker"], set())
+        if missing:
+            names = " and ".join(network_names[chain_id] for chain_id in sorted(missing))
+            raise SystemExit(
+                f"asset status {status['ticker']} is live but has no verified signed "
+                f"on-chain report on {names}"
+            )
 
 
 def _bundles() -> list[tuple[Path, dict[str, object]]]:
@@ -183,6 +253,7 @@ def site_facts() -> dict[str, str]:
         fobxx_key = str(asset_keys["FOBXX"])
         ustb_path, ustb_bundle, ustb_report = base_by_chain[196][ustb_key]
         fobxx_path, fobxx_bundle, fobxx_report = base_by_chain[196][fobxx_key]
+        _, _, fobxx_testnet_report = base_by_chain[1952][fobxx_key]
     except KeyError as error:
         raise SystemExit(f"no retained mainnet report is available for {error.args[0]}") from error
 
@@ -245,6 +316,7 @@ def site_facts() -> dict[str, str]:
             )
     return {
         "homepage.live_assets": str(len(live_assets)),
+        "coverage.manifested_assets": str(len(assets)),
         "homepage.evidence_sources": str(len(ustb_sources | fobxx_sources)),
         "homepage.networks": str(len(networks)),
         "homepage.confirmed_reports": str(confirmed),
@@ -271,6 +343,13 @@ def site_facts() -> dict[str, str]:
         ),
         "homepage.fobxx.source_count": str(len(fobxx_sources)),
         "homepage.fobxx.control_count": str(len(fobxx_report.get("controls", []))),
+        "coverage.fobxx.mainnet_sequence": str(fobxx_report.get("sequence", "not available")),
+        "coverage.fobxx.testnet_sequence": str(
+            fobxx_testnet_report.get("sequence", "not available")
+        ),
+        "coverage.fobxx.testnet_state": str(
+            fobxx_testnet_report.get("state", "not available")
+        ),
         "homepage.fobxx.history_summary": (
             f"{fobxx_publications['mainnet']} publication on mainnet and "
             f"{fobxx_publications['testnet']} publication on testnet"
@@ -298,6 +377,10 @@ def load_facts() -> dict[str, str]:
     for key, value in site_facts().items():
         if key in flat:
             raise SystemExit(f"facts.json overrides site-derived fact {key}")
+        flat[key] = value
+    for key, value in asset_status_facts().items():
+        if key in flat:
+            raise SystemExit(f"facts.json overrides manifest-derived fact {key}")
         flat[key] = value
     return flat
 
@@ -333,6 +416,40 @@ class _HomepageFactsParser(HTMLParser):
 
     def handle_data(self, data: str) -> None:
         if self._key is not None:
+            self._text.append(data)
+
+
+class _AssetStatusParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.values: dict[str, list[str]] = {}
+        self._ticker: str | None = None
+        self._depth = 0
+        self._text: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        del tag
+        attributes = dict(attrs)
+        if self._ticker is not None:
+            self._depth += 1
+        elif attributes.get("data-asset-status"):
+            self._ticker = str(attributes["data-asset-status"]).lower()
+            self._depth = 1
+            self._text = []
+
+    def handle_endtag(self, tag: str) -> None:
+        del tag
+        if self._ticker is None:
+            return
+        self._depth -= 1
+        if self._depth == 0:
+            value = " ".join("".join(self._text).split())
+            self.values.setdefault(self._ticker, []).append(value)
+            self._ticker = None
+            self._text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._ticker is not None:
             self._text.append(data)
 
 
@@ -376,6 +493,29 @@ def assert_homepage_truth(rendered: str) -> None:
             raise SystemExit(
                 f"homepage fact {key} renders {shown!r}; canonical data is {value!r}"
             )
+
+
+def assert_asset_status_truth(rendered_pages: list[str]) -> None:
+    statuses = _asset_statuses()
+    seen: set[str] = set()
+    for rendered in rendered_pages:
+        parser = _AssetStatusParser()
+        parser.feed(rendered)
+        for ticker, values in parser.values.items():
+            status = statuses.get(ticker)
+            if status is None:
+                raise SystemExit(f"rendered asset status names unknown asset {ticker.upper()}")
+            for value in values:
+                if value != status["label"]:
+                    raise SystemExit(
+                        f"asset status {status['ticker']} renders {value!r}; manifest "
+                        f"status is {status['label']!r}"
+                    )
+            seen.add(ticker)
+    missing = set(statuses) - seen
+    if missing:
+        tickers = ", ".join(statuses[key]["ticker"] for key in sorted(missing))
+        raise SystemExit(f"rendered site has no manifest-derived status for {tickers}")
 
 
 def _partials() -> dict[str, str]:
@@ -518,8 +658,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"no page sources under {PAGES}", file=sys.stderr)
         return 1
     stale: list[str] = []
+    rendered_pages: list[str] = []
     for source in sources:
         rendered = render(source, partials, facts)
+        rendered_pages.append(rendered)
         target = SITE / source.relative_to(PAGES)
         if arguments.check:
             current = target.read_text(encoding="utf-8") if target.exists() else None
@@ -536,7 +678,13 @@ def main(argv: list[str] | None = None) -> int:
             for name in stale:
                 print(f"  {name}")
             return 1
+        rendered_pages.extend(
+            path.read_text(encoding="utf-8")
+            for path in sorted((SITE / "docs").glob("*.html"))
+        )
         assert_homepage_truth(rendered_homepage())
+        assert_asset_status_truth(rendered_pages)
+        assert_live_asset_evidence()
         assert_page_links(SITE / "index.html")
         assert_page_links(SITE / "reports.html")
         if not arguments.offline:

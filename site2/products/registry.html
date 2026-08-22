@@ -223,8 +223,9 @@
     <div class="wrap">
       <p class="eyebrow">State</p>
       <h2>What each key holds right now</h2>
-      <p class="prose secondary">One asset key and two policy keys per chain. The asset key
-      carries the daily USTB lineage; each policy key carries one policy's verdict. Every
+      <p class="prose secondary">2 asset keys and two USTB policy keys per chain. The USTB asset key
+      carries its daily lineage; the FOBXX asset key carries its first retained publication;
+      each policy key carries one USTB policy's verdict. Every
       sequence below links to the transaction that put it on chain.</p>
 
       <div class="table-scroll">
@@ -242,6 +243,11 @@
               <td><strong>USTB asset</strong><span class="td-sub">the whole-asset disclosure state</span></td>
               <td class="mono"><a href="https://web3.okx.com/explorer/xlayer/tx/0x9fa7dca49facc639f4c782a3d66a2afac36756eda5bb5d84dc5e8324430ed89a">5</a> · CONFIRMED</td>
               <td class="mono"><a href="https://web3.okx.com/explorer/xlayer-test/tx/0x1ab4cd4faba85f1cedca455c012bacfb8e28f0be0899b95449d8eba862ffa39f">5</a> · CONFIRMED</td>
+            </tr>
+            <tr>
+              <td><strong>FOBXX asset</strong><span class="td-sub">issuer- and regulator-backed state</span></td>
+              <td class="mono">1 · CONFIRMED</td>
+              <td class="mono">1 · CONFIRMED</td>
             </tr>
             <tr>
               <td><strong>disclosure-freshness:1</strong><span class="td-sub">is the disclosure current enough to act on?</span></td>

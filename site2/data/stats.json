@@ -261,7 +261,6 @@
    "name": "Franklin OnChain U.S. Government Money Fund",
    "asset_key": "sec:cik:0001786958:series:S000067043",
    "canonical_asset_key": "eip155:1:0x3ddc84940ab509c11b20b76b466933f40b750dc9",
-   "role": "live issuer- and regulator-backed asset; one confirmed publication per network",
    "sources": [
     "franklin-fobxx-price-performance",
     "sec-edgar-fobxx-submissions",
@@ -273,7 +272,6 @@
    "ticker": "OUSG",
    "name": "Ondo Short-Term U.S. Government Treasuries",
    "asset_key": "eip155:1:0x1b19c19393e2d034d8ff31ff34c81252fcbbee92",
-   "role": "CANDIDATE second daily asset, opened 2026-08-15 because USDY has no bounded retrieval",
    "sources": [
     "ondo-ousg-page"
    ],
@@ -283,7 +281,6 @@
    "ticker": "USDY",
    "name": "Ondo U.S. Dollar Yield",
    "asset_key": "eip155:1:0x96f6ef951840721adbf46ac996b59e0235cb985c",
-   "role": "second daily asset — SUSPENDED 2026-08-15. Bounded retrieval is unresolved, so this asset cannot be scheduled and PLAN-T10 is not viable as written.",
    "sources": [
     "ondo-usdy-page",
     "ondo-usdy-attestation-archive"
@@ -294,7 +291,6 @@
    "ticker": "USTB",
    "name": "Invesco/Superstate Short Duration U.S. Government Securities Fund",
    "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
-   "role": "hero",
    "sources": [
     "superstate-ustb-nav-daily",
     "superstate-ustb-yield",

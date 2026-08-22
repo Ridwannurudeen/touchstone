@@ -22,7 +22,7 @@ previous one passes audit.**
 | PLAN-T1 | Make the managed hero E2E deterministic and non-skipping | S | **Done** (`2ddd23d`) |
 | PLAN-T2 | Close the Phase 0 threat-model deliverable | M | **Done** (`d659b02`) |
 | PLAN-T3 | Complete brand-clearance research | M | **Done** (`1135c25`) |
-| PLAN-T4 | Source manifests and golden fixtures for USTB, USDY, FOBXX | M | **Done** (`d96f944`) |
+| PLAN-T4 | Source manifests, bounded golden fixtures, and the recorded USDY retrieval blocker | M | **Done** (`d96f944`) — USDY has no fixture |
 | PLAN-T5 | Hero evidence security and the authoritative USTB oracle check | L | **Done** (`5c73edf`) |
 | PLAN-T6 | Production-capable publisher and staged deployment path | L | **Done** (`016de1b`) |
 | PLAN-T7 | Autonomous epoch operations and append-only incidents | L | **Done** (`2c2ae27`) |

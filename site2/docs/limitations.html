@@ -28,7 +28,7 @@
 <main id="main">
   <div class="wrap doc-layout">
     <article class="doc-body">
-<h1 id="limitations">Limitations</h1>
+<h1 id="limitations">Limitations</h1><aside class="doc-status" aria-labelledby="current-asset-status"><h2 id="current-asset-status">Current publication status</h2><p>This block is rendered from the source manifests. Dated passages below preserve the audit history; this block is the current ruling.</p><ul><li><strong>USTB</strong> — <span data-asset-status="USTB">LIVE</span>. Verified signed reports are retained with publication transactions on X Layer mainnet and testnet.</li><li><strong>FOBXX</strong> — <span data-asset-status="FOBXX">LIVE</span>. Verified signed reports are retained with publication transactions on X Layer mainnet and testnet.</li><li><strong>OUSG</strong> — <span data-asset-status="OUSG">RESEARCH</span>. Qualification is incomplete: the oracle cross-check is unverified, no fixture or extraction anchors are pinned, and no control is implemented.</li><li><strong>USDY</strong> — <span data-asset-status="USDY">RESEARCH · SUSPENDED</span>. The attestation source is one 260 MB unbounded archive, and no bounded retrieval route has been verified.</li></ul></aside>
 <p><strong>Unpublished text in a file.</strong> This is not a legal opinion, not an audit
 report, not a safety case, and not an independent attestation. It is a
 list of things Touchstone does not do, written before anyone has to ask.</p>
@@ -72,17 +72,17 @@ missed rows.</p>
 <tr>
 <td>Accepted controls</td>
 <td>≥6</td>
-<td><strong>5 — missed.</strong> The 0.3.0 recompile (2026-08-17, live retrieval) proposed ten candidates that passed the deterministic gates. Five were approved and five declined, with reasons, in <code>data/compilations/APPROVALS.json</code>. The five declines were not forced: three are duplicate presence checks on a document another approved control already reads, and one clears the 0.80 confidence gate with zero margin. Approving any of them would have met this target and would have counted duplication as breadth, so the number stands at five and the row reads missed. Each approved control is bound by digest to the compilation that accepted it, and a declined candidate cannot be relabelled approved.</td>
+<td><strong>9 — met.</strong> The current count is derived from the signed approval ledger; 7 candidates remain declined with their reasons retained.</td>
 </tr>
 <tr>
 <td>Assets documented</td>
 <td>3</td>
-<td><strong>3 — met.</strong> USTB, USDY and FOBXX source manifests, with golden fixtures where retrieval was bounded.</td>
+<td><strong>4 — met.</strong> The count is derived from <code>manifests/sources/*.json</code>; fixture availability remains asset-specific and is not implied by the manifest count.</td>
 </tr>
 <tr>
 <td>Fully autonomous live adapters</td>
 <td>≥2</td>
-<td><strong>1 — missed.</strong> USTB ran the unattended daemon against the live issuer on 2026-08-17 and published sequence 1, so the count is one, not zero. This row read "0 proven live... it has never run against live sources" until 2026-08-18, which the canary row two lines below had already contradicted. The production observer sustains a 15-minute retrieval schedule for all three USTB sources, and the enabled publisher unit ran the 2026-08-20 and 2026-08-21 mainnet slots unattended; recovery on the production host remains unproven. Publication count is no longer the gap: 20 reports across two chains, 15 <code>CONFIRMED</code>. The miss is the asset count. USDY is blocked on unbounded retrieval (a single 260,431,605-byte archive). FOBXX now has a strict offline SEC normalizer and fixtures, but no live epoch or production-host adapter run. OUSG was cut rather than rushed into the second slot (<code>manifests/sources/ousg.json</code>, <code>phase_1_status.state: cut</code>). Phase 1 deliberately ships one vertical rather than two hurried ones.</td>
+<td><strong>1 — missed.</strong> USTB has an unattended production publication record. FOBXX now has an adapter and signed reports on both chains, but sustained scheduled operation is not proven. USDY remains suspended because its attestation route is one unbounded 260 MB archive with no verified bounded route; OUSG remains research and is not promoted. Publication status is rendered from the manifests above and is not used as a synonym for autonomous operation.</td>
 </tr>
 <tr>
 <td>Live consumer contract gating on state</td>
@@ -131,8 +131,8 @@ that channel. Closing this would need a restricted transport carrying
 only plain data, plus OS-level confinement. That is residual <strong>R-3</strong> in
 <code>docs/THREAT-MODEL.md</code>.</p>
 <p>There is no PDF or unbounded archive parser in Phase 1. USDY's archive path remains cut.
-FOBXX's retained SEC N-MFP3 XML path is bounded by source bytes, XML depth and unsafe-marker
-checks, but it is not a live production adapter.</p>
+FOBXX's SEC N-MFP3 XML path is bounded by source bytes, XML depth and unsafe-marker checks and
+has produced signed reports; sustained scheduled production operation remains unproven.</p>
 <hr />
 <h2 id="4-steering-by-injected-evidence-is-a-retained-residual">4. Steering by injected evidence is a retained residual</h2>
 <p>The compiler is given no tool surface. The request body carries only
@@ -290,9 +290,8 @@ Touchstone is.</p>
   Touchstone itself.</strong> The Phase 3 formal threat model, independent
   contract audit, and external pipeline review are not claimed. This
   document is not a substitute.</li>
-<li><strong>Production reliability.</strong> Until an epoch is produced and published
-  without a person present, every reliability figure in
-  <code>docs/OPERATIONS.md</code> is a property of the tests.</li>
+<li><strong>Production reliability.</strong> USTB has a short unattended publication record, not a sustained
+  reliability measurement. Test-harness timings are not a production SLO.</li>
 <li><strong>Endorsement.</strong> Nothing here implies OKX, X Layer, Superstate, Ondo,
   Franklin Templeton, or any issuer endorses this project.</li>
 </ul>
@@ -300,7 +299,7 @@ Touchstone is.</p>
 <h2 id="10-explicitly-out-of-scope-for-phase-1">10. Explicitly out of scope for Phase 1</h2>
 <p>From <code>docs/PHASE-1-PLAN.md</code> and <code>ROADMAP.md</code> Phases 2–5, and not claimed:
 legal review; external contract and pipeline audits; a public verification API; paid
-rescans; a second autonomous live adapter; a production FOBXX or OUSG route; PAXG;
+rescans; a second autonomous live adapter; an OUSG production route; PAXG;
 design partners; formal specifications; multi-publisher quorum;
 accreditation; staking or a token; institutional governance; HSM or
 multisig custody; multi-region deployment.</p>
@@ -311,6 +310,7 @@ running the verifier against a bundle.</p>
     <aside class="doc-toc" aria-label="On this page">
       <p class="foot-h">On this page</p>
       <ol class="doc-toc-list">
+        <li class="toc-2"><a href="#current-asset-status">Current publication status</a></li>
         <li class="toc-2"><a href="#1-what-touchstone-is-trusted-to-say">1. What Touchstone is trusted to say</a></li>
         <li class="toc-2"><a href="#2-hackathon-completion-metrics-what-was-missed">2. Hackathon completion metrics — what was missed</a></li>
         <li class="toc-2"><a href="#3-parser-isolation-is-process-isolation">3. Parser isolation is process isolation</a></li>

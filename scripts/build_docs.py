@@ -75,6 +75,7 @@ PUBLISHED: dict[str, tuple[Path, str, str]] = {
 }
 
 _HEADING = re.compile(r"<h([23]) id=\"([^\"]+)\">(.*?)</h\1>", re.S)
+_STATUS_DOCS = {"limitations", "roadmap", "source-audit", "usdy-retrieval"}
 
 
 def _headings(body: str) -> list[tuple[int, str, str]]:
@@ -118,6 +119,26 @@ def _demote_after_first(body: str) -> str:
     return "".join(parts)
 
 
+def _asset_status_panel() -> str:
+    facts = build_site.asset_status_facts()
+    items = []
+    for ticker in ("ustb", "fobxx", "ousg", "usdy"):
+        label = html.escape(facts[f"asset_status.{ticker}.label"])
+        reason = html.escape(facts[f"asset_status.{ticker}.reason"])
+        items.append(
+            f'<li><strong>{ticker.upper()}</strong> — '
+            f'<span data-asset-status="{ticker.upper()}">{label}</span>. {reason}</li>'
+        )
+    return (
+        '<aside class="doc-status" aria-labelledby="current-asset-status">'
+        '<h2 id="current-asset-status">Current publication status</h2>'
+        '<p>This block is rendered from the source manifests. Dated passages below preserve '
+        'the audit history; this block is the current ruling.</p><ul>'
+        + "".join(items)
+        + "</ul></aside>"
+    )
+
+
 def _chrome(page: str) -> str:
     """Render the shared header/footer and fact tokens the site builder owns.
 
@@ -143,10 +164,11 @@ def _chrome(page: str) -> str:
 
 
 def _fill(title: str, body: str, headings: list[tuple[int, str, str]]) -> str:
-    page = _chrome(TEMPLATE.read_text(encoding="utf-8"))
+    page = TEMPLATE.read_text(encoding="utf-8")
     page = page.replace("<!--DOC_TITLE-->", html.escape(title))
     page = page.replace("<!--DOC_BODY-->", body)
-    return page.replace("<!--DOC_NAV-->", _nav(headings))
+    page = page.replace("<!--DOC_NAV-->", _nav(headings))
+    return _chrome(page)
 
 
 def render(slug: str) -> tuple[str, int]:
@@ -165,6 +187,8 @@ def render(slug: str) -> tuple[str, int]:
     # level, so this is not hypothetical; demoting all six left the page with no <h1> at all,
     # and demoting none left it with six. Both were caught by counting rather than by reading.
     body = _demote_after_first(body)
+    if slug in _STATUS_DOCS:
+        body = body.replace("</h1>", "</h1>" + _asset_status_panel(), 1)
 
     target = OUT / f"{slug}.html"
     target.parent.mkdir(parents=True, exist_ok=True)

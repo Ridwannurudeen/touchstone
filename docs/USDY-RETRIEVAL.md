@@ -1,4 +1,4 @@
-# USDY retrieval: measured, and the bounded path that opens it
+# USDY retrieval research: one bounded candidate source, suspension unchanged
 
 `manifests/sources/usdy.json` suspended this asset because one observation required pulling a
 260 MB archive. That is still true of the **attestation** archive. It was never true of USDY's
@@ -24,10 +24,12 @@ So two candidate shortcuts are closed, and closed by measurement:
 The archive stays exactly as the manifest describes it: unbounded, and unusable on a daily
 schedule.
 
-## The part that was wrong
+## What the second source changes — and what it does not
 
-The suspension treated USDY as a single source. It is two, with different cadences and very
-different retrieval costs, and only one of them is unbounded.
+The first suspension analysis treated USDY as a single source. It has two surfaces, with
+different cadences and retrieval costs. Finding a bounded issuer page makes that page a
+research candidate; it does not lift the asset suspension because the third-party attestation
+route remains unbounded and no USDY parser, fixture, approved control or adapter exists.
 
 `https://ondo.finance/usdy` serves a **structured portfolio dataset inline in the HTML**, and it
 carries considerably more than USTB's sources do. Observed on 2026-08-18, as of `2026-08-14`:
@@ -104,9 +106,9 @@ persisted, and nothing here needs it.
 ## What is still genuinely out of reach
 
 Daily third-party attestations. They exist only inside the 260 MB archive, and no bounded route
-to a single member was found. USDY can therefore ship daily **portfolio and coverage** controls
-now, and cannot ship a daily **attestation** control at all. Saying otherwise on the dossier
-would be the exact failure this project exists to refuse.
+to a single member was found. The bounded issuer page may support future portfolio-control
+research only after its field discrepancy is resolved and a strict parser, sanitised fixture
+and approved controls exist. USDY remains suspended, with no adapter or live publication.
 
 ---
 
@@ -137,5 +139,6 @@ so FOBXX carries **monthly** controls. The daily-liveness control and the
 issuer-versus-regulator reconciliation both need the issuer feed and are the only things
 actually waiting on it.
 
-Stating that as "unavailable" understated the asset. The correct statement is that FOBXX ships
-monthly on filed evidence, and one class of control on it is waiting for a route to the issuer.
+That 2026-08-18 measurement later became one input to the FOBXX adapter. The current
+publication status is rendered from `manifests/sources/fobxx.json` above; this section preserves
+the research sequence rather than restating today's status by hand.

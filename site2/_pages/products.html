@@ -207,10 +207,13 @@
             <a class="mono" href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.gate_freshness}}">{{fact:mainnet.gate_freshness}}</a>
             first answered <strong>allowed</strong> for the disclosure-freshness policy on {{fact:asset.first_confirmed_on}}; verdicts expire at end of day UTC and renew at the daily window &mdash; <a href="/app">check it live</a>.</p>
 
-            <p class="sc-note">A hardened <span class="mono">AssetGateV2</span> and an
-            <span class="mono">RWAAdmissionController</span> — propose an asset, activate it only
-            if the gate passes, and recompute suspension on every call rather than storing a flag —
-            are built and tested, and deploy at the next publication window.</p>
+            <p class="sc-note"><span class="mono">AssetGateV2</span> and
+            <span class="mono">RWAAdmissionController</span> are deployed on both chains. Mainnet:
+            <a class="mono" href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.gate_v2}}">{{fact:mainnet.gate_v2}}</a> and
+            <a class="mono" href="{{fact:mainnet.explorer}}/address/{{fact:mainnet.admission}}">{{fact:mainnet.admission}}</a>.
+            Testnet:
+            <a class="mono" href="{{fact:testnet.explorer}}/address/{{fact:testnet.gate_v2}}">{{fact:testnet.gate_v2}}</a> and
+            <a class="mono" href="{{fact:testnet.explorer}}/address/{{fact:testnet.admission}}">{{fact:testnet.admission}}</a>.</p>
 
             <a class="sc-go" href="/products/asset-gate">See the gate's pins and its two receipts →</a>
           </div>

@@ -5,6 +5,12 @@
     "display_name": "Ondo U.S. Dollar Yield",
     "ticker": "USDY",
     "role": "second daily asset \u2014 SUSPENDED 2026-08-15. Bounded retrieval is unresolved, so this asset cannot be scheduled and PLAN-T10 is not viable as written.",
+    "publication_status": {
+      "state": "suspended",
+      "label": "RESEARCH \u00b7 SUSPENDED",
+      "summary": "Research \u2014 suspended; no adapter or live publication",
+      "reason": "The attestation source is one 260 MB unbounded archive, and no bounded retrieval route has been verified."
+    },
     "identity_basis": "ERC-20 token contract on Ethereum mainnet",
     "identity_caveat": "USDY is issued across multiple chains; this manifest covers the Ethereum deployment only."
   },

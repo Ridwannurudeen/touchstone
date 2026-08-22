@@ -207,8 +207,9 @@
     <div class="wrap">
       <p class="eyebrow">State</p>
       <h2>What each key holds right now</h2>
-      <p class="prose secondary">One asset key and two policy keys per chain. The asset key
-      carries the daily USTB lineage; each policy key carries one policy's verdict. Every
+      <p class="prose secondary">{{fact:homepage.live_assets}} asset keys and two USTB policy keys per chain. The USTB asset key
+      carries its daily lineage; the FOBXX asset key carries its first retained publication;
+      each policy key carries one USTB policy's verdict. Every
       sequence below links to the transaction that put it on chain.</p>
 
       <div class="table-scroll">
@@ -226,6 +227,11 @@
               <td><strong>{{fact:asset.id}} asset</strong><span class="td-sub">the whole-asset disclosure state</span></td>
               <td class="mono"><a href="{{fact:mainnet.explorer}}/tx/0x{{fact:mainnet.pubs.asset_5_tx}}">{{fact:mainnet.seq_asset_v1}}</a> · CONFIRMED</td>
               <td class="mono"><a href="{{fact:testnet.explorer}}/tx/0x{{fact:testnet.pubs.asset_4_tx}}">{{fact:testnet.seq_asset_v1}}</a> · CONFIRMED</td>
+            </tr>
+            <tr>
+              <td><strong>FOBXX asset</strong><span class="td-sub">issuer- and regulator-backed state</span></td>
+              <td class="mono">{{fact:coverage.fobxx.mainnet_sequence}} · {{fact:homepage.fobxx.state}}</td>
+              <td class="mono">{{fact:coverage.fobxx.testnet_sequence}} · {{fact:coverage.fobxx.testnet_state}}</td>
             </tr>
             <tr>
               <td><strong>{{fact:policies.freshness_id}}</strong><span class="td-sub">is the disclosure current enough to act on?</span></td>

@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts.build_reports import ReportRow
+
 
 ROOT = Path(__file__).parents[1]
 
@@ -43,6 +45,65 @@ def test_homepage_facts_come_from_stats_and_latest_mainnet_bundle() -> None:
         "A configured admission contract may refuse USTB right now because the gate "
         "result is not available."
     )
+
+
+def test_asset_status_facts_come_from_source_manifests() -> None:
+    facts = build_site.asset_status_facts()
+
+    assert facts["asset_status.usdy.state"] == "suspended"
+    assert facts["asset_status.usdy.label"] == "RESEARCH · SUSPENDED"
+    assert "260 MB" in facts["asset_status.usdy.reason"]
+    assert facts["asset_status.ousg.state"] == "research"
+    assert facts["asset_status.ousg.label"] == "RESEARCH"
+
+
+def test_asset_status_gate_rejects_rendered_drift() -> None:
+    rendered = build_site.rendered_homepage()
+    build_site.assert_asset_status_truth([rendered])
+
+    altered = rendered.replace(
+        'data-asset-status="USDY">RESEARCH · SUSPENDED<',
+        'data-asset-status="USDY">BUILT · NOT LIVE<',
+        1,
+    )
+    with pytest.raises(SystemExit, match="USDY.*BUILT · NOT LIVE"):
+        build_site.assert_asset_status_truth([altered])
+
+
+def test_generated_site_asset_status_surfaces_match_manifests() -> None:
+    pages = [
+        path.read_text(encoding="utf-8")
+        for path in sorted((ROOT / "site2").rglob("*.html"))
+        if "_pages" not in path.parts and "_partials" not in path.parts
+    ]
+
+    build_site.assert_asset_status_truth(pages)
+
+
+def test_live_manifest_status_requires_verified_onchain_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [
+        ReportRow(
+            asset="USTB",
+            published_at=None,
+            published_text="",
+            state="CONFIRMED",
+            report_hash="0" * 64,
+            bundle_url="/data/report.json",
+            transaction_hash="0x" + "1" * 64,
+            transaction_url="https://example.test/tx/1",
+            network="X LAYER MAINNET",
+            chain_id=196,
+            sequence=1,
+            correction_of=None,
+            block=1,
+        )
+    ]
+    monkeypatch.setattr(build_site, "load_rows", lambda: rows)
+
+    with pytest.raises(SystemExit, match="FOBXX.*mainnet and testnet"):
+        build_site.assert_live_asset_evidence()
 
 
 def test_gate_sentence_requires_a_data_result() -> None:

@@ -6,7 +6,9 @@ against retained evidence, and publishes signed results to an append-only on-cha
 registry — where consumer contracts, wallets and AI agents act only when the required
 evidence policy is satisfied.
 
-Status: **USTB and FOBXX are live on X Layer testnet and mainnet — 22 published reports, 17 `CONFIRMED` since 2026-08-19, v1 and v2 registries, pinned gates and admission controllers on both chains.**
+Current asset publication status is rendered from the source manifests on the
+[assets page](https://touchstone.gudman.xyz/assets-covered). Report and contract counts
+are rendered from retained publication data on the site rather than copied here.
 
 - **Website:** https://touchstone.gudman.xyz · [dossier](https://touchstone.gudman.xyz/dossier) · [Policy Terminal](https://touchstone.gudman.xyz/app) · [the 90-second proof](https://touchstone.gudman.xyz/judge)
 - **X:** [@touch__stone](https://x.com/TOUCH__STONE) — [launch post](https://x.com/TOUCH__STONE/status/2090844839055159485)
@@ -67,9 +69,9 @@ transaction: [network addresses](https://touchstone.gudman.xyz/developers) and t
 | AssetGateV2 | `0x8641CF6d40524AC55aBd0a02601AfBd374EFB059` | `0xE1e2C897A43674bba6c3fbE6584a703a09939930` |
 | RWAAdmissionController | `0x5C5265392701A99cbB137aF8116E0F97f630329A` | `0x1822Cde72cD1aB560d8fdD795Ac6971b122BbA28` |
 
-All live contracts are source-verified on OKLink. The admission story is real
-transactions on both chains: propose, activate on the gate's word, execute, and a
-refused activation left on chain as a citable revert.
+The [developers page](https://touchstone.gudman.xyz/developers#addresses) links each
+deployment to its chain explorer so its code and transaction history can be checked
+directly.
 
 ## Verify a report yourself
 
@@ -84,10 +86,10 @@ Or drop any bundle onto the [Policy Terminal](https://touchstone.gudman.xyz/app)
 checks run in your browser — Ed25519 signature, complete canonical equality, the signed
 approval ledger, policy identity, compilation binding, and the Registry v2 attestation
 compared against what the chain actually stores. The panel names what it does **not**
-check. Eighteen of the twenty published reports have a downloadable bundle on the
-[dossier](https://touchstone.gudman.xyz/dossier); the two 2026-08-19 testnet policy
-artifacts overwritten before filenames became chain-aware are identified there
-explicitly, with their signed reports retained in the transparency logs.
+check. The [dossier](https://touchstone.gudman.xyz/dossier) derives the current
+publication and downloadable-bundle counts from retained data. It also identifies the
+two 2026-08-19 testnet policy artifacts overwritten before filenames became chain-aware;
+their signed reports remain in the transparency logs.
 
 ## Quickstart (development)
 
@@ -146,9 +148,9 @@ finding), [`docs/KEY-MANAGEMENT.md`](docs/KEY-MANAGEMENT.md).
 
 ## Honesty rules
 
-Every number above is rendered from one canonical facts file that CI checks against the
-chain-derived project state; a hand-edited page or a stale count fails the build. Where
-something is unproven, the documentation says so — `docs/LIMITATIONS.md` records every
+Every status and count on the generated site is rendered from canonical data that CI
+checks; a hand-edited page or a stale count fails the build. Where something is unproven,
+the documentation says so — `docs/LIMITATIONS.md` records every
 missed target as missed rather than restated. The registry provides append-only
 publication integrity with bounded publisher authority; it does not verify the Ed25519
 report signature on chain. That check is what the offline bundle performs, on your

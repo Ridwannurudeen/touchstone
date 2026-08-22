@@ -28,7 +28,7 @@
 <main id="main">
   <div class="wrap doc-layout">
     <article class="doc-body">
-<h1 id="touchstone-phase-0-source-audit">Touchstone — Phase 0 Source Audit</h1>
+<h1 id="touchstone-phase-0-source-audit">Touchstone — Phase 0 Source Audit</h1><aside class="doc-status" aria-labelledby="current-asset-status"><h2 id="current-asset-status">Current publication status</h2><p>This block is rendered from the source manifests. Dated passages below preserve the audit history; this block is the current ruling.</p><ul><li><strong>USTB</strong> — <span data-asset-status="USTB">LIVE</span>. Verified signed reports are retained with publication transactions on X Layer mainnet and testnet.</li><li><strong>FOBXX</strong> — <span data-asset-status="FOBXX">LIVE</span>. Verified signed reports are retained with publication transactions on X Layer mainnet and testnet.</li><li><strong>OUSG</strong> — <span data-asset-status="OUSG">RESEARCH</span>. Qualification is incomplete: the oracle cross-check is unverified, no fixture or extraction anchors are pinned, and no control is implemented.</li><li><strong>USDY</strong> — <span data-asset-status="USDY">RESEARCH · SUSPENDED</span>. The attestation source is one 260 MB unbounded archive, and no bounded retrieval route has been verified.</li></ul></aside>
 <p><strong>Audit date:</strong> 2026-08-13
 <strong>Gate:</strong> an asset enters the build only with an attributable official source, repeatable
 no-login retrieval, ≥2 honest machine-observable controls, explicit cadence, hashable
@@ -363,12 +363,12 @@ revert on all Chainlink-style selectors — resolve ABIs via Sourcify v2 only; v
 brownout); store <code>decimals()</code> per contract (6/8/18 all occur); pin block numbers;
 key contracts by (chain, address) — Superstate reuses addresses across chains.</p>
 <hr />
-<h2 id="portfolio-selection-closed-2026-08-16">Portfolio selection — <strong>CLOSED 2026-08-16</strong></h2>
-<p><strong>Final for Phase 1: USTB alone.</strong> No second adapter, no contrast adapter. USDY is cut
-(unbounded retrieval), FOBXX is retained as a documented monthly contrast asset with no
-adapter, and OUSG is cut — the second-adapter metric is recorded as missed in <code>ROADMAP.md</code>
-rather than chased with a hurried asset. The build order in <code>docs/PHASE-1-PLAN.md</code> is
-authoritative.</p>
+<h2 id="portfolio-selection-2026-08-16-ruling-superseded-by-fobxx-promotion-2026-08-22">Portfolio selection — <strong>2026-08-16 ruling, superseded by FOBXX promotion 2026-08-22</strong></h2>
+<p>The 2026-08-16 ruling shipped USTB alone and cut USDY and OUSG rather than rushing a second
+adapter. On 2026-08-22, FOBXX was promoted after its production-host issuer route and regulator
+path were verified; it now has signed reports on both chains. Current publication status is
+rendered from the source manifests above. The dated selection record below is retained as audit
+history, not current coverage.</p>
 <p>Everything below is the record of how the selection moved, retained because the reasoning is
 the audit trail. <strong>None of it describes an open decision.</strong></p>
 <h3 id="superseded-standing-as-of-2026-08-15-was-reopened-was-final-2026-08-13">Superseded: standing as of 2026-08-15 (was REOPENED; was FINAL 2026-08-13)</h3>
@@ -416,6 +416,7 @@ what this audit's own abort rule forbids.</p>
     <aside class="doc-toc" aria-label="On this page">
       <p class="foot-h">On this page</p>
       <ol class="doc-toc-list">
+        <li class="toc-2"><a href="#current-asset-status">Current publication status</a></li>
         <li class="toc-2"><a href="#ustb-invescosuperstate-short-duration-us-government-securities-fund">USTB — Invesco/Superstate Short Duration U.S. Government Securities Fund</a></li>
         <li class="toc-3"><a href="#sources-all-first-party-all-verified-this-session">Sources (all first-party, all verified this session)</a></li>
         <li class="toc-3"><a href="#sample-observed-values-2026-08-13">Sample observed values (2026-08-13)</a></li>
@@ -429,7 +430,7 @@ what this audit's own abort rule forbids.</p>
         <li class="toc-2"><a href="#source-re-verification-2026-08-15-plan-t4-two-findings-that-change-the-plan">Source re-verification 2026-08-15 (PLAN-T4) — two findings that change the plan</a></li>
         <li class="toc-2"><a href="#paxg-paxos-fail-verified-2026-08-13-excluded-from-the-sprint">PAXG (Paxos) — FAIL (verified 2026-08-13; excluded from the sprint)</a></li>
         <li class="toc-2"><a href="#onchain-observability-all-five-assets-verified-2026-08-13-13151330-utc">Onchain observability (all five assets) — VERIFIED 2026-08-13 13:15–13:30 UTC</a></li>
-        <li class="toc-2"><a href="#portfolio-selection-closed-2026-08-16">Portfolio selection — CLOSED 2026-08-16</a></li>
+        <li class="toc-2"><a href="#portfolio-selection-2026-08-16-ruling-superseded-by-fobxx-promotion-2026-08-22">Portfolio selection — 2026-08-16 ruling, superseded by FOBXX promotion 2026-08-22</a></li>
         <li class="toc-3"><a href="#superseded-standing-as-of-2026-08-15-was-reopened-was-final-2026-08-13">Superseded: standing as of 2026-08-15 (was REOPENED; was FINAL 2026-08-13)</a></li>
       </ol>
     </aside>

@@ -5,6 +5,12 @@
     "display_name": "Invesco/Superstate Short Duration U.S. Government Securities Fund",
     "ticker": "USTB",
     "role": "hero",
+    "publication_status": {
+      "state": "live",
+      "label": "LIVE",
+      "summary": "Live on X Layer mainnet + testnet",
+      "reason": "Verified signed reports are retained with publication transactions on X Layer mainnet and testnet."
+    },
     "identity_basis": "ERC-20 token contract on Ethereum mainnet, address taken from Superstate's own documentation",
     "identity_caveat": "Superstate reuses the same address across chains, so an asset key is only meaningful as the pair (chain, address)."
   },
