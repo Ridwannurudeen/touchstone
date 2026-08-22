@@ -97,7 +97,8 @@ python -m ruff check .
 python -m pytest -q --strict-markers      # full engine suite
 
 (cd contracts && npm ci && npm test)      # Hardhat contract suite
-(cd sdk && npm ci && npm test)            # TypeScript SDK + Policy Terminal tests
+(cd sdk && npm ci && npm test)            # TypeScript SDK
+node --test site2/assets/app.test.mjs     # Policy Terminal tests
 python scripts/mutation_check.py          # mutation harness (clean tree required)
 ```
 
