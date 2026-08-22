@@ -6,12 +6,12 @@
     "contracts_verified_on": "2026-08-20"
   },
   "counts": {
-    "reports_published": "22",
-    "confirmed_reports": "17",
+    "reports_published": "25",
+    "confirmed_reports": "20",
     "v2_attestations": "10",
     "enforcement_txs": "9",
     "networks": "2",
-    "bundles_downloadable": "20",
+    "bundles_downloadable": "23",
     "controls_approved": "9",
     "controls_declined": "7",
     "evidence_sources": "7",

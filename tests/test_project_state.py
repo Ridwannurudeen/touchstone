@@ -28,14 +28,14 @@ def test_project_state_is_assembled_from_verified_repository_facts(
         state["approval"]["approved_control_ids"]
     )
     assert state["reports"]["artifact_count"] == len(state["bundles"])
-    # Eight, since 2026-08-21 evening: four confirmed policy pairs are retained under
+    # Ten, since 2026-08-22: five confirmed policy pairs are retained under
     # site2/data and verified — the fourth is the first TESTNET pair with retained
     # chain-aware bundle files, the very gap the dossier used to disclose. These pinned
     # zero right up until the product did the thing it was built to do, and the count
     # only moves when another confirmed policy bundle is retained — which is exactly
     # the event worth pinning.
-    assert state["reports"]["retained_verified_policy_bundle_count"] == 8
-    assert state["reports"]["confirmed_policy_bundle_count"] == 8
+    assert state["reports"]["retained_verified_policy_bundle_count"] == 10
+    assert state["reports"]["confirmed_policy_bundle_count"] == 10
     assert state["deployments"]
     output = tmp_path / "project-state.json"
     output.write_bytes(build.encode_state(state))

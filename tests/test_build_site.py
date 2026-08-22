@@ -28,10 +28,10 @@ def test_homepage_facts_come_from_stats_and_latest_mainnet_bundle() -> None:
     assert facts["homepage.live_assets"] == "2"
     assert facts["homepage.evidence_sources"] == "7"
     assert facts["homepage.networks"] == "2"
-    assert facts["homepage.confirmed_reports"] == "17"
+    assert facts["homepage.confirmed_reports"] == "20"
     assert facts["homepage.ustb.state"] == "CONFIRMED"
-    assert facts["homepage.ustb.nav"] == "11.18316100"
-    assert facts["homepage.ustb.nav_date"] == "2026-08-18"
+    assert facts["homepage.ustb.nav"] == "11.18426200"
+    assert facts["homepage.ustb.nav_date"] == "2026-08-19"
     assert facts["homepage.ustb.valid_until"] == "2026-08-23T23:59:59Z"
     assert facts["homepage.ustb.source_count"] == "3"
     assert facts["homepage.fobxx.state"] == "CONFIRMED"
@@ -127,15 +127,15 @@ def test_homepage_numeric_truth_rejects_rendered_drift() -> None:
     build_site.assert_homepage_truth(rendered)
 
     altered = rendered.replace(
-        'data-homepage-fact="confirmed_reports">17<',
-        'data-homepage-fact="confirmed_reports">16<',
+        'data-homepage-fact="confirmed_reports">20<',
+        'data-homepage-fact="confirmed_reports">19<',
     )
     with pytest.raises(SystemExit, match="homepage fact confirmed_reports"):
         build_site.assert_homepage_truth(altered)
 
 
 def test_live_status_gate_rejects_report_count_divergence() -> None:
-    with pytest.raises(SystemExit, match=r"local 22/17.*live /status 17/12"):
+    with pytest.raises(SystemExit, match=r"local 25/20.*live /status 17/12"):
         build_site.assert_live_status_counts(
             "<strong>17 reports</strong>, of which "
             "<strong>12 reached\n<code>CONFIRMED</code></strong>."

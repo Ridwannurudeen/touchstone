@@ -168,7 +168,7 @@ def test_committed_stats_identify_every_publication_and_all_eight_histories() ->
     )
 
     assert len(claims) == 8
-    assert sum(claim.sequence for claim in claims) == 22
+    assert sum(claim.sequence for claim in claims) == 25
 
 
 def test_offline_skips_every_file_and_network_read(capsys) -> None:

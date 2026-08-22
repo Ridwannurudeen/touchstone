@@ -55,6 +55,33 @@ ssh, which is equivalent here only because the file sets were compared first:
 Extract-over-top does not remove files that have been deleted locally, which `rsync --delete`
 would. **So compare the two file lists before uploading** and delete any orphan explicitly.
 
+**Synchronize the publisher's append-only record before building or uploading content.** The
+served archive is a projection of the publisher workspaces, not a second publication ledger.
+Fetch only transparency logs and bundle artifacts with read-only `scp`, then let the sync tool
+verify every log and bundle, check each new receipt through both configured RPC providers, retain
+the bundle bytes unchanged, and derive the publication rows and public counts:
+
+    sync_dir=$(mktemp -d)
+    mkdir -p "$sync_dir"/{ustb,ustb-policy-disclosure-freshness-v1,ustb-policy-nav-settlement-v1}
+    scp -r root@75.119.153.252:/var/lib/touchstone/xlayer-mainnet/ustb/bundles "$sync_dir/ustb/"
+    scp root@75.119.153.252:/var/lib/touchstone/xlayer-mainnet/ustb/transparency.jsonl "$sync_dir/ustb/"
+    scp root@75.119.153.252:/var/lib/touchstone/xlayer-mainnet/ustb-policy-disclosure-freshness-v1/transparency.jsonl "$sync_dir/ustb-policy-disclosure-freshness-v1/"
+    scp root@75.119.153.252:/var/lib/touchstone/xlayer-mainnet/ustb-policy-nav-settlement-v1/transparency.jsonl "$sync_dir/ustb-policy-nav-settlement-v1/"
+    python scripts/sync_publications.py --from "$sync_dir"
+    python scripts/sync_publications.py --check
+    python scripts/build_site.py
+    rm -rf "$sync_dir"
+
+The main USTB workspace's `bundles/` directory holds the asset and both policy bundles; the two
+policy workspaces hold their separate transparency logs and no separate bundle directories.
+
+The synchronizer is append-only: an existing publication row is never altered and an existing
+retained filename is never overwritten. A verified retained bundle for the same signed report is
+kept as-is; a bundle that fails offline verification is never retained. Do not edit
+`site2/data/stats.json` publication rows or their count surfaces by hand.
+If another publisher workspace gains bundles, fetch its `transparency.jsonl` and `bundles/` into
+the same temporary tree before running the sync.
+
 ⚠️ **The host keeps a second copy of three site inputs, and the status timer reads that
 copy, not the served tree.** `touchstone-status@xlayer-mainnet.service` runs
 `/opt/touchstone/scripts/build_status.py` with `WorkingDirectory=/opt/touchstone`, so it
@@ -101,7 +128,8 @@ Rolling a content update back is restoring that directory, not removing the vhos
 
 ## What to check after any later epoch
 
-A new epoch adds one bundle and one page; it does not change the vhost. Re-run steps 1 and 6.
+A new epoch adds publication rows and bundles; it does not change the vhost. Run the publication
+sync above, rebuild, then re-run steps 1 and 6.
 The bundle's digest is printed beside its own download link, so **step 6's hash comparison is
 the check that matters** — if it disagrees, the file was translated in transit or in git, and
 the page is telling a reader to verify against a number that no longer describes the file.

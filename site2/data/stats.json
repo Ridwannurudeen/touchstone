@@ -1,5 +1,5 @@
 {
- "reports_published": 22,
+ "reports_published": 25,
  "controls_evaluated": 8,
  "evidence_captures": 9,
  "assets_live": 2,
@@ -295,6 +295,45 @@
    "transaction_hash": "0x93ad57ed49bfbbd8b244fb32a6e60d5280e8c6745d871ac1270d9556e165660e",
    "block": 68605325,
    "observed_at": "2026-08-22T04:51:45.401050Z"
+  },
+  {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+   "note": "xlayer-mainnet-v1",
+   "epoch_id": "ustb-2026-08-22",
+   "sequence": 6,
+   "state": "CONFIRMED",
+   "policy": null,
+   "correction_of": null,
+   "transaction_hash": "0xf99f42b6703d7369bf8927038f95a1a44cf2d6761a991c404f2ee2480757f1a2",
+   "block": 68599159,
+   "observed_at": "2026-08-22T03:01:26.624074Z"
+  },
+  {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:disclosure-freshness:1",
+   "note": "policy:disclosure-freshness",
+   "epoch_id": "ustb-2026-08-22",
+   "sequence": 4,
+   "state": "CONFIRMED",
+   "policy": "disclosure-freshness",
+   "correction_of": null,
+   "transaction_hash": "0x2554e9446df2afb19e8f4a30e9d191749b3f5b40c131aab73202bb0f21ace2c9",
+   "block": 68599253,
+   "observed_at": "2026-08-22T03:01:26.624074Z"
+  },
+  {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:nav-settlement:1",
+   "note": "policy:nav-settlement",
+   "epoch_id": "ustb-2026-08-22",
+   "sequence": 4,
+   "state": "CONFIRMED",
+   "policy": "nav-settlement",
+   "correction_of": null,
+   "transaction_hash": "0xe03d60b37abe6ae3b747641dbca9581d57be30dda52a009a52ccd775b639d4b6",
+   "block": 68599353,
+   "observed_at": "2026-08-22T03:01:26.624074Z"
   }
  ],
  "assets": [
@@ -346,7 +385,7 @@
   "xlayer-mainnet",
   "xlayer-testnet"
  ],
- "confirmed_reports": 17,
+ "confirmed_reports": 20,
  "first_confirmed_at": "2026-08-19T16:36:55Z",
  "policies": [
   {
