@@ -4,7 +4,7 @@ import {
   DEPLOYMENTS,
   GuardedActionClient,
   POLICIES,
-} from "@touchstone/sdk";
+} from "touchstone-sdk";
 
 const rpcUrl = process.env.TOUCHSTONE_RPC_URL;
 const privateKey = process.env.TOUCHSTONE_INTEGRATION_PRIVATE_KEY;

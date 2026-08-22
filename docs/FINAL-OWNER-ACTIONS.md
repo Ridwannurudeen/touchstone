@@ -38,7 +38,7 @@ bundles against an independently supplied reporter key and passed 85 package tes
 verifiable integration work, not adoption, endorsement, or a partnership while the PR is open.
 
 Still obtain one independently operated integration. Strong evidence is another X Layer project
-importing `ITouchstoneGate` or `@touchstone/sdk`, operating its own consuming contract and
+importing `ITouchstoneGate` or `touchstone-sdk`, operating its own consuming contract and
 wallet, performing a policy-bound action, and announcing the integration. Another wallet
 controlled by Touchstone is not external adoption.
 

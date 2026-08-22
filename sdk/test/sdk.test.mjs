@@ -6,6 +6,7 @@ import {
   ASSET_GATE_ABI,
   ASSET_GATE_V2_ABI,
   AssetGateClient,
+  DEPLOYMENTS,
   ERC8021_SUFFIX,
   GUARDED_ACTION_ABI,
   GuardedActionClient,
@@ -19,7 +20,7 @@ import {
   policyIdDigest,
   registryAssetKey,
   toBuilderCodeSuffix,
-} from "@touchstone/sdk";
+} from "touchstone-sdk";
 
 const ADDRESS = "0x1111111111111111111111111111111111111111";
 const HASH = `0x${"11".repeat(32)}`;
@@ -191,6 +192,34 @@ test("RegistryV2Client preserves integer return values as bigint", async () => {
   assert.equal(report.approvalDigest, HASH);
 });
 
+test("RegistryV2Client decodes the struct the live registry actually returns", async () => {
+  const fixture = JSON.parse(
+    await readFile(
+      new URL("../fixtures/registry-v2-latest-report-mainnet.json", import.meta.url),
+      "utf8"
+    )
+  );
+  const calls = [];
+  const runner = {
+    async call(transaction) {
+      calls.push(transaction);
+      return fixture.returnData;
+    },
+  };
+  const client = new RegistryV2Client(fixture.registry, runner);
+
+  const report = await client.latestReport(fixture.assetKey);
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].data, fixture.calldata);
+  assert.equal(report.sequence, BigInt(fixture.expected.sequence));
+  assert.equal(report.publisher, fixture.expected.publisher);
+  assert.equal(report.observedAt, BigInt(fixture.expected.observedAt));
+  assert.equal(report.validUntil, BigInt(fixture.expected.validUntil));
+  assert.equal(report.reportURI, fixture.expected.reportURI);
+  assert.equal(report.status, BigInt(fixture.expected.status));
+});
+
 test("RegistryV2Client returns null for an unknown asset", async () => {
   const client = new RegistryV2Client(ADDRESS, {});
   client.contract = {
@@ -213,6 +242,10 @@ test("Registry v2 indexer returns publications and corrections in log order", as
     HASH, 2n, 1n, ADDRESS, HASH, HASH, HASH, HASH,
   ]);
   const provider = {
+    async getBlock(tag) {
+      assert.equal(tag, "latest");
+      return { number: 3 };
+    },
     async getLogs(request) {
       assert.equal(request.topics[0].length, 2);
       return [
@@ -227,6 +260,51 @@ test("Registry v2 indexer returns publications and corrections in log order", as
   assert.equal(events[0].correctedSequence, null);
   assert.equal(events[0].approvalDigest, HASH);
   assert.equal(events[1].correctedSequence, 1n);
+});
+
+test("Registry v2 indexer splits the block range into windows the public RPC accepts", async () => {
+  const windows = [];
+  const provider = {
+    async getBlock() {
+      throw new Error("a numeric toBlock must not be resolved through the provider");
+    },
+    async getLogs(request) {
+      windows.push([request.fromBlock, request.toBlock]);
+      return [];
+    },
+  };
+
+  assert.deepEqual(await indexPublished(provider, ADDRESS, 1000, 1249), []);
+  assert.deepEqual(windows, [
+    [1000, 1099],
+    [1100, 1199],
+    [1200, 1249],
+  ]);
+
+  windows.length = 0;
+  await indexPublished(provider, ADDRESS, 5, 5, { blockRange: 2000 });
+  assert.deepEqual(windows, [[5, 5]]);
+
+  await assert.rejects(
+    indexPublished(provider, ADDRESS, 0, 1, { blockRange: 0 }),
+    /blockRange must be a positive integer/
+  );
+});
+
+test("DEPLOYMENTS match the committed v2 deployment manifests", async () => {
+  for (const [name, file] of [
+    ["xlayerMainnet", "xlayer-mainnet-v2.json"],
+    ["xlayerTestnet", "xlayer-testnet-v2.json"],
+  ]) {
+    const manifest = JSON.parse(
+      await readFile(new URL(`../../deployments/${file}`, import.meta.url), "utf8")
+    );
+    const deployment = DEPLOYMENTS[name];
+    assert.equal(deployment.chainId, manifest.chain_id);
+    assert.equal(deployment.v2RegistryAddress, manifest.registry_address);
+    assert.equal(deployment.legacyRegistryAddress, manifest.legacy_registry_address);
+    assert.equal(deployment.v2RegistryDeploymentBlock, manifest.deployment_block);
+  }
 });
 
 test("ERC-8021 schema-0 output matches the canonical reference vector", () => {

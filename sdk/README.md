@@ -8,6 +8,12 @@ so a consumer reads real contracts out of the box.
 ## Five-minute integration
 
 ```sh
+npm install touchstone-sdk ethers
+```
+
+Or from a checkout of this repository:
+
+```sh
 cd sdk
 npm ci
 npm run build
@@ -23,7 +29,7 @@ import {
   DEPLOYMENTS,
   GuardedActionClient,
   POLICIES,
-} from "@touchstone/sdk";
+} from "touchstone-sdk";
 
 const provider = new JsonRpcProvider(process.env.RPC_URL, 1952);
 const wallet = new Wallet(process.env.PRIVATE_KEY!, provider);
@@ -50,17 +56,22 @@ executes the guarded action.
 
 ```ts
 import { JsonRpcProvider } from "ethers";
-import { indexPublished } from "@touchstone/sdk";
+import { DEPLOYMENTS, indexPublished } from "touchstone-sdk";
 
+const deployment = DEPLOYMENTS.xlayerMainnet;
 const events = await indexPublished(
-  new JsonRpcProvider(process.env.RPC_URL!, 1952),
-  process.env.REGISTRY_V2_ADDRESS!,
-  0,
+  new JsonRpcProvider("https://rpc.xlayer.tech", deployment.chainId),
+  deployment.v2RegistryAddress!,
+  deployment.v2RegistryDeploymentBlock!,
   "latest"
 );
 ```
 
-The result includes both `Published` and `Corrected` events in canonical log order.
+The indexer reads logs in windows of 100 blocks because the public X Layer RPC rejects
+wider `eth_getLogs` ranges; pass `{ blockRange }` as a fifth argument for a provider that
+allows more. Start from `v2RegistryDeploymentBlock` (or a checkpoint you persist) rather
+than block 0. The result includes both `Published` and `Corrected` events in canonical log
+order.
 Corrections carry `kind: "corrected"` and their non-null `correctedSequence`; consumers
 must process both kinds so a correction cannot leave cached permissive state behind.
 

@@ -1,6 +1,34 @@
 {
-  "name": "@touchstone/sdk",
+  "name": "touchstone-sdk",
   "version": "0.1.0",
+  "description": "Read Touchstone RWA policy gates and Registry v2 reports on X Layer, and execute guarded actions only when a gate permits",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ridwannurudeen/touchstone.git",
+    "directory": "sdk"
+  },
+  "homepage": "https://touchstone.gudman.xyz/developers",
+  "bugs": {
+    "url": "https://github.com/Ridwannurudeen/touchstone/issues"
+  },
+  "keywords": [
+    "touchstone",
+    "rwa",
+    "x-layer",
+    "xlayer",
+    "policy-gate",
+    "registry",
+    "ethers",
+    "erc-8021"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -12,7 +40,8 @@
   },
   "files": [
     "dist",
-    "solidity"
+    "solidity",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

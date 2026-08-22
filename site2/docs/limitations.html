@@ -58,7 +58,7 @@ portfolio provides one.</p>
 <h2 id="2-hackathon-completion-metrics-what-was-missed">2. Hackathon completion metrics — what was missed</h2>
 <p>The targets in <code>ROADMAP.md</code> were not restated downward. Misses are
 recorded as misses. Standing in that table is dated 2026-08-16; the
-testnet registry landed the next day and does not change the three
+testnet registry landed the next day and does not change the two
 missed rows.</p>
 <table>
 <thead>
@@ -82,7 +82,7 @@ missed rows.</p>
 <tr>
 <td>Fully autonomous live adapters</td>
 <td>≥2</td>
-<td><strong>1 — missed.</strong> USTB ran the unattended daemon against the live issuer on 2026-08-17 and published sequence 1, so the count is one, not zero. This row read "0 proven live... it has never run against live sources" until 2026-08-18, which the canary row two lines below had already contradicted. The production observer sustains a 15-minute retrieval schedule for all three USTB sources, and the enabled publisher unit ran the 2026-08-20 and 2026-08-21 mainnet slots unattended; recovery on the production host remains unproven. Publication count is no longer the gap: 17 reports across two chains, 12 <code>CONFIRMED</code>. The miss is the asset count. USDY is blocked on unbounded retrieval (a single 260,431,605-byte archive). FOBXX now has a strict offline SEC normalizer and fixtures, but no live epoch or production-host adapter run. OUSG was cut rather than rushed into the second slot (<code>manifests/sources/ousg.json</code>, <code>phase_1_status.state: cut</code>). Phase 1 deliberately ships one vertical rather than two hurried ones.</td>
+<td><strong>1 — missed.</strong> USTB ran the unattended daemon against the live issuer on 2026-08-17 and published sequence 1, so the count is one, not zero. This row read "0 proven live... it has never run against live sources" until 2026-08-18, which the canary row two lines below had already contradicted. The production observer sustains a 15-minute retrieval schedule for all three USTB sources, and the enabled publisher unit ran the 2026-08-20 and 2026-08-21 mainnet slots unattended; recovery on the production host remains unproven. Publication count is no longer the gap: 20 reports across two chains, 15 <code>CONFIRMED</code>. The miss is the asset count. USDY is blocked on unbounded retrieval (a single 260,431,605-byte archive). FOBXX now has a strict offline SEC normalizer and fixtures, but no live epoch or production-host adapter run. OUSG was cut rather than rushed into the second slot (<code>manifests/sources/ousg.json</code>, <code>phase_1_status.state: cut</code>). Phase 1 deliberately ships one vertical rather than two hurried ones.</td>
 </tr>
 <tr>
 <td>Live consumer contract gating on state</td>

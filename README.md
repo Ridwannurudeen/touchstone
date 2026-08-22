@@ -97,7 +97,8 @@ python -m ruff check .
 python -m pytest -q --strict-markers      # full engine suite
 
 (cd contracts && npm ci && npm test)      # Hardhat contract suite
-(cd sdk && npm ci && npm test)            # TypeScript SDK + Policy Terminal tests
+(cd sdk && npm ci && npm test)            # TypeScript SDK
+node --test site2/assets/app.test.mjs     # Policy Terminal tests
 python scripts/mutation_check.py          # mutation harness (clean tree required)
 ```
 
@@ -112,7 +113,7 @@ the canonical chain facts. `main` requires the aggregate check.
 |---|---|
 | `touchstone/` | the engine: evidence store, evaluator, signing, publication, verification |
 | `contracts/` | Solidity: registries, gates, admission controller, Hardhat suite |
-| `sdk/` | TypeScript SDK (`@touchstone/sdk`): clients, indexer, ERC-8021 attribution |
+| `sdk/` | TypeScript SDK (`touchstone-sdk`): clients, indexer, ERC-8021 attribution |
 | `scripts/` | operational entry points — the daemon, publishers, release builder, gates |
 | `site2/` | the public site, generated from sources + one canonical facts file |
 | `docs/` | runbooks, threat model, limitations, audit traceability, submission draft |

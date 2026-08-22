@@ -91,12 +91,14 @@ function execute() external {
 
       <div class="qs-step">
         <h3>2 &middot; TypeScript — the SDK</h3>
-        <p class="qs-note">The SDK lives in this repository's <span class="mono">sdk/</span>
-        workspace and is built from source; it is not fetched from a package registry. The
-        package declares itself as <span class="mono">@touchstone/sdk</span>, which is the
-        specifier its examples and tests import.</p>
+        <p class="qs-note">The SDK is published as <span class="mono">touchstone-sdk</span>
+        on the public npm registry, built from this repository's <span class="mono">sdk/</span>
+        workspace. Building from a checkout stays supported and is what CI runs.</p>
         <p class="code-block-label">install</p>
-        <pre class="code-block">git clone https://github.com/Ridwannurudeen/touchstone
+        <pre class="code-block">npm install touchstone-sdk ethers
+
+<span class="c-comment"># or from a checkout of this repository</span>
+git clone https://github.com/Ridwannurudeen/touchstone
 cd touchstone/sdk
 npm ci &amp;&amp; npm run build &amp;&amp; npm test</pre>
         <p class="code-block-label" style="margin-top:var(--s5)">check, then act</p>
@@ -106,7 +108,7 @@ npm ci &amp;&amp; npm run build &amp;&amp; npm test</pre>
   DEPLOYMENTS,
   GuardedActionClient,
   POLICIES,
-} <span class="c-key">from</span> <span class="c-string">"@touchstone/sdk"</span>;
+} <span class="c-key">from</span> <span class="c-string">"touchstone-sdk"</span>;
 
 <span class="c-key">const</span> deployment = DEPLOYMENTS.xlayerMainnet;   <span class="c-comment">// .xlayerTestnet for chain {{fact:testnet.chain_id}}</span>
 <span class="c-key">const</span> provider = <span class="c-key">new</span> JsonRpcProvider(rpcUrl, deployment.chainId);
@@ -131,7 +133,7 @@ npm ci &amp;&amp; npm run build &amp;&amp; npm test</pre>
         attributed mainnet execution</a> is public. Integrators should register and pass their
         own code.</p>
         <p class="code-block-label" style="margin-top:var(--s5)">read the registry directly</p>
-        <pre class="code-block"><span class="c-key">import</span> { RegistryV2Client, indexPublished, policyRegistryKey } <span class="c-key">from</span> <span class="c-string">"@touchstone/sdk"</span>;
+        <pre class="code-block"><span class="c-key">import</span> { RegistryV2Client, indexPublished, policyRegistryKey } <span class="c-key">from</span> <span class="c-string">"touchstone-sdk"</span>;
 
 <span class="c-key">const</span> registry = <span class="c-key">new</span> RegistryV2Client(registryAddress, provider);
 <span class="c-key">const</span> report = <span class="c-key">await</span> registry.latestReport(POLICIES.navSettlement.registryKey);
