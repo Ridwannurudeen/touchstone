@@ -12,13 +12,18 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
+from datetime import date, timedelta
+import json
 from pathlib import Path
 from types import MappingProxyType
 
 from touchstone.normalize.fobxx import (
+    FOBXX_HISTORY_SOURCE_ID,
+    FOBXX_LOOKUP_SOURCE_ID,
     FOBXX_SOURCE_ID,
     FOBXX_SUBMISSIONS_SOURCE_ID,
     FobxxObservation,
+    FobxxProductLookupObservation,
     FobxxSubmissionsObservation,
     latest_nmfp3_filing,
     latest_nmfp3_url,
@@ -49,6 +54,8 @@ USTB_ADAPTERS: Mapping[str, str] = MappingProxyType(
 )
 FOBXX_ADAPTERS: Mapping[str, str] = MappingProxyType(
     {
+        "franklin-fobxx-product-lookup": "fobxx-product-lookup",
+        "franklin-fobxx-price-performance": "fobxx-price-history",
         "sec-edgar-fobxx-submissions": "fobxx-sec-submissions",
         "sec-edgar-fobxx-nmfp3": "fobxx-nmfp3",
     }
@@ -129,6 +136,7 @@ FOBXX = AssetDescriptor(
         ),
     },
     freshness_units={
+        "franklin-fobxx-price-performance": "business_days",
         "sec-edgar-fobxx-submissions": "business_days",
         "sec-edgar-fobxx-nmfp3": "business_days",
     },
@@ -156,8 +164,33 @@ def resolve_source_manifest(
     asset: AssetDescriptor,
     manifest: SourceManifest,
     observations: Mapping[str, object],
+    observed_on: date,
 ) -> SourceManifest:
     """Resolve a source URL only from already-normalized authoritative discovery data."""
+    if manifest.source_id == FOBXX_HISTORY_SOURCE_ID:
+        lookup = observations.get(FOBXX_LOOKUP_SOURCE_ID)
+        if not isinstance(lookup, FobxxProductLookupObservation):
+            raise ValueError(
+                "FOBXX history source requires a ProductLookup observation"
+            )
+        if type(observed_on) is not date:
+            raise TypeError("observed_on must be a date")
+        start = observed_on - timedelta(days=370)
+        query = (
+            "query PricesHistoryFOBXX { PricesHistory("
+            f'fundid:"{lookup.fund_id}", '
+            f'shareclasscode:"{lookup.share_class_code}", '
+            'countrycode:"US", languagecode:"en-us", '
+            f"startdate:{start:%Y%m%d}, enddate:{observed_on:%Y%m%d}) "
+            "{ prices { fundid shclcode navdate navstd "
+            "dailyliquidassetratio weeklyliquidassetratio } } }"
+        )
+        return replace(
+            manifest,
+            request_body=json.dumps({"query": query}, separators=(",", ":")).encode(
+                "utf-8"
+            ),
+        )
     if manifest.source_id != FOBXX_SOURCE_ID:
         return manifest
     discovery = observations.get(FOBXX_SUBMISSIONS_SOURCE_ID)

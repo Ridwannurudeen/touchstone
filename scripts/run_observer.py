@@ -109,7 +109,9 @@ def look_once(
         failed = False
 
         try:
-            manifest = resolve_source_manifest(asset, manifest, parsed_observations)
+            manifest = resolve_source_manifest(
+                asset, manifest, parsed_observations, now.date()
+            )
             result = fetch_source(
                 source_id,
                 store=store,

@@ -80,13 +80,13 @@ def test_a_manifest_without_fixtures_says_why(name: str, manifest: dict) -> None
     assert status["reason"] and status["human_follow_up"]
 
 
-def test_fobxx_records_its_uncaptured_fixture() -> None:
+def test_fobxx_records_both_issuer_operation_fixtures() -> None:
     manifest = json.loads((MANIFESTS / "fobxx.json").read_text(encoding="utf-8"))
-    missing = manifest["fixtures_missing"]
-    assert missing and all(
-        item["search_execution"] == "not_completed" and item["human_follow_up"]
-        for item in missing
-    )
+    captured = {item["source_id"] for item in manifest["fixtures"]}
+
+    assert manifest["fixtures_missing"] == []
+    assert "franklin-fobxx-product-lookup" in captured
+    assert "franklin-fobxx-price-performance" in captured
 
 
 def liquidity_rows() -> list[tuple[str, str, str]]:
@@ -143,14 +143,14 @@ def test_the_manifest_does_not_misdate_the_liquidity_figures() -> None:
     assert edgar["dated_series_warning"]
 
 
-def test_suspended_and_demoted_assets_say_so_in_their_role() -> None:
+def test_suspended_demoted_and_promoted_assets_say_so_in_their_role() -> None:
     """A blocked asset must not sit in the portfolio looking healthy."""
     usdy = json.loads((MANIFESTS / "usdy.json").read_text(encoding="utf-8"))
     fobxx = json.loads((MANIFESTS / "fobxx.json").read_text(encoding="utf-8"))
     ousg = json.loads((MANIFESTS / "ousg.json").read_text(encoding="utf-8"))
 
     assert "SUSPENDED" in usdy["asset"]["role"]
-    assert "DEMOTED" in fobxx["asset"]["role"]
+    assert "PROMOTED 2026-08-22" in fobxx["asset"]["role"]
     assert ousg["asset"]["promotion_state"].startswith("not promoted")
     assert ousg["qualification"]["oracle_cross_check"]["status"] == "UNVERIFIED"
 

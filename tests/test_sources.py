@@ -56,9 +56,16 @@ class FakeTransport:
     def __init__(self, responses: dict[str, TransportResponse]) -> None:
         self.responses = responses
         self.calls: list[tuple[str, float, int]] = []
+        self.post_calls: list[tuple[str, bytes, float, int]] = []
 
     def get(self, url: str, *, timeout: float, max_bytes: int) -> TransportResponse:
         self.calls.append((url, timeout, max_bytes))
+        return self.responses[url]
+
+    def post(
+        self, url: str, body: bytes, *, timeout: float, max_bytes: int
+    ) -> TransportResponse:
+        self.post_calls.append((url, body, timeout, max_bytes))
         return self.responses[url]
 
 
@@ -95,6 +102,45 @@ def test_ustb_source_registry_is_exact_and_frozen() -> None:
     assert all(source.expected_mime == "application/json" for source in USTB_SOURCES)
     assert all(source.authority_class == "issuer-api" for source in USTB_SOURCES)
     assert isinstance(USTB_SOURCES, tuple)
+
+
+def test_fobxx_lookup_posts_only_the_manifest_body_and_stores_the_response(
+    tmp_path: Path,
+) -> None:
+    source = FOBXX_SOURCES[0]
+    raw = (FIXTURES / "fobxx-product-lookup-20260822.json").read_bytes()
+    transport = FakeTransport({source.url: response(raw)})
+
+    result = fetch_source(
+        source.source_id,
+        store=EvidenceStore(tmp_path),
+        transport=transport,
+        retrieved_at=RETRIEVED_AT,
+    )
+
+    assert transport.calls == []
+    assert transport.post_calls == [
+        (source.url, source.request_body, 10.0, source.max_bytes)
+    ]
+    assert result.evidence_sha256 == hashlib.sha256(raw).hexdigest()
+
+
+def test_post_source_without_a_resolved_body_is_refused_before_transport(
+    tmp_path: Path,
+) -> None:
+    source = FOBXX_SOURCES[1]
+    transport = FakeTransport({})
+
+    with pytest.raises(SourcePolicyError, match="method/request-body"):
+        fetch_source(
+            source.source_id,
+            store=EvidenceStore(tmp_path),
+            transport=transport,
+            retrieved_at=RETRIEVED_AT,
+        )
+
+    assert transport.calls == []
+    assert transport.post_calls == []
 
 
 @pytest.mark.parametrize(
@@ -760,7 +806,7 @@ def test_sec_transport_refuses_a_non_identifying_user_agent_before_network() -> 
     transport = LiveTransport()
 
     with pytest.raises(SourcePolicyError, match="identifying User-Agent"):
-        transport.get(FOBXX_SOURCES[0].url, timeout=1.0, max_bytes=1024)
+        transport.get(FOBXX_SOURCES[2].url, timeout=1.0, max_bytes=1024)
 
 
 def test_sec_transport_sends_the_configured_identifying_user_agent(monkeypatch) -> None:
@@ -791,6 +837,6 @@ def test_sec_transport_sends_the_configured_identifying_user_agent(monkeypatch) 
     monkeypatch.setattr(sources_module, "build_opener", lambda *args: Opener())
     transport = LiveTransport(user_agent="Touchstone ops@example.com")
 
-    transport.get(FOBXX_SOURCES[0].url, timeout=1.0, max_bytes=1024)
+    transport.get(FOBXX_SOURCES[2].url, timeout=1.0, max_bytes=1024)
 
     assert requests[0].get_header("User-agent") == "Touchstone ops@example.com"

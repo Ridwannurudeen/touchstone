@@ -23,10 +23,16 @@ from touchstone.evidence import EvidenceStore
 from touchstone.evaluate import evaluate
 from touchstone.normalize.fobxx import (
     FOBXX_CIK,
+    FOBXX_HISTORY_SOURCE_ID,
+    FOBXX_LOOKUP_SOURCE_ID,
     FOBXX_SERIES_ID,
     FobxxNormalizationError,
     FobxxObservation,
+    FobxxPriceHistoryObservation,
+    FobxxProductLookupObservation,
     FobxxSubmissionsObservation,
+    parse_price_history,
+    parse_product_lookup,
     parse_nmfp3,
     parse_submissions,
 )
@@ -43,12 +49,12 @@ FIXTURES = Path(__file__).parents[1] / "fixtures"
 class FobxxFixtureTransport:
     def __init__(self) -> None:
         self.responses = {
-            FOBXX.sources[0].url: TransportResponse(
+            FOBXX.sources[2].url: TransportResponse(
                 status_code=200,
                 headers={"Content-Type": "application/json"},
                 body=(FIXTURES / "fobxx-submissions-20260815.json").read_bytes(),
             ),
-            FOBXX.sources[1].url: TransportResponse(
+            FOBXX.sources[3].url: TransportResponse(
                 status_code=200,
                 headers={"Content-Type": "text/xml"},
                 body=(FIXTURES / "fobxx-nmfp3-20260731.xml").read_bytes(),
@@ -58,6 +64,24 @@ class FobxxFixtureTransport:
     def get(self, url: str, *, timeout: float, max_bytes: int) -> TransportResponse:
         del timeout, max_bytes
         return self.responses[url]
+
+    def post(
+        self, url: str, body: bytes, *, timeout: float, max_bytes: int
+    ) -> TransportResponse:
+        del timeout, max_bytes
+        if url != FOBXX.sources[0].url:
+            raise ValueError("fixture transport received an unregistered POST URL")
+        if body == FOBXX.sources[0].request_body:
+            fixture = "fobxx-product-lookup-20260822.json"
+        elif b"PricesHistoryFOBXX" in body:
+            fixture = "fobxx-price-history-20260822.json"
+        else:
+            raise ValueError("fixture transport received an unregistered POST body")
+        return TransportResponse(
+            status_code=200,
+            headers={"Content-Type": "application/json"},
+            body=(FIXTURES / fixture).read_bytes(),
+        )
 
 
 def _wrong_general_info_cik(raw: bytes) -> bytes:
@@ -72,12 +96,54 @@ def test_fobxx_descriptor_and_sec_fixtures_are_registered() -> None:
     assert FOBXX.source_manifest.is_file()
     assert FOBXX.evidence_identity == FOBXX_EVIDENCE_IDENTITY
     assert [source.source_id for source in FOBXX.sources] == [
+        "franklin-fobxx-product-lookup",
+        "franklin-fobxx-price-performance",
         "sec-edgar-fobxx-submissions",
         "sec-edgar-fobxx-nmfp3",
     ]
     assert parse_nmfp3(
         (FIXTURES / "fobxx-nmfp3-20260731.xml").read_bytes()
     ).series_id == (FOBXX_SERIES_ID)
+
+
+def test_franklin_lookup_uses_the_verified_shclcode_field() -> None:
+    observation = parse_product_lookup(
+        (FIXTURES / "fobxx-product-lookup-20260822.json").read_bytes()
+    )
+
+    assert isinstance(observation, FobxxProductLookupObservation)
+    assert observation.fund_id == "29386"
+    assert observation.share_class_code == "SINGLCLASS"
+
+
+def test_franklin_history_normalizes_percent_ratios_and_preserves_blanks() -> None:
+    observation = parse_price_history(
+        (FIXTURES / "fobxx-price-history-20260822.json").read_bytes()
+    )
+
+    assert isinstance(observation, FobxxPriceHistoryObservation)
+    assert observation.rows[0].date == date(2026, 8, 21)
+    assert observation.rows[0].nav_std == Decimal("1.00000000")
+    assert observation.rows[0].daily_liquid_asset_ratio is None
+    assert observation.rows[0].weekly_liquid_asset_ratio is None
+    july = next(row for row in observation.rows if row.date == date(2026, 7, 31))
+    assert july.daily_liquid_asset_ratio == Decimal("0.637420")
+    assert july.weekly_liquid_asset_ratio == Decimal("0.734485")
+
+
+def test_franklin_parsers_refuse_schema_drift() -> None:
+    lookup = (FIXTURES / "fobxx-product-lookup-20260822.json").read_bytes()
+    with pytest.raises(FobxxNormalizationError, match="fields"):
+        parse_product_lookup(lookup.replace(b'"shclcode"', b'"shareclasscode"'))
+
+    history = json.loads((FIXTURES / "fobxx-price-history-20260822.json").read_text())
+    history["data"]["PricesHistory"]["prices"][0]["unexpected"] = True
+    with pytest.raises(FobxxNormalizationError, match="fields"):
+        parse_price_history(json.dumps(history).encode())
+
+
+def test_franklin_source_ids_are_distinct_operations() -> None:
+    assert FOBXX_LOOKUP_SOURCE_ID != FOBXX_HISTORY_SOURCE_ID
 
 
 def test_fobxx_asset_identity_crosses_the_publication_boundary() -> None:
@@ -131,12 +197,14 @@ def test_fobxx_observations_run_through_the_epoch_boundary(tmp_path: Path) -> No
         FOBXX,
         transport=FobxxFixtureTransport(),
         store=EvidenceStore(tmp_path),
-        now=date(2026, 8, 15),
-        retrieved_at=datetime(2026, 8, 15, 0, 40, tzinfo=timezone.utc),
+        now=date(2026, 8, 22),
+        retrieved_at=datetime(2026, 8, 22, 2, 12, tzinfo=timezone.utc),
         controls=(),
     )
 
     assert [source.observed_on for source in report.sources] == [
+        date(2026, 8, 22),
+        date(2026, 8, 21),
         date(2026, 7, 31),
         date(2026, 7, 31),
     ]
@@ -156,23 +224,23 @@ def test_epoch_fetches_the_newest_filing_discovered_from_submissions(
         "000207169126019999/primary_doc.xml"
     )
     transport = FobxxFixtureTransport()
-    transport.responses[FOBXX.sources[0].url] = TransportResponse(
+    transport.responses[FOBXX.sources[2].url] = TransportResponse(
         status_code=200,
         headers={"Content-Type": "application/json"},
         body=json.dumps(payload).encode(),
     )
-    transport.responses[expected_url] = transport.responses.pop(FOBXX.sources[1].url)
+    transport.responses[expected_url] = transport.responses.pop(FOBXX.sources[3].url)
 
     report = run_epoch(
         FOBXX,
         transport=transport,
         store=EvidenceStore(tmp_path),
-        now=date(2026, 8, 15),
-        retrieved_at=datetime(2026, 8, 15, 18, 0, tzinfo=timezone.utc),
+        now=date(2026, 8, 22),
+        retrieved_at=datetime(2026, 8, 22, 2, 12, tzinfo=timezone.utc),
         controls=(),
     )
 
-    assert report.sources[1].source_url == expected_url
+    assert report.sources[3].source_url == expected_url
 
 
 def test_epoch_refuses_a_filing_that_does_not_match_discovery(tmp_path: Path) -> None:
@@ -183,7 +251,7 @@ def test_epoch_refuses_a_filing_that_does_not_match_discovery(tmp_path: Path) ->
     index = recent["form"].index("N-MFP3")
     recent["reportDate"][index] = "2026-08-31"
     transport = FobxxFixtureTransport()
-    transport.responses[FOBXX.sources[0].url] = TransportResponse(
+    transport.responses[FOBXX.sources[2].url] = TransportResponse(
         status_code=200,
         headers={"Content-Type": "application/json"},
         body=json.dumps(payload).encode(),
@@ -210,7 +278,7 @@ def test_epoch_refuses_a_filing_form_that_does_not_match_discovery(
     index = recent["form"].index("N-MFP3")
     recent["form"][index] = "N-MFP3/A"
     transport = FobxxFixtureTransport()
-    transport.responses[FOBXX.sources[0].url] = TransportResponse(
+    transport.responses[FOBXX.sources[2].url] = TransportResponse(
         status_code=200,
         headers={"Content-Type": "application/json"},
         body=json.dumps(payload).encode(),

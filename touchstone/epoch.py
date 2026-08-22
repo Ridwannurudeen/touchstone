@@ -222,7 +222,7 @@ def run_epoch_reports(
     fetches: list[FetchResult] = []
     observations: dict[str, object] = {}
     for manifest in asset.sources:
-        manifest = resolve_source_manifest(asset, manifest, observations)
+        manifest = resolve_source_manifest(asset, manifest, observations, now)
         fetched = _fetch_declared(
             manifest,
             store=store,
@@ -248,7 +248,9 @@ def run_epoch_reports(
             byte_size=fetched.byte_size,
             evidence_sha256=fetched.evidence_sha256,
             retrieved_at=fetched.retrieved_at,
-            observed_on=_observation_date(observations[fetched.source_id]),
+            observed_on=_observation_date(
+                observations[fetched.source_id], fetched.retrieved_at.date()
+            ),
         )
         for fetched in fetches
     )
@@ -373,11 +375,11 @@ def _fetch_declared(
     )
 
 
-def _observation_date(observation: object) -> date:
+def _observation_date(observation: object, fallback: date) -> date:
     rows = getattr(observation, "rows", None)
     if isinstance(rows, tuple) and rows:
         return max(row.observed_on for row in rows)
-    return observation.as_of_date
+    return getattr(observation, "as_of_date", fallback)
 
 
 def _print_report(report: USTBEpochReport) -> None:

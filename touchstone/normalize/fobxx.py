@@ -12,6 +12,8 @@ from xml.etree import ElementTree
 
 FOBXX_SUBMISSIONS_SOURCE_ID = "sec-edgar-fobxx-submissions"
 FOBXX_SOURCE_ID = "sec-edgar-fobxx-nmfp3"
+FOBXX_LOOKUP_SOURCE_ID = "franklin-fobxx-product-lookup"
+FOBXX_HISTORY_SOURCE_ID = "franklin-fobxx-price-performance"
 FOBXX_CIK = "0001786958"
 FOBXX_SERIES_ID = "S000067043"
 DEFAULT_SUBMISSIONS_MAX_BYTES = 8_388_608
@@ -24,6 +26,35 @@ _N_MFP3_FORMS = frozenset({"N-MFP3", "N-MFP3/A"})
 
 class FobxxNormalizationError(ValueError):
     """The regulator filing is malformed, unsafe, or not the FOBXX series."""
+
+
+@dataclass(frozen=True, slots=True)
+class FobxxProductLookupObservation:
+    fund_id: str
+    share_class_code: str
+
+
+@dataclass(frozen=True, slots=True)
+class FobxxPriceRow:
+    date: date
+    nav_std: Decimal
+    daily_liquid_asset_ratio: Decimal | None
+    weekly_liquid_asset_ratio: Decimal | None
+
+    @property
+    def observed_on(self) -> date:
+        return self.date
+
+
+@dataclass(frozen=True, slots=True)
+class FobxxPriceHistoryObservation:
+    fund_id: str
+    share_class_code: str
+    rows: tuple[FobxxPriceRow, ...]
+
+    @property
+    def as_of_date(self) -> date:
+        return max(row.date for row in self.rows)
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +126,87 @@ def latest_nmfp3_filing(
     if filing.primary_document.rsplit("/", 1)[-1] != "primary_doc.xml":
         raise FobxxNormalizationError("N-MFP3 primary document is not primary_doc.xml")
     return filing
+
+
+def parse_product_lookup(
+    raw: bytes | bytearray | memoryview,
+    *,
+    max_bytes: int = DEFAULT_MAX_BYTES,
+) -> FobxxProductLookupObservation:
+    """Parse the exact ProductLookup response used to bind the history request."""
+    payload = _graphql_payload(raw, max_bytes=max_bytes)
+    data = _exact_object(payload.get("data"), {"ProductLookup"}, "lookup data")
+    records = data["ProductLookup"]
+    if not isinstance(records, list) or len(records) != 1:
+        raise FobxxNormalizationError("ProductLookup must return exactly one fund")
+    record = _exact_object(records[0], {"fundid", "shclcode"}, "ProductLookup record")
+    fund_id = _non_empty_json_text(record["fundid"], "fundid")
+    share_class_code = _non_empty_json_text(record["shclcode"], "shclcode")
+    if fund_id != "29386":
+        raise FobxxNormalizationError("ProductLookup fundid does not identify FOBXX")
+    if share_class_code != "SINGLCLASS":
+        raise FobxxNormalizationError("ProductLookup shclcode does not identify FOBXX")
+    return FobxxProductLookupObservation(fund_id, share_class_code)
+
+
+def parse_price_history(
+    raw: bytes | bytearray | memoryview,
+    *,
+    max_bytes: int = DEFAULT_MAX_BYTES,
+) -> FobxxPriceHistoryObservation:
+    """Parse the fixed FOBXX PricesHistory projection and retain blank ratios as no-data."""
+    payload = _graphql_payload(raw, max_bytes=max_bytes)
+    data = _exact_object(payload.get("data"), {"PricesHistory"}, "history data")
+    history = _exact_object(data["PricesHistory"], {"prices"}, "PricesHistory response")
+    raw_rows = history["prices"]
+    if not isinstance(raw_rows, list) or not raw_rows:
+        raise FobxxNormalizationError("PricesHistory prices must be a non-empty array")
+
+    rows_by_date: dict[date, FobxxPriceRow] = {}
+    for index, value in enumerate(raw_rows):
+        record = _exact_object(
+            value,
+            {
+                "fundid",
+                "shclcode",
+                "navdate",
+                "navstd",
+                "dailyliquidassetratio",
+                "weeklyliquidassetratio",
+            },
+            f"PricesHistory row {index}",
+        )
+        fund_id = _non_empty_json_text(record["fundid"], "fundid")
+        share_class_code = _non_empty_json_text(record["shclcode"], "shclcode")
+        if fund_id != "29386" or share_class_code != "SINGLCLASS":
+            raise FobxxNormalizationError(
+                f"PricesHistory row {index} does not identify FOBXX"
+            )
+        row = FobxxPriceRow(
+            date=_date(_non_empty_json_text(record["navdate"], "navdate"), "NAV date"),
+            nav_std=_decimal(
+                _non_empty_json_text(record["navstd"], "navstd"), "standard NAV"
+            ),
+            daily_liquid_asset_ratio=_optional_percent_ratio(
+                record["dailyliquidassetratio"], "daily liquidity ratio"
+            ),
+            weekly_liquid_asset_ratio=_optional_percent_ratio(
+                record["weeklyliquidassetratio"], "weekly liquidity ratio"
+            ),
+        )
+        prior = rows_by_date.get(row.date)
+        if prior is not None and prior != row:
+            raise FobxxNormalizationError(
+                f"PricesHistory date repeats with different values: {row.date}"
+            )
+        rows_by_date[row.date] = row
+    return FobxxPriceHistoryObservation(
+        fund_id="29386",
+        share_class_code="SINGLCLASS",
+        rows=tuple(
+            sorted(rows_by_date.values(), key=lambda row: row.date, reverse=True)
+        ),
+    )
 
 
 def parse_submissions(
@@ -282,6 +394,12 @@ def normalize_fobxx_payload(
     **_: object,
 ) -> FobxxObservation:
     """Normalize only the allowlisted FOBXX regulator sources."""
+    if source_id == FOBXX_LOOKUP_SOURCE_ID:
+        del isolated
+        return parse_product_lookup(raw, max_bytes=max_bytes)
+    if source_id == FOBXX_HISTORY_SOURCE_ID:
+        del isolated
+        return parse_price_history(raw, max_bytes=max_bytes)
     if source_id == FOBXX_SUBMISSIONS_SOURCE_ID:
         del isolated
         return parse_submissions(raw, max_bytes=max_bytes)
@@ -289,6 +407,54 @@ def normalize_fobxx_payload(
         raise FobxxNormalizationError(f"unknown FOBXX source id: {source_id!r}")
     del isolated
     return parse_nmfp3(raw, max_bytes=max_bytes)
+
+
+def _graphql_payload(
+    raw: bytes | bytearray | memoryview, *, max_bytes: int
+) -> dict[str, object]:
+    if not isinstance(raw, (bytes, bytearray, memoryview)):
+        raise TypeError("FOBXX GraphQL response must be bytes")
+    content = bytes(raw)
+    if len(content) > max_bytes:
+        raise FobxxNormalizationError("FOBXX GraphQL response exceeds its byte limit")
+    try:
+        payload = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise FobxxNormalizationError(
+            "FOBXX GraphQL response is not valid JSON"
+        ) from error
+    if not isinstance(payload, dict) or not set(payload) <= {"data", "errors"}:
+        raise FobxxNormalizationError("FOBXX GraphQL response fields are invalid")
+    if payload.get("errors") is not None:
+        raise FobxxNormalizationError("FOBXX GraphQL response contains errors")
+    if "data" not in payload:
+        raise FobxxNormalizationError("FOBXX GraphQL response has no data")
+    return payload
+
+
+def _exact_object(value: object, expected: set[str], context: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise FobxxNormalizationError(f"{context} must be an object")
+    if set(value) != expected:
+        raise FobxxNormalizationError(f"{context} fields do not match the query")
+    return value
+
+
+def _non_empty_json_text(value: object, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise FobxxNormalizationError(f"{field} must be non-empty text")
+    return value.strip()
+
+
+def _optional_percent_ratio(value: object, field: str) -> Decimal | None:
+    if value == "":
+        return None
+    if not isinstance(value, str):
+        raise FobxxNormalizationError(f"{field} must be text or blank")
+    ratio = _decimal(value, field) / Decimal(100)
+    if not 0 <= ratio <= 1:
+        raise FobxxNormalizationError(f"{field} must be between zero and 100 percent")
+    return ratio
 
 
 def _child(parent: ElementTree.Element, name: str) -> ElementTree.Element:

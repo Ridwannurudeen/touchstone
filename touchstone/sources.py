@@ -44,6 +44,8 @@ class SourceManifest:
     # `test_sources` asserts these stay equal to it.
     grace_period: int
     grace_unit: str
+    method: str = "GET"
+    request_body: bytes | None = None
     redirect_aliases: tuple[str, ...] = ()
 
 
@@ -87,6 +89,31 @@ USTB_SOURCE_BY_ID: Mapping[str, SourceManifest] = MappingProxyType(
 
 FOBXX_SOURCES = (
     SourceManifest(
+        source_id="franklin-fobxx-product-lookup",
+        url="https://www.franklintempleton.com/api/pds/price-and-performance",
+        expected_mime="application/json",
+        authority_class="issuer-api",
+        cadence="business-daily",
+        max_bytes=4_096,
+        grace_period=3,
+        grace_unit="business_days",
+        method="POST",
+        request_body=(
+            b'{"query":"query{ProductLookup(ticker:\\"FOBXX\\"){fundid shclcode}}"}'
+        ),
+    ),
+    SourceManifest(
+        source_id="franklin-fobxx-price-performance",
+        url="https://www.franklintempleton.com/api/pds/price-and-performance",
+        expected_mime="application/json",
+        authority_class="issuer-api",
+        cadence="business-daily, T-1",
+        max_bytes=262_144,
+        grace_period=3,
+        grace_unit="business_days",
+        method="POST",
+    ),
+    SourceManifest(
         source_id="sec-edgar-fobxx-submissions",
         url="https://data.sec.gov/submissions/CIK0001786958.json",
         expected_mime="application/json",
@@ -122,10 +149,16 @@ class TransportResponse:
 
 
 class Transport(Protocol):
-    """Injectable HTTP GET boundary used by the source fetcher."""
+    """Injectable HTTP boundary used by the source fetcher."""
 
     def get(self, url: str, *, timeout: float, max_bytes: int) -> TransportResponse:
         """Retrieve one URL without following redirects."""
+        ...
+
+    def post(
+        self, url: str, body: bytes, *, timeout: float, max_bytes: int
+    ) -> TransportResponse:
+        """POST one exact request body without following redirects."""
         ...
 
 
@@ -185,6 +218,28 @@ class LiveTransport:
         self.user_agent = user_agent
 
     def get(self, url: str, *, timeout: float, max_bytes: int) -> TransportResponse:
+        return self._request(
+            url, method="GET", body=None, timeout=timeout, max_bytes=max_bytes
+        )
+
+    def post(
+        self, url: str, body: bytes, *, timeout: float, max_bytes: int
+    ) -> TransportResponse:
+        if not isinstance(body, bytes) or not body:
+            raise SourcePolicyError("POST request body must be non-empty bytes")
+        return self._request(
+            url, method="POST", body=body, timeout=timeout, max_bytes=max_bytes
+        )
+
+    def _request(
+        self,
+        url: str,
+        *,
+        method: str,
+        body: bytes | None,
+        timeout: float,
+        max_bytes: int,
+    ) -> TransportResponse:
         hostname = urlsplit(url).hostname
         if hostname in _SEC_HOSTS:
             if (
@@ -203,10 +258,12 @@ class LiveTransport:
             )
         request = Request(
             url,
-            method="GET",
+            data=body,
+            method=method,
             headers={
                 "Accept": "application/json",
                 "Accept-Encoding": "identity",
+                **({"Content-Type": "application/json"} if body is not None else {}),
                 "User-Agent": user_agent,
             },
         )
@@ -270,11 +327,23 @@ def fetch_source(
     current_url = requested_url
     redirect_count = 0
     while True:
-        response = transport.get(
-            current_url,
-            timeout=float(timeout),
-            max_bytes=manifest.max_bytes,
-        )
+        if manifest.method == "GET" and manifest.request_body is None:
+            response = transport.get(
+                current_url,
+                timeout=float(timeout),
+                max_bytes=manifest.max_bytes,
+            )
+        elif manifest.method == "POST" and manifest.request_body is not None:
+            response = transport.post(
+                current_url,
+                manifest.request_body,
+                timeout=float(timeout),
+                max_bytes=manifest.max_bytes,
+            )
+        else:
+            raise SourcePolicyError(
+                f"{manifest.source_id} has an invalid method/request-body declaration"
+            )
         _validate_transport_response(response)
         if len(response.body) > manifest.max_bytes:
             raise SourceTooLargeError(

@@ -7,7 +7,7 @@
     "display_name": "Franklin OnChain U.S. Government Money Fund",
     "ticker": "FOBXX",
     "also_known_as": "BENJI",
-    "role": "monthly regulator-backed contrast asset. DEMOTED 2026-08-15: the daily issuer feed is unreachable, so no daily-liveness or issuer-versus-regulator control may be claimed until repeatable production-host access is verified.",
+    "role": "daily issuer-backed and monthly regulator-backed contrast asset. PROMOTED 2026-08-22 after repeatable production-host verification restored the daily issuer feed and made same-date issuer-versus-regulator reconciliation observable.",
     "identity_basis": "The canonical registry key is Franklin Templeton's Ethereum BENJI fund-token contract. Regulator evidence is independently bound to SEC CIK 0001786958 and series S000067043.",
     "identity_caveat": "Supply is fragmented across nine networks with a separate iBENJI share class and there is no NAV oracle on any chain. No onchain supply or oracle claim is made for this asset in Phase 1."
   },
@@ -20,26 +20,46 @@
   },
   "sources": [
     {
+      "source_id": "franklin-fobxx-product-lookup",
+      "url": "https://www.franklintempleton.com/api/pds/price-and-performance",
+      "method": "POST",
+      "auth": "none",
+      "request_semantics": "One fixed GraphQL operation keyed only by the literal ticker FOBXX. The verified response field is shclcode; shareclasscode is the argument name used by PricesHistory, not a ProductLookup field.",
+      "expected_mime": "application/json",
+      "max_bytes": 4096,
+      "cadence": "business-daily",
+      "timezone": "retrieval instant only; the lookup response carries no source date",
+      "grace_period_business_days": 3,
+      "status": {
+        "search_execution": "complete",
+        "verified_utc": "2026-08-22T02:06:39Z through 2026-08-22T02:14:45Z",
+        "finding": "HTTP 200 from the production host. ProductLookup(ticker:FOBXX) repeatedly returned fundid 29386 and shclcode SINGLCLASS. Schema introspection confirmed shclcode exists and shareclasscode does not."
+      },
+      "failure_semantics": "A retrieval failure or schema mismatch is SOURCE_ERROR and never an assertion about the fund.",
+      "fixture_disposition": "captured"
+    },
+    {
       "source_id": "franklin-fobxx-price-performance",
       "url": "https://www.franklintempleton.com/api/pds/price-and-performance",
       "method": "POST",
       "auth": "none",
-      "request_semantics": "An exact allowlisted request body only. Arbitrary query construction must be impossible: the adapter sends one of two fixed operations, ProductLookup keyed by ticker and PricesHistory keyed by the resolved fund id.",
+      "request_semantics": "An allowlisted PricesHistory projection only, using the fundid and shclcode returned by the preceding ProductLookup observation. Date arguments are bounded to the retrieval date and the preceding 370 calendar days; callers cannot supply GraphQL text.",
       "expected_mime": "application/json",
+      "max_bytes": 262144,
       "cadence": "business-daily, T-1",
       "timezone": "not stated; row dates are calendar dates",
       "grace_period_business_days": 3,
       "blank_value_rule": "Daily and weekly liquidity ratios are intermittently blank. A blank is UNEVALUABLE \u2014 no data \u2014 and must NEVER be read as a breach of a liquidity floor.",
       "omitted_control": "The seven-day yield is deliberately omitted. The schema exists but returned empty for this fund and was never verified.",
       "status": {
-        "search_execution": "not_completed",
-        "verified_utc": "2026-08-15T00:02Z",
-        "finding": "BLOCKED FROM THIS ENVIRONMENT. The endpoint returns HTTP 403 with a Cloudflare 'Attention Required!' interstitial, to a plain POST and to a POST carrying full browser headers including Origin and Referer. The public fund page at the same host also returns HTTP 403.",
-        "change_from_prior_audit": "The 2026-08-13 audit recorded this endpoint returning HTTP 200 to POST. It no longer does from this environment. Either the vantage differs or Franklin has tightened access.",
-        "significance": "The prior audit already recorded this as the asset's main risk \u2014 an undocumented private endpoint the issuer could lock down without notice. That risk has now materialised at least from here."
+        "search_execution": "complete",
+        "verified_utc": "2026-08-22T02:10:04Z through 2026-08-22T02:13:12Z",
+        "finding": "Five paired ProductLookup and bounded PricesHistory probes over 3 minutes 8 seconds from the production host all returned HTTP 200 with no GraphQL errors. The latest row was 2026-08-21 with navstd 1.00000000 and blank liquidity ratios; the latest row with ratios was 2026-08-20 at 63.7387% daily and 71.7012% weekly.",
+        "change_from_prior_audit": "This lifts the 2026-08-15 demotion condition: repeatable production-host access is verified. Access remains vantage-dependent because the endpoint still returned Cloudflare 403 from the earlier environment.",
+        "significance": "Daily liveness, NAV and liquidity observations are claimable from the production vantage. The endpoint remains undocumented and a failure always degrades to SOURCE_ERROR plus the regulator path, never to an asset finding."
       },
       "failure_semantics": "A 403 or any retrieval failure is SOURCE_ERROR. It is never an assertion about the fund. When the daily feed is unavailable the asset degrades honestly to the monthly regulator source below, and the loss of daily coverage must be recorded rather than hidden.",
-      "fixture_disposition": "blocked: the endpoint returns Cloudflare HTTP 403 from this environment"
+      "fixture_disposition": "captured"
     },
     {
       "source_id": "sec-edgar-fobxx-submissions",
@@ -100,7 +120,7 @@
     },
     {
       "control": "liquidity-floors",
-      "predicate": "daily >= 10% and weekly >= 30% when values are present",
+      "predicate": "reported daily >= 25% and reported weekly >= 50% when values are present",
       "source": "either",
       "note": "blank is UNEVALUABLE"
     },
@@ -108,7 +128,7 @@
       "control": "daily-feed-liveness",
       "predicate": "a row exists within the grace window",
       "source": "franklin-fobxx-price-performance",
-      "status": "BLOCKED \u2014 requires the daily issuer feed, which is unreachable (see source status)"
+      "status": "claimable from the production host; blank ratios remain UNEVALUABLE"
     },
     {
       "control": "monthly-filing-freshness",
@@ -120,7 +140,7 @@
       "predicate": "the two sources agree within tolerance on the figures both report",
       "source": "both",
       "note": "INCONSISTENT only when two attributable observations genuinely conflict \u2014 never when one source is merely unavailable",
-      "status": "BLOCKED \u2014 requires the daily issuer feed, which is unreachable (see source status)"
+      "status": "claimable; the retained same-date liquidity values genuinely disagree and must not be called equal without an explicit justified tolerance"
     }
   ],
   "limits": {
@@ -130,6 +150,22 @@
     "xml_entity_expansion": "disabled: the parser refuses DTD, entity and CDATA declarations before parsing and never performs external resolution"
   },
   "fixtures": [
+    {
+      "file": "fixtures/fobxx-product-lookup-20260822.json",
+      "captured_utc": "2026-08-22T02:14:45Z",
+      "bytes": 72,
+      "sha256": "f815805ba1ab5471e7802375a9401bb1b24c134f5a07ea05ebf2c1f62a184c7b",
+      "source_id": "franklin-fobxx-product-lookup"
+    },
+    {
+      "file": "fixtures/fobxx-price-history-20260822.json",
+      "captured_utc": "2026-08-22T02:12:19Z",
+      "bytes": 2496,
+      "sha256": "6f9b4b028795f0ea2b5d02961fcf893b6bd6e7433460e047cf08a55292abfcdf",
+      "period": "2026-07-31 through 2026-08-21",
+      "source_id": "franklin-fobxx-price-performance",
+      "note": "Bounded retained projection. Ratios are percentage points in the response and exact empty strings mean no-data."
+    },
     {
       "file": "fixtures/fobxx-nmfp3-20260731.xml",
       "captured_utc": "2026-08-15T00:01Z",
@@ -149,16 +185,10 @@
       "note": "Filing-discovery snapshot. Its content moves as filings are accepted, so it pins the schema and the discovery path, not a stable value."
     }
   ],
-  "fixtures_missing": [
-    {
-      "file": "fixtures/fobxx-price-performance-20260813.json",
-      "search_execution": "not_completed",
-      "reason": "The issuer endpoint returns Cloudflare HTTP 403 from this environment, so no daily-feed fixture could be captured.",
-      "human_follow_up": "Capture the ProductLookup and PricesHistory responses from a browser session and commit them with their SHA-256, or re-attempt from the production host once it exists."
-    }
-  ],
+  "fixtures_missing": [],
   "residual_checks": [
-    "The daily feed is unavailable from this environment; whether it is reachable from the production host is unknown and must be tested there.",
+    "The daily feed is repeatably reachable from the production host but was Cloudflare-blocked from the earlier environment; availability is vantage-dependent and the endpoint is undocumented.",
+    "The 2026-07-31 issuer ratios (63.7420% daily, 73.4485% weekly) differ from the regulator filing (65.28%, 74.55%). Exact reconciliation is contradicted by the retained evidence; no tolerance is inferred.",
     "The strict XML parser binds CIK, series ID, submission type and report date, enforces size/depth limits, and refuses DTD, entity and CDATA declarations.",
     "EDGAR terms of use permit automated access with an identifying User-Agent and a fair-access rate limit; the adapter must respect that limit.",
     "No claim is made about aggregate onchain supply for this asset in Phase 1."
