@@ -24,11 +24,15 @@ The build refuses an unknown fact, an unused override, and any `{{` left in rend
 from __future__ import annotations
 
 import argparse
+from html.parser import HTMLParser
 import json
 import re
 import subprocess
 import sys
 import tempfile
+from urllib.error import URLError
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +40,8 @@ SITE = ROOT / "site2"
 PAGES = SITE / "_pages"
 PARTIALS = SITE / "_partials"
 FACTS = SITE / "_data" / "facts.json"
+STATS = SITE / "data" / "stats.json"
+LIVE_STATUS = "https://touchstone.gudman.xyz/status"
 
 _TOKEN = re.compile(r"\{\{\s*(>\s*([a-z0-9-]+)|fact:([a-z0-9_.-]+))\s*\}\}")
 
@@ -70,8 +76,137 @@ def derived_facts() -> dict[str, object]:
     }
 
 
+def _committed_facts() -> dict[str, object]:
+    value = json.loads(FACTS.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise SystemExit("facts.json must contain an object")
+    return value
+
+
+def _stats() -> dict[str, object]:
+    value = json.loads(STATS.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise SystemExit("stats.json must contain an object")
+    return value
+
+
+def _bundles() -> list[tuple[Path, dict[str, object]]]:
+    bundles = []
+    for path in sorted((SITE / "data").glob("*.json")):
+        if path == STATS:
+            continue
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise SystemExit(f"{path}: bundle must contain an object")
+        bundles.append((path, value))
+    return bundles
+
+
+def _report(bundle: dict[str, object], path: Path) -> dict[str, object]:
+    signed = bundle.get("signed_report")
+    report = signed.get("report") if isinstance(signed, dict) else None
+    if not isinstance(report, dict):
+        raise SystemExit(f"{path}: signed_report.report is unavailable")
+    return report
+
+
+def _gate_sentence(stats: dict[str, object]) -> str:
+    gate_result = stats.get("gate_result")
+    if isinstance(gate_result, dict) and gate_result.get("allowed") is True:
+        return "A configured admission contract may permit USTB right now."
+    reason = gate_result.get("reason") if isinstance(gate_result, dict) else None
+    if not isinstance(reason, str) or not reason.strip():
+        reason = "the gate result is not available"
+    return (
+        "A configured admission contract may refuse USTB right now because "
+        f"{reason.rstrip('.')}."
+    )
+
+
+def site_facts() -> dict[str, str]:
+    committed = _committed_facts()
+    stats = _stats()
+    bundles = [
+        (path, bundle, _report(bundle, path))
+        for path, bundle in _bundles()
+        if path.name.startswith("eip155-196-")
+    ]
+    base = [entry for entry in bundles if entry[2].get("policy") is None]
+    if not base:
+        raise SystemExit("no retained mainnet USTB asset report is available")
+    path, bundle, report = max(
+        base,
+        key=lambda entry: (
+            str(entry[2].get("observed_at", "")),
+            int(entry[2].get("sequence", 0)),
+        ),
+    )
+    controls = report.get("controls")
+    if not isinstance(controls, list):
+        raise SystemExit(f"{path}: report controls are unavailable")
+    nav = next(
+        (
+            control.get("evaluation")
+            for control in controls
+            if isinstance(control, dict)
+            and control.get("control_id") == "ustb-nav-per-share-present"
+            and isinstance(control.get("evaluation"), dict)
+        ),
+        None,
+    )
+    if not isinstance(nav, dict):
+        raise SystemExit(f"{path}: USTB NAV control is unavailable")
+    evidence = bundle.get("evidence_digests")
+    if not isinstance(evidence, list):
+        raise SystemExit(f"{path}: evidence digests are unavailable")
+    source_ids = {
+        item.get("source_id")
+        for item in evidence
+        if isinstance(item, dict)
+        and item.get("capture_role") == "current"
+        and isinstance(item.get("source_id"), str)
+    }
+    networks = stats.get("networks_live")
+    reports = stats.get("reports")
+    if not isinstance(networks, list) or not isinstance(reports, list):
+        raise SystemExit("stats.json homepage collections are unavailable")
+    confirmed = sum(
+        isinstance(item, dict) and item.get("state") == "CONFIRMED" for item in reports
+    )
+    counts = committed.get("counts")
+    if not isinstance(counts, dict):
+        raise SystemExit("facts.json homepage counts are unavailable")
+    for key, expected in (
+        ("reports_published", len(reports)),
+        ("confirmed_reports", confirmed),
+    ):
+        if str(counts.get(key)) != str(expected):
+            raise SystemExit(
+                f"facts.json {key} is {counts.get(key)!r}; stats.json derives {expected}"
+            )
+    return {
+        "homepage.live_assets": str(stats.get("assets_live", "not available")),
+        "homepage.evidence_sources": str(len(source_ids)),
+        "homepage.networks": str(len(networks)),
+        "homepage.confirmed_reports": str(confirmed),
+        "homepage.ustb.state": str(report.get("state", "not available")),
+        "homepage.ustb.state_class": {
+            "CONFIRMED": "chip-live",
+            "STALE": "chip-blocked",
+            "INCONSISTENT": "chip-suspended",
+            "UNVERIFIABLE": "chip-unverifiable",
+        }.get(str(report.get("state")), "chip-unverifiable"),
+        "homepage.ustb.nav": str(nav.get("observed_value", "not available")),
+        "homepage.ustb.nav_date": str(nav.get("observed_on", "not available")),
+        "homepage.ustb.evidence_as_of": str(report.get("observed_at", "not available")),
+        "homepage.ustb.valid_until": str(report.get("valid_until", "not available")),
+        "homepage.ustb.source_count": str(len(source_ids)),
+        "homepage.ustb.gate_sentence": _gate_sentence(stats),
+    }
+
+
 def load_facts() -> dict[str, str]:
-    committed = json.loads(FACTS.read_text(encoding="utf-8"))
+    committed = _committed_facts()
     flat: dict[str, str] = {}
 
     def flatten(value: object, prefix: str) -> None:
@@ -87,7 +222,161 @@ def load_facts() -> dict[str, str]:
         if derived_key in flat:
             raise SystemExit(f"facts.json overrides derived fact {derived_key}")
         flat[derived_key] = str(value)
+    for key, value in site_facts().items():
+        if key in flat:
+            raise SystemExit(f"facts.json overrides site-derived fact {key}")
+        flat[key] = value
     return flat
+
+
+class _HomepageFactsParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.values: dict[str, list[str]] = {}
+        self._key: str | None = None
+        self._depth = 0
+        self._text: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        del tag
+        attributes = dict(attrs)
+        if self._key is not None:
+            self._depth += 1
+        elif attributes.get("data-homepage-fact"):
+            self._key = attributes["data-homepage-fact"]
+            self._depth = 1
+            self._text = []
+
+    def handle_endtag(self, tag: str) -> None:
+        del tag
+        if self._key is None:
+            return
+        self._depth -= 1
+        if self._depth == 0:
+            value = " ".join("".join(self._text).split())
+            self.values.setdefault(self._key, []).append(value)
+            self._key = None
+            self._text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._key is not None:
+            self._text.append(data)
+
+
+class _LinkParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.hrefs: list[str] = []
+        self.ids: set[str] = set()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        identifier = attributes.get("id")
+        if identifier:
+            self.ids.add(identifier)
+        if tag == "a" and attributes.get("href"):
+            self.hrefs.append(attributes["href"])
+
+
+def assert_homepage_truth(rendered: str) -> None:
+    expected = {
+        key.removeprefix("homepage."): value
+        for key, value in site_facts().items()
+        if key.startswith("homepage.")
+        and key not in {"homepage.ustb.state_class", "homepage.ustb.gate_sentence"}
+    }
+    parser = _HomepageFactsParser()
+    parser.feed(rendered)
+    for key, value in expected.items():
+        rendered_values = parser.values.get(key, [])
+        if rendered_values != [value]:
+            shown = rendered_values[0] if len(rendered_values) == 1 else rendered_values
+            raise SystemExit(
+                f"homepage fact {key} renders {shown!r}; canonical data is {value!r}"
+            )
+
+
+def _partials() -> dict[str, str]:
+    return {
+        path.stem: path.read_text(encoding="utf-8").rstrip("\n")
+        for path in sorted(PARTIALS.glob("*.html"))
+    }
+
+
+def rendered_homepage() -> str:
+    return render(PAGES / "index.html", _partials(), load_facts())
+
+
+def _site_target(path: str) -> Path | None:
+    if path == "/status":
+        return None
+    if path == "/":
+        candidates = (SITE / "index.html",)
+    else:
+        relative = path.lstrip("/")
+        candidates = (
+            SITE / relative,
+            SITE / f"{relative}.html",
+            SITE / relative / "index.html",
+        )
+    return next((candidate for candidate in candidates if candidate.exists()), None)
+
+
+def assert_page_links(page: Path) -> None:
+    parser = _LinkParser()
+    parser.feed(page.read_text(encoding="utf-8"))
+    for href in parser.hrefs:
+        parsed = urlsplit(href)
+        if parsed.scheme or parsed.netloc:
+            continue
+        path = parsed.path or "/"
+        target = _site_target(path)
+        if target is None:
+            if path == "/status":
+                continue
+            raise SystemExit(f"{page}: link {href!r} has no generated-site target")
+        if parsed.fragment and target.suffix == ".html":
+            target_parser = _LinkParser()
+            target_parser.feed(target.read_text(encoding="utf-8"))
+            if parsed.fragment not in target_parser.ids:
+                raise SystemExit(
+                    f"{page}: link {href!r} has no #{parsed.fragment} target"
+                )
+
+
+def assert_live_status_counts(status_html: str) -> None:
+    match = re.search(
+        r"<strong>(\d+) reports</strong>, of which\s*"
+        r"<strong>(\d+) reached\s*<code>CONFIRMED</code></strong>",
+        status_html,
+    )
+    if match is None:
+        raise SystemExit("SITE TRUTH FAIL: live /status report counts were not found")
+    live = tuple(map(int, match.groups()))
+    facts = site_facts()
+    local = (
+        int(_committed_facts()["counts"]["reports_published"]),
+        int(facts["homepage.confirmed_reports"]),
+    )
+    if local != live:
+        raise SystemExit(
+            "SITE TRUTH FAIL: local "
+            f"{local[0]}/{local[1]} reports_published/confirmed_reports diverge from "
+            f"live /status {live[0]}/{live[1]}"
+        )
+
+
+def check_live_status() -> None:
+    request = Request(LIVE_STATUS, headers={"User-Agent": "touchstone-site-truth/1"})
+    try:
+        with urlopen(request, timeout=10) as response:
+            status_html = response.read().decode("utf-8")
+    except (OSError, UnicodeError, URLError) as error:
+        raise SystemExit(
+            f"SITE TRUTH FAIL: live /status could not be read: {error}; "
+            "use --offline only in explicitly offline CI"
+        ) from error
+    assert_live_status_counts(status_html)
 
 
 def render(source: Path, partials: dict[str, str], facts: dict[str, str]) -> str:
@@ -125,14 +414,19 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="verify the rendered files match the sources without writing",
     )
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="skip the default live /status count comparison for explicitly offline CI",
+    )
     arguments = parser.parse_args(argv)
 
-    partials = {
-        path.stem: path.read_text(encoding="utf-8").rstrip("\n")
-        for path in sorted(PARTIALS.glob("*.html"))
-    }
+    partials = _partials()
     facts = load_facts()
 
+    subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "build_reports.py")], check=True
+    )
     sources = sorted(PAGES.rglob("*.html"))
     if not sources:
         print(f"no page sources under {PAGES}", file=sys.stderr)
@@ -156,6 +450,11 @@ def main(argv: list[str] | None = None) -> int:
             for name in stale:
                 print(f"  {name}")
             return 1
+        assert_homepage_truth(rendered_homepage())
+        assert_page_links(SITE / "index.html")
+        assert_page_links(SITE / "reports.html")
+        if not arguments.offline:
+            check_live_status()
         print(f"{len(sources)} rendered pages match their sources")
         return 0
     print(f"{len(sources)} pages rendered into {SITE.relative_to(ROOT)}")

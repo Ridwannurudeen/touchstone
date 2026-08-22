@@ -3,543 +3,163 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Touchstone — Institutional RWA policy and control plane for X Layer</title>
-<meta name="description" content="Touchstone turns RWA evidence into explicit, machine-checkable policy and enforceable decisions for X Layer contracts, wallets and AI agents.">
+<title>Touchstone — RWA evidence your contracts can enforce</title>
+<meta name="description" content="Touchstone watches issuer disclosures, publishes fresh policy state on X Layer, and lets contracts enforce the result.">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 <link rel="canonical" href="https://touchstone.gudman.xyz/">
-<meta property="og:title" content="Touchstone — Institutional RWA policy and control plane for X Layer">
-<meta property="og:description" content="Make RWA liquidity conditional on verifiable evidence. Live on X Layer mainnet and testnet.">
-<meta property="og:url" content="https://touchstone.gudman.xyz/">
+<meta property="og:title" content="Touchstone — RWA evidence your contracts can enforce">
+<meta property="og:description" content="Issuer evidence becomes a fresh policy state that contracts can permit or refuse on X Layer.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://touchstone.gudman.xyz/">
 <meta property="og:image" content="https://touchstone.gudman.xyz/assets/og-card.png">
-<meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="/assets/style.css">
-<style>
-  /* Page-scoped only. The hero terminal is a dark island on the light hero ground, so the
-     .mode-dark link colour has to be walked back on the two buttons that sit inside it. */
-  .hero-aside { min-width: 0; }
-  .hero-term { padding: var(--s5); }
-  .term-tag {
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: var(--t-micro);
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--term-muted);
-    margin: 0 0 var(--s4);
-  }
-  .term-name { margin: 0 0 var(--s4); font-size: var(--t-small); color: var(--term-muted); }
-  .term-name strong {
-    display: block;
-    color: #F1F3F4;
-    font-size: 1.125rem;
-    font-weight: 640;
-    letter-spacing: -0.01em;
-  }
-  .term-checks {
-    list-style: none;
-    margin: var(--s4) 0 0;
-    padding: 0;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: var(--t-mono);
-    color: var(--term-ink);
-  }
-  .term-checks li { padding: 3px 0; display: flex; gap: 9px; align-items: baseline; }
-  .term-checks b { color: var(--st-confirmed-lit); font-weight: 400; flex: none; }
-  .term-actions { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s5); }
-  .hero-term .term-btn { text-decoration: none; font-size: var(--t-small); color: #16100B; }
-  .hero-term .term-btn--ghost { color: var(--term-ink); }
-  .hero-aside .case-line { margin-top: var(--s5); }
-  .hero-trust { margin-top: var(--s5); color: var(--ink-500); }
-  .positioning { padding: var(--s5) 0; border-bottom: 1px solid var(--rule); }
-  .positioning-copy { max-width: 82ch; margin: 0; font-weight: 600; }
-  .positioning-strip {
-    margin: var(--s3) 0 0;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: var(--t-micro);
-    letter-spacing: 0.04em;
-    white-space: nowrap;
-    overflow-x: auto;
-    color: var(--ink-500);
-  }
-  .positioning-strip strong { color: var(--copper); }
-
-  /* Dark code panels: the global `code` rule paints a light chip background, which is cleared
-     inside the dark block here rather than by editing the shared class. */
-  .cb-code {
-    display: block;
-    white-space: pre;
-    background: none;
-    padding: 0;
-    border-radius: 0;
-    color: inherit;
-    font-size: inherit;
-  }
-  @media (max-width: 640px) {
-    .cb-code { white-space: pre-wrap; overflow-wrap: anywhere; }
-  }
-  .dev-grid { display: grid; grid-template-columns: 1fr; gap: var(--s6); align-items: start; }
-  @media (min-width: 960px) { .dev-grid { grid-template-columns: 0.85fr 1.15fr; } }
-  .dev-grid > * { min-width: 0; }
-</style>
 <script type="application/ld+json">
-{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"Touchstone","url":"{{fact:site.url}}","description":"Institutional RWA policy and control infrastructure for X Layer: evidence compiled into cited controls, evaluated deterministically, and published as enforceable onchain policy.","logo":"{{fact:site.url}}/assets/mark.svg"},{"@type":"WebSite","name":"Touchstone","url":"{{fact:site.url}}"}]}
+{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"Touchstone","url":"{{fact:site.url}}","description":"RWA evidence and onchain policy infrastructure for X Layer.","logo":"{{fact:site.url}}/assets/mark.svg"},{"@type":"WebSite","name":"Touchstone","url":"{{fact:site.url}}"}]}
 </script>
 </head>
 <body>
 {{> header}}
 
-<div class="announce">Live on X&nbsp;Layer mainnet — first RWA policy confirmed and enforced onchain &middot; <a href="/app">Open the Terminal →</a></div>
-
 <main id="main">
-
-  <section class="hero">
-    <div class="wrap hero-grid">
-      <div class="hero-copy">
-        <p class="eyebrow">Institutional RWA policy and control plane for X&nbsp;Layer</p>
-        <h1 class="hero-title">Make RWA liquidity conditional on verifiable evidence.</h1>
-        <p class="t-lead">AI converts issuer and regulator disclosures into cited controls.
-        Deterministic reports let X&nbsp;Layer wallets, agents and protocols act only when the
-        required evidence policy is satisfied.</p>
+  <section class="hero home-hero">
+    <div class="wrap">
+      <div class="hero-copy home-hero-copy">
+        <p class="eyebrow">Live RWA policy · X Layer</p>
+        <h1 class="hero-title">RWA evidence your contracts can enforce.</h1>
+        <p class="t-lead">Touchstone watches issuer disclosures, publishes a fresh policy state on X Layer, and lets contracts permit or refuse an action without trusting this website.</p>
         <div class="cta-row">
-          <a class="cta" href="/app">Launch Policy Terminal</a>
-          <a class="cta-ghost" href="/developers">Start Building</a>
-        </div>
-        <p class="mono t-small hero-trust">Live on X&nbsp;Layer mainnet and testnet &middot;
-        {{fact:counts.reports_published}} reports &middot;
-        {{fact:counts.confirmed_reports}} confirmed &middot; policy enforcement proven onchain</p>
-      </div>
-
-      <div class="hero-aside">
-        <aside class="mode-dark term-panel hero-term" aria-label="Policy Terminal preview">
-          <p class="term-tag">Policy Terminal &middot; preview</p>
-          <p class="term-name"><strong>{{fact:asset.id}}</strong>{{fact:asset.name}}</p>
-          <div class="term-row"><span class="tr-k">Policy</span><span class="tr-v">{{fact:policies.nav_id}}</span></div>
-          <div class="term-row"><span class="tr-k">State</span><span class="tr-v term-ok">CONFIRMED</span></div>
-          <div class="term-row"><span class="tr-k">Observed NAV</span><span class="tr-v">{{fact:asset.confirmed_nav}}</span></div>
-          <div class="term-row"><span class="tr-k">NAV as of</span><span class="tr-v">{{fact:asset.confirmed_nav_date}}</span></div>
-          <div class="term-row"><span class="tr-k">Valid until</span><span class="tr-v">end of day UTC, then re-published</span></div>
-          <div class="term-row"><span class="tr-k">Networks</span><span class="tr-v">X Layer mainnet + testnet</span></div>
-          <ul class="term-checks" aria-label="Checks that passed">
-            <li><b aria-hidden="true">✓</b><span>unchanged across qualifying captures</span></li>
-            <li><b aria-hidden="true">✓</b><span>{{fact:story.settlement_floor_business_days}}-business-day settlement floor met</span></li>
-            <li><b aria-hidden="true">✓</b><span>disclosure remains current</span></li>
-          </ul>
-          <div class="term-actions">
-            <a class="term-btn" href="/app">Check live</a>
-            <a class="term-btn term-btn--ghost" href="/dossier">View evidence</a>
-          </div>
-        </aside>
-
-        <div class="case-line" role="group" aria-label="Two days, two answers">
-          <div class="case-step cs-refused">
-            <p class="cs-t">{{fact:asset.refused_on}}</p>
-            <h3>Provisional</h3>
-            <p>Gate blocked.</p>
-          </div>
-          <div class="case-step cs-confirmed">
-            <p class="cs-t">{{fact:asset.first_confirmed_on}}</p>
-            <h3>Confirmed</h3>
-            <p>Gate allowed.</p>
-          </div>
+          <a class="cta" href="/app?replay=permitted">Check USTB now</a>
+          <a class="hero-text-link" href="/judge">See a contract refuse stale evidence</a>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="positioning" aria-label="How Touchstone is different">
-    <div class="wrap">
-      <p class="positioning-copy">Other products help users discover, score, trade or automate RWAs. Touchstone determines whether the evidence policy required for an RWA action currently holds — and enforces the answer onchain.</p>
-      <p class="positioning-strip">Discover &middot; Score &middot; Trade &middot; Automate&nbsp; → &nbsp;<strong>Verify + Enforce</strong></p>
-    </div>
-  </section>
-
-  <section class="trust-strip" aria-label="What is live">
-    <div class="wrap trust-cells">
-      <div class="trust-cell">
-        <p class="tc-k">LIVE ON</p>
-        <p><strong>X Layer Mainnet</strong> &middot; chain id {{fact:mainnet.chain_id}}<br>
-        <strong>X Layer Testnet</strong> &middot; chain id {{fact:testnet.chain_id}}</p>
-      </div>
-      <div class="trust-cell">
-        <p class="tc-k">BUILT FOR</p>
-        <p><strong>OKX Wallet</strong> and any EIP-1193 wallet &middot;
-        <strong>X Layer contracts</strong> &middot; <strong>AI agents</strong></p>
-      </div>
-      <div class="trust-cell">
-        <p class="tc-k">PUBLIC PROOF</p>
-        <p><strong>{{fact:counts.reports_published}}</strong> onchain reports &middot;
-        <strong>{{fact:counts.bundles_downloadable}}</strong> downloadable bundles &middot;
-        CI-verified claims</p>
-      </div>
-    </div>
-  </section>
-
-  <section class="metrics-band" aria-label="Onchain product metrics">
+  <section class="metrics-band home-facts" aria-label="Live facts">
     <div class="wrap metrics">
-      <div class="metric">
-        <p class="metric-n">{{fact:counts.networks}}</p>
-        <p class="metric-l">X Layer networks live</p>
-        <p class="metric-q">mainnet and testnet, registry v1 and v2 on both</p>
-      </div>
-      <div class="metric">
-        <p class="metric-n">{{fact:counts.reports_published}}</p>
-        <p class="metric-l">Onchain reports published</p>
-        <p class="metric-q">signed, sequenced and permanent</p>
-      </div>
-      <div class="metric">
-        <p class="metric-n">{{fact:counts.confirmed_reports}}</p>
-        <p class="metric-l">Confirmed policy decisions</p>
-        <p class="metric-q">verdicts a contract is willing to act on</p>
-      </div>
-      <div class="metric">
-        <p class="metric-n">{{fact:counts.enforcement_txs}}</p>
-        <p class="metric-l">Permit/refuse enforcement transactions</p>
-        <p class="metric-q">guarded actions that ran, or were stopped, on chain</p>
-      </div>
+      <a class="metric-link" href="#assets">
+        <p class="metric-n mono" data-homepage-fact="live_assets">{{fact:homepage.live_assets}}</p>
+        <p class="metric-l">Live asset(s)</p>
+      </a>
+      <a class="metric-link" href="/status">
+        <p class="metric-n mono" data-homepage-fact="evidence_sources">{{fact:homepage.evidence_sources}}</p>
+        <p class="metric-l">Evidence sources monitored</p>
+      </a>
+      <a class="metric-link" href="/developers#addresses">
+        <p class="metric-n mono" data-homepage-fact="networks">{{fact:homepage.networks}}</p>
+        <p class="metric-l">X Layer networks</p>
+      </a>
+      <a class="metric-link" href="/reports">
+        <p class="metric-n mono" data-homepage-fact="confirmed_reports">{{fact:homepage.confirmed_reports}}</p>
+        <p class="metric-l">Confirmed reports</p>
+      </a>
     </div>
   </section>
 
-  <section class="section">
+  <section class="section home-verdict-section">
     <div class="wrap">
-      <p class="eyebrow">The problem</p>
-      <h2>Tokenized assets move faster than the disclosures behind them.</h2>
-      <p class="prose t-lead secondary">A token settles in seconds. The evidence that says what
-      it is worth arrives as a document, on a schedule, and can be restated after the fact.</p>
-      <div class="movements">
-        <div class="movement">
-          <span class="num" aria-hidden="true">01</span>
-          <h3>Disclosures are unstructured</h3>
-          <p>Issuers publish NAV, yield and holdings as prose, tables and ad-hoc JSON. None of
-          that shape is a rule a contract can evaluate, and no two issuers publish alike.</p>
-        </div>
-        <div class="movement">
-          <span class="num" aria-hidden="true">02</span>
-          <h3>Values may be revised after publication</h3>
-          <p>A figure published this morning can be restated this afternoon. A system that acts
-          on first sight cannot tell a settled value from a provisional one.</p>
-        </div>
-        <div class="movement">
-          <span class="num" aria-hidden="true">03</span>
-          <h3>Contracts cannot safely interpret prose</h3>
-          <p>Solidity has no way to read a footnote. Without a machine-checkable verdict, a
-          protocol either trusts a feed blindly or keeps real-world assets out entirely.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="section section--sunk">
-    <div class="wrap">
-      <p class="eyebrow">The Touchstone stack</p>
-      <h2>Three layers, one policy record</h2>
-      <p class="prose secondary">Evidence becomes policy, policy becomes an onchain answer, and
-      the answer is one call away from your app or your agent.</p>
-      <div class="stack-grid">
-        <article class="stack-card">
+      <article class="mode-dark home-verdict" aria-labelledby="ustb-verdict-title">
+        <div class="home-verdict-head">
           <div>
-            <h3>Policy Intelligence</h3>
-            <p class="sc-meta">For issuers, risk teams and data operators.</p>
+            <p class="eyebrow">Newest retained mainnet report</p>
+            <h2 id="ustb-verdict-title">USTB verdict</h2>
           </div>
-          <div>
-            <ul class="sc-includes">
-              <li>AI control compiler</li>
-              <li>Evidence monitor</li>
-              <li>Policy profiles</li>
-              <li>Provenance engine</li>
-            </ul>
-            <p class="sc-outcome">Turn changing disclosures into versioned, cited,
-            machine-checkable policy.</p>
+          <span class="chip {{fact:homepage.ustb.state_class}}"><span class="dot"></span><span data-homepage-fact="ustb.state">{{fact:homepage.ustb.state}}</span></span>
+        </div>
+        <div class="home-verdict-grid">
+          <div class="home-verdict-primary">
+            <p class="home-data-label">Net asset value</p>
+            <p class="home-nav mono" data-homepage-fact="ustb.nav">{{fact:homepage.ustb.nav}}</p>
+            <p class="home-data-meta mono">as of <span data-homepage-fact="ustb.nav_date">{{fact:homepage.ustb.nav_date}}</span></p>
           </div>
-        </article>
-        <article class="stack-card">
-          <div>
-            <h3>Onchain Enforcement</h3>
-            <p class="sc-meta">For lending protocols, vaults, marketplaces and wallets.</p>
-          </div>
-          <div>
-            <ul class="sc-includes">
-              <li>Registry v2 <span class="badge badge-v2">EIP-712</span></li>
-              <li>Policy gates</li>
-              <li>Guarded actions</li>
-              <li>Decision receipts</li>
-            </ul>
-            <p class="sc-outcome">Permit, block or suspend an action from a current policy
-            verdict.</p>
-          </div>
-        </article>
-        <article class="stack-card">
-          <div>
-            <h3>Developer &amp; Agent Access</h3>
-            <p class="sc-meta">For dApp developers and AI agents.</p>
-          </div>
-          <div>
-            <ul class="sc-includes">
-              <li>TypeScript SDK</li>
-              <li>Solidity interface</li>
-              <li>The Policy Terminal</li>
-            </ul>
-            <p class="sc-outcome">Add RWA policy checks to an app or autonomous agent in
-            minutes.</p>
-          </div>
-        </article>
-      </div>
-      <div class="cta-row">
-        <a class="cta-ghost" href="/products">Explore the full stack</a>
-      </div>
+          <dl class="home-verdict-facts">
+            <div>
+              <dt>Issuer evidence sources</dt>
+              <dd class="mono" data-homepage-fact="ustb.source_count">{{fact:homepage.ustb.source_count}}</dd>
+            </div>
+            <div>
+              <dt>Evidence as of</dt>
+              <dd class="mono" data-homepage-fact="ustb.evidence_as_of">{{fact:homepage.ustb.evidence_as_of}}</dd>
+            </div>
+            <div>
+              <dt>Fresh through</dt>
+              <dd class="mono"><span data-homepage-fact="ustb.valid_until">{{fact:homepage.ustb.valid_until}}</span> UTC</dd>
+            </div>
+          </dl>
+        </div>
+        <p class="home-gate-answer">{{fact:homepage.ustb.gate_sentence}}</p>
+        <a class="home-verdict-link" href="/assets/ustb">Open the USTB dossier</a>
+      </article>
     </div>
   </section>
 
-  <section class="section">
+  <section class="section section--sunk" id="assets">
     <div class="wrap">
-      <p class="eyebrow">Use cases</p>
-      <h2>Who acts on a policy verdict</h2>
-      <div class="persona-grid">
-        <article class="persona">
-          <p class="p-for">Lending &amp; vaults</p>
-          <h3>Admit collateral only under a confirmed policy</h3>
-          <p>Point the market at the gate. Positions open while the required evidence policy
-          holds, and stop opening the moment it does not.</p>
-          <p class="p-cta"><a href="/solutions">See the solution →</a></p>
-        </article>
-        <article class="persona">
-          <p class="p-for">RWA issuers</p>
-          <h3>Publish evidence once, provable everywhere</h3>
-          <p>Existing disclosures become cited controls and a signed, sequenced record that any
-          counterparty can check without asking the issuer for it.</p>
-          <p class="p-cta"><a href="/solutions">See the solution →</a></p>
-        </article>
-        <article class="persona">
-          <p class="p-for">Wallets &amp; AI agents</p>
-          <h3>A machine-readable answer before acting</h3>
-          <p>One call returns allowed or refused with a reason string, so an autonomous agent
-          can decide without parsing a fund document.</p>
-          <p class="p-cta"><a href="/solutions">See the solution →</a></p>
-        </article>
-        <article class="persona">
-          <p class="p-for">Risk &amp; listing teams</p>
-          <h3>A refusal reason you can cite</h3>
-          <p>Every decline names the control that failed and the byte-exact span it was drawn
-          from — a defensible record, not a judgement call.</p>
-          <p class="p-cta"><a href="/solutions">See the solution →</a></p>
-        </article>
+      <p class="eyebrow">Asset coverage</p>
+      <h2>Evidence that can reach a contract.</h2>
+      <div class="table-scroll home-assets-table">
+        <table>
+          <caption class="sr">Touchstone asset coverage and live publication state</caption>
+          <thead>
+            <tr><th>Asset</th><th>Coverage</th><th>State</th><th>Evidence as of</th><th>Fresh until</th><th>Proof</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td data-label="Asset"><strong>USTB</strong></td>
+              <td data-label="Coverage">Live on mainnet + testnet</td>
+              <td data-label="State"><span class="chip {{fact:homepage.ustb.state_class}}"><span class="dot"></span>{{fact:homepage.ustb.state}}</span></td>
+              <td data-label="Evidence as of" class="mono">{{fact:homepage.ustb.evidence_as_of}}</td>
+              <td data-label="Fresh until" class="mono">{{fact:homepage.ustb.valid_until}}</td>
+              <td data-label="Proof"><a href="/assets/ustb">Dossier</a></td>
+            </tr>
+            <tr>
+              <td data-label="Asset"><strong>USDY</strong></td>
+              <td data-label="Coverage">Adapter built — no live publication</td>
+              <td data-label="State">No live report</td>
+              <td data-label="Evidence as of">not available</td>
+              <td data-label="Fresh until">not available</td>
+              <td data-label="Proof"><a href="/assets-covered">Coverage</a></td>
+            </tr>
+            <tr>
+              <td data-label="Asset"><strong>FOBXX</strong></td>
+              <td data-label="Coverage">Offline SEC adapter built</td>
+              <td data-label="State">No live report</td>
+              <td data-label="Evidence as of">not available</td>
+              <td data-label="Fresh until">not available</td>
+              <td data-label="Proof"><a href="/assets-covered">Coverage</a></td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </section>
 
-  <section class="section section--sunk">
+  <section class="section home-process">
     <div class="wrap">
-      <p class="eyebrow">Case study &middot; {{fact:asset.id}}</p>
-      <h2>Refused when provisional. Confirmed when earned.</h2>
-      <p class="prose t-lead secondary">A NAV value was provisional, so Touchstone refused it.
-      The same value survived the required evidence interval, became confirmed, and changed the
-      behaviour of a consumer contract — with no control weakened to get there.</p>
-
-      <div class="case-line" role="group" aria-label="How one NAV value moved from refused to enforced">
-        <div class="case-step">
-          <p class="cs-t">Step 01</p>
-          <h3>Provisional NAV published</h3>
-          <p>The issuer posts a new NAV for {{fact:asset.id}}.</p>
-        </div>
-        <div class="case-step cs-refused">
-          <p class="cs-t">{{fact:asset.refused_on}}</p>
-          <h3>Touchstone refuses</h3>
-          <p>One capture cannot settle a value, so the report does not assert it.</p>
-        </div>
-        <div class="case-step">
-          <p class="cs-t">Step 03</p>
-          <h3>Value holds</h3>
-          <p>The figure is unchanged across the qualifying captures that follow.</p>
-        </div>
-        <div class="case-step cs-confirmed">
-          <p class="cs-t">{{fact:asset.first_confirmed_on}}</p>
-          <h3>CONFIRMED</h3>
-          <p>NAV {{fact:asset.confirmed_nav}}, signed and published to both registries.</p>
-        </div>
-        <div class="case-step">
-          <p class="cs-t">Step 05</p>
-          <h3>Gate flips to allowed</h3>
-          <p>The same immutable contract, the same controls, a different answer.</p>
-        </div>
-        <div class="case-step">
-          <p class="cs-t">Step 06</p>
-          <h3>Guarded action executes</h3>
-          <p>The permitted call lands on chain, with the refusal still on the record.</p>
-        </div>
-      </div>
-
-      <figure class="flow">
-        <svg viewBox="0 0 1080 232" role="img" aria-labelledby="flow-title flow-desc">
-          <title id="flow-title">How a disclosure becomes an enforceable policy verdict</title>
-          <desc id="flow-desc">An issuer disclosure supplies a cited span; the span becomes a
-          control with an operator and an expected value; the approved controls are evaluated
-          against fresh evidence, producing a policy verdict; the verdict is signed and
-          published to the onchain registry that a gate reads.</desc>
-
-          <g fill="none" stroke="#D8D4CE" stroke-width="1">
-            <rect x="0.5"   y="16.5" width="216" height="130" rx="9"/>
-            <rect x="288.5" y="16.5" width="216" height="130" rx="9"/>
-            <rect x="576.5" y="16.5" width="216" height="130" rx="9"/>
-            <rect x="864.5" y="16.5" width="215" height="130" rx="9"/>
-          </g>
-
-          <!-- 1 — the issuer's own bytes, with the one line a control is allowed to cite -->
-          <g>
-            <rect x="24" y="44" width="140" height="7" rx="3.5" fill="#D5D1CB"/>
-            <rect x="24" y="62" width="168" height="7" rx="3.5" fill="#D5D1CB"/>
-            <rect x="24" y="80" width="112" height="7" rx="3.5" fill="#A6552A"/>
-            <rect x="24" y="98" width="152" height="7" rx="3.5" fill="#D5D1CB"/>
-            <rect x="24" y="116" width="88" height="7" rx="3.5" fill="#D5D1CB"/>
-          </g>
-
-          <!-- 2 — the span becomes a predicate. The copper bar is the same width as the cited
-               line above it: the control carries the citation, it does not paraphrase it. -->
-          <g>
-            <rect x="312" y="44" width="112" height="7" rx="3.5" fill="#A6552A"/>
-            <text x="312" y="82" font-size="15" fill="#3A4149">exists</text>
-            <text x="312" y="106" font-size="15" fill="#3A4149">field = one_day</text>
-            <text x="312" y="130" font-size="13" fill="#8C949B">cites the bytes above</text>
-          </g>
-
-          <!-- 3 — the approved control set, evaluated into one policy verdict -->
-          <g>
-            <circle cx="606" cy="76" r="7" fill="#2F7D4F"/>
-            <circle cx="638" cy="76" r="7" fill="#2F7D4F"/>
-            <circle cx="670" cy="76" r="7" fill="#2F7D4F"/>
-            <circle cx="702" cy="76" r="7" fill="#2F7D4F"/>
-            <circle cx="734" cy="76" r="7" fill="#2F7D4F"/>
-            <text x="600" y="130" font-size="13" fill="#8C949B">all {{fact:counts.controls_approved}} approved controls satisfied</text>
-          </g>
-
-          <!-- 4 — reports, appended in sequence, permanent -->
-          <g>
-            <rect x="888" y="46" width="60" height="30" rx="5" fill="#EBE8E4"/>
-            <rect x="956" y="46" width="60" height="30" rx="5" fill="#EBE8E4"/>
-            <rect x="1024" y="46" width="32" height="30" rx="5" fill="#F4F2EF" stroke="#D8D4CE"/>
-            <rect x="956" y="46" width="60" height="30" rx="5" fill="none" stroke="#A6552A" stroke-width="1.5"/>
-            <text x="888" y="106" font-size="15" fill="#3A4149">appended</text>
-            <text x="888" y="130" font-size="13" fill="#8C949B">signed · a gate can read it</text>
-          </g>
-
-          <g stroke="#B9BEC3" stroke-width="1.5" fill="none">
-            <path d="M232 81 L272 81"/><path d="M266 76 L272 81 L266 86"/>
-            <path d="M520 81 L560 81"/><path d="M514 76 L520 81 L514 86"/>
-            <path d="M808 81 L848 81"/><path d="M802 76 L808 81 L802 86"/>
-          </g>
-
-          <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="12"
-             letter-spacing="1.1" fill="#6B747C">
-            <text x="0"   y="180">ISSUER DISCLOSURE</text>
-            <text x="288" y="180">CITED CONTROL</text>
-            <text x="576" y="180">POLICY EVALUATION</text>
-            <text x="864" y="180">ONCHAIN REGISTRY</text>
-          </g>
-          <g font-size="13" fill="#8C949B">
-            <text x="0"   y="204">The bytes, retrieved</text>
-            <text x="288" y="204">A predicate, citing them</text>
-            <text x="576" y="204">A verdict, or an abstention</text>
-            <text x="864" y="204">Enforceable, permanent</text>
-          </g>
-        </svg>
-        <figcaption>A control never restates the issuer; it points at the bytes it was drawn
-        from and carries that citation all the way to the chain. The dots are the
-        {{fact:counts.controls_approved}} approved controls evaluated in the confirmed
-        {{fact:asset.id}} report — every one of them satisfied.</figcaption>
-      </figure>
-
-      <div class="cta-row">
-        <a class="cta-ghost" href="/dossier">Read the published reports</a>
+      <div class="home-process-grid">
+        <article>
+          <p class="mono home-step">1 · Watch evidence</p>
+          <p>Capture the issuer's exact published bytes.</p>
+        </article>
+        <article>
+          <p class="mono home-step">2 · Apply policy</p>
+          <p>Evaluate approved controls and sign the resulting state.</p>
+        </article>
+        <article>
+          <p class="mono home-step">3 · Enforce onchain</p>
+          <p>A contract permits or refuses the configured action.</p>
+        </article>
       </div>
     </div>
   </section>
 
-  <section class="section">
-    <div class="wrap">
-      <p class="eyebrow">Developers</p>
-      <h2>One call between your contract and the evidence</h2>
-      <div class="dev-grid">
-        <div>
-          <p>The SDK reads a policy gate over any X&nbsp;Layer RPC endpoint and returns the
-          contract's own answer: <code>allowed</code>, plus the reason string it would give a
-          caller. Nothing is inferred client-side.</p>
-          <p>The Solidity interface has the same shape, so a consumer contract can gate a call
-          without an offchain hop.</p>
-          <div class="cta-row">
-            <a class="cta" href="/developers">Read the docs</a>
-            <a class="cta-ghost" href="/developers#addresses">View contracts</a>
-          </div>
-        </div>
-        <div>
-          <p class="code-block-label">npm install</p>
-          <div class="code-block"><code class="cb-code"><span class="c-comment"># the SDK ships in this repository's sdk/ workspace, not on the public npm registry</span>
-cd sdk &amp;&amp; npm ci &amp;&amp; npm run build</code></div>
-
-          <p class="code-block-label">TypeScript</p>
-          <div class="code-block"><code class="cb-code"><span class="c-key">import</span> { JsonRpcProvider } <span class="c-key">from</span> <span class="c-string">"ethers"</span>;
-<span class="c-key">import</span> { AssetGateClient, DEPLOYMENTS, POLICIES } <span class="c-key">from</span> <span class="c-string">"@touchstone/sdk"</span>;
-
-<span class="c-comment">// X Layer mainnet — the gate answers from the latest published report</span>
-<span class="c-key">const</span> xLayer = DEPLOYMENTS.xlayerMainnet;
-<span class="c-key">const</span> provider = <span class="c-key">new</span> JsonRpcProvider(process.env.RPC_URL, xLayer.chainId);
-
-<span class="c-key">const</span> gate = <span class="c-key">new</span> AssetGateClient(
-  <span class="c-string">"{{fact:mainnet.gate_freshness}}"</span>,
-  POLICIES.disclosureFreshness.registryKey,
-  provider
-);
-
-<span class="c-key">const</span> decision = <span class="c-key">await</span> gate.check();
-<span class="c-comment">// decision.reason carries the contract's own refusal string</span>
-<span class="c-key">if</span> (decision.allowed) {
-  <span class="c-key">await</span> admitCollateral();
-}</code></div>
-        </div>
-      </div>
+  <section class="home-roadmap" aria-label="Roadmap">
+    <div class="wrap home-roadmap-grid">
+      <div><span>USTB end-to-end</span><span class="chip chip-live"><span class="dot"></span>LIVE</span></div>
+      <div><span>USDY + FOBXX adapters</span><span class="chip chip-pending">BUILT · NOT LIVE</span></div>
+      <div><span>Second live mainnet asset</span><span class="chip chip-next">NEXT</span></div>
     </div>
   </section>
-
-  <section class="section section--sunk">
-    <div class="wrap">
-      <p class="eyebrow">Security and proof</p>
-      <h2>Signed by a person, checkable by a stranger</h2>
-      <div class="prose">
-        <p>Every approval decision carries the approver's EIP-712 signature, so the human step
-        in the pipeline is itself a verifiable artifact rather than a claim about process.
-        Reports are Ed25519-signed and offline-verifiable: download the bundle and recompute the
-        signature, both roots and every control hash without trusting this website.</p>
-      </div>
-      <div class="stat-row">
-        <div class="stat">
-          <p class="st-n">{{fact:counts.python_tests}}</p>
-          <p class="st-l">Python tests</p>
-        </div>
-        <div class="stat">
-          <p class="st-n">{{fact:counts.contract_tests}}</p>
-          <p class="st-l">Contract tests</p>
-        </div>
-        <div class="stat">
-          <p class="st-n">{{fact:counts.mutations}}</p>
-          <p class="st-l">Mutation targets</p>
-        </div>
-      </div>
-      <div class="cta-row">
-        <a class="cta-ghost" href="/security">Security overview</a>
-        <a class="cta-ghost" href="/docs/threat-model">Threat model</a>
-      </div>
-    </div>
-  </section>
-
-  <section class="cta-band">
-    <div class="wrap">
-      <h2>Make RWA evidence executable.</h2>
-      <p class="t-lead">Read a live policy verdict from X&nbsp;Layer, or wire one into your own
-      contract this afternoon.</p>
-      <div class="cta-row">
-        <a class="cta" href="/app">Launch Terminal</a>
-        <a class="cta-ghost" href="/developers">Integrate Touchstone</a>
-      </div>
-    </div>
-  </section>
-
 </main>
 
 {{> footer}}
