@@ -1112,6 +1112,8 @@ MUTATIONS = (
         old="    posix, windows = PurePosixPath(path), PureWindowsPath(path)",
         new="    posix, windows = PurePosixPath('safe'), PureWindowsPath('safe')",
         tests=(
+            "tests/test_backup.py::"
+            "test_pure_path_guard_rejects_paths_that_may_escape_the_target",
             "tests/test_backup.py::test_a_valid_archive_cannot_write_outside_its_target",
         ),
     ),

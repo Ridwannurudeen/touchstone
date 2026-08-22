@@ -20,6 +20,8 @@ from touchstone.backup import (
     BACKUP_KEY_ENV,
     NONCE_BYTES,
     BackupError,
+    _has_unsafe_archive_path_component,
+    _is_unsafe_archive_path_by_flavour,
     backup_key,
     create,
     members,
@@ -517,6 +519,20 @@ def test_a_valid_archive_whose_size_lies_is_refused(tmp_path: Path) -> None:
             asset_key=ASSET,
             registry_address=REGISTRY,
         )
+
+
+@pytest.mark.parametrize(
+    "path", ["/etc/passwd", "../outside.json", "a/../../b.json", "C:/windows/x"]
+)
+def test_pure_path_guard_rejects_paths_that_may_escape_the_target(path: str) -> None:
+    assert _is_unsafe_archive_path_by_flavour(path)
+
+
+@pytest.mark.parametrize(
+    "path", ["/etc/passwd", "../outside.json", "a/../../b.json", "C:/windows/x"]
+)
+def test_component_guard_rejects_paths_that_may_escape_the_target(path: str) -> None:
+    assert _has_unsafe_archive_path_component(path)
 
 
 @pytest.mark.parametrize(

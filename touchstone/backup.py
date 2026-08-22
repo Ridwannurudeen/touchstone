@@ -362,28 +362,25 @@ def restore(
     return verified
 
 
-def _member(item: Mapping[str, object]) -> Member:
-    path = item.get("path")
-    if not isinstance(path, str) or not path:
-        raise BackupError("each archive member must name a path")
+def _is_unsafe_archive_path_by_flavour(path: str) -> bool:
     # Judged under both path flavours, because an archive is portable and the check must
     # not be. `Path("/etc/passwd").is_absolute()` is False on Windows and True on POSIX,
     # so a single-flavour check would let a POSIX-absolute member through on one host and
     # refuse it on another — and an archive written on one is restored on the other.
     posix, windows = PurePosixPath(path), PureWindowsPath(path)
-    windows_components = path.replace("\\", "/").split("/")
-    if (
+    return bool(
         posix.is_absolute()
         or windows.is_absolute()
         or windows.drive
-        or path.startswith(("/", "\\"))
         or ".." in posix.parts
         or ".." in windows.parts
-    ):
-        # Traversal in an archive is how a restore writes outside its target. The check is
-        # on the parts rather than the string, so "a/../../b" cannot slip past either.
-        raise BackupError(f"refusing an unsafe archive path: {path}")
-    for component in windows_components:
+    )
+
+
+def _has_unsafe_archive_path_component(path: str) -> bool:
+    if path.startswith(("/", "\\")):
+        return True
+    for component in path.replace("\\", "/").split("/"):
         reserved_stem = component.partition(".")[0].upper()
         if (
             not component
@@ -395,10 +392,22 @@ def _member(item: Mapping[str, object]) -> Member:
             )
             or reserved_stem in WINDOWS_RESERVED_MEMBER_NAMES
         ):
-            # Win32 maps trailing dots/spaces and device names onto other objects, treats
-            # a colon as an alternate data stream, and refuses the remaining characters.
-            # Validate that portable meaning before creating even the restore directory.
-            raise BackupError(f"refusing an unsafe archive path: {path}")
+            return True
+    return False
+
+
+def _member(item: Mapping[str, object]) -> Member:
+    path = item.get("path")
+    if not isinstance(path, str) or not path:
+        raise BackupError("each archive member must name a path")
+    if _is_unsafe_archive_path_by_flavour(path) or _has_unsafe_archive_path_component(
+        path
+    ):
+        # Traversal in an archive is how a restore writes outside its target. Pure path
+        # semantics and raw portable components are independent checks so neither can be
+        # bypassed by a future refactor of the other. Win32 also maps trailing dots/spaces
+        # and device names onto other objects and treats a colon as an alternate data stream.
+        raise BackupError(f"refusing an unsafe archive path: {path}")
     size = item.get("size")
     digest = item.get("sha256")
     if type(size) is not int or size < 0:
