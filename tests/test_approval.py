@@ -180,7 +180,7 @@ def test_the_ledger_records_why_each_declined_candidate_was_refused() -> None:
     """A control set that silently omits a rejected candidate cannot be audited for why."""
     ledger = load_approval_ledger()
 
-    assert ledger[DECLINED_KEY]
+    assert len(ledger[DECLINED_KEY]) == 11
     for entry in ledger[DECLINED_KEY]:
         assert entry["reason"].strip()
         assert entry["compilation_sha256"] in artifacts()
