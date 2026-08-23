@@ -66,13 +66,15 @@ def test_empty_state_renders() -> None:
 def test_live_rows_include_fobxx_on_both_networks_newest_first() -> None:
     rows = _module().load_rows()
 
-    assert [(row.asset, row.chain_id, row.sequence) for row in rows[:2]] == [
-        ("FOBXX", 196, 1),
-        ("FOBXX", 1952, 1),
-    ]
+    keyed = [(row.asset, row.chain_id, row.sequence) for row in rows]
+    # Newest first: the 2026-08-23 mainnet FOBXX publication leads, and the USTB
+    # rows published earlier that day sit between it and the testnet FOBXX row.
+    assert keyed[0] == ("FOBXX", 196, 2)
+    assert ("FOBXX", 1952, 1) in keyed
     assert rows[0].transaction_url.startswith(
         "https://web3.okx.com/explorer/xlayer/tx/"
     )
-    assert rows[1].transaction_url.startswith(
+    testnet = rows[keyed.index(("FOBXX", 1952, 1))]
+    assert testnet.transaction_url.startswith(
         "https://web3.okx.com/explorer/xlayer-test/tx/"
     )

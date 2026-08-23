@@ -64,6 +64,10 @@ BANNER = (
 )
 
 
+def _count_noun(count: int, noun: str) -> str:
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
+
+
 def derived_facts() -> dict[str, object]:
     """Facts recomputed from the tree, via the same artifact CI asserts against."""
     with tempfile.TemporaryDirectory() as scratch:
@@ -351,8 +355,8 @@ def site_facts() -> dict[str, str]:
             fobxx_testnet_report.get("state", "not available")
         ),
         "homepage.fobxx.history_summary": (
-            f"{fobxx_publications['mainnet']} publication on mainnet and "
-            f"{fobxx_publications['testnet']} publication on testnet"
+            f"{_count_noun(fobxx_publications['mainnet'], 'publication')} on mainnet and "
+            f"{_count_noun(fobxx_publications['testnet'], 'publication')} on testnet"
         ),
     }
 

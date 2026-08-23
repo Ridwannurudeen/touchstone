@@ -31,7 +31,7 @@ def test_dossier_contains_bundle_controls_publications_and_declines() -> None:
         "&lt;percentageDailyLiquidAssets&gt;0.6463&lt;/percentageDailyLiquidAssets&gt;",
         "fobxx-nmfp3-weekly-liquid-floor",
         "&lt;percentageWeeklyLiquidAssets&gt;0.7305&lt;/percentageWeeklyLiquidAssets&gt;",
-        "0x93ad57ed49bfbbd8b244fb32a6e60d5280e8c6745d871ac1270d9556e165660e",
+        "0x5d5f71b1c29f3e1c17c0404d05dfb8423561c244128d57220a59394ccc97fea0",
         "0x4e84d9523a528d91a58afe49a9632e8456b92f3d26587be6c11998b55625b42f",
         "fobxx-price-history-freshness",
         "fobxx-nmfp3-filing-freshness",
@@ -43,7 +43,7 @@ def test_dossier_contains_bundle_controls_publications_and_declines() -> None:
         )
         == 4
     )
-    assert "1 retained <strong>CONFIRMED</strong>\n      publication on mainnet" in page
+    assert "2 retained <strong>CONFIRMED</strong>\n      publications on mainnet" in page
     assert "this page does not imply a daily history" in page
 
 

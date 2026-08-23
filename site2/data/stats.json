@@ -1,5 +1,5 @@
 {
- "reports_published": 25,
+ "reports_published": 29,
  "controls_evaluated": 8,
  "evidence_captures": 9,
  "assets_live": 2,
@@ -334,6 +334,58 @@
    "transaction_hash": "0xe03d60b37abe6ae3b747641dbca9581d57be30dda52a009a52ccd775b639d4b6",
    "block": 68599353,
    "observed_at": "2026-08-22T03:01:26.624074Z"
+  },
+  {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+   "note": "xlayer-mainnet-v1",
+   "epoch_id": "ustb-2026-08-23",
+   "sequence": 7,
+   "state": "CONFIRMED",
+   "policy": null,
+   "correction_of": null,
+   "transaction_hash": "0xa1edd85837f155e017e72e0149f5492f341042eafba7bbae865954aad7c04887",
+   "block": 68685522,
+   "observed_at": "2026-08-23T03:01:26.624074Z"
+  },
+  {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:disclosure-freshness:1",
+   "note": "policy:disclosure-freshness",
+   "epoch_id": "ustb-2026-08-23",
+   "sequence": 5,
+   "state": "CONFIRMED",
+   "policy": "disclosure-freshness",
+   "correction_of": null,
+   "transaction_hash": "0xfed2f5c8ff8a83f23cbb7e5fbb348df8bd596120ea5127ce7248da3f3f4e0274",
+   "block": 68685580,
+   "observed_at": "2026-08-23T03:01:26.624074Z"
+  },
+  {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:nav-settlement:1",
+   "note": "policy:nav-settlement",
+   "epoch_id": "ustb-2026-08-23",
+   "sequence": 5,
+   "state": "CONFIRMED",
+   "policy": "nav-settlement",
+   "correction_of": null,
+   "transaction_hash": "0xf51fe6541878543ace5ec819804aff6a3462ee6ffefcebd6e07e8dcd2a51dfa4",
+   "block": 68685736,
+   "observed_at": "2026-08-23T03:01:26.624074Z"
+  },
+  {
+   "chain_id": 196,
+   "asset_key": "eip155:1:0x3ddc84940ab509c11b20b76b466933f40b750dc9",
+   "note": "xlayer-mainnet-v1",
+   "epoch_id": "fobxx-2026-08-23",
+   "sequence": 2,
+   "state": "CONFIRMED",
+   "policy": null,
+   "correction_of": null,
+   "transaction_hash": "0x5d5f71b1c29f3e1c17c0404d05dfb8423561c244128d57220a59394ccc97fea0",
+   "block": 68692613,
+   "observed_at": "2026-08-23T05:02:57.854397Z"
   }
  ],
  "assets": [
@@ -385,7 +437,7 @@
   "xlayer-mainnet",
   "xlayer-testnet"
  ],
- "confirmed_reports": 20,
+ "confirmed_reports": 24,
  "first_confirmed_at": "2026-08-19T16:36:55Z",
  "policies": [
   {

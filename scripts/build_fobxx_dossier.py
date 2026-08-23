@@ -27,6 +27,10 @@ OUT = ROOT / "site2" / "_pages" / "assets" / "fobxx.html"
 _NETWORKS = {196: "mainnet", 1952: "testnet"}
 
 
+def _plural(count: int, noun: str) -> str:
+    return noun if count == 1 else f"{noun}s"
+
+
 def _document(path: Path, label: str) -> Mapping[str, object]:
     value = strict_json_loads(path.read_bytes())
     if not isinstance(value, Mapping):
@@ -261,8 +265,8 @@ def render(
       <h1>FOBXX</h1>
       <p class="t-lead prose">Franklin OnChain U.S. Government Money Fund has
       {retained_counts[196]} retained <strong>{html.escape(str(main_report.get("state")))}</strong>
-      publication on mainnet and {retained_counts[1952]} retained
-      <strong>{html.escape(str(test_report.get("state")))}</strong> publication on testnet.
+      {_plural(retained_counts[196], "publication")} on mainnet and {retained_counts[1952]} retained
+      <strong>{html.escape(str(test_report.get("state")))}</strong> {_plural(retained_counts[1952], "publication")} on testnet.
       The latest rows below are sequence {main_report.get("sequence")} and
       {test_report.get("sequence")}; this page does not imply a daily history.</p>
     </div>
