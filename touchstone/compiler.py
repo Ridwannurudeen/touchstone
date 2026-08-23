@@ -868,8 +868,11 @@ def _validate_fobxx_filing_evidence(
             f'"{filing.report_date.isoformat()}"',
             f'"{filing.filing_date.isoformat()}"',
         ]
-        if any(span.encode("utf-8") not in comparison_raw for span in comparison_spans):
-            raise ValueError("FOBXX submissions evidence span is not byte-exact")
+        if any(
+            comparison_raw.count(span.encode("utf-8")) != 1
+            for span in comparison_spans
+        ):
+            raise ValueError("FOBXX submissions evidence span is not unique")
         return {
             "control_id": control.control_id,
             "evidence_spans": comparison_spans,

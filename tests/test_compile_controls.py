@@ -406,36 +406,51 @@ def test_fobxx_compiles_all_retained_sources_with_strict_evidence_gates(
     ]
     submissions_raw = (FIXTURES / "fobxx-submissions-20260815.json").read_bytes()
     assert all(
-        span.encode("utf-8") in submissions_raw
+        submissions_raw.count(span.encode("utf-8")) == 1
         for span in sec["comparison_evidence"][0]["evidence_spans"]
     )
 
 
 @pytest.mark.parametrize(
-    ("field", "replacement", "expected_reason"),
+    ("field", "replacement", "duplicate_filing_date", "expected_reason"),
     [
         (
             None,
             None,
+            False,
             "FOBXX filing freshness requires bound submissions evidence",
         ),
         (
             "accessionNumber",
             "0002071691-26-019999",
+            False,
             "FOBXX filing source URL does not match submissions accession",
         ),
         (
             "reportDate",
             "2026-08-31",
+            False,
             "FOBXX filing report date does not match submissions evidence",
         ),
+        (
+            None,
+            None,
+            True,
+            "FOBXX submissions evidence span is not unique",
+        ),
     ],
-    ids=("report-date-only", "wrong-accession", "wrong-report-date"),
+    ids=(
+        "report-date-only",
+        "wrong-accession",
+        "wrong-report-date",
+        "duplicate-filing-date",
+    ),
 )
 def test_fobxx_filing_freshness_requires_matching_submissions_evidence(
     tmp_path: Path,
     field: str | None,
     replacement: str | None,
+    duplicate_filing_date: bool,
     expected_reason: str,
 ) -> None:
     retrieved_at = datetime(2026, 8, 22, 3, 4, 44, 564845, tzinfo=timezone.utc)
@@ -468,13 +483,19 @@ def test_fobxx_filing_freshness_requires_matching_submissions_evidence(
         grace_period=10,
     )
     comparison_evidence = None
-    if field is not None:
+    if field is not None or duplicate_filing_date:
         payload = json.loads(
             (FIXTURES / "fobxx-submissions-20260815.json").read_text(encoding="utf-8")
         )
         recent = payload["filings"]["recent"]
         index = recent["accessionNumber"].index("0002071691-26-017542")
-        recent[field][index] = replacement
+        if duplicate_filing_date:
+            duplicate_index = recent["accessionNumber"].index(
+                "0001786958-26-000004"
+            )
+            recent["filingDate"][duplicate_index] = recent["filingDate"][index]
+        else:
+            recent[field][index] = replacement
         submissions_source = FOBXX.source_by_id["sec-edgar-fobxx-submissions"]
         submissions_digest = store.store(
             json.dumps(payload, separators=(",", ":")).encode("utf-8"),
