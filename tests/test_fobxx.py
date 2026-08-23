@@ -143,8 +143,8 @@ def compiled_fobxx_controls(tmp_path: Path) -> tuple[str, bytes, bytes]:
             authority="issuer-api",
             span='"navdate":"2026-08-21"',
             operator="fresh_within",
-            expected_value={"business_days": 3},
-            grace_period=3,
+            expected_value={"business_days": 2},
+            grace_period=2,
         ),
         fobxx_control(
             control_id="fobxx-issuer-nav-peg",
@@ -421,8 +421,8 @@ def test_fobxx_issuer_nav_and_freshness_controls_use_the_latest_row() -> None:
             authority="issuer-api",
             span='"navdate":"2026-08-21"',
             operator="fresh_within",
-            expected_value={"business_days": 3},
-            grace_period=3,
+            expected_value={"business_days": 2},
+            grace_period=2,
         ),
         fobxx_control(
             control_id="fobxx-issuer-nav-peg",
@@ -440,7 +440,7 @@ def test_fobxx_issuer_nav_and_freshness_controls_use_the_latest_row() -> None:
         controls,
         {FOBXX_HISTORY_SOURCE_ID: history},
         prior_observations={},
-        now=date(2026, 8, 26),
+        now=date(2026, 8, 25),
     )
 
     assert [item.result for item in report.evaluations] == [
@@ -448,7 +448,7 @@ def test_fobxx_issuer_nav_and_freshness_controls_use_the_latest_row() -> None:
         EvaluationResult.SATISFIED,
     ]
     assert all(
-        item.evidence_deadline == date(2026, 8, 26)
+        item.evidence_deadline == date(2026, 8, 25)
         for item in report.evaluations
     )
 

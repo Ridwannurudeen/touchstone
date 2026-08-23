@@ -109,7 +109,7 @@ FOBXX_SOURCES = (
         authority_class="issuer-api",
         cadence="business-daily, T-1",
         max_bytes=262_144,
-        grace_period=3,
+        grace_period=2,
         grace_unit="business_days",
         method="POST",
     ),

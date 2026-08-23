@@ -54,7 +54,7 @@
       "max_bytes": 262144,
       "cadence": "business-daily, T-1",
       "timezone": "not stated; row dates are calendar dates",
-      "grace_period_business_days": 3,
+      "grace_period_business_days": 2,
       "blank_value_rule": "Daily and weekly liquidity ratios are intermittently blank. A blank is UNEVALUABLE \u2014 no data \u2014 and must NEVER be read as a breach of a liquidity floor.",
       "same_date_row_rule": "Franklin may return the same navdate twice, including one row with blank liquidity ratios and one populated row. Such rows are merged field by field only when every value present in both rows is identical; a blank contributes no observation and the populated value is retained. Any disagreement between two present navstd, dailyliquidassetratio, or weeklyliquidassetratio values is contradictory source data and the normalizer refuses the response. The 2026-05-22 live response evidenced the honest merge case: both rows reported navstd 1.00000000, while one had blank ratios and the other reported 73.8346 daily and 82.1525 weekly.",
       "omitted_control": "The seven-day yield is deliberately omitted. The schema exists but returned empty for this fund and was never verified.",

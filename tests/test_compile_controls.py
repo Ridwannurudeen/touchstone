@@ -135,8 +135,8 @@ def _fobxx_candidates(
                 control_id="fobxx-issuer-row-fresh",
                 span='"navdate":"2026-08-21"',
                 operator="fresh_within",
-                expected_value={"business_days": 3},
-                grace_period=3,
+                expected_value={"business_days": 2},
+                grace_period=2,
             ),
             _candidate(
                 bindings,

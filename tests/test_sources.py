@@ -655,7 +655,7 @@ def test_conflicting_duplicate_headers_are_refused(
 
 
 def test_the_code_carries_the_grace_policy_its_manifest_declares() -> None:
-    """`manifests/sources/ustb.json` is the authority, and every copy has to agree with it.
+    """Each source manifest is the authority, and every code copy has to agree with it.
 
     The manifest declared a freshness policy per source and nothing read it: `SourceManifest`
     had no field for it, so the compiler validated a candidate's grace period against itself
@@ -668,37 +668,43 @@ def test_the_code_carries_the_grace_policy_its_manifest_declares() -> None:
     it asserts what the provider is actually told, since the prompt used to carry a third
     hardcoded copy that the prompt hash committed to instead of the manifest.
     """
-    declared = json.loads(
-        (Path(__file__).parents[1] / "manifests" / "sources" / "ustb.json").read_bytes()
-    )
-    by_id = {source["source_id"]: source for source in declared["sources"]}
-
-    for source in USTB_SOURCES:
-        entry = by_id[source.source_id]
-        business = entry.get("grace_period_business_days")
-        calendar = entry.get("grace_period_calendar_days")
-        assert (business is None) != (calendar is None), (
-            f"{source.source_id} declares neither or both grace units"
+    for manifest_name, sources in (("ustb", USTB_SOURCES), ("fobxx", FOBXX_SOURCES)):
+        declared = json.loads(
+            (
+                Path(__file__).parents[1]
+                / "manifests"
+                / "sources"
+                / f"{manifest_name}.json"
+            ).read_bytes()
         )
-        if business is not None:
-            expected, unit = business, "business_days"
-        else:
-            expected, unit = calendar, "calendar_days"
+        by_id = {source["source_id"]: source for source in declared["sources"]}
 
-        assert source.grace_period == expected, (
-            f"{source.source_id} carries {source.grace_period} while its manifest "
-            f"declares {expected}"
-        )
-        assert source.grace_unit == unit, (
-            f"{source.source_id} counts in {source.grace_unit} while its manifest "
-            f"declares {unit}"
-        )
+        for source in sources:
+            entry = by_id[source.source_id]
+            business = entry.get("grace_period_business_days")
+            calendar = entry.get("grace_period_calendar_days")
+            assert (business is None) != (calendar is None), (
+                f"{source.source_id} declares neither or both grace units"
+            )
+            if business is not None:
+                expected, unit = business, "business_days"
+            else:
+                expected, unit = calendar, "calendar_days"
 
-        # And the provider is told the same thing, so the prompt hash commits to the policy
-        # the run used rather than to a copy written beside it.
-        sent = _manifest_mapping(source)
-        assert sent["grace_period"] == expected
-        assert sent["grace_unit"] == unit
+            assert source.grace_period == expected, (
+                f"{source.source_id} carries {source.grace_period} while its manifest "
+                f"declares {expected}"
+            )
+            assert source.grace_unit == unit, (
+                f"{source.source_id} counts in {source.grace_unit} while its manifest "
+                f"declares {unit}"
+            )
+
+            # And the provider is told the same thing, so the prompt hash commits to the
+            # policy the run used rather than to a copy written beside it.
+            sent = _manifest_mapping(source)
+            assert sent["grace_period"] == expected
+            assert sent["grace_unit"] == unit
 
 
 def test_the_prompt_does_not_hardcode_a_grace_policy() -> None:
