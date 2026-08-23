@@ -446,6 +446,39 @@ def _answered(monkeypatch: pytest.MonkeyPatch, body: dict) -> None:
     monkeypatch.setattr(module, "build_opener", lambda *handlers: _Opener())
 
 
+def test_an_http_error_surfaces_the_service_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bare `HTTP Error 400` hides the reason the service gave, so an exhausted credit
+    balance and a malformed request were indistinguishable at the operator's terminal."""
+    import io
+    from urllib.error import HTTPError
+
+    from touchstone import compiler as module
+
+    provider = _http_provider(monkeypatch)
+    body = b'{"error":{"message":"Your credit balance is too low"}}' + b"x" * 4096
+
+    class _Opener:
+        def open(self, request, timeout):
+            del request, timeout
+            raise HTTPError(
+                "https://example.test", 400, "Bad Request", {}, io.BytesIO(body)
+            )
+
+    monkeypatch.setattr(module, "build_opener", lambda *handlers: _Opener())
+
+    with pytest.raises(RuntimeError) as raised:
+        provider.propose_controls(
+            "{}", USTB_SOURCE_BY_ID["superstate-ustb-nav-daily"], {}, {}
+        )
+
+    message = str(raised.value)
+    assert "HTTP Error 400" in message
+    assert "credit balance is too low" in message
+    assert len(message) < 1_200
+
+
 def test_the_request_carries_no_temperature(monkeypatch: pytest.MonkeyPatch) -> None:
     """Current models reject it as deprecated, and nothing here rested on it.
 

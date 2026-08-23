@@ -378,7 +378,12 @@ class HTTPProvider:
         try:
             with opener.open(request, timeout=self.timeout) as response:
                 raw_response = response.read(1_048_577)
-        except (HTTPError, URLError, TimeoutError, OSError) as error:
+        except HTTPError as error:
+            # The status line alone hid an exhausted credit balance behind a bare 400.
+            # Keep the service's reason, bounded so a hostile endpoint cannot flood the log.
+            reason = error.read(1_024).decode("utf-8", "replace")
+            raise RuntimeError(f"model request failed: {error}: {reason}") from error
+        except (URLError, TimeoutError, OSError) as error:
             raise RuntimeError(f"model request failed: {error}") from error
         if len(raw_response) > 1_048_576:
             raise RuntimeError("model response exceeds 1048576 bytes")
