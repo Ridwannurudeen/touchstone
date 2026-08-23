@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -152,8 +153,13 @@ def test_signing_appends_a_valid_entry_at_the_signing_instant_without_rewriting_
         for key in ("approved", "declined")
         for entry in before[key]
     ]
+    signing_time = max(
+        entry["approval"]["timestamp"]
+        for key in ("approved", "declined")
+        for entry in before[key]
+    ) + 1
     monkeypatch.setenv(record_approvals.APPROVER_KEY_ENV, KEY)
-    monkeypatch.setattr(record_approvals.time, "time", lambda: 1_787_428_800)
+    monkeypatch.setattr(record_approvals.time, "time", lambda: signing_time)
 
     assert (
         record_approvals.main(_arguments(ledger, compilations, decisions, "--sign"))
@@ -171,8 +177,10 @@ def test_signing_appends_a_valid_entry_at_the_signing_instant_without_rewriting_
     assert after_signatures == before_signatures
     assert entry["control_id"] == control_id
     assert entry["reason"] == reason
-    assert entry["declined_on"] == "2026-08-22"
-    assert entry["approval"]["timestamp"] == 1_787_428_800
+    assert entry["declined_on"] == datetime.fromtimestamp(
+        signing_time, tz=timezone.utc
+    ).date().isoformat()
+    assert entry["approval"]["timestamp"] == signing_time
     assert entry["approval"]["compilation_digest"] == digest
     assert entry["approval"]["decision"] == DECLINED_KEY
 

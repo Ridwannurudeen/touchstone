@@ -99,9 +99,9 @@
             refusal is a decision about the same proposal. Each signature binds the proposed
             candidate's content digest and the compilation artifact it came from, so an
             approval cannot be moved onto a different proposal after the fact.</p>
-            <p class="sc-outcome">Proof: ledger digest
-            <span class="mono">{{fact:derived.ledger_sha256}}</span> — the value every report
-            commits to and the registry stores on chain as its approval digest.</p>
+            <p class="sc-outcome">Current signed ledger digest:
+            <span class="mono">{{fact:derived.ledger_sha256}}</span>. No published report or
+            registry row carries this new digest yet; the next publication will bind it.</p>
           </div>
         </article>
 

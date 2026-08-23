@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FOBXX dossier &mdash; Touchstone</title>
-<meta name="description" content="The retained FOBXX evidence, four satisfied controls, two declined controls, and first X Layer publications.">
+<meta name="description" content="The retained FOBXX evidence: 4 published controls with 4 satisfied results, 6 signed approvals, 2 approved but not yet published, and 6 declined controls.">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 <link rel="canonical" href="https://touchstone.gudman.xyz/assets/fobxx">
 <link rel="stylesheet" href="/assets/style.css">
@@ -61,7 +61,12 @@
   <section class="section section--sunk">
     <div class="wrap">
       <p class="eyebrow">Approved and evaluated</p>
-      <h2>Four controls, four satisfied results</h2>
+      <h2>4 published controls, 4/4 SATISFIED</h2>
+      <p class="prose">6 FOBXX controls are approved in the signed ledger.
+      The published mainnet and testnet bundles each carry 4 controls and
+      report 4/4 SATISFIED results.
+      2 approved controls are not yet published: <code>fobxx-issuer-price-history-freshness</code>, <code>fobxx-nmfp3-report-date-recency</code>.
+      The next publication will carry all 6 approved controls.</p>
       <div class="persona-grid">
         <article class="persona">
           <p class="p-for"><code>fobxx-nav-std-stable-one</code></p>
@@ -117,7 +122,7 @@
   <section class="section">
     <div class="wrap">
       <p class="eyebrow">Refusal is part of the record</p>
-      <h2>Two controls were declined</h2>
+      <h2>6 controls were declined</h2>
       <p class="prose">These candidates passed deterministic compilation gates but were not
       approved, evaluated, or published. Their signed ledger reasons are reproduced below.</p>
       <div class="table-scroll"><table>
@@ -130,6 +135,22 @@
           <tr>
             <td><code>fobxx-nmfp3-filing-freshness</code></td>
             <td>Declined: the cited span &lt;reportDate&gt;2026-07-31&lt;/reportDate&gt; proves the reporting period, not when the filing was submitted or accepted, so a control named filing freshness claims more than its evidence establishes. Measured from period end it also evaluates STALE today (deadline 2026-08-16) even though the July filing was in fact filed 2026-08-06, well inside ten business days. Rebuild it on the SEC submissions source, which carries filingDate, rather than on the N-MFP3 document.</td>
+          </tr>
+          <tr>
+            <td><code>fobxx-issuer-nav-stable-one-dollar</code></td>
+            <td>Identical in substance to the approved fobxx-nav-std-stable-one (same source, operator, expected value and evidence span); the model re-proposed a live control under a new name. Approving it would present duplication as product scope.</td>
+          </tr>
+          <tr>
+            <td><code>fobxx-nmfp3-stable-nav-one-dollar</code></td>
+            <td>Identical in substance to the approved fobxx-nmfp3-stable-price-one; a live control re-proposed under a new name.</td>
+          </tr>
+          <tr>
+            <td><code>fobxx-nmfp3-daily-liquidity-minimum-floor</code></td>
+            <td>Identical in substance to the approved fobxx-nmfp3-daily-liquid-floor; a live control re-proposed under a new name.</td>
+          </tr>
+          <tr>
+            <td><code>fobxx-nmfp3-weekly-liquidity-minimum-floor</code></td>
+            <td>Identical in substance to the approved fobxx-nmfp3-weekly-liquid-floor; a live control re-proposed under a new name.</td>
           </tr>
         </tbody>
       </table></div>

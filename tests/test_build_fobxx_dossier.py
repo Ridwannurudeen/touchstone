@@ -37,6 +37,23 @@ def test_dossier_contains_bundle_controls_publications_and_declines() -> None:
         "fobxx-nmfp3-filing-freshness",
     ):
         assert value in page
-    assert page.count("SATISFIED") == 4
+    assert (
+        page.count(
+            '<span class="chip chip-live"><i class="dot" aria-hidden="true"></i>SATISFIED</span>'
+        )
+        == 4
+    )
     assert "1 retained <strong>CONFIRMED</strong>\n      publication on mainnet" in page
     assert "this page does not imply a daily history" in page
+
+
+def test_dossier_distinguishes_published_controls_from_signed_approvals() -> None:
+    page = _module().render()
+
+    assert "6 FOBXX controls are approved in the signed ledger" in page
+    assert "4 published controls, 4/4 SATISFIED" in page
+    assert "2 approved controls are not yet published" in page
+    assert "<code>fobxx-issuer-price-history-freshness</code>" in page
+    assert "<code>fobxx-nmfp3-report-date-recency</code>" in page
+    assert "The next publication will carry all 6 approved controls." in page
+    assert "6 controls were declined" in page

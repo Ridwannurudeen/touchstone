@@ -95,7 +95,7 @@ def _publication(
 
 def _control_rows(
     bundle: Mapping[str, object], report: Mapping[str, object]
-) -> str:
+) -> tuple[str, list[str], int]:
     records = bundle.get("control_records")
     evaluations = report.get("controls")
     if not isinstance(records, list) or not isinstance(evaluations, list):
@@ -106,6 +106,8 @@ def _control_rows(
         if isinstance(item, Mapping) and isinstance(item.get("evaluation"), Mapping)
     }
     rows = []
+    control_ids = []
+    satisfied_count = 0
     for record in records:
         if not isinstance(record, Mapping):
             raise ValueError("FOBXX control record must be an object")
@@ -113,6 +115,8 @@ def _control_rows(
         evaluation = evaluated.get(control_id)
         if not isinstance(control_id, str) or not isinstance(evaluation, Mapping):
             raise ValueError("FOBXX control record has no matching evaluation")
+        control_ids.append(control_id)
+        satisfied_count += evaluation.get("result") == "SATISFIED"
         expected = json.dumps(
             record.get("expected_value"), sort_keys=True, separators=(",", ":")
         )
@@ -130,21 +134,33 @@ def _control_rows(
           </dl>
         </article>"""
         )
-    return "\n".join(rows)
+    evaluated_ids = [
+        item.get("control_id") for item in evaluations if isinstance(item, Mapping)
+    ]
+    if len(set(control_ids)) != len(control_ids) or set(control_ids) != set(
+        evaluated_ids
+    ):
+        raise ValueError(
+            "FOBXX page controls do not equal the controls in the verified bundle"
+        )
+    return "\n".join(rows), control_ids, satisfied_count
 
 
-def _declined_rows(ledger: Mapping[str, object]) -> str:
-    declined = ledger.get("declined")
-    if not isinstance(declined, list):
-        raise ValueError("approval ledger must contain a declined array")
-    entries = [
+def _ledger_entries(
+    ledger: Mapping[str, object], section: str
+) -> list[Mapping[str, object]]:
+    values = ledger.get(section)
+    if not isinstance(values, list):
+        raise ValueError(f"approval ledger must contain a {section} array")
+    return [
         entry
-        for entry in declined
+        for entry in values
         if isinstance(entry, Mapping)
         and str(entry.get("control_id", "")).startswith("fobxx-")
     ]
-    if len(entries) != 2:
-        raise ValueError(f"FOBXX must have exactly two declined controls, found {len(entries)}")
+
+
+def _declined_rows(entries: list[Mapping[str, object]]) -> str:
     return "\n".join(
         f"""          <tr>
             <td><code>{html.escape(str(entry["control_id"]))}</code></td>
@@ -166,6 +182,37 @@ def render(
     test_path, _, test_report = retained[1952]
     if main_report.get("controls") != test_report.get("controls"):
         raise ValueError("FOBXX network reports do not carry the same control results")
+    control_rows, published_control_ids, satisfied_count = _control_rows(
+        main_bundle, main_report
+    )
+    approved_entries = _ledger_entries(ledger, "approved")
+    declined_entries = _ledger_entries(ledger, "declined")
+    approved_control_ids = [str(entry["control_id"]) for entry in approved_entries]
+    if len(set(approved_control_ids)) != len(approved_control_ids):
+        raise ValueError("FOBXX approved ledger controls must be unique")
+    unpublished_control_ids = [
+        control_id
+        for control_id in approved_control_ids
+        if control_id not in published_control_ids
+    ]
+    if not set(published_control_ids) <= set(approved_control_ids):
+        raise ValueError(
+            "a published FOBXX control is not approved in the signed ledger"
+        )
+    if set(published_control_ids) | set(unpublished_control_ids) != set(
+        approved_control_ids
+    ):
+        raise ValueError(
+            "FOBXX page approvals do not equal the controls in the signed ledger"
+        )
+    published_count = len(published_control_ids)
+    approved_count = len(approved_control_ids)
+    unpublished_count = len(unpublished_control_ids)
+    declined_count = len(declined_entries)
+    unpublished_names = ", ".join(
+        f"<code>{html.escape(control_id)}</code>"
+        for control_id in unpublished_control_ids
+    )
     publications = {
         chain_id: _publication(stats, report, chain_id)
         for chain_id, (_, _, report) in retained.items()
@@ -200,7 +247,7 @@ def render(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FOBXX dossier &mdash; Touchstone</title>
-<meta name="description" content="The retained FOBXX evidence, four satisfied controls, two declined controls, and first X Layer publications.">
+<meta name="description" content="The retained FOBXX evidence: {published_count} published controls with {satisfied_count} satisfied results, {approved_count} signed approvals, {unpublished_count} approved but not yet published, and {declined_count} declined controls.">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 <link rel="canonical" href="https://touchstone.gudman.xyz/assets/fobxx">
 <link rel="stylesheet" href="/assets/style.css">
@@ -244,22 +291,27 @@ def render(
   <section class="section section--sunk">
     <div class="wrap">
       <p class="eyebrow">Approved and evaluated</p>
-      <h2>Four controls, four satisfied results</h2>
+      <h2>{published_count} published controls, {satisfied_count}/{published_count} SATISFIED</h2>
+      <p class="prose">{approved_count} FOBXX controls are approved in the signed ledger.
+      The published mainnet and testnet bundles each carry {published_count} controls and
+      report {satisfied_count}/{published_count} SATISFIED results.
+      {unpublished_count} approved controls are not yet published: {unpublished_names}.
+      The next publication will carry all {approved_count} approved controls.</p>
       <div class="persona-grid">
-{_control_rows(main_bundle, main_report)}
+{control_rows}
       </div>
     </div>
   </section>
   <section class="section">
     <div class="wrap">
       <p class="eyebrow">Refusal is part of the record</p>
-      <h2>Two controls were declined</h2>
+      <h2>{declined_count} controls were declined</h2>
       <p class="prose">These candidates passed deterministic compilation gates but were not
       approved, evaluated, or published. Their signed ledger reasons are reproduced below.</p>
       <div class="table-scroll"><table>
         <thead><tr><th>Declined control</th><th>Recorded reason</th></tr></thead>
         <tbody>
-{_declined_rows(ledger)}
+{_declined_rows(declined_entries)}
         </tbody>
       </table></div>
     </div>
