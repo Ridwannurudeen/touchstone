@@ -1,0 +1,39 @@
+{
+  "version": "touchstone.approval-decisions.v1",
+  "decisions": [
+    {
+      "decision": "approved",
+      "control_id": "fobxx-issuer-price-history-freshness",
+      "compilation_sha256": "bea21035de7a836c326eb6074072bc1c63b4fc78ce38accaec0c0dbcc5f43546"
+    },
+    {
+      "decision": "approved",
+      "control_id": "fobxx-nmfp3-report-date-recency",
+      "compilation_sha256": "e302c6d18ed0ff92ae2554327fac2902f2ed2ba6b761757d6529a2d59db5e6ab"
+    },
+    {
+      "decision": "declined",
+      "control_id": "fobxx-issuer-nav-stable-one-dollar",
+      "compilation_sha256": "bea21035de7a836c326eb6074072bc1c63b4fc78ce38accaec0c0dbcc5f43546",
+      "reason": "Identical in substance to the approved fobxx-nav-std-stable-one (same source, operator, expected value and evidence span); the model re-proposed a live control under a new name. Approving it would present duplication as product scope."
+    },
+    {
+      "decision": "declined",
+      "control_id": "fobxx-nmfp3-stable-nav-one-dollar",
+      "compilation_sha256": "e302c6d18ed0ff92ae2554327fac2902f2ed2ba6b761757d6529a2d59db5e6ab",
+      "reason": "Identical in substance to the approved fobxx-nmfp3-stable-price-one; a live control re-proposed under a new name."
+    },
+    {
+      "decision": "declined",
+      "control_id": "fobxx-nmfp3-daily-liquidity-minimum-floor",
+      "compilation_sha256": "e302c6d18ed0ff92ae2554327fac2902f2ed2ba6b761757d6529a2d59db5e6ab",
+      "reason": "Identical in substance to the approved fobxx-nmfp3-daily-liquid-floor; a live control re-proposed under a new name."
+    },
+    {
+      "decision": "declined",
+      "control_id": "fobxx-nmfp3-weekly-liquidity-minimum-floor",
+      "compilation_sha256": "e302c6d18ed0ff92ae2554327fac2902f2ed2ba6b761757d6529a2d59db5e6ab",
+      "reason": "Identical in substance to the approved fobxx-nmfp3-weekly-liquid-floor; a live control re-proposed under a new name."
+    }
+  ]
+}

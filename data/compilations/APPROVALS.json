@@ -154,6 +154,40 @@
         "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
         "signature": "cb4aa060d132a7f13e9de146ec4073e74853d028838a82f66833c87ef901c73a17dbddd418861337b6a52e1f69a07bdc244d6a0bcb6cc0a3eae1ca835a8f49cc1b"
       }
+    },
+    {
+      "control_id": "fobxx-issuer-price-history-freshness",
+      "compilation_sha256": "bea21035de7a836c326eb6074072bc1c63b4fc78ce38accaec0c0dbcc5f43546",
+      "approved_on": "2026-08-23",
+      "approval": {
+        "version": 2,
+        "control_digest": "ed75875418a4a8c07862aff3a6f418b7a74776588bbc6a6722bad308abeca9fb",
+        "compilation_digest": "bea21035de7a836c326eb6074072bc1c63b4fc78ce38accaec0c0dbcc5f43546",
+        "decision": "approved",
+        "reason_code": "operator-approved",
+        "timestamp": 1787500662,
+        "scope": "global",
+        "policy_id": "",
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "signature": "e039422a4f5c7902a08abaa3bb47d6738c54c20023c3605ad5034fc93d4a89cd457ca9124aac69a44f10b5f328c76f889cc0d4a7cc38a627f74c3d576d5061841b"
+      }
+    },
+    {
+      "control_id": "fobxx-nmfp3-report-date-recency",
+      "compilation_sha256": "e302c6d18ed0ff92ae2554327fac2902f2ed2ba6b761757d6529a2d59db5e6ab",
+      "approved_on": "2026-08-23",
+      "approval": {
+        "version": 2,
+        "control_digest": "46d90168364b5aab0ecaf3d23a67c6a370d0b8c8ddcaa1f80af0081ebce3cfe8",
+        "compilation_digest": "e302c6d18ed0ff92ae2554327fac2902f2ed2ba6b761757d6529a2d59db5e6ab",
+        "decision": "approved",
+        "reason_code": "operator-approved",
+        "timestamp": 1787500662,
+        "scope": "global",
+        "policy_id": "",
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "signature": "ebb370019459d11d34e692979a9a7f1f270df3a7eb5981cf731f2fd3f3ea3ad31a758f78f074dbae13ff3a8e387f0be70910c9ea7d11fea78ce96b34994616321b"
+      }
     }
   ],
   "declined": [
@@ -281,6 +315,78 @@
         "policy_id": "",
         "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
         "signature": "410eb2777e42e9c4c3edfeecdfb556478ae8cb120c1069397acc6b5fa72a23530e7b58359e6f2ee731791ba29d50a0ffd44a6d50e19c9e8f09a4e6c8ddaca4121c"
+      }
+    },
+    {
+      "control_id": "fobxx-issuer-nav-stable-one-dollar",
+      "compilation_sha256": "bea21035de7a836c326eb6074072bc1c63b4fc78ce38accaec0c0dbcc5f43546",
+      "declined_on": "2026-08-23",
+      "reason": "Identical in substance to the approved fobxx-nav-std-stable-one (same source, operator, expected value and evidence span); the model re-proposed a live control under a new name. Approving it would present duplication as product scope.",
+      "approval": {
+        "version": 2,
+        "control_digest": "9788c67a04a2d9d34fafe303e64cc1ee3e9aac3eca2dc14dafbc7b5456546687",
+        "compilation_digest": "bea21035de7a836c326eb6074072bc1c63b4fc78ce38accaec0c0dbcc5f43546",
+        "decision": "declined",
+        "reason_code": "operator-declined",
+        "timestamp": 1787500662,
+        "scope": "global",
+        "policy_id": "",
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "signature": "872ecd07c271cbf2b6f7fdc2d1ecfafa01f3de4e62a5989fabb5dc763a3b48cf68398ddb11d079d0781322877c6fcddaa1f91ff5e1353a740a8496050a9e91251b"
+      }
+    },
+    {
+      "control_id": "fobxx-nmfp3-stable-nav-one-dollar",
+      "compilation_sha256": "e302c6d18ed0ff92ae2554327fac2902f2ed2ba6b761757d6529a2d59db5e6ab",
+      "declined_on": "2026-08-23",
+      "reason": "Identical in substance to the approved fobxx-nmfp3-stable-price-one; a live control re-proposed under a new name.",
+      "approval": {
+        "version": 2,
+        "control_digest": "ce08c41fcb624c46da5a745e79547e964967582f556aa89e59d58bc64eecb66d",
+        "compilation_digest": "e302c6d18ed0ff92ae2554327fac2902f2ed2ba6b761757d6529a2d59db5e6ab",
+        "decision": "declined",
+        "reason_code": "operator-declined",
+        "timestamp": 1787500662,
+        "scope": "global",
+        "policy_id": "",
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "signature": "1aa94563b5b6521d35796c8cadbf96bc7ab201b13f0cf9d3d0694e78df43a67b03a37823b8230d5cbee5c19fda3d9c4ada8628213782c46029f08f664c13485e1b"
+      }
+    },
+    {
+      "control_id": "fobxx-nmfp3-daily-liquidity-minimum-floor",
+      "compilation_sha256": "e302c6d18ed0ff92ae2554327fac2902f2ed2ba6b761757d6529a2d59db5e6ab",
+      "declined_on": "2026-08-23",
+      "reason": "Identical in substance to the approved fobxx-nmfp3-daily-liquid-floor; a live control re-proposed under a new name.",
+      "approval": {
+        "version": 2,
+        "control_digest": "254cee3a5eed206976a92cfe3fdfa8b4a975ddab560c9cfa36cc927ce2fa0044",
+        "compilation_digest": "e302c6d18ed0ff92ae2554327fac2902f2ed2ba6b761757d6529a2d59db5e6ab",
+        "decision": "declined",
+        "reason_code": "operator-declined",
+        "timestamp": 1787500662,
+        "scope": "global",
+        "policy_id": "",
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "signature": "4ee997c69c900a02d18532aa0cc78a61af2d0cce58c24b983281aa31e64a55632542bd77955295c0faf1c2fd4aee3094dbd677b91f20ab3ad45a877c3c79fa3d1c"
+      }
+    },
+    {
+      "control_id": "fobxx-nmfp3-weekly-liquidity-minimum-floor",
+      "compilation_sha256": "e302c6d18ed0ff92ae2554327fac2902f2ed2ba6b761757d6529a2d59db5e6ab",
+      "declined_on": "2026-08-23",
+      "reason": "Identical in substance to the approved fobxx-nmfp3-weekly-liquid-floor; a live control re-proposed under a new name.",
+      "approval": {
+        "version": 2,
+        "control_digest": "f980e6b1c4fe044a4714cb27dfe20bd7c34140882bbefebf9d4be269a9aceef2",
+        "compilation_digest": "e302c6d18ed0ff92ae2554327fac2902f2ed2ba6b761757d6529a2d59db5e6ab",
+        "decision": "declined",
+        "reason_code": "operator-declined",
+        "timestamp": 1787500662,
+        "scope": "global",
+        "policy_id": "",
+        "approver": "0x537873b087654395CB0A487B50d0bFBe15fA16Bc",
+        "signature": "179f5447da104d378c0a4f582328f69b0b19a8ce37d6247ffa25fa9e0325987e1f3d0121ff01454e5b17694cd27dca2f71195db8eeab995c53ecfd1e5aa574c01c"
       }
     }
   ]
