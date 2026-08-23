@@ -32,6 +32,11 @@ from touchstone.compiler import (  # noqa: E402
     HTTPProvider,
     compile_evidence,
 )
+from touchstone.approval import (  # noqa: E402
+    APPROVED_KEY,
+    DECLINED_KEY,
+    load_approval_ledger,
+)
 from touchstone.assets import FOBXX, USTB, AssetDescriptor  # noqa: E402
 from touchstone.epoch import (  # noqa: E402
     FIXTURE_RETRIEVED_AT,
@@ -104,6 +109,7 @@ def compile_all(
     asset: AssetDescriptor,
     live: bool,
     fixtures: Path,
+    decided_control_ids: dict[str, str],
     source_user_agent: str | None = None,
 ) -> dict[str, str]:
     """Compile every source for one selected asset and persist each artifact."""
@@ -184,6 +190,7 @@ def compile_all(
             ),
             asset=asset,
             comparison_evidence_sha256=comparison_evidence,
+            decided_control_ids=decided_control_ids,
         )
         # The stored object's exact bytes, copied rather than re-serialised: the digest is
         # over these bytes and a round trip through json would be a different file that no
@@ -221,10 +228,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     arguments = parser.parse_args(argv)
 
+    ledger = load_approval_ledger()
+    decided_control_ids = {
+        entry["control_id"]: decision
+        for decision in (APPROVED_KEY, DECLINED_KEY)
+        for entry in ledger[decision]
+    }
     digests = compile_all(
         asset=ASSET_BY_NAME[arguments.asset],
         live=arguments.live,
         fixtures=Path(arguments.fixtures),
+        decided_control_ids=decided_control_ids,
         source_user_agent=arguments.source_user_agent,
     )
     print("\n=== artifacts written ===")

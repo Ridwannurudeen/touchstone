@@ -38,6 +38,17 @@ USTB_DIGESTS = {
         "cf2f70b97f368c51274ef82d0726fd82a3d2d65124482bb513ee808ef0ef375e"
     ),
 }
+LEDGER_AWARE_USTB_DIGESTS = {
+    "superstate-ustb-holdings": (
+        "d85ac668ff61631b11c55981bafcb130652284b3f1cf67f8532b1e22757b4d52"
+    ),
+    "superstate-ustb-nav-daily": (
+        "45bb74656b791d9e4805a516f9f907a3b9f0088c89f373233ab80f32aac993f7"
+    ),
+    "superstate-ustb-yield": (
+        "b01afcc30a3b9557c564db4bcccf17da6b16d8424c8b21d489bafa63a17e4018"
+    ),
+}
 
 
 class ReplayProvider:
@@ -48,8 +59,10 @@ class ReplayProvider:
     def __init__(self, artifacts: dict[str, dict[str, object]]) -> None:
         self.artifacts = artifacts
 
-    def propose_controls(self, evidence_excerpt, source_manifest, bindings):
-        del evidence_excerpt, bindings
+    def propose_controls(
+        self, evidence_excerpt, source_manifest, bindings, decided_control_ids
+    ):
+        del evidence_excerpt, bindings, decided_control_ids
         artifact = self.artifacts[source_manifest.source_id]
         provenance = artifact["provenance"]
         return ProviderResponse(
@@ -66,7 +79,10 @@ class ReplayProvider:
 class FobxxProvider:
     provider_name = "FobxxProvider"
 
-    def propose_controls(self, evidence_excerpt, source_manifest, bindings):
+    def propose_controls(
+        self, evidence_excerpt, source_manifest, bindings, decided_control_ids
+    ):
+        assert decided_control_ids == {}
         controls = _fobxx_candidates(source_manifest.source_id, bindings)
         content = json.dumps({"controls": controls}, separators=(",", ":"))
         raw_response = json.dumps(
@@ -285,7 +301,32 @@ def test_cli_can_select_only_fobxx(monkeypatch, tmp_path: Path) -> None:
     assert selected[0]["asset"] is FOBXX
 
 
-def test_ustb_replay_keeps_all_three_compilation_digests(
+def test_cli_loads_prior_decisions_for_compilation(monkeypatch, tmp_path: Path) -> None:
+    selected = []
+
+    monkeypatch.setattr(
+        compile_controls,
+        "load_approval_ledger",
+        lambda: {
+            "approved": [{"control_id": "live-control"}],
+            "declined": [{"control_id": "rebuild-me"}],
+        },
+    )
+
+    def compile_selected(**arguments):
+        selected.append(arguments)
+        return {}
+
+    monkeypatch.setattr(compile_controls, "compile_all", compile_selected)
+
+    assert compile_controls.main(["--fixtures", str(tmp_path)]) == 0
+    assert selected[0]["decided_control_ids"] == {
+        "live-control": "approved",
+        "rebuild-me": "declined",
+    }
+
+
+def test_ustb_replay_produces_the_new_versioned_compilation_digests(
     monkeypatch, tmp_path: Path
 ) -> None:
     artifacts = {}
@@ -298,9 +339,11 @@ def test_ustb_replay_keeps_all_three_compilation_digests(
     )
     monkeypatch.setattr(compile_controls, "COMPILATIONS", tmp_path / "compilations")
 
-    digests = compile_controls.compile_all(asset=USTB, live=False, fixtures=FIXTURES)
+    digests = compile_controls.compile_all(
+        asset=USTB, live=False, fixtures=FIXTURES, decided_control_ids={}
+    )
 
-    assert digests == USTB_DIGESTS
+    assert digests == LEDGER_AWARE_USTB_DIGESTS
     for digest in digests.values():
         assert (
             hashlib.sha256(
@@ -318,7 +361,9 @@ def test_fobxx_compiles_all_retained_sources_with_strict_evidence_gates(
     )
     monkeypatch.setattr(compile_controls, "COMPILATIONS", tmp_path / "compilations")
 
-    digests = compile_controls.compile_all(asset=FOBXX, live=False, fixtures=FIXTURES)
+    digests = compile_controls.compile_all(
+        asset=FOBXX, live=False, fixtures=FIXTURES, decided_control_ids={}
+    )
 
     assert list(digests) == [source.source_id for source in FOBXX.sources]
     records = {

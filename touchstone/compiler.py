@@ -42,8 +42,13 @@ from touchstone.sources import SourceManifest
 # manifest's declared policy in its declared unit; and `grace_period` must be 0 for every
 # non-freshness operator. Artifacts compiled under 0.2.0 were accepted under weaker rules,
 # and two versions sharing a number would have hidden that.
-COMPILER_VERSION = "0.4.0"
-FOBXX_COMPILER_VERSION = "0.6.0"
+#
+# 0.5.0/0.7.0 make compilation aware of immutable approval-ledger decisions. The exact
+# taken-id map is part of the provider request and prompt hash, and the deterministic gate
+# rejects a candidate whose id already has either decision. Older compilers could accept a
+# rebuilt control under an id that the ledger can never decide again.
+COMPILER_VERSION = "0.5.0"
+FOBXX_COMPILER_VERSION = "0.7.0"
 DEFAULT_EXCERPT_LIMIT = 8_192
 FOBXX_EXCERPT_LIMIT = 16_384
 MAX_PROVIDER_OUTPUT_BYTES = 1_048_576
@@ -165,7 +170,11 @@ holdings collection itself or over a blank FOBXX ratio.
 
 Only propose what the excerpt actually shows. A candidate is a proposal: it is validated \
 deterministically afterwards and approved by a human, so an over-confident guess is worse \
-than an abstention."""
+than an abstention.
+
+The request supplies `decided_control_ids`, mapping every unavailable control id to its \
+prior `approved` or `declined` decision. Never reuse one of those ids. A rebuilt control is \
+a new proposal and must have a new id; reusing a decided id is rejected deterministically."""
 
 _FOBXX_PROMPT_TEMPLATE = (
     _PROMPT_TEMPLATE.replace(
@@ -238,6 +247,7 @@ class Provider(Protocol):
         evidence_excerpt: str,
         source_manifest: SourceManifest,
         bindings: Mapping[str, object],
+        decided_control_ids: Mapping[str, str],
     ) -> ProviderResponse:
         """Return the provider's answer, carrying raw JSON text and its own identity."""
         ...
@@ -260,16 +270,19 @@ class DeterministicFixtureProvider:
         self.last_evidence_excerpt: str | None = None
         self.last_source_manifest: SourceManifest | None = None
         self.last_bindings: dict[str, object] | None = None
+        self.last_decided_control_ids: dict[str, str] | None = None
 
     def propose_controls(
         self,
         evidence_excerpt: str,
         source_manifest: SourceManifest,
         bindings: Mapping[str, object],
+        decided_control_ids: Mapping[str, str],
     ) -> ProviderResponse:
         self.last_evidence_excerpt = evidence_excerpt
         self.last_source_manifest = source_manifest
         self.last_bindings = dict(bindings)
+        self.last_decided_control_ids = dict(decided_control_ids)
         return ProviderResponse(
             content=self.output,
             requested_model="fixture",
@@ -323,6 +336,7 @@ class HTTPProvider:
         evidence_excerpt: str,
         source_manifest: SourceManifest,
         bindings: Mapping[str, object],
+        decided_control_ids: Mapping[str, str],
     ) -> ProviderResponse:
         # No `temperature`. It was set to 0 for reproducible proposals, and current models
         # reject the parameter outright as deprecated. Nothing security-bearing rested on
@@ -338,6 +352,7 @@ class HTTPProvider:
                     "role": "user",
                     "content": json.dumps(
                         {
+                            "decided_control_ids": dict(decided_control_ids),
                             "fixed_bindings": dict(bindings),
                             "source_manifest": _manifest_mapping(source_manifest),
                             "evidence_excerpt": evidence_excerpt,
@@ -474,12 +489,14 @@ def compile_evidence(
     excerpt_limit: int = DEFAULT_EXCERPT_LIMIT,
     asset: AssetDescriptor | None = None,
     comparison_evidence_sha256: Mapping[str, str] | None = None,
+    decided_control_ids: Mapping[str, str] | None = None,
 ) -> CompilationResult:
     """Compile one stored artifact, validate every proposal, and persist the record."""
     if not isinstance(source_manifest, SourceManifest):
         raise TypeError("source_manifest must be a SourceManifest")
     asset = USTB if asset is None else asset
     asset = ASSET_BY_KEY.get(asset.asset_key, asset)
+    decided_control_ids = _validated_decided_control_ids(decided_control_ids)
     compiler_version = FOBXX_COMPILER_VERSION if asset is FOBXX else COMPILER_VERSION
     # Normalised once and used everywhere below. The offset was previously read to
     # validate awareness and read again by each `astimezone`, so a `tzinfo` that answered
@@ -515,6 +532,7 @@ def compile_evidence(
         _canonical_bytes(
             {
                 "compiler_version": compiler_version,
+                "decided_control_ids": decided_control_ids,
                 "evidence_excerpt": excerpt,
                 "fixed_bindings": bindings,
                 "prompt": prompt_template,
@@ -522,7 +540,9 @@ def compile_evidence(
             }
         )
     ).hexdigest()
-    answer = provider.propose_controls(excerpt, source_manifest, bindings)
+    answer = provider.propose_controls(
+        excerpt, source_manifest, bindings, decided_control_ids
+    )
     if not isinstance(answer, ProviderResponse):
         raise TypeError("provider must return a ProviderResponse")
     raw_output = answer.content
@@ -553,8 +573,10 @@ def compile_evidence(
         provenance,
         asset,
         comparison_evidence,
+        decided_control_ids,
     )
     record = {
+        "decided_control_ids": decided_control_ids,
         "outcomes": [_outcome_mapping(outcome) for outcome in outcomes],
         "provenance": _provenance_mapping(provenance),
         # The whole body, not only the text extracted from it, so the digest above is
@@ -584,6 +606,7 @@ def _validate_output(
     provenance: CompilationProvenance,
     asset: AssetDescriptor,
     comparison_evidence: Mapping[str, tuple[str, bytes]],
+    decided_control_ids: Mapping[str, str],
 ) -> tuple[tuple[CompilationOutcome, ...], list[dict[str, object]]]:
     if len(raw_output.encode("utf-8")) > MAX_PROVIDER_OUTPUT_BYTES:
         return (
@@ -650,6 +673,11 @@ def _validate_output(
             control = ControlRecord.from_mapping(
                 {**proposal, "compilation_sha256": None}
             )
+            if control.control_id in decided_control_ids:
+                raise ValueError(
+                    f"control id {control.control_id!r} already has a prior "
+                    f"{decided_control_ids[control.control_id]} decision"
+                )
             _validate_candidate_policy(control, source_manifest, asset)
             if control.evidence_span.encode("utf-8") not in evidence:
                 raise ValueError("evidence span is not byte-exact present in artifact")
@@ -700,6 +728,25 @@ def _prompt_template(source_manifest: SourceManifest) -> str:
     if source_manifest.source_id in FOBXX.source_by_id:
         return _FOBXX_PROMPT_TEMPLATE
     return _PROMPT_TEMPLATE
+
+
+def _validated_decided_control_ids(
+    decided_control_ids: Mapping[str, str] | None,
+) -> dict[str, str]:
+    if decided_control_ids is None:
+        return {}
+    if not isinstance(decided_control_ids, Mapping):
+        raise TypeError("decided_control_ids must be a mapping")
+    decisions = {}
+    for control_id, decision in decided_control_ids.items():
+        if not isinstance(control_id, str) or not control_id:
+            raise ValueError("decided control ids must be non-empty strings")
+        if decision not in {"approved", "declined"}:
+            raise ValueError(
+                f"decision for {control_id!r} must be approved or declined"
+            )
+        decisions[control_id] = decision
+    return dict(sorted(decisions.items()))
 
 
 def _load_comparison_evidence(

@@ -70,7 +70,13 @@ def stored_evidence(tmp_path: Path) -> tuple[EvidenceStore, str]:
     return store, digest
 
 
-def compile_raw(tmp_path: Path, output: str, *, excerpt_limit: int = 8192):
+def compile_raw(
+    tmp_path: Path,
+    output: str,
+    *,
+    excerpt_limit: int = 8192,
+    decided_control_ids: dict[str, str] | None = None,
+):
     store, digest = stored_evidence(tmp_path)
     provider = DeterministicFixtureProvider(output)
     result = compile_evidence(
@@ -80,6 +86,7 @@ def compile_raw(tmp_path: Path, output: str, *, excerpt_limit: int = 8192):
         store=store,
         retrieved_at=RETRIEVED_AT,
         excerpt_limit=excerpt_limit,
+        decided_control_ids=decided_control_ids,
     )
     return store, digest, provider, result
 
@@ -114,6 +121,7 @@ def test_valid_candidate_is_accepted_with_complete_persisted_provenance(
         (store.objects_dir / result.compilation_sha256).read_text(encoding="utf-8")
     )
     assert persisted["outcomes"][0]["status"] == "accepted"
+    assert persisted["decided_control_ids"] == {}
     assert persisted["provenance"]["source_url"] == SOURCE.url
     assert persisted["raw_output"] == raw_output(candidate())
     # The whole response body is kept, and the digest in provenance is over that body — so
@@ -210,6 +218,34 @@ def test_prompt_hash_identifies_the_exact_provider_excerpt(tmp_path: Path) -> No
             store=store,
             retrieved_at=RETRIEVED_AT,
             excerpt_limit=limit,
+        )
+        hashes.append(result.outcomes[0].provenance.prompt_sha256)
+
+    assert hashes[0] != hashes[1]
+
+
+def test_prompt_and_gate_bind_prior_ledger_decisions(tmp_path: Path) -> None:
+    proposal = candidate(control_id="rebuilt-control")
+    _, _, provider, result = compile_raw(
+        tmp_path,
+        raw_output(proposal),
+        decided_control_ids={"rebuilt-control": "declined"},
+    )
+
+    assert provider.last_decided_control_ids == {"rebuilt-control": "declined"}
+    assert result.outcomes[0].status is CompilationStatus.REJECTED
+    assert result.outcomes[0].reason == (
+        "control id 'rebuilt-control' already has a prior declined decision"
+    )
+
+
+def test_taken_ids_change_prompt_provenance(tmp_path: Path) -> None:
+    hashes = []
+    for decision in (None, {"retired-control": "approved"}):
+        _, _, _, result = compile_raw(
+            tmp_path / str(len(hashes)),
+            '{"controls":[]}',
+            decided_control_ids=decision,
         )
         hashes.append(result.outcomes[0].provenance.prompt_sha256)
 
@@ -442,7 +478,7 @@ def test_a_response_from_another_model_is_refused(
     )
 
     with pytest.raises(RuntimeError, match="not the requested"):
-        provider.propose_controls("{}", SOURCE, {})
+        provider.propose_controls("{}", SOURCE, {}, {})
 
 
 def test_a_truncated_response_is_refused_as_truncation(
@@ -463,7 +499,7 @@ def test_a_truncated_response_is_refused_as_truncation(
     )
 
     with pytest.raises(RuntimeError, match="rather than a complete stop"):
-        provider.propose_controls("{}", SOURCE, {})
+        provider.propose_controls("{}", SOURCE, {}, {})
 
 
 @pytest.mark.parametrize(
@@ -485,7 +521,7 @@ def test_an_unidentifiable_response_is_refused(
     _answered(monkeypatch, body)
 
     with pytest.raises(RuntimeError):
-        provider.propose_controls("{}", SOURCE, {})
+        provider.propose_controls("{}", SOURCE, {}, {})
 
 
 def test_the_answering_model_and_the_whole_body_reach_provenance(
@@ -501,7 +537,7 @@ def test_the_answering_model_and_the_whole_body_reach_provenance(
     }
     _answered(monkeypatch, body)
 
-    answer = provider.propose_controls("{}", SOURCE, {})
+    answer = provider.propose_controls("{}", SOURCE, {}, {})
 
     assert answer.content == '{"controls":[]}'
     assert answer.requested_model == "the-requested-model"
