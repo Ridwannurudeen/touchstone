@@ -390,6 +390,116 @@ def test_fobxx_compiles_all_retained_sources_with_strict_evidence_gates(
         outcome["status"] == "abstained" and "below 0.8" in outcome["reason"]
         for outcome in sec["outcomes"]
     )
+    assert sec["comparison_evidence"] == [
+        {
+            "control_id": "fobxx-sec-filing-fresh",
+            "evidence_spans": [
+                '"0002071691-26-017542"',
+                '"2026-07-31"',
+                '"2026-08-06"',
+            ],
+            "sha256": records["sec-edgar-fobxx-submissions"]["provenance"][
+                "input_evidence_sha256"
+            ],
+            "source_id": "sec-edgar-fobxx-submissions",
+        }
+    ]
+    submissions_raw = (FIXTURES / "fobxx-submissions-20260815.json").read_bytes()
+    assert all(
+        span.encode("utf-8") in submissions_raw
+        for span in sec["comparison_evidence"][0]["evidence_spans"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "expected_reason"),
+    [
+        (
+            None,
+            None,
+            "FOBXX filing freshness requires bound submissions evidence",
+        ),
+        (
+            "accessionNumber",
+            "0002071691-26-019999",
+            "FOBXX filing source URL does not match submissions accession",
+        ),
+        (
+            "reportDate",
+            "2026-08-31",
+            "FOBXX filing report date does not match submissions evidence",
+        ),
+    ],
+    ids=("report-date-only", "wrong-accession", "wrong-report-date"),
+)
+def test_fobxx_filing_freshness_requires_matching_submissions_evidence(
+    tmp_path: Path,
+    field: str | None,
+    replacement: str | None,
+    expected_reason: str,
+) -> None:
+    retrieved_at = datetime(2026, 8, 22, 3, 4, 44, 564845, tzinfo=timezone.utc)
+    filing_source = FOBXX.source_by_id["sec-edgar-fobxx-nmfp3"]
+    store = EvidenceStore(tmp_path)
+    filing_digest = store.store(
+        (FIXTURES / "fobxx-nmfp3-20260731.xml").read_bytes(),
+        source_id=filing_source.source_id,
+        source_url=filing_source.url,
+        retrieved_at=retrieved_at,
+        declared_mime=filing_source.expected_mime,
+    )
+    bindings = {
+        "asset_key": FOBXX.asset_key,
+        "source_id": filing_source.source_id,
+        "source_authority_class": filing_source.authority_class,
+        "cadence": filing_source.cadence,
+        "observation_adapter": FOBXX.adapters[filing_source.source_id],
+        "predicate_type": "observation",
+        "approval_state": "proposed",
+        "effective_from": "2026-08-22",
+        "effective_until": None,
+    }
+    candidate = _candidate(
+        bindings,
+        control_id="fobxx-sec-filing-fresh",
+        span="<reportDate>2026-07-31</reportDate>",
+        operator="fresh_within",
+        expected_value={"business_days": 10},
+        grace_period=10,
+    )
+    comparison_evidence = None
+    if field is not None:
+        payload = json.loads(
+            (FIXTURES / "fobxx-submissions-20260815.json").read_text(encoding="utf-8")
+        )
+        recent = payload["filings"]["recent"]
+        index = recent["accessionNumber"].index("0002071691-26-017542")
+        recent[field][index] = replacement
+        submissions_source = FOBXX.source_by_id["sec-edgar-fobxx-submissions"]
+        submissions_digest = store.store(
+            json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+            source_id=submissions_source.source_id,
+            source_url=submissions_source.url,
+            retrieved_at=retrieved_at,
+            declared_mime=submissions_source.expected_mime,
+        )
+        comparison_evidence = {submissions_source.source_id: submissions_digest}
+
+    result = compile_evidence(
+        DeterministicFixtureProvider(
+            json.dumps({"controls": [candidate]}, separators=(",", ":"))
+        ),
+        evidence_sha256=filing_digest,
+        source_manifest=filing_source,
+        store=store,
+        retrieved_at=retrieved_at,
+        excerpt_limit=16_384,
+        asset=FOBXX,
+        comparison_evidence_sha256=comparison_evidence,
+    )
+
+    assert result.outcomes[0].status is CompilationStatus.REJECTED
+    assert result.outcomes[0].reason == expected_reason
 
 
 def test_equivalent_fobxx_descriptor_cannot_bypass_strict_evidence_gates(

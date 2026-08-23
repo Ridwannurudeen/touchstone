@@ -18,6 +18,11 @@ from touchstone.assets import ASSET_BY_KEY, FOBXX, USTB, AssetDescriptor
 from touchstone.controls import ComparisonOperator, ControlRecord
 from touchstone.evaluate import supports
 from touchstone.evidence import EvidenceStore
+from touchstone.normalize.fobxx import (
+    FOBXX_SUBMISSIONS_SOURCE_ID,
+    latest_nmfp3_filing,
+    latest_nmfp3_url,
+)
 from touchstone.quantities import finite_positive, utc_instant
 from touchstone.sources import SourceManifest
 
@@ -38,7 +43,7 @@ from touchstone.sources import SourceManifest
 # non-freshness operator. Artifacts compiled under 0.2.0 were accepted under weaker rules,
 # and two versions sharing a number would have hidden that.
 COMPILER_VERSION = "0.4.0"
-FOBXX_COMPILER_VERSION = "0.5.0"
+FOBXX_COMPILER_VERSION = "0.6.0"
 DEFAULT_EXCERPT_LIMIT = 8_192
 FOBXX_EXCERPT_LIMIT = 16_384
 MAX_PROVIDER_OUTPUT_BYTES = 1_048_576
@@ -174,7 +179,9 @@ evidence_span, and propose no issuer liquidity-floor control when that latest ra
 SEC liquidity controls read the minimum reported value in the monthly series, so cite that \
 exact minimum, not an earlier or period-end value. A reconciliation span must begin with the \
 issuer navdate matching the SEC report date and continue through the compared issuer field. \
-The compilation record separately binds the matching SEC capture and exact SEC value span."""
+The compilation record separately binds the matching SEC capture and exact SEC value span. \
+SEC filing freshness must cite the filing's reportDate in its own artifact; the compilation \
+record separately binds the matching submissions accession, reportDate and filingDate."""
 )
 
 
@@ -541,6 +548,7 @@ def compile_evidence(
         raw_output,
         evidence,
         excerpt_bytes,
+        stored_source_url,
         source_manifest,
         provenance,
         asset,
@@ -571,6 +579,7 @@ def _validate_output(
     raw_output: str,
     evidence: bytes,
     excerpt: bytes,
+    evidence_source_url: str,
     source_manifest: SourceManifest,
     provenance: CompilationProvenance,
     asset: AssetDescriptor,
@@ -649,6 +658,7 @@ def _validate_output(
             comparison_binding = _validate_fobxx_evidence(
                 control,
                 evidence,
+                evidence_source_url=evidence_source_url,
                 asset=asset,
                 comparison_evidence=comparison_evidence,
             )
@@ -719,6 +729,7 @@ def _validate_fobxx_evidence(
     control: ControlRecord,
     evidence: bytes,
     *,
+    evidence_source_url: str,
     asset: AssetDescriptor,
     comparison_evidence: Mapping[str, tuple[str, bytes]],
 ) -> dict[str, object] | None:
@@ -729,7 +740,13 @@ def _validate_fobxx_evidence(
             control, evidence, asset=asset, comparison_evidence=comparison_evidence
         )
     if control.source_id == "sec-edgar-fobxx-nmfp3":
-        _validate_fobxx_filing_evidence(control, evidence, asset=asset)
+        return _validate_fobxx_filing_evidence(
+            control,
+            evidence,
+            evidence_source_url=evidence_source_url,
+            asset=asset,
+            comparison_evidence=comparison_evidence,
+        )
     return None
 
 
@@ -807,8 +824,13 @@ def _validate_fobxx_history_evidence(
 
 
 def _validate_fobxx_filing_evidence(
-    control: ControlRecord, evidence: bytes, *, asset: AssetDescriptor
-) -> None:
+    control: ControlRecord,
+    evidence: bytes,
+    *,
+    evidence_source_url: str,
+    asset: AssetDescriptor,
+    comparison_evidence: Mapping[str, tuple[str, bytes]],
+) -> dict[str, object] | None:
     observation = asset.normalize(
         control.source_id,
         evidence,
@@ -818,7 +840,42 @@ def _validate_fobxx_filing_evidence(
     if control.comparison_operator is ComparisonOperator.FRESH_WITHIN:
         required = f"<reportDate>{observation.report_date}</reportDate>"
         _require_exact_span(control, required)
-        return
+        bound = comparison_evidence.get(FOBXX_SUBMISSIONS_SOURCE_ID)
+        if bound is None:
+            raise ValueError(
+                "FOBXX filing freshness requires bound submissions evidence"
+            )
+        comparison_digest, comparison_raw = bound
+        submissions = asset.normalize(
+            FOBXX_SUBMISSIONS_SOURCE_ID,
+            comparison_raw,
+            max_bytes=asset.source_by_id[FOBXX_SUBMISSIONS_SOURCE_ID].max_bytes,
+            isolated=True,
+        )
+        filing = latest_nmfp3_filing(submissions)
+        if observation.report_date != filing.report_date:
+            raise ValueError(
+                "FOBXX filing report date does not match submissions evidence"
+            )
+        if observation.submission_type != filing.form:
+            raise ValueError("FOBXX filing form does not match submissions evidence")
+        if evidence_source_url != latest_nmfp3_url(submissions):
+            raise ValueError(
+                "FOBXX filing source URL does not match submissions accession"
+            )
+        comparison_spans = [
+            f'"{filing.accession_number}"',
+            f'"{filing.report_date.isoformat()}"',
+            f'"{filing.filing_date.isoformat()}"',
+        ]
+        if any(span.encode("utf-8") not in comparison_raw for span in comparison_spans):
+            raise ValueError("FOBXX submissions evidence span is not byte-exact")
+        return {
+            "control_id": control.control_id,
+            "evidence_spans": comparison_spans,
+            "sha256": comparison_digest,
+            "source_id": FOBXX_SUBMISSIONS_SOURCE_ID,
+        }
     if not isinstance(control.expected_value, Mapping):
         raise ValueError("FOBXX expected_value must be an object")
     field = control.expected_value.get("field")
@@ -847,6 +904,7 @@ def _validate_fobxx_filing_evidence(
         raise ValueError(
             f"FOBXX filing evidence span must cite the series minimum: {required}"
         )
+    return None
 
 
 def _fobxx_json_row(rows: object, row_date: str) -> Mapping[str, object]:

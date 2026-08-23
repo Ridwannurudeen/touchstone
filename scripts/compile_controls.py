@@ -156,12 +156,20 @@ def compile_all(
     COMPILATIONS.mkdir(parents=True, exist_ok=True)
     digests: dict[str, str] = {}
 
-    comparison_evidence = (
-        {FOBXX.sources[3].source_id: evidence_by_source[FOBXX.sources[3].source_id]}
-        if asset is FOBXX
-        else None
-    )
     for manifest in asset.sources:
+        comparison_evidence = None
+        if asset is FOBXX and manifest is FOBXX.sources[1]:
+            comparison_evidence = {
+                FOBXX.sources[3].source_id: evidence_by_source[
+                    FOBXX.sources[3].source_id
+                ]
+            }
+        elif asset is FOBXX and manifest is FOBXX.sources[3]:
+            comparison_evidence = {
+                FOBXX.sources[2].source_id: evidence_by_source[
+                    FOBXX.sources[2].source_id
+                ]
+            }
         print(f"\n=== {manifest.source_id} ===", flush=True)
         result = compile_evidence(
             provider,
@@ -175,9 +183,7 @@ def compile_all(
                 else 8_192
             ),
             asset=asset,
-            comparison_evidence_sha256=(
-                comparison_evidence if manifest is FOBXX.sources[1] else None
-            ),
+            comparison_evidence_sha256=comparison_evidence,
         )
         # The stored object's exact bytes, copied rather than re-serialised: the digest is
         # over these bytes and a round trip through json would be a different file that no
