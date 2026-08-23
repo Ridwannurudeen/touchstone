@@ -12,9 +12,7 @@ from touchstone.signing import canonical_json_bytes, strict_json_loads
 
 
 ROOT = Path(__file__).parents[1]
-SOURCE_BUNDLE = (
-    ROOT / "site2" / "data" / "eip155-196-ustb-2026-08-22-6.json"
-)
+SOURCE_BUNDLE = ROOT / "site2" / "data" / "eip155-196-ustb-2026-08-22-6.json"
 TX_HASH = "0xf99f42b6703d7369bf8927038f95a1a44cf2d6761a991c404f2ee2480757f1a2"
 BLOCK_HASH = "0xfa8691c3423ed79b4ee1d4128e283c77d3c3701af96846586df23d5d7d06f941"
 BLOCK_NUMBER = 68_599_159
@@ -130,6 +128,8 @@ def _factory(
     transaction_to: str = "0x1111111111111111111111111111111111111111",
     transaction_error: Exception | None = None,
 ):
+    from web3 import Web3
+
     bundle = strict_json_loads(SOURCE_BUNDLE.read_bytes())
     assert isinstance(bundle, dict)
     signed = bundle["signed_report"]
@@ -147,9 +147,13 @@ def _factory(
         report["sequence"],
         "ipfs://report",
     )
-    calldata = "0x" + (
-        module._PUBLISH_SELECTOR + module.Web3().codec.encode(module._PUBLISH_TYPES, common)
-    ).hex()
+    calldata = (
+        "0x"
+        + (
+            module._PUBLISH_SELECTOR
+            + Web3().codec.encode(module._PUBLISH_TYPES, common)
+        ).hex()
+    )
     receipt = {
         "transactionHash": TX_HASH,
         "blockHash": block_hash,
@@ -194,7 +198,9 @@ def test_check_reports_the_retained_bundle_with_no_publication_row(
         sync.check_retained_publications(retained, stats)
 
 
-def test_sync_derives_row_and_counts_while_retaining_exact_bytes(tmp_path: Path) -> None:
+def test_sync_derives_row_and_counts_while_retaining_exact_bytes(
+    tmp_path: Path,
+) -> None:
     sync = _module()
     source, raw = _source(tmp_path)
     retained, stats, facts = _documents(tmp_path)
@@ -330,7 +336,9 @@ def test_conflicting_existing_row_refuses_without_copying_bundle(
     )
     networks, factory = _factory(sync)
 
-    with pytest.raises(sync.PublicationSyncError, match="refuses to alter existing row"):
+    with pytest.raises(
+        sync.PublicationSyncError, match="refuses to alter existing row"
+    ):
         sync.sync_publications(
             source=source,
             bundles=retained,

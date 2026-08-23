@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 from assert_ci_gates import (  # noqa: E402
     AGGREGATE,
     WorkflowError,
+    blocking_script_commands,
     main,
     ungoverned,
     weakened,
@@ -40,6 +41,45 @@ def test_the_real_workflow_covers_every_job() -> None:
     loaded = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     assert ungoverned(loaded) == ([], [])
     assert main([str(WORKFLOW)]) == 0
+
+
+def test_a_new_blocking_script_step_is_selected_without_an_inventory_edit() -> None:
+    workflow = covering("checks")
+    workflow["jobs"]["checks"]["steps"] = [
+        {"run": 'python scripts/new_check.py --mode "strict"'}
+    ]
+
+    assert [command.command for command in blocking_script_commands(workflow)] == [
+        'python scripts/new_check.py --mode "strict"'
+    ]
+
+
+def test_supported_python_options_and_relative_script_paths_are_guarded() -> None:
+    workflow = covering("checks")
+    workflow["jobs"]["checks"]["steps"] = [
+        {"run": "python -u ./scripts/new_check.py"},
+        {"run": 'python -c "import socket; socket.socket()"'},
+    ]
+
+    assert len(blocking_script_commands(workflow)) == 2
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python -S scripts/check.py",
+        "python -I scripts/check.py",
+        "python scripts/first.py\npython scripts/second.py",
+        "python arbitrary.py",
+        "bash scripts/check.py",
+    ],
+)
+def test_a_repository_check_that_cannot_be_guarded_is_refused(command: str) -> None:
+    workflow = covering("checks")
+    workflow["jobs"]["checks"]["steps"] = [{"run": command}]
+
+    with pytest.raises(WorkflowError):
+        blocking_script_commands(workflow)
 
 
 def test_a_job_missing_from_the_aggregate_is_refused() -> None:

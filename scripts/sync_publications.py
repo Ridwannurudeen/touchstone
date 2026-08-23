@@ -14,7 +14,7 @@ import sys
 import tempfile
 from typing import Protocol
 
-from web3 import Web3
+from eth_utils import keccak
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -70,10 +70,10 @@ _PUBLISH_TYPES = (
     "string",
 )
 _CORRECTION_TYPES = (_PUBLISH_TYPES[0], "uint64", *_PUBLISH_TYPES[1:])
-_PUBLISH_SELECTOR = Web3.keccak(
+_PUBLISH_SELECTOR = keccak(
     text="publish(bytes32,bytes32,bytes32,bytes32,uint8,uint64,uint64,uint64,string)"
 )[:4]
-_CORRECTION_SELECTOR = Web3.keccak(
+_CORRECTION_SELECTOR = keccak(
     text=(
         "publishCorrection(bytes32,uint64,bytes32,bytes32,bytes32,uint8,uint64,"
         "uint64,uint64,string)"
@@ -99,8 +99,16 @@ class Candidate:
 def _document(path: Path, name: str) -> dict[str, object]:
     try:
         value = strict_json_loads(path.read_bytes())
-    except (OSError, TypeError, ValueError, UnicodeError, json.JSONDecodeError) as error:
-        raise PublicationSyncError(f"{name} is unavailable or invalid: {error}") from error
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        UnicodeError,
+        json.JSONDecodeError,
+    ) as error:
+        raise PublicationSyncError(
+            f"{name} is unavailable or invalid: {error}"
+        ) from error
     if not isinstance(value, dict):
         raise PublicationSyncError(f"{name} must be an object")
     return value
@@ -108,7 +116,9 @@ def _document(path: Path, name: str) -> dict[str, object]:
 
 def _reports(document: Mapping[str, object]) -> list[dict[str, object]]:
     reports = document.get("reports")
-    if not isinstance(reports, list) or any(not isinstance(row, dict) for row in reports):
+    if not isinstance(reports, list) or any(
+        not isinstance(row, dict) for row in reports
+    ):
         raise PublicationSyncError("stats.json must contain a reports array of objects")
     return reports
 
@@ -201,9 +211,7 @@ def _source_candidates(source: Path) -> list[Candidate]:
     candidates: list[Candidate] = []
     seen: set[bytes] = set()
     paths = sorted(
-        path
-        for path in source.rglob("*.json")
-        if path.parent.name == "bundles"
+        path for path in source.rglob("*.json") if path.parent.name == "bundles"
     )
     if not paths:
         raise PublicationSyncError(f"no publisher bundles under {source}")
@@ -338,6 +346,8 @@ def _validate_transaction(
             f"registry transaction {transaction_hash} calls the wrong function"
         )
     try:
+        from web3 import Web3
+
         decoded = Web3().codec.decode(types, raw[4:])
         status = _STATUS_NAMES.index(str(report["state"]))
         common = (
@@ -482,7 +492,9 @@ def _sync_publications(
     quorum_factory: Callable[[tuple[str, ...]], RPC] = QuorumRPC,
 ) -> list[dict[str, object]]:
     if not bundles.is_dir():
-        raise PublicationSyncError(f"retained bundle directory is unavailable: {bundles}")
+        raise PublicationSyncError(
+            f"retained bundle directory is unavailable: {bundles}"
+        )
     stats_document = _document(stats, "stats.json")
     facts_document = _document(facts, "facts.json")
     reports = _reports(stats_document)
@@ -499,7 +511,9 @@ def _sync_publications(
         by_transaction.setdefault(row.get("transaction_hash"), []).append(row)
         identity = _identity(row)
         if identity in by_identity:
-            raise PublicationSyncError(f"stats.json duplicates publication {identity!r}")
+            raise PublicationSyncError(
+                f"stats.json duplicates publication {identity!r}"
+            )
         by_identity[identity] = row
 
     retained_by_signed: dict[bytes, tuple[Path, bytes]] = {}
@@ -582,9 +596,7 @@ def _sync_publications(
                     f"existing retained bundle {destination.name} does not verify: {error}"
                 ) from error
             retained_signed = (
-                retained.get("signed_report")
-                if isinstance(retained, Mapping)
-                else None
+                retained.get("signed_report") if isinstance(retained, Mapping) else None
             )
             if retained_signed != candidate.entry.get("signed_report"):
                 raise PublicationSyncError(
@@ -621,7 +633,9 @@ def _sync_publications(
             + len(bundle_writes)
         ),
     }
-    facts_changed = any(counts.get(key) != value for key, value in desired_counts.items())
+    facts_changed = any(
+        counts.get(key) != value for key, value in desired_counts.items()
+    )
     counts.update(desired_counts)
 
     writes = sorted(bundle_writes.items(), key=lambda item: item[0].name)
@@ -683,7 +697,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if arguments.check:
             count = check_retained_publications(arguments.bundles, arguments.stats)
-            print(f"PUBLICATION SYNC PASS: {count} retained bundles have publication rows")
+            print(
+                f"PUBLICATION SYNC PASS: {count} retained bundles have publication rows"
+            )
             return 0
         rows = sync_publications(
             source=arguments.source,

@@ -21,7 +21,7 @@ from pathlib import Path
 import sys
 from typing import Protocol
 
-from web3 import Web3
+from eth_utils import is_address, keccak, to_checksum_address
 
 from touchstone.oracles import HTTPRPC
 
@@ -121,7 +121,7 @@ def configured_networks(path: Path = FACTS) -> list[Network]:
             raise OnchainTruthError(
                 f"site facts have invalid {identifier} registry identity"
             ) from error
-        if not isinstance(registry, str) or not Web3.is_address(registry):
+        if not isinstance(registry, str) or not is_address(registry):
             raise OnchainTruthError(
                 f"site facts have invalid {identifier} registry address"
             )
@@ -129,7 +129,7 @@ def configured_networks(path: Path = FACTS) -> list[Network]:
             Network(
                 name=f"X Layer {identifier}",
                 chain_id=chain_id,
-                registry=Web3.to_checksum_address(registry),
+                registry=to_checksum_address(registry),
                 endpoints=_ENDPOINTS[identifier],
             )
         )
@@ -323,7 +323,7 @@ def read_network(
 
     readings: list[ChainTruth] = []
     for asset_key in sorted(asset_keys):
-        calldata = GET_LATEST_REPORT_SELECTOR + Web3.keccak(text=asset_key).hex()
+        calldata = GET_LATEST_REPORT_SELECTOR + keccak(text=asset_key).hex()
         answers: list[object] = []
         for endpoint, reader in zip(network.endpoints, readers):
             try:

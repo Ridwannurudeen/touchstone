@@ -32,7 +32,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit
 
-from web3 import Web3
+from eth_utils import to_checksum_address
 
 from touchstone.signing import (
     frozen_snapshot,
@@ -799,7 +799,7 @@ def _address(value: object, field: str) -> str:
         raise DeploymentError(f"{field} must be a 20-byte hexadecimal address")
     if int(value, 16) == 0:
         raise DeploymentError(f"{field} must not be the zero address")
-    return Web3.to_checksum_address(value)
+    return to_checksum_address(value)
 
 
 def _positive_int(value: object, field: str) -> int:

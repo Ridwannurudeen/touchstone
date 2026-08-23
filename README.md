@@ -109,6 +109,17 @@ Terminal tests, a managed local-chain E2E, ruff, the mutation harness, and a
 public-truth gate that fails the build if any public page or document disagrees with
 the canonical chain facts. `main` requires the aggregate check.
 
+### Hermetic CI
+
+Blocking repository checks in `.github/workflows/ci.yml` are hermetic: they use only the
+checkout and produce the same verdict offline. A regression test derives every checked-in
+Python script command from the aggregate job's `needs` and runs it with outbound connections
+and name resolution denied. Bare socket construction remains available for import-time
+capability probes that do not reach a network. Checks that compare repository facts with the
+deployed site or a public chain belong in `.github/workflows/site-live-truth.yml`; its
+networked jobs are explicitly allowlisted and non-blocking because a push legitimately
+precedes deployment.
+
 ## Repository layout
 
 | Path | What lives there |

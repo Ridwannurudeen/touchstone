@@ -10,7 +10,7 @@ import re
 from eth_account import Account
 from eth_account.messages import encode_typed_data
 from eth_keys.exceptions import BadSignature
-from web3 import Web3
+from eth_utils import keccak, to_checksum_address
 
 from touchstone.signing import canonical_json_bytes
 
@@ -83,18 +83,19 @@ def registry_asset_key(report_asset_key: str) -> str:
     """Derive the registry bytes32 key from the full report asset identifier."""
     if not isinstance(report_asset_key, str) or not report_asset_key:
         raise RegistryV2Error("report asset_key must be nonempty text")
-    return Web3.keccak(text=report_asset_key).hex().removeprefix("0x")
+    return keccak(text=report_asset_key).hex()
 
 
 def policy_id_digest(policy_id: str, version: int) -> str:
     """Derive the bytes32 identity for one immutable policy version."""
-    if not isinstance(policy_id, str) or re.fullmatch(
-        r"[a-z0-9]+(?:-[a-z0-9]+)*", policy_id
-    ) is None:
+    if (
+        not isinstance(policy_id, str)
+        or re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", policy_id) is None
+    ):
         raise RegistryV2Error("policy_id must be lowercase words joined by hyphens")
     if type(version) is not int or version < 1:
         raise RegistryV2Error("policy_version must be a positive integer")
-    return Web3.keccak(text=f"{policy_id}:{version}").hex().removeprefix("0x")
+    return keccak(text=f"{policy_id}:{version}").hex()
 
 
 def attestation_from_report(
@@ -112,7 +113,9 @@ def attestation_from_report(
         raise RegistryV2Error("report must be a mapping")
     policy = report.get("policy")
     if isinstance(policy, Mapping):
-        policy_id = policy_id_digest(policy.get("policy_id"), policy.get("policy_version"))
+        policy_id = policy_id_digest(
+            policy.get("policy_id"), policy.get("policy_version")
+        )
         policy_root = policy.get("policy_digest")
     elif policy is None:
         # An asset-wide verdict publishes under the plain asset key with zero policy
@@ -141,7 +144,7 @@ def attestation_from_report(
         "control_set_root": report.get("control_set_root"),
         "evidence_root": report.get("evidence_root"),
         "approval_digest": report.get("approval_ledger_sha256"),
-        "epoch_key": Web3.keccak(text=epoch_id).hex().removeprefix("0x"),
+        "epoch_key": keccak(text=epoch_id).hex(),
         "status": _STATUS[state],
         "observed_at": _unix_timestamp(report.get("observed_at"), "observed_at"),
         "valid_until": _unix_timestamp(report.get("valid_until"), "valid_until"),
@@ -256,7 +259,10 @@ def verify_attestation(value: Mapping[str, object]) -> str:
     """Recover and return the v2 attestation publisher address."""
     _validate_fields(value, include_signature=True)
     signature_text = value["signature"]
-    if not isinstance(signature_text, str) or _SIGNATURE.fullmatch(signature_text) is None:
+    if (
+        not isinstance(signature_text, str)
+        or _SIGNATURE.fullmatch(signature_text) is None
+    ):
         raise RegistryV2Error("attestation signature must be lowercase hexadecimal")
     try:
         recovered = Account.recover_message(
@@ -273,8 +279,7 @@ def verify_attestation(value: Mapping[str, object]) -> str:
 def attestation_eip712_digest(value: Mapping[str, object]) -> str:
     """Return the digest that RegistryV2 passes to ``ecrecover``."""
     signable = encode_typed_data(full_message=attestation_typed_data(value))
-    digest = Web3.keccak(b"\x19" + signable.version + signable.header + signable.body)
-    return digest.hex().removeprefix("0x")
+    return keccak(b"\x19" + signable.version + signable.header + signable.body).hex()
 
 
 V2_REGISTRY_ABI = [
@@ -320,8 +325,10 @@ def publish_calldata(
     """Encode the exact v2 relayer call without contacting a chain."""
     if not isinstance(signature, str) or _SIGNATURE.fullmatch(signature) is None:
         raise RegistryV2Error("attestation signature must be lowercase hexadecimal")
+    from web3 import Web3
+
     contract = Web3().eth.contract(
-        address=Web3.to_checksum_address(registry_address), abi=V2_REGISTRY_ABI
+        address=to_checksum_address(registry_address), abi=V2_REGISTRY_ABI
     )
     if len(report_input) != 15:
         raise RegistryV2Error("v2 report input must contain 15 fields")
@@ -342,7 +349,7 @@ def publish_calldata(
         # sequence's index and a checksum was attempted on the integer 3 — caught by the
         # calldata test rather than by a revert on a live chain, which is the whole reason
         # that test builds real transaction bytes.
-        Web3.to_checksum_address(report_input[11]),
+        to_checksum_address(report_input[11]),
         report_input[12],
         _bytes32(report_input[13], "parent_digest"),
         report_input[14],
@@ -350,8 +357,9 @@ def publish_calldata(
     try:
         return bytes(
             bytes.fromhex(
-                contract.functions.publish(normalized_input, bytes.fromhex(signature))
-                ._encode_transaction_data()[2:]
+                contract.functions.publish(
+                    normalized_input, bytes.fromhex(signature)
+                )._encode_transaction_data()[2:]
             )
         )
     except (TypeError, ValueError) as error:
@@ -362,9 +370,7 @@ def _validate_fields(value: Mapping[str, object], *, include_signature: bool) ->
     if not isinstance(value, Mapping):
         raise RegistryV2Error("attestation must be a mapping")
     expected = (
-        ATTESTATION_FIELDS
-        if include_signature
-        else ATTESTATION_FIELDS - {"signature"}
+        ATTESTATION_FIELDS if include_signature else ATTESTATION_FIELDS - {"signature"}
     )
     expected |= {"chain_id", "verifying_contract"}
     supplied = set(value)
@@ -399,7 +405,10 @@ def _validate_fields(value: Mapping[str, object], *, include_signature: bool) ->
         raise RegistryV2Error(
             "policy_id and policy_root must be zero together or nonzero together"
         )
-    if not isinstance(value["publisher"], str) or _ADDRESS.fullmatch(value["publisher"]) is None:
+    if (
+        not isinstance(value["publisher"], str)
+        or _ADDRESS.fullmatch(value["publisher"]) is None
+    ):
         raise RegistryV2Error("publisher must be an Ethereum address")
     if type(value["status"]) is not int or not 0 <= value["status"] <= 3:
         raise RegistryV2Error("status must identify a Registry v2 status")

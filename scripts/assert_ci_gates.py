@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
+import shlex
 import sys
 
 import yaml
@@ -38,9 +40,28 @@ CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 SETUP_PYTHON_ACTION = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
 SAFE_WORKFLOW_ENV = {"PYTHONUTF8": "1"}
 
+# These jobs deliberately compare the repository with external state. Adding an exemption is
+# meant to be a visible review decision, and the hermetic-CI test proves these names are the
+# complete job set of the live workflow rather than a stale or misspelled list.
+NETWORKED_JOB_ALLOWLIST = {
+    ".github/workflows/site-live-truth.yml": frozenset(
+        {"live_public_truth", "onchain_registry_truth"}
+    )
+}
+
 
 class WorkflowError(Exception):
     """The workflow is not shaped the way this check needs to read it."""
+
+
+@dataclass(frozen=True, slots=True)
+class BlockingScriptCommand:
+    """One checked-in Python entrypoint run by an aggregate dependency."""
+
+    job: str
+    command: str
+    working_directory: str | None
+    environment: tuple[tuple[str, str], ...]
 
 
 def _jobs(workflow: object) -> Mapping[str, object]:
@@ -85,6 +106,126 @@ def _steps(job: Mapping[str, object]) -> list[Mapping[str, object]]:
     if not isinstance(steps, list):
         return []
     return [step for step in steps if isinstance(step, Mapping)]
+
+
+def _environment(scope: Mapping[str, object], name: str) -> dict[str, str]:
+    declared = scope.get("env", {})
+    if not isinstance(declared, Mapping) or not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in declared.items()
+    ):
+        raise WorkflowError(f"{name} has an environment that is not text-to-text")
+    return dict(declared)
+
+
+def _is_python_repository_check(arguments: list[str], job: str) -> bool:
+    if not arguments or arguments[0] != "python":
+        if any(
+            argument.lstrip("./").replace("\\", "/").startswith("scripts/")
+            for argument in arguments
+        ):
+            raise WorkflowError(
+                f"job {job!r} invokes a repository script without the guarded Python "
+                "interpreter"
+            )
+        return False
+
+    position = 1
+    while position < len(arguments) and arguments[position] in {
+        "-B",
+        "-E",
+        "-O",
+        "-OO",
+        "-s",
+        "-u",
+        "-v",
+        "-x",
+    }:
+        position += 1
+    if position >= len(arguments):
+        raise WorkflowError(f"job {job!r} runs Python without a command")
+    entrypoint = arguments[position]
+    if entrypoint in {"-I", "-S"}:
+        raise WorkflowError(
+            f"job {job!r} disables the startup hook required by the network guard"
+        )
+    if entrypoint == "-m":
+        if position + 1 >= len(arguments):
+            raise WorkflowError(f"job {job!r} runs Python -m without a module")
+        return arguments[position + 1] not in {"pip", "pytest"}
+    if entrypoint == "-c":
+        if position + 1 >= len(arguments):
+            raise WorkflowError(f"job {job!r} runs Python -c without code")
+        return True
+    if entrypoint.startswith("-"):
+        raise WorkflowError(
+            f"job {job!r} uses unsupported Python invocation option {entrypoint!r}"
+        )
+    normalized = entrypoint.lstrip("./").replace("\\", "/")
+    if normalized.startswith("scripts/") and normalized.endswith(".py"):
+        return True
+    raise WorkflowError(
+        f"job {job!r} uses unclassified Python entrypoint {entrypoint!r}"
+    )
+
+
+def blocking_script_commands(workflow: object) -> list[BlockingScriptCommand]:
+    """Return direct ``python scripts/...`` commands from jobs the aggregate requires.
+
+    Package installation and test runners provision or exercise the environment; they are
+    not repository script entrypoints and some intentionally use the loopback network. The
+    returned class is the one the hermetic guard can execute without recursively invoking
+    itself, and a new checked-in script step is selected without changing this function.
+    """
+    jobs = _jobs(workflow)
+    if AGGREGATE not in jobs:
+        raise WorkflowError(f"there is no {AGGREGATE!r} job to aggregate anything")
+
+    workflow_environment = _environment(workflow, "the workflow")
+    commands: list[BlockingScriptCommand] = []
+    for name in [*_needs(jobs[AGGREGATE]), AGGREGATE]:
+        job = jobs.get(name)
+        if not isinstance(job, Mapping):
+            raise WorkflowError(f"the blocking job {name!r} is not a mapping")
+        job_environment = {**workflow_environment, **_environment(job, f"job {name!r}")}
+        for step in _steps(job):
+            body = step.get("run")
+            if not isinstance(body, str):
+                continue
+            command = body.strip()
+            if "\n" in command and "python" in command:
+                raise WorkflowError(
+                    f"job {name!r} has a multi-command Python step the guard cannot "
+                    "execute exactly"
+                )
+            try:
+                arguments = shlex.split(command, posix=True)
+            except ValueError as error:
+                raise WorkflowError(
+                    f"job {name!r} has an unreadable run command: {error}"
+                ) from error
+            if not _is_python_repository_check(arguments, name):
+                continue
+            if "shell" in step:
+                raise WorkflowError(
+                    f"job {name!r} gives a repository script a custom shell"
+                )
+            working_directory = step.get("working-directory")
+            if working_directory is not None and not isinstance(working_directory, str):
+                raise WorkflowError(f"job {name!r} has a non-text working-directory")
+            environment = {
+                **job_environment,
+                **_environment(step, f"a step of job {name!r}"),
+            }
+            commands.append(
+                BlockingScriptCommand(
+                    name,
+                    command,
+                    working_directory,
+                    tuple(environment.items()),
+                )
+            )
+    return commands
 
 
 def _runs_the_enforcer(step: Mapping[str, object]) -> bool:
