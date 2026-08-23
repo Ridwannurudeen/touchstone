@@ -54,6 +54,17 @@ evidence store ──▶ deterministic evaluator ──▶ Ed25519-signed report
 - The production host has published its daily mainnet slot unattended since
   2026-08-20. No claim of long-run continuous operation is made — the recorded
   unattended window is stated, not extrapolated.
+- Two assets are live. **USTB** (Invesco/Superstate Short Duration U.S. Government
+  Securities Fund) rests on issuer-published disclosure. **FOBXX** (Franklin OnChain
+  U.S. Government Money Fund, also known as BENJI) adds a second authority class: its
+  monthly controls read the fund's **SEC N-MFP3 regulatory filing**, not the issuer's
+  own page, so a control's evidence can be something the issuer filed with a regulator
+  rather than something it published about itself.
+- Because FOBXX carries both classes for the same fund, the two can be compared — and
+  on the retained 2026-07-31 evidence they **disagree**: the issuer reports 63.7420%
+  daily and 73.4485% weekly liquid assets where the filing reports 65.28% and 74.55%.
+  Touchstone does not invent a tolerance to make them agree. The disagreement is
+  recorded, and a reconciliation control is declared but not approved.
 
 ## Live deployments
 
