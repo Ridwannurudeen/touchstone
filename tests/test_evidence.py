@@ -96,6 +96,16 @@ def test_store_persists_exact_bytes_and_metadata(tmp_path: Path) -> None:
     assert store.verify() == 1
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits are required")
+def test_store_objects_are_readable_by_the_workspace_group(tmp_path: Path) -> None:
+    store = EvidenceStore(tmp_path)
+
+    digest = store_observation(store)
+
+    mode = (store.objects_dir / digest).stat().st_mode & 0o777
+    assert mode == 0o640
+
+
 def test_same_content_keeps_object_and_records_each_observation(tmp_path: Path) -> None:
     store = EvidenceStore(tmp_path)
     content = bytearray(b"same content")

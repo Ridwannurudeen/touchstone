@@ -232,6 +232,11 @@ class EvidenceStore:
                 temporary_file.write(content)
                 temporary_file.flush()
                 os.fsync(temporary_file.fileno())
+                fchmod = getattr(os, "fchmod", None)
+                if fchmod is None:
+                    os.chmod(temporary_path, 0o640)
+                else:
+                    fchmod(temporary_file.fileno(), 0o640)
             self._verify_object(
                 temporary_path, digest, len(content), context="temporary object"
             )
