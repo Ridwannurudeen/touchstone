@@ -82,6 +82,36 @@ def test_resolving_publishes_and_clears(tmp_path: Path) -> None:
     assert operations.load_operation() is None
 
 
+def test_a_confirmed_publication_whose_log_append_failed_is_reconciled_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    operations = store(tmp_path)
+    backend = FakeBackend()
+    client = client_for(tmp_path, backend)
+    begin(operations)
+    append = client.transparency_log.append
+
+    def refuse_append(*args, **kwargs):
+        raise PermissionError(13, "denied")
+
+    monkeypatch.setattr(client.transparency_log, "append", refuse_append)
+    with pytest.raises(PermissionError, match="denied"):
+        operations.resolve(client)
+
+    assert len(backend.submissions) == 1
+    assert operations.load_operation() is not None
+    assert client.pending_transaction() is not None
+
+    monkeypatch.setattr(client.transparency_log, "append", append)
+    result = operations.resolve(client)
+
+    assert result is not None and result.reconciled
+    assert len(backend.submissions) == 1, "recovery must adopt the confirmed receipt"
+    assert len(client.transparency_log.verify()) == 1
+    assert operations.load_operation() is None
+    assert client.pending_transaction() is None
+
+
 def test_a_crash_after_the_publisher_finished_still_clears(tmp_path: Path) -> None:
     """The exact gap between the publisher's journal and this store.
 

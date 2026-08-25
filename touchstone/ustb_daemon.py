@@ -108,7 +108,7 @@ def make_producer(
     policy_manifests: Mapping[tuple[str, int], bytes] | None = None,
     next_sequence_for: Callable[[str], int] | None = None,
     previous_state_for: Callable[[str, date], AssetState] | None = None,
-) -> Callable[[datetime], Mapping[str, object] | ProducedReports | None]:
+) -> Callable[..., Mapping[str, object] | ProducedReports | None]:
     """Build the ``produce`` callable the service's slot runner expects.
 
     The dependencies are injected rather than constructed here so the whole path can be
@@ -123,6 +123,10 @@ def make_producer(
     with. The dossier's whole claim is that a stranger can check the result offline, and
     there would have been no file to hand them. The bundle is verified before it is handed
     over, so a report this producer returns is one a stranger can check.
+
+    The returned callable accepts an optional set of registry keys. A partially settled
+    batch uses it to omit keys already published for the epoch, so it never signs or retains
+    a higher-sequence bundle that the child service will suppress before publication.
 
     **That covers a fresh slot, not recovery.** A publication left pending by a crash is
     resolved by `OperationsStore.resolve()`, which republishes the stored signed bytes and
@@ -151,10 +155,20 @@ def make_producer(
     frozen_ledger = None if approval_ledger is None else bytes(approval_ledger)
     descriptor = USTB if asset is None else asset
 
-    def produce(scheduled_at: datetime) -> Mapping[str, object] | None:
+    report_keys = {descriptor.asset_key, *(policy.key for policy in policies)}
+
+    def produce(
+        scheduled_at: datetime, publish_keys: frozenset[str] | None = None
+    ) -> Mapping[str, object] | ProducedReports | None:
         moment = utc_instant(scheduled_at, "scheduled_at")
         observed_on = moment.date()
         epoch_id = epoch_id_for(moment, descriptor)
+        selected = report_keys if publish_keys is None else set(publish_keys)
+        unknown = selected - report_keys
+        if unknown:
+            raise EpochProductionError(
+                f"requested publication keys are not in this report batch: {sorted(unknown)}"
+            )
 
         # The approval ledger is read exactly once per slot, here, and the same bytes reach
         # the controls, the epoch's evaluation, the report's committed digest and the
@@ -212,6 +226,8 @@ def make_producer(
         for index, epoch in enumerate(epochs):
             policy = None if index == 0 else policies[index - 1]
             key = descriptor.asset_key if policy is None else policy.key
+            if key not in selected:
+                continue
             sequence = (
                 next_sequence_for(key)
                 if next_sequence_for is not None

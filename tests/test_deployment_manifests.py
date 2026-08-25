@@ -173,3 +173,13 @@ def test_the_loader_refuses_a_manifest_with_no_state(tmp_path: Path) -> None:
 
     with pytest.raises(DeploymentError, match="deployment_state"):
         DeploymentManifest.load(path)
+
+
+def test_the_upgrade_repairs_every_publisher_workspace() -> None:
+    guide = (ROOT / "docs" / "DEPLOY-SERVICE.md").read_text(encoding="utf-8")
+
+    assert 'for W in "$NETWORK_ROOT"/*; do' in guide
+    assert '[ -d "$W" ] || continue' in guide
+    assert "for asset in ustb fobxx" not in guide
+    assert 'if [ -d "$W/evidence" ]; then' in guide
+    assert "for name in observations.jsonl observer.lock; do" in guide

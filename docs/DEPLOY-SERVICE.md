@@ -140,19 +140,36 @@ systemd-tmpfiles --create /etc/tmpfiles.d/touchstone.conf
 chown root:touchstone-data /var/lib/touchstone/xlayer-mainnet
 chmod 2775 /var/lib/touchstone/xlayer-mainnet
 
-for asset in ustb fobxx; do
-  W=/var/lib/touchstone/xlayer-mainnet/$asset
+NETWORK_ROOT=/var/lib/touchstone/xlayer-mainnet
+# Every immediate child is a publisher-written workspace. Discover them from the durable
+# namespace instead of maintaining a name list: that covers ustb, fobxx, ustb-policy-*,
+# v2-policy-*, ustb-observer-history, release-* and future publisher workspaces.
+for W in "$NETWORK_ROOT"/*; do
+  [ -d "$W" ] || continue
   chown -R touchstone:touchstone-data "$W"
-  chown -R touchstone-observer:touchstone-data "$W/evidence"
-  chown touchstone-observer:touchstone-data "$W/observations.jsonl" "$W/observer.lock"
   chmod 2750 "$W"
-  find "$W/evidence" -type d -exec chmod 2770 {} +
-  find "$W/evidence/objects" -type f -exec chmod 0640 {} +
-  chmod 0664 "$W/evidence/index.jsonl" "$W/observations.jsonl" "$W/observer.lock"
+  if [ -d "$W/evidence" ]; then
+    chown -R touchstone-observer:touchstone-data "$W/evidence"
+    find "$W/evidence" -type d -exec chmod 2770 {} +
+    [ ! -d "$W/evidence/objects" ] || \
+      find "$W/evidence/objects" -type f -exec chmod 0640 {} +
+    [ ! -f "$W/evidence/index.jsonl" ] || chmod 0664 "$W/evidence/index.jsonl"
+  fi
+  for name in observations.jsonl observer.lock; do
+    [ ! -e "$W/$name" ] || {
+      chown touchstone-observer:touchstone-data "$W/$name"
+      chmod 0664 "$W/$name"
+    }
+  done
 done
 
 systemctl start $units
 ```
+
+The rule is the namespace, not the examples: every directory directly below the network
+root is repaired as a publisher workspace first. Observer ownership is then handed back only
+for observer paths that actually exist. A new publisher workspace therefore joins the repair
+automatically and does not require another edit to this loop.
 
 The stop/start pair is the required service restart. If `systemctl restart` is run while the
 old definitions are still loaded, treat that as the final chown and perform the ownership

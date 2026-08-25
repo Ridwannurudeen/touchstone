@@ -4,6 +4,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 import sys
 
+import pytest
+
 from historical_pack import historical_controls, historical_ledger_bytes
 from touchstone.approval import ledger_from_bytes
 from touchstone.controls import AssetState
@@ -131,7 +133,10 @@ def test_policy_producer_signs_and_verifies_each_report_once(tmp_path: Path) -> 
         verify_bundle(bundle)
 
 
-def test_batch_service_publishes_each_key_from_one_capture(tmp_path: Path) -> None:
+@pytest.mark.parametrize("asset_already_published", [False, True])
+def test_batch_service_publishes_only_unsettled_keys_from_one_capture(
+    tmp_path: Path, asset_already_published: bool
+) -> None:
     from touchstone.controls import AssetState
     from touchstone.incidents import IncidentLog
     from touchstone.operations import OperationsStore
@@ -200,6 +205,28 @@ def test_batch_service_publishes_each_key_from_one_capture(tmp_path: Path) -> No
         bundle_sink=write_bundle(base_workspace.bundles, 1952),
     )
 
+    if asset_already_published:
+        asset_produce = make_producer(
+            store=evidence,
+            signer=signer,
+            next_sequence=lambda: backend.latest_sequence(
+                asset_key_bytes(controls[0].asset_key)
+            )
+            + 1,
+            previous_state=lambda _on: AssetState.UNVERIFIABLE,
+            transport=FixtureTransport(FIXTURES, date(2026, 8, 14)),
+            approval_ledger=historical_ledger_bytes(),
+            bundle_sink=write_bundle(base_workspace.bundles, 1952),
+        )
+        settled = services[0].run_slot(
+            RETRIEVED_AT,
+            asset_produce,
+            report_uri=report_uri,
+            epoch_of=epoch_id_for,
+        )
+        assert settled.published
+    bundles_before = set(base_workspace.bundles.glob("*.json"))
+
     outcome = service.run_slot(
         RETRIEVED_AT,
         produce,
@@ -211,4 +238,11 @@ def test_batch_service_publishes_each_key_from_one_capture(tmp_path: Path) -> No
     assert len(backend.submissions) == 2
     assert backend.latest_sequence(asset_key_bytes(controls[0].asset_key)) == 1
     assert backend.latest_sequence(asset_key_bytes(policy.key)) == 1
-    assert len(list(base_workspace.bundles.glob("*.json"))) == 2
+    new_bundles = set(base_workspace.bundles.glob("*.json")) - bundles_before
+    assert len(new_bundles) == (1 if asset_already_published else 2)
+    if asset_already_published:
+        reports = [
+            json.loads(path.read_text(encoding="utf-8"))["signed_report"]["report"]
+            for path in new_bundles
+        ]
+        assert [report["asset_key"] for report in reports] == [policy.key]

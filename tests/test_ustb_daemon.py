@@ -564,6 +564,30 @@ def test_a_restart_on_a_served_day_publishes_nothing_and_reports_no_fault(
     assert epochs == ["ustb-2026-08-14"]
 
 
+def test_a_published_epoch_without_its_transparency_entry_is_not_success(
+    tmp_path: Path,
+) -> None:
+    store = seeded_store(tmp_path)
+    backend = FakeBackend()
+
+    first_service, workspace = built(tmp_path, backend)
+    _, first_produce = producer(store, first_service, backend)
+    run(first_service, first_produce)
+    workspace.transparency_log.unlink()
+
+    second_service, _ = built(tmp_path, backend)
+    dead = Dead("the issuer must not be asked while publication is unresolved")
+    _, second_produce = producer(store, second_service, backend, transport=dead)
+
+    run(second_service, second_produce)
+
+    assert not dead.calls
+    assert second_service._last_successful_epoch is None
+    incidents = IncidentLog(workspace.incidents).verify()
+    assert [entry["kind"] for entry in incidents] == ["PUBLICATION_UNRESOLVED"]
+    assert "transparency" in incidents[0]["detail"]
+
+
 def test_a_chain_that_will_not_answer_stops_the_slot_rather_than_guessing(
     tmp_path: Path,
 ) -> None:

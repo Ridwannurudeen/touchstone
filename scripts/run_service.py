@@ -570,6 +570,39 @@ class Service:
             )
         if not published:
             return None
+        try:
+            entries = self.client.transparency_log.verify()
+            matching = next(
+                (
+                    entry
+                    for entry in entries
+                    if isinstance(entry.get("signed_report"), Mapping)
+                    and isinstance(entry["signed_report"].get("report"), Mapping)
+                    and entry["signed_report"]["report"].get("asset_key")
+                    == self.asset_key
+                    and entry["signed_report"]["report"].get("epoch_id") == epoch_id
+                    and entry["signed_report"]["report"].get("sequence") == published
+                ),
+                None,
+            )
+            if matching is None:
+                raise UnresolvedPublication(
+                    f"epoch {epoch_id} is onchain at sequence {published}, but its "
+                    "transparency entry is missing"
+                )
+            asset_key = asset_key_bytes(self.asset_key)
+            onchain = self.client.backend.get_report(asset_key, published)
+            self.client.ensure_onchain_match(
+                asset_key,
+                matching["signed_report"]["report"],
+                onchain.report_uri,
+            )
+        except Exception as error:  # noqa: BLE001 - unproven is not success
+            return self._record_incident(
+                PUBLICATION_UNRESOLVED,
+                f"the published epoch {epoch_id} is not durably transparent: {error}",
+                scheduled_at,
+            )
         # Not an incident. Nothing is wrong: the epoch this slot is about has a report on
         # the chain, which is the outcome the slot exists to produce. Opening EPOCH_FAILED
         # here would alert an operator every time a daemon restarted on a day it had
@@ -822,7 +855,7 @@ class BatchService:
     def run_slot(
         self,
         scheduled_at: datetime,
-        produce: Callable[[datetime], object | None],
+        produce: Callable[..., object | None],
         *,
         report_uri: Callable[[Mapping[str, object]], str],
         epoch_of: Callable[[datetime], str] | None = None,
@@ -830,6 +863,7 @@ class BatchService:
         """Capture once, then let each child service own its durable publication."""
         if epoch_of is not None:
             settled = []
+            unsettled = []
             for service in self.services:
                 try:
                     service._resolve_outstanding()
@@ -840,13 +874,26 @@ class BatchService:
                         scheduled_at,
                     )
                 outcome = service._epoch_already_published(scheduled_at, epoch_of)
+                if outcome is not None and outcome.incident_id is not None:
+                    return outcome
                 if outcome is not None:
                     settled.append(outcome)
+                else:
+                    unsettled.append(service)
             if len(settled) == len(self.services):
                 return settled[0]
+        else:
+            unsettled = list(self.services)
 
         try:
-            produced = produce(scheduled_at)
+            produced = (
+                produce(
+                    scheduled_at,
+                    frozenset(service.asset_key for service in unsettled),
+                )
+                if epoch_of is not None
+                else produce(scheduled_at)
+            )
         except SourceUnavailable as error:
             return self._record_batch_incident(
                 SOURCE_UNAVAILABLE, str(error), scheduled_at
@@ -867,7 +914,7 @@ class BatchService:
             for report in produced.reports
             if isinstance(report, Mapping) and isinstance(report.get("report"), Mapping)
         }
-        expected_assets = {service.asset_key for service in self.services}
+        expected_assets = {service.asset_key for service in unsettled}
         if len(by_asset) != len(produced.reports) or set(by_asset) != expected_assets:
             return self._record_batch_incident(
                 EPOCH_FAILED,
@@ -875,7 +922,7 @@ class BatchService:
                 scheduled_at,
             )
         outcomes = []
-        for service in self.services:
+        for service in unsettled:
             signed_report = by_asset.get(service.asset_key)
             outcomes.append(
                 service.run_slot(
