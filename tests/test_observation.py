@@ -25,7 +25,9 @@ from touchstone.observation import (
     validate_interval,
 )
 from touchstone.assets import USTB_ASSET_KEY
+from touchstone.evidence import EvidenceStore
 from touchstone.locking import exclusive_lock
+from touchstone.sources import TransportResponse
 from touchstone.workspace import Workspace
 
 AT = datetime(2026, 8, 18, 9, 0, tzinfo=timezone.utc)
@@ -288,3 +290,95 @@ def test_a_backup_evidence_snapshot_skips_one_pass_without_stopping_the_observer
     assert "evidence snapshot is in progress; observation pass skipped" in output.err
     assert "another observer" not in output.err
     assert not workspace.observation_log.exists()
+
+
+def test_an_evidence_integrity_failure_is_recorded_and_the_pass_continues(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts import run_observer
+
+    workspace = Workspace(tmp_path / "asset")
+    store = EvidenceStore(workspace.evidence)
+    digest = store.store(
+        b"original",
+        source_id=SOURCE,
+        source_url="https://api.superstate.com/v1/funds/1/nav-daily",
+        retrieved_at=AT,
+        declared_mime="application/json",
+    )
+    (store.objects_dir / digest).write_bytes(b"corrupt")
+
+    class AvailableTransport:
+        requested: list[str] = []
+
+        def get(
+            self, url: str, *, timeout: float, max_bytes: int
+        ) -> TransportResponse:
+            self.requested.append(url)
+            return TransportResponse(
+                status_code=200,
+                headers={"Content-Type": "application/json"},
+                body=b"{}",
+            )
+
+    transport = AvailableTransport()
+    monkeypatch.setattr(run_observer, "LiveTransport", lambda **_: transport)
+
+    result = run_observer.main(
+        [
+            "--workspace",
+            str(workspace.root),
+            "--asset-key",
+            USTB_ASSET_KEY,
+            "--interval-seconds",
+            str(MINIMUM_INTERVAL_SECONDS),
+            "--max-runs",
+            "1",
+        ]
+    )
+
+    output = capsys.readouterr()
+    records = read_all(workspace.observation_log)
+    assert result == 0
+    assert len(transport.requested) == len(records) == 3
+    assert {record["transition"] for record in records} == {"SOURCE_UNAVAILABLE"}
+    assert all(
+        str(record["detail"]).startswith("EvidenceIntegrityError: ")
+        for record in records
+    )
+    assert records[-1]["source_id"] == "superstate-ustb-holdings"
+    assert "EvidenceIntegrityError:" in output.out
+    assert "superstate-ustb-holdings" in output.out
+
+
+def test_an_escaped_observer_job_failure_is_printed_to_stderr(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts import run_observer
+
+    monkeypatch.setattr(
+        run_observer,
+        "look_once",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("job exploded")),
+    )
+
+    result = run_observer.main(
+        [
+            "--workspace",
+            str(tmp_path / "asset"),
+            "--asset-key",
+            USTB_ASSET_KEY,
+            "--interval-seconds",
+            str(MINIMUM_INTERVAL_SECONDS),
+            "--max-runs",
+            "1",
+        ]
+    )
+
+    output = capsys.readouterr()
+    assert result == 0
+    assert "RuntimeError: job exploded" in output.err

@@ -56,7 +56,7 @@ from touchstone.assets import (  # noqa: E402
     resolve_source_manifest,
     validate_source_observation,
 )
-from touchstone.evidence import EvidenceStore  # noqa: E402
+from touchstone.evidence import EvidenceIntegrityError, EvidenceStore  # noqa: E402
 from touchstone.locking import LockUnavailable, exclusive_lock  # noqa: E402
 from touchstone.schedule import run_schedule  # noqa: E402
 from touchstone.sources import (  # noqa: E402
@@ -137,7 +137,13 @@ def look_once(
                 normalized_sha256 = computed_digest
                 if normalized_sha256 is None:
                     detail = "artifact stored, normalizer refused it"
-        except (SourceUnavailable, SourceFetchError, OSError, ValueError) as error:
+        except (
+            EvidenceIntegrityError,
+            SourceUnavailable,
+            SourceFetchError,
+            OSError,
+            ValueError,
+        ) as error:
             failed = True
             detail = f"{type(error).__name__}: {error}"
 
@@ -242,6 +248,14 @@ def main(argv: list[str] | None = None) -> int:
                 flush=True,
             )
 
+    def report_failure(scheduled_at: datetime, error: BaseException) -> None:
+        print(
+            f"{observation.stamp(scheduled_at)}  observer pass failed: "
+            f"{type(error).__name__}: {error}",
+            file=sys.stderr,
+            flush=True,
+        )
+
     print(
         f"observing {len(asset.sources)} sources every {interval:.0f}s into {log_path}",
         flush=True,
@@ -253,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
                 interval_seconds=interval,
                 max_runs=arguments.max_runs,
                 now=lambda: datetime.now(timezone.utc),
+                on_failure=report_failure,
             )
     except LockUnavailable:
         print("OBSERVER FAIL: another observer holds this workspace", file=sys.stderr)
