@@ -51,6 +51,8 @@ never given a key file, and the publisher keeps `touchstone`. They share only
 |---|---|---|---|
 | `/opt/touchstone` | `root` | `0755` | the checkout, pinned to a commit |
 | `/opt/touchstone/.venv` | `root` | `0755` | dependencies |
+| `/var/lib/touchstone` | `root:touchstone-data` | **`2775`** | explicitly provisioned shared-state root; no service owns it |
+| `/var/lib/touchstone/<network>` | `root:touchstone-data` | **`2775`** | root-created network namespace shared by the asset workspaces |
 | `/var/lib/touchstone/<network>/ustb` | `touchstone:touchstone-data` | **`2750`** | workspace root — the publisher's. The group traverses and reads; it cannot create or replace |
 | `…/ustb/evidence/` | `touchstone-observer:touchstone-data` | `2770` | the one tree the observer writes |
 | `…/ustb/observations.jsonl`, `observer.lock` | `touchstone-observer:touchstone-data` | `664` | pre-created, so the observer never needs write on the root |
@@ -61,6 +63,12 @@ never given a key file, and the publisher keeps `touchstone`. They share only
 `<network>` is a manifest name: `xlayer-testnet-2` or `xlayer-mainnet`. The units are systemd
 templates, so the instance after `@` selects both the manifest and the workspace, and the two
 can never disagree.
+
+The shared state root is deliberately outside systemd's `StateDirectory=` ownership model.
+That directive has one owning user, while this tree is intentionally used by two. Giving it to
+either service identity lets a later start recursively rewrite the ownership of the other
+identity's files. `tmpfiles.d` owns only `/var/lib/touchstone`; the tighter per-workspace modes
+below preserve the observer/publisher boundary.
 
 ---
 
@@ -76,7 +84,7 @@ useradd --system --no-create-home --shell /usr/sbin/nologin -g touchstone-data t
 
 install -d -o root -g root -m 0755 /opt/touchstone
 # Setgid, so files created by either identity stay in the shared group.
-install -d -o touchstone -g touchstone-data -m 2770 /var/lib/touchstone
+install -d -o root -g touchstone-data -m 2775 /var/lib/touchstone
 install -d -o root -g root -m 0700 /etc/touchstone
 
 # Code, pinned. A service that tracks a branch is a service whose behaviour changes when
@@ -92,7 +100,10 @@ python3 -m venv /opt/touchstone/.venv
 
 cp /opt/touchstone/deploy/systemd/touchstone-*.service /etc/systemd/system/
 cp /opt/touchstone/deploy/systemd/touchstone-*.timer   /etc/systemd/system/
+cp /opt/touchstone/deploy/tmpfiles.d/touchstone.conf /etc/tmpfiles.d/
 systemctl daemon-reload
+systemd-tmpfiles --create /etc/tmpfiles.d/touchstone.conf
+install -d -o root -g touchstone-data -m 2775 /var/lib/touchstone/xlayer-mainnet
 
 # Always confirm. A unit read with CRLF carries a trailing carriage return on every value,
 # so ExecStart names a binary that does not exist while looking exactly right.
@@ -110,6 +121,43 @@ carriage returns to the host. This has now happened once, after the rule was add
 specifically to prevent it. From the authoring machine, pipe the blob rather than the file:
 
     git show ":deploy/systemd/touchstone-observer@.service"       | ssh root@<host> 'cat > /etc/systemd/system/touchstone-observer@.service'
+
+### Updating an existing two-user installation
+
+All four observer/publisher units must move together. A start under an old unit containing
+`StateDirectory=touchstone` can perform one final recursive ownership rewrite. Stop every
+writer first, install and reload all four changed units, and only then repair ownership. No
+old-definition start may occur after the repair.
+
+```sh
+units='touchstone-observer@xlayer-mainnet touchstone-publisher@xlayer-mainnet touchstone-fobxx-observer@xlayer-mainnet touchstone-fobxx-publisher@xlayer-mainnet'
+systemctl stop $units
+
+cp /opt/touchstone/deploy/systemd/touchstone-{observer,publisher,fobxx-observer,fobxx-publisher}@.service /etc/systemd/system/
+cp /opt/touchstone/deploy/tmpfiles.d/touchstone.conf /etc/tmpfiles.d/
+systemctl daemon-reload
+systemd-tmpfiles --create /etc/tmpfiles.d/touchstone.conf
+chown root:touchstone-data /var/lib/touchstone/xlayer-mainnet
+chmod 2775 /var/lib/touchstone/xlayer-mainnet
+
+for asset in ustb fobxx; do
+  W=/var/lib/touchstone/xlayer-mainnet/$asset
+  chown -R touchstone:touchstone-data "$W"
+  chown -R touchstone-observer:touchstone-data "$W/evidence"
+  chown touchstone-observer:touchstone-data "$W/observations.jsonl" "$W/observer.lock"
+  chmod 2750 "$W"
+  find "$W/evidence" -type d -exec chmod 2770 {} +
+  find "$W/evidence/objects" -type f -exec chmod 0640 {} +
+  chmod 0664 "$W/evidence/index.jsonl" "$W/observations.jsonl" "$W/observer.lock"
+done
+
+systemctl start $units
+```
+
+The stop/start pair is the required service restart. If `systemctl restart` is run while the
+old definitions are still loaded, treat that as the final chown and perform the ownership
+repair after it, with all four units stopped. After `daemon-reload`, starts use the new units
+and no longer manage `/var/lib/touchstone` ownership.
 
 ### 3a. The observer — no secret, install now
 

@@ -47,7 +47,6 @@ RestartSec=300
 TimeoutStopSec=120
 
 ReadWritePaths=/var/lib/touchstone/%i
-StateDirectory=touchstone
 
 NoNewPrivileges=true
 PrivateTmp=true

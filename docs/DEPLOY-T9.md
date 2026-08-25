@@ -47,6 +47,21 @@ uses, and the vhost is installed only once the file it references exists.
 The vhost, certificate and nginx configuration are already in place, so a content update is
 steps 1 and 6 only — nothing shared is touched and no reload is needed.
 
+Daemon code or unit changes are a separate deployment. Install all changed observer and
+publisher units together, install `deploy/tmpfiles.d/touchstone.conf`, run
+`systemctl daemon-reload`, and restart all four units. They deliberately share
+`/var/lib/touchstone` as two identities: tmpfiles owns the top-level directory as
+`root:touchstone-data` mode `2775`, publisher-owned workspaces remain `2750`, and
+observer-owned evidence directories remain `2770`. The units must not use
+`StateDirectory=touchstone`, because a single-owner state directory recursively rewrites this
+two-user workspace.
+
+On an existing host, a restart while the old definitions are loaded performs one final chown.
+Stop all four units before copying the new definitions, then copy the units and tmpfiles file,
+run `systemctl daemon-reload`, repair ownership, and start all four. The exact commands and
+ownership repair are in `docs/DEPLOY-SERVICE.md`; no old-definition start may occur after that
+repair.
+
 Push and deployment are separate, ordered steps. Push the repository first; push CI then checks
 that checkout hermetically while production may still serve the preceding commit. Deploy the
 generated content and the separately hosted status inputs described below only after CI passes.

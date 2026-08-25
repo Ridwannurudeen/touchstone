@@ -382,3 +382,22 @@ def test_an_escaped_observer_job_failure_is_printed_to_stderr(
     output = capsys.readouterr()
     assert result == 0
     assert "RuntimeError: job exploded" in output.err
+
+
+def test_shared_state_is_provisioned_without_systemd_owner_rewrites() -> None:
+    root = Path(__file__).parents[1] / "deploy"
+    shared_units = (
+        "touchstone-observer@.service",
+        "touchstone-publisher@.service",
+        "touchstone-fobxx-observer@.service",
+        "touchstone-fobxx-publisher@.service",
+    )
+
+    for name in shared_units:
+        unit = (root / "systemd" / name).read_text(encoding="utf-8")
+        assert "StateDirectory=" not in unit
+        assert "ReadWritePaths=/var/lib/touchstone/%i" in unit
+
+    assert (root / "tmpfiles.d" / "touchstone.conf").read_text(
+        encoding="utf-8"
+    ) == "d /var/lib/touchstone 2775 root touchstone-data -\n"

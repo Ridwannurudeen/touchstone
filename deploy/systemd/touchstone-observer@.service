@@ -39,7 +39,6 @@ TimeoutStopSec=30
 # project that cannot be recreated, and everything else on a shared host is none of its
 # business.
 ReadWritePaths=/var/lib/touchstone/%i
-StateDirectory=touchstone
 
 NoNewPrivileges=true
 PrivateTmp=true
