@@ -517,6 +517,46 @@ def test_the_production_event_path_accepts_our_lineage_and_refuses_another() -> 
             backend_for(node).find_receipt(asset_key, 1, None)
 
 
+def test_confirmed_recovery_binds_the_known_transaction_to_the_report() -> None:
+    transaction_hash = "0x" + "cd" * 32
+    publisher = Account.from_key(bytes.fromhex(PUBLISHER_SECRET)).address
+    asset_key = b"\x44" * 32
+    report = {
+        "asset_key": "eip155:1:0x" + "11" * 20,
+        "control_set_root": "22" * 32,
+        "evidence_root": "33" * 32,
+        "epoch_id": "ustb-2026-08-25",
+        "state": "CONFIRMED",
+        "observed_at": "2026-08-25T14:00:00Z",
+        "valid_until": "2026-08-25T23:59:59Z",
+        "sequence": 9,
+    }
+    uri = "urn:touchstone:ustb:ustb-2026-08-25:9"
+    receipt = {
+        "transactionHash": transaction_hash,
+        "blockNumber": hex(100),
+        "blockHash": "0x" + "bb" * 32,
+        "status": "0x1",
+    }
+    with StubNode(
+        eth_getTransactionReceipt=receipt,
+        eth_getBlockByNumber={"hash": "0x" + "bb" * 32, "number": hex(100)},
+    ) as node:
+        backend = backend_for(node)
+        node.answers["eth_getTransactionByHash"] = {
+            "hash": transaction_hash,
+            "from": publisher,
+            "to": REGISTRY,
+            "input": "0x" + backend.calldata(asset_key, report, uri, None).hex(),
+        }
+
+        confirmed = backend.confirm_publication(
+            transaction_hash, asset_key, report, uri, None
+        )
+
+    assert confirmed["status"] == 1
+
+
 def test_the_providers_own_retries_are_switched_off() -> None:
     """web3 retries five times by default, and its allowlist includes broadcasts.
 

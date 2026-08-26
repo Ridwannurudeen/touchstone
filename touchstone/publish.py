@@ -381,6 +381,15 @@ class RegistryBackend(Protocol):
         self, asset_key: bytes, sequence: int, correction_of: int | None
     ) -> tuple[str, Mapping[str, object]] | None: ...
 
+    def confirm_publication(
+        self,
+        transaction_hash: str,
+        asset_key: bytes,
+        report: Mapping[str, object],
+        report_uri: str,
+        correction_of: int | None,
+    ) -> Mapping[str, object]: ...
+
 
 class SignedRegistryBackend:
     """Publish to a manifest-pinned registry using locally signed raw transactions.
@@ -837,6 +846,54 @@ class SignedRegistryBackend:
         receipt = self.web3.eth.get_transaction_receipt(transaction_hash)
         return (transaction_hash, receipt) if self._confirmed(receipt) else None
 
+    def confirm_publication(
+        self,
+        transaction_hash: str,
+        asset_key: bytes,
+        report: Mapping[str, object],
+        report_uri: str,
+        correction_of: int | None,
+    ) -> Mapping[str, object]:
+        """Read and bind one known transaction; never prepare or broadcast anything."""
+        self.revalidate()
+        try:
+            transaction = self.web3.eth.get_transaction(transaction_hash)
+        except (TransactionNotFound, Web3RPCError, OSError) as error:
+            raise SubmissionFailed(
+                f"publication transaction {transaction_hash} is unavailable: {error}"
+            ) from error
+        if _transaction_hash(transaction.get("hash")) != transaction_hash:
+            raise SubmissionFailed("publication transaction reports a different hash")
+        destination = transaction.get("to")
+        if not isinstance(destination, str) or Web3.to_checksum_address(
+            destination
+        ) != (self.manifest.registry_address):
+            raise SubmissionFailed("publication transaction has the wrong destination")
+        sender = transaction.get("from")
+        if not isinstance(sender, str) or self.publisher_lineage(sender) != (
+            self.manifest.publisher_identity_address
+        ):
+            raise SubmissionFailed(
+                "publication transaction is not from this deployment's publisher lineage"
+            )
+        calldata = transaction.get("input")
+        if not isinstance(calldata, (bytes, bytearray)) and not hasattr(
+            calldata, "__bytes__"
+        ):
+            raise SubmissionFailed("publication transaction has invalid calldata")
+        if bytes(calldata) != self.calldata(
+            asset_key, report, report_uri, correction_of
+        ):
+            raise SubmissionFailed(
+                "publication transaction does not carry this report and URI"
+            )
+        state, receipt = self.receipt_state(transaction_hash)
+        if state != CONFIRMED or receipt is None:
+            raise PendingSubmission(
+                f"transaction {transaction_hash} is {state}, not confirmed"
+            )
+        return receipt
+
     def publisher_lineage(self, address: str) -> str:
         """The publishing identity the registry recorded for an address.
 
@@ -1079,6 +1136,63 @@ class PublisherClient:
             report,
             report_uri=report_uri,
             correction_of=correction_of,
+        )
+
+    def recover_confirmed(
+        self,
+        signed_report: Mapping[str, object],
+        *,
+        report_uri: str,
+        transaction_hash: str,
+    ) -> PublicationResult:
+        """Append a missing log entry for one independently confirmed publication."""
+        if _TX_HASH.fullmatch(transaction_hash) is None:
+            raise ValueError("transaction_hash must be a lowercase 32-byte hex value")
+        if self.pending_transaction() is not None:
+            raise PendingSubmission(
+                "a persisted submission is unresolved; settle it before orphan recovery"
+            )
+        signed_report = frozen_snapshot(signed_report, "signed_report")
+        kid = signed_report.get("kid")
+        key = self.manifest.key(kid) if isinstance(kid, str) else None
+        if key is None or not key.verifiable:
+            raise ValueError(
+                "signed_report key is not verifiable under this deployment"
+            )
+        report = _verified_report(
+            signed_report,
+            {
+                "algorithm": "Ed25519",
+                "kid": key.kid,
+                "public_key": key.public_key,
+                "version": 1,
+            },
+        )
+        _validate_publishable_report(report)
+        correction_of = report.get("correction_of")
+        if correction_of is not None and type(correction_of) is not int:
+            raise ValueError("report correction_of must be an integer or null")
+        asset_key = _asset_key_bytes(report.get("asset_key"))
+        self.backend.revalidate()
+        self.ensure_onchain_match(asset_key, report, report_uri)
+        receipt = self.backend.confirm_publication(
+            transaction_hash,
+            asset_key,
+            report,
+            report_uri,
+            correction_of,
+        )
+        receipt_record = _receipt_record(receipt)
+        if receipt_record["status"] != 1:
+            raise SubmissionFailed(f"transaction {transaction_hash} failed")
+        existing = self._record_publication(
+            signed_report, receipt_record, transaction_hash, correction_of
+        )
+        return PublicationResult(
+            transaction_hash=transaction_hash,
+            receipt=receipt_record,
+            reconciled=True,
+            log_entry_hash=existing["entry_hash"],
         )
 
     def _publish(
@@ -1342,6 +1456,24 @@ class PublisherClient:
         method read it again — so the status written to the transparency log need never
         have been the status that judged the transaction settled.
         """
+        existing = self._record_publication(
+            signed_report, receipt_record, transaction_hash, correction_of
+        )
+        self._clear_pending()
+        return PublicationResult(
+            transaction_hash=transaction_hash,
+            receipt=receipt_record,
+            reconciled=reconciled,
+            log_entry_hash=existing["entry_hash"],
+        )
+
+    def _record_publication(
+        self,
+        signed_report: Mapping[str, object],
+        receipt_record: dict[str, object],
+        transaction_hash: str,
+        correction_of: int | None,
+    ) -> Mapping[str, object]:
         entries = self.transparency_log.verify()
         existing = next(
             (
@@ -1376,13 +1508,15 @@ class PublisherClient:
                 receipt=receipt_record,
                 supersedes=supersedes,
             )
-        self._clear_pending()
-        return PublicationResult(
-            transaction_hash=transaction_hash,
-            receipt=receipt_record,
-            reconciled=reconciled,
-            log_entry_hash=existing["entry_hash"],
-        )
+        elif (
+            canonical_json_bytes(dict(existing["signed_report"]))
+            != canonical_json_bytes(dict(signed_report))
+            or existing["publication"]["receipt"] != receipt_record
+        ):
+            raise SubmissionFailed(
+                "transaction is already logged for different publication evidence"
+            )
+        return existing
 
     def pending_transaction(self) -> str | None:
         """The transaction hash this client is waiting on, if any.

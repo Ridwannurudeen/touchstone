@@ -79,12 +79,17 @@ from touchstone.ustb_daemon import (  # noqa: E402
     write_bundle,
 )
 from touchstone.sources import LiveTransport, SourceUnavailable  # noqa: E402,F401
-from touchstone.signing import Ed25519Signer, frozen_snapshot  # noqa: E402
+from touchstone.signing import (  # noqa: E402
+    Ed25519Signer,
+    frozen_snapshot,
+    strict_json_loads,
+)
 from touchstone import backup, heartbeat  # noqa: E402
 from touchstone.backup import BackupError  # noqa: E402
 from touchstone.heartbeat import HeartbeatError  # noqa: E402
 from touchstone.quantities import finite_non_negative, utc_instant  # noqa: E402
 from touchstone.translog import TransparencyLog  # noqa: E402
+from touchstone.verify import VerificationError, verify_bundle  # noqa: E402
 from touchstone.workspace import Workspace  # noqa: E402
 
 
@@ -1297,10 +1302,21 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="durable workspace for the matching policy manifest",
     )
-    parser.add_argument(
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument(
         "--resolve-only",
         action="store_true",
         help="settle any publication left in flight and stop, signing nothing new",
+    )
+    action.add_argument(
+        "--recover-bundle",
+        type=Path,
+        help="append a missing transparency entry for this verified bundle and stop; "
+        "requires --recover-transaction and never signs or broadcasts",
+    )
+    parser.add_argument(
+        "--recover-transaction",
+        help="confirmed transaction hash that published --recover-bundle",
     )
     parser.add_argument(
         "--interval-seconds",
@@ -1339,6 +1355,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--policy-workspace requires --policy-manifest")
     if len(arguments.policy_manifest) != len(arguments.policy_workspace):
         parser.error("each --policy-manifest requires one --policy-workspace")
+    if bool(arguments.recover_bundle) != bool(arguments.recover_transaction):
+        parser.error(
+            "--recover-bundle and --recover-transaction must be supplied together"
+        )
     # Before anything reads a key or touches the network. `build_service` constructs the
     # publisher, which reads TOUCHSTONE_PUBLISHER_PRIVATE_KEY — so the fixture-mode refusal
     # that lived inside `_serve_ustb` was never reached on a host without that key, and the
@@ -1380,6 +1400,38 @@ def main(argv: list[str] | None = None) -> int:
         print(f"SERVICE FAIL: {error}", file=sys.stderr)
         return 1
     try:
+        if arguments.recover_bundle is not None:
+            raw = arguments.recover_bundle.read_bytes()
+            report = verify_bundle(raw)
+            bundle = strict_json_loads(raw)
+            signed_report = (
+                bundle.get("signed_report") if isinstance(bundle, Mapping) else None
+            )
+            if not isinstance(signed_report, Mapping):
+                raise VerificationError("bundle has no signed report")
+            if report.get("asset_key") != service.asset_key:
+                raise VerificationError(
+                    f"bundle is for {report.get('asset_key')!r}, not "
+                    f"{service.asset_key!r}"
+                )
+            with exclusive_lock(service.lock_path):
+                recovered = service.client.recover_confirmed(
+                    signed_report,
+                    report_uri=report_uri(signed_report),
+                    transaction_hash=arguments.recover_transaction,
+                )
+            print(
+                json.dumps(
+                    {
+                        "recovered": True,
+                        "transaction_hash": recovered.transaction_hash,
+                        "log_entry_hash": recovered.log_entry_hash,
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 0
         if not arguments.resolve_only:
             return _serve_ustb(service, arguments)
         with exclusive_lock(service.lock_path):
@@ -1388,8 +1440,10 @@ def main(argv: list[str] | None = None) -> int:
         DeploymentError,
         IdentityError,
         LockUnavailable,
+        OSError,
         OperationsError,
         PublicationError,
+        VerificationError,
         ValueError,
     ) as error:
         print(f"SERVICE FAIL: {error}", file=sys.stderr)

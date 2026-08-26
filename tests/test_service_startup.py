@@ -160,6 +160,27 @@ def test_fixtures_require_a_capture_to_be_named(
     assert "--fixtures requires --fixture-capture" in capsys.readouterr().err
 
 
+def test_orphan_recovery_requires_the_receipt_transaction(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as refusal:
+        run_service.main(
+            [
+                "--manifest",
+                "manifest.json",
+                "--workspace",
+                "workspace",
+                "--asset-key",
+                "eip155:1:0x" + "11" * 20,
+                "--recover-bundle",
+                "bundle.json",
+            ]
+        )
+
+    assert refusal.value.code == 2
+    assert "must be supplied together" in capsys.readouterr().err
+
+
 def _public_manifest(tmp_path: Path, **overrides: object) -> Path:
     """A real, loadable manifest for a public network — not a stub."""
     manifest = json.loads(

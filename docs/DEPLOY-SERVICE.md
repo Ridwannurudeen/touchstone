@@ -171,6 +171,39 @@ root is repaired as a publisher workspace first. Observer ownership is then hand
 for observer paths that actually exist. A new publisher workspace therefore joins the repair
 automatically and does not require another edit to this loop.
 
+### Recover a confirmed publication whose transparency append was lost
+
+Use this only when the exact signed bundle and the confirmed publishing transaction are
+known, but both `operation.json` and `pending.json` are already gone. `--resolve-only` cannot
+repair that state because there is no durable operation left to resolve. Stop the publisher
+so the recovery owns the workspace lock, then run the bundle recovery under the publisher
+identity:
+
+```sh
+systemctl stop touchstone-publisher@xlayer-mainnet
+set -a
+. /etc/touchstone/xlayer-mainnet.env
+set +a
+runuser --user touchstone --preserve-environment -- \
+  /opt/touchstone/.venv/bin/python /opt/touchstone/scripts/run_service.py \
+  --manifest /opt/touchstone/deployments/xlayer-mainnet.json \
+  --workspace /var/lib/touchstone/xlayer-mainnet/ustb \
+  --asset-key eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e \
+  --recover-bundle \
+    /var/lib/touchstone/xlayer-mainnet/ustb/bundles/eip155-196-ustb-2026-08-25-10.json \
+  --recover-transaction "$CONFIRMED_PUBLICATION_TX"
+unset TOUCHSTONE_PUBLISHER_PRIVATE_KEY TOUCHSTONE_SIGNING_SEED
+systemctl start touchstone-publisher@xlayer-mainnet
+```
+
+Set `CONFIRMED_PUBLICATION_TX` to the lowercase transaction hash from the receipt; do not
+guess it and do not resend anything to discover it. The command verifies the bundle, its
+manifest-listed reporting key, the transaction destination, sender lineage and calldata,
+the canonical confirmed receipt, and the exact report and URI stored by the registry before
+it appends one transparency entry. It never prepares, signs or broadcasts a transaction.
+It also refuses while another pending journal exists. A second invocation is idempotent only
+when the existing entry contains the same signed report and receipt.
+
 The stop/start pair is the required service restart. If `systemctl restart` is run while the
 old definitions are still loaded, treat that as the final chown and perform the ownership
 repair after it, with all four units stopped. After `daemon-reload`, starts use the new units

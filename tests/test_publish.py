@@ -296,6 +296,17 @@ class FakeBackend:
                     return transaction_hash, receipt
         return None
 
+    def confirm_publication(
+        self, transaction_hash, asset_key, report, report_uri, correction_of
+    ):
+        expected = (asset_key, dict(report), report_uri, correction_of)
+        if self.intents.get(transaction_hash) != expected:
+            raise SubmissionFailed("publication transaction does not match")
+        state, receipt = self._state(transaction_hash)
+        if state != CONFIRMED:
+            raise PendingSubmission("publication transaction is not confirmed")
+        return receipt
+
 
 def _signed_report(
     sequence: int,
@@ -1159,6 +1170,26 @@ def test_the_receipt_that_settles_a_publication_is_the_receipt_recorded(
     assert entry["publication"]["receipt"]["status"] == 1, (
         "and the log carries the reading that settled it"
     )
+
+
+def test_a_confirmed_orphan_is_recorded_without_another_send(tmp_path: Path) -> None:
+    backend = FakeBackend()
+    signed = _signed_report(1)
+    uri = "urn:touchstone:report:1"
+    first = _client(tmp_path, backend).publish(signed, report_uri=uri)
+    (tmp_path / "transparency.jsonl").unlink()
+
+    recovered = _client(tmp_path, backend).recover_confirmed(
+        signed,
+        report_uri=uri,
+        transaction_hash=first.transaction_hash,
+    )
+
+    assert recovered.reconciled
+    assert recovered.transaction_hash == first.transaction_hash
+    assert len(backend.submissions) == 1, "recovery must not send another transaction"
+    assert len(backend.broadcasts) == 1, "recovery must only read the existing receipt"
+    assert len(TransparencyLog(tmp_path / "transparency.jsonl").verify()) == 1
 
 
 def test_a_journal_that_cannot_be_written_is_a_pending_submission(
