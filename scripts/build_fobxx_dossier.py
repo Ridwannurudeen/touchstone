@@ -150,6 +150,22 @@ def _control_rows(
     return "\n".join(rows), control_ids, satisfied_count
 
 
+def _control_results(report: Mapping[str, object]) -> dict[str, object]:
+    controls = report.get("controls")
+    if not isinstance(controls, list):
+        raise ValueError("FOBXX report must contain controls")
+    results = {}
+    for control in controls:
+        if not isinstance(control, Mapping):
+            raise ValueError("FOBXX report control must be an object")
+        control_id = control.get("control_id")
+        evaluation = control.get("evaluation")
+        if not isinstance(control_id, str) or not isinstance(evaluation, Mapping):
+            raise ValueError("FOBXX report control must contain an evaluation")
+        results[control_id] = evaluation.get("result")
+    return results
+
+
 def _ledger_entries(
     ledger: Mapping[str, object], section: str
 ) -> list[Mapping[str, object]]:
@@ -184,8 +200,16 @@ def render(
     ledger = _document(ledger_path, "approval ledger")
     main_path, main_bundle, main_report = retained[196]
     test_path, _, test_report = retained[1952]
-    if main_report.get("controls") != test_report.get("controls"):
-        raise ValueError("FOBXX network reports do not carry the same control results")
+    main_results = _control_results(main_report)
+    test_results = _control_results(test_report)
+    for control_id in sorted(main_results.keys() & test_results.keys()):
+        main_result = main_results[control_id]
+        test_result = test_results[control_id]
+        if main_result != test_result:
+            raise ValueError(
+                f"FOBXX shared control {control_id} disagrees across networks: "
+                f"mainnet {main_result}, testnet {test_result}"
+            )
     control_rows, published_control_ids, satisfied_count = _control_rows(
         main_bundle, main_report
     )
@@ -210,12 +234,35 @@ def render(
             "FOBXX page approvals do not equal the controls in the signed ledger"
         )
     published_count = len(published_control_ids)
+    main_control_count = len(main_results)
+    test_control_count = len(test_results)
+    test_satisfied_count = sum(
+        result == "SATISFIED" for result in test_results.values()
+    )
     approved_count = len(approved_control_ids)
     unpublished_count = len(unpublished_control_ids)
     declined_count = len(declined_entries)
     unpublished_names = ", ".join(
         f"<code>{html.escape(control_id)}</code>"
         for control_id in unpublished_control_ids
+    )
+    if unpublished_control_ids:
+        publication_progress = (
+            f"{unpublished_count} approved "
+            f"{_plural(unpublished_count, 'control')} are not yet published: "
+            f"{unpublished_names}. The next publication will carry all "
+            f"{approved_count} approved {_plural(approved_count, 'control')}."
+        )
+    else:
+        publication_progress = (
+            f"All {approved_count} approved {_plural(approved_count, 'control')} appear "
+            "in the latest retained mainnet publication."
+        )
+    coverage_statement = (
+        f"The latest retained mainnet publication carries {main_control_count} "
+        f"{_plural(main_control_count, 'control')}, while the latest retained testnet "
+        f"publication carries {test_control_count} "
+        f"{_plural(test_control_count, 'control')}."
     )
     publications = {
         chain_id: _publication(stats, report, chain_id)
@@ -268,7 +315,8 @@ def render(
       {_plural(retained_counts[196], "publication")} on mainnet and {retained_counts[1952]} retained
       <strong>{html.escape(str(test_report.get("state")))}</strong> {_plural(retained_counts[1952], "publication")} on testnet.
       The latest rows below are sequence {main_report.get("sequence")} and
-      {test_report.get("sequence")}; this page does not imply a daily history.</p>
+      {test_report.get("sequence")}; this page does not imply a daily history.
+      {coverage_statement} Testnet is not on a publishing schedule.</p>
     </div>
   </section>
   <section class="section">
@@ -297,10 +345,11 @@ def render(
       <p class="eyebrow">Approved and evaluated</p>
       <h2>{published_count} published controls, {satisfied_count}/{published_count} SATISFIED</h2>
       <p class="prose">{approved_count} FOBXX controls are approved in the signed ledger.
-      The published mainnet and testnet bundles each carry {published_count} controls and
-      report {satisfied_count}/{published_count} SATISFIED results.
-      {unpublished_count} approved controls are not yet published: {unpublished_names}.
-      The next publication will carry all {approved_count} approved controls.</p>
+      The latest retained mainnet bundle carries {main_control_count}
+      {_plural(main_control_count, "control")} and reports
+      {satisfied_count}/{main_control_count} SATISFIED results. The latest retained testnet
+      bundle carries {test_control_count} {_plural(test_control_count, "control")} and reports
+      {test_satisfied_count}/{test_control_count} SATISFIED results. {publication_progress}</p>
       <div class="persona-grid">
 {control_rows}
       </div>
