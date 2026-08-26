@@ -17,6 +17,7 @@
    "state": "UNVERIFIABLE",
    "policy": null,
    "correction_of": null,
+   "chain_id": 1952,
    "transaction_hash": "0x5107140c5c9c755026de5e3193e14b9863aacc2962f78b8516bf00075be6b869",
    "block": 38526525,
    "observed_at": "2026-08-17T16:48:32.075003Z"
@@ -28,6 +29,7 @@
    "state": "UNVERIFIABLE",
    "policy": null,
    "correction_of": null,
+   "chain_id": 1952,
    "transaction_hash": "0x6a2832db0999840141c80d04c5dbed4295ddce8a3a62db4b27fec74093d990da",
    "block": 38611710,
    "observed_at": "2026-08-18T16:28:07.833801Z"
@@ -39,6 +41,7 @@
    "state": "UNVERIFIABLE",
    "policy": null,
    "correction_of": 1,
+   "chain_id": 1952,
    "transaction_hash": "0x1cdf45d0f93f7268a147eed015df45f1e531107c961473b711b6ef6abcd9059b",
    "block": 38617112,
    "observed_at": "2026-08-17T16:48:32.075003Z"
@@ -50,6 +53,7 @@
    "state": "CONFIRMED",
    "policy": null,
    "correction_of": null,
+   "chain_id": 1952,
    "transaction_hash": "0x1ab4cd4faba85f1cedca455c012bacfb8e28f0be0899b95449d8eba862ffa39f",
    "block": 38698679,
    "observed_at": "2026-08-19T16:36:55.395580Z"
@@ -61,6 +65,7 @@
    "state": "CONFIRMED",
    "policy": null,
    "correction_of": null,
+   "chain_id": 196,
    "transaction_hash": "0x191ab2eba417417ac8172546ba2c693151a55cdcbc1e921487ac974962e68ecc",
    "block": 68389082,
    "observed_at": "2026-08-19T16:46:54.436771Z"
@@ -72,6 +77,7 @@
    "state": "UNVERIFIABLE",
    "policy": null,
    "correction_of": null,
+   "chain_id": 196,
    "transaction_hash": "0xfa4b7992bee12819017ca16a0d338d629e86b0bf2d3487f6dd07abfe6bef0b85",
    "block": 68292878,
    "observed_at": "2026-08-18T14:04:21.592662Z"
@@ -83,6 +89,7 @@
    "state": "UNVERIFIABLE",
    "policy": null,
    "correction_of": 1,
+   "chain_id": 196,
    "transaction_hash": "0x363539ad1cc5577936ee6111e4a4f1c826f9d35b0b7a6f020d2d712affc41bfb",
    "block": 68307118,
    "observed_at": "2026-08-18T14:04:21.592662Z"
@@ -94,6 +101,7 @@
    "state": "CONFIRMED",
    "policy": "disclosure-freshness",
    "correction_of": null,
+   "chain_id": 1952,
    "transaction_hash": "0x244e71b23094acb0ad2989e3e590ba38ac4567c030968017e96a07e332d60707",
    "block": 38698740,
    "observed_at": "2026-08-19T16:36:55.395580Z"
@@ -105,6 +113,7 @@
    "state": "CONFIRMED",
    "policy": "disclosure-freshness",
    "correction_of": null,
+   "chain_id": 196,
    "transaction_hash": "0x15de5f9ba291c97d4d19c2e9645ca4229bc147907b73576a9f73c64961556b3d",
    "block": 68389152,
    "observed_at": "2026-08-19T16:46:54.436771Z"
@@ -116,6 +125,7 @@
    "state": "CONFIRMED",
    "policy": "nav-settlement",
    "correction_of": null,
+   "chain_id": 1952,
    "transaction_hash": "0x41788d70e6c99bf2b9675351159f830203542f6874107e277922300f3e4c3719",
    "block": 38698809,
    "observed_at": "2026-08-19T16:36:55.395580Z"
@@ -127,6 +137,7 @@
    "state": "CONFIRMED",
    "policy": "nav-settlement",
    "correction_of": null,
+   "chain_id": 196,
    "transaction_hash": "0x12279b34280e0a7b4623814a00e54797fba7c754f495f38a5cc620a1315ce451",
    "block": 68389216,
    "observed_at": "2026-08-19T16:46:54.436771Z"
@@ -138,6 +149,7 @@
    "state": "CONFIRMED",
    "policy": null,
    "correction_of": null,
+   "chain_id": 196,
    "transaction_hash": "0xaa614a0900da5415e57609aa60c885d39a87c913838b85b2cea616a891906218",
    "block": 68425982,
    "observed_at": "2026-08-20T03:01:26.624074Z"
@@ -149,6 +161,7 @@
    "state": "CONFIRMED",
    "policy": "disclosure-freshness",
    "correction_of": null,
+   "chain_id": 196,
    "transaction_hash": "0x4716a41bc6dcb6ed4b575d24e5588c1177b34d20e45c31368e3e1b58b0d9451b",
    "block": 68426046,
    "observed_at": "2026-08-20T03:01:26.624074Z"
@@ -160,6 +173,7 @@
    "state": "CONFIRMED",
    "policy": "nav-settlement",
    "correction_of": null,
+   "chain_id": 196,
    "transaction_hash": "0x15b2cc699e6003ea2464137291134cd3483d8df9308cf365a499e85ed13fc4ae",
    "block": 68426100,
    "observed_at": "2026-08-20T03:01:26.624074Z"
@@ -171,6 +185,7 @@
    "state": "CONFIRMED",
    "policy": null,
    "correction_of": null,
+   "chain_id": 196,
    "transaction_hash": "0x9fa7dca49facc639f4c782a3d66a2afac36756eda5bb5d84dc5e8324430ed89a",
    "block": 68512680,
    "observed_at": "2026-08-21T03:01:26.624074Z"
@@ -182,6 +197,7 @@
    "state": "CONFIRMED",
    "policy": "disclosure-freshness",
    "correction_of": null,
+   "chain_id": 196,
    "transaction_hash": "0x8aedbc1a67013bd7dfba6d05c002f33774aa6b7162105d6cc5ed4dbaff425d4a",
    "block": 68512753,
    "observed_at": "2026-08-21T03:01:26.624074Z"
@@ -193,6 +209,7 @@
    "state": "CONFIRMED",
    "policy": "nav-settlement",
    "correction_of": null,
+   "chain_id": 196,
    "transaction_hash": "0xbe59f989c8dcd466d600de7ebccbdd3135651f216730039f2169aaacdc4dcafd",
    "block": 68512819,
    "observed_at": "2026-08-21T03:01:26.624074Z"
@@ -204,6 +221,7 @@
    "state": "CONFIRMED",
    "policy": null,
    "correction_of": null,
+   "chain_id": 1952,
    "transaction_hash": "0x47f53a74051e44faf607b5ae5591896fca80d5360774e86cbdc650d43a4ee099",
    "block": 38874950,
    "observed_at": "2026-08-21T17:33:29.522765Z"
@@ -215,6 +233,7 @@
    "state": "CONFIRMED",
    "policy": "disclosure-freshness",
    "correction_of": null,
+   "chain_id": 1952,
    "transaction_hash": "0x036162b971201789dc31bc061b03c6cd0b89894c5b4ea60756678598ea0c5637",
    "block": 38875052,
    "observed_at": "2026-08-21T17:33:29.522765Z"
@@ -226,6 +245,7 @@
    "state": "CONFIRMED",
    "policy": "nav-settlement",
    "correction_of": null,
+   "chain_id": 1952,
    "transaction_hash": "0x50b0501e3d624a1502e461c1865bbc16c0a996c4d2c956609fa963092e3edd0e",
    "block": 38875155,
    "observed_at": "2026-08-21T17:33:29.522765Z"

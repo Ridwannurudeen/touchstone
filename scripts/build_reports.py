@@ -113,6 +113,33 @@ def _report_key(report: Mapping[str, object]) -> tuple[object, ...]:
     )
 
 
+def _publication_networks(
+    publications: list[Mapping[str, object]], networks: Mapping[int, str]
+) -> list[str]:
+    names: list[str] = []
+    network_at: dict[str, str] = {}
+    for index, record in enumerate(publications, start=1):
+        chain_id = record.get("chain_id")
+        if type(chain_id) is not int or chain_id not in networks:
+            raise ValueError(f"publication row {index} has invalid chain_id")
+        network = networks[chain_id]
+        note = record.get("note")
+        note_network = _NETWORK_NOTES.get(note)
+        if note_network is not None and note_network != network:
+            raise ValueError(
+                f"publication row {index} chain_id {chain_id} conflicts with note {note!r}"
+            )
+        observed_at = record.get("observed_at")
+        if isinstance(observed_at, str):
+            previous = network_at.setdefault(observed_at, network)
+            if previous != network:
+                raise ValueError(
+                    f"publication time {observed_at} maps to multiple chains"
+                )
+        names.append(network)
+    return names
+
+
 def load_rows(
     *, bundles: Path = BUNDLES, stats: Path = STATS, facts: Path = FACTS
 ) -> list[ReportRow]:
@@ -144,6 +171,7 @@ def load_rows(
             asset_names[asset_key] = ticker
 
     networks: dict[str, tuple[int, str]] = {}
+    network_names: dict[int, str] = {}
     for name in ("mainnet", "testnet"):
         network = facts_document.get(name)
         if not isinstance(network, Mapping):
@@ -155,19 +183,18 @@ def load_rows(
         explorer = network.get("explorer")
         if not isinstance(explorer, str):
             raise ValueError(f"{name} explorer must be text")
+        if chain_id in network_names:
+            raise ValueError(f"site facts duplicate chain_id {chain_id}")
         networks[name] = (chain_id, explorer.rstrip("/"))
+        network_names[chain_id] = name
 
-    indexed: dict[tuple[object, ...], Mapping[str, object]] = {}
-    network_at: dict[str, str] = {}
-    for record in publications:
-        observed_at = record.get("observed_at")
-        note = record.get("note")
-        if isinstance(observed_at, str) and note in _NETWORK_NOTES:
-            network_at[observed_at] = _NETWORK_NOTES[note]
+    publication_networks = _publication_networks(publications, network_names)
+    indexed: dict[tuple[object, ...], tuple[Mapping[str, object], str]] = {}
+    for record, network_name in zip(publications, publication_networks):
         key = _publication_key(record, default_asset_key=default_asset_key)
         if key in indexed:
             raise ValueError(f"duplicate report publication metadata for {key!r}")
-        indexed[key] = record
+        indexed[key] = (record, network_name)
 
     rows: list[ReportRow] = []
     for path in sorted(bundles.glob("*.json")):
@@ -183,18 +210,15 @@ def load_rows(
             ) from error
         if not isinstance(bundle, Mapping):
             raise ValueError(f"retained bundle {path.name} must be an object")
-        publication = indexed.get(_report_key(report))
-        if publication is None:
+        publication_match = indexed.get(_report_key(report))
+        if publication_match is None:
             raise ValueError(f"retained bundle {path.name} has no publication metadata")
+        publication, network_name = publication_match
 
         base_asset_key = str(report["asset_key"]).split("#policy:", 1)[0]
         asset = asset_names.get(base_asset_key)
         if asset is None:
             raise ValueError(f"retained bundle {path.name} identifies an unknown asset")
-        note = publication.get("note")
-        network_name = _NETWORK_NOTES.get(str(note), network_at.get(str(report["observed_at"])))
-        if network_name is None:
-            raise ValueError(f"retained bundle {path.name} has no network anchor")
         chain_id, explorer = networks[network_name]
 
         transaction_hash = publication.get("transaction_hash")

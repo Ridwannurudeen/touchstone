@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).parents[1]
 FIXTURES = Path(__file__).with_name("reports_fixtures")
@@ -26,6 +28,46 @@ def _rows():
         stats=FIXTURES / "stats.json",
         facts=FIXTURES / "facts.json",
     )
+
+
+@pytest.fixture
+def split_batch_rows() -> list[dict[str, object]]:
+    return [
+        {
+            "chain_id": 196,
+            "note": "xlayer-mainnet-v1",
+            "observed_at": "2026-08-25T15:10:25Z",
+        },
+        {
+            "chain_id": 196,
+            "note": "policy:nav-settlement",
+            "observed_at": "2026-08-25T15:17:12Z",
+        },
+    ]
+
+
+def test_split_batch_policy_row_anchors_by_chain_id(
+    split_batch_rows: list[dict[str, object]],
+) -> None:
+    networks = {196: "mainnet", 1952: "testnet"}
+
+    assert _module()._publication_networks(split_batch_rows, networks) == [
+        "mainnet",
+        "mainnet",
+    ]
+
+
+def test_network_note_must_agree_with_chain_id() -> None:
+    publications = [
+        {
+            "chain_id": 1952,
+            "note": "xlayer-mainnet-v1",
+            "observed_at": "2026-08-25T15:10:25Z",
+        }
+    ]
+
+    with pytest.raises(ValueError, match="chain_id 1952 conflicts with note"):
+        _module()._publication_networks(publications, {196: "mainnet", 1952: "testnet"})
 
 
 def test_rows_are_newest_first() -> None:

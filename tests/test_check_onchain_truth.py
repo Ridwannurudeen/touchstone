@@ -171,6 +171,39 @@ def test_committed_stats_identify_every_publication_and_all_eight_histories() ->
     assert sum(claim.sequence for claim in claims) == 29
 
 
+def test_split_batch_policy_row_anchors_by_chain_id(tmp_path: Path) -> None:
+    stats = tmp_path / "stats.json"
+    stats.write_text(
+        json.dumps(FIXTURES["split_batch_stats"]),
+        encoding="utf-8",
+    )
+
+    claims = check_onchain_truth.load_publication_claims(stats)
+
+    assert claims == [
+        check_onchain_truth.PublicationTruth(196, KEY, 1, "CONFIRMED"),
+        check_onchain_truth.PublicationTruth(
+            196,
+            f"{KEY}#policy:nav-settlement:1",
+            1,
+            "CONFIRMED",
+        ),
+    ]
+
+
+def test_network_note_must_agree_with_chain_id(tmp_path: Path) -> None:
+    document = json.loads(json.dumps(FIXTURES["split_batch_stats"]))
+    document["reports"][0]["chain_id"] = 1952
+    stats = tmp_path / "stats.json"
+    stats.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(
+        check_onchain_truth.OnchainTruthError,
+        match="chain_id 1952 conflicts with note",
+    ):
+        check_onchain_truth.load_publication_claims(stats)
+
+
 def test_offline_skips_every_file_and_network_read(capsys) -> None:
     assert check_onchain_truth.main(["--offline", "--stats", "missing.json"]) == 0
     assert "no registry claim was verified" in capsys.readouterr().out

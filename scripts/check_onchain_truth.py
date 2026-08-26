@@ -44,6 +44,7 @@ _NETWORK_NOTES = {
     "xlayer-mainnet-v1": "mainnet",
     "xlayer-testnet-v1": "testnet",
 }
+_NETWORK_CHAIN_IDS = {"mainnet": 196, "testnet": 1952}
 
 
 class RPC(Protocol):
@@ -169,21 +170,32 @@ def _derived_identities(document: Mapping[str, object]) -> list[tuple[int, str]]
             raise OnchainTruthError("stats.json policy identity is incomplete")
         policy_versions[policy_id] = version
 
-    network_at: dict[str, str] = {}
-    for record in reports:
+    publication_chains: list[int] = []
+    chain_at: dict[str, int] = {}
+    for index, record in enumerate(reports, start=1):
+        chain_id = record.get("chain_id")
+        if type(chain_id) is not int or chain_id not in _NETWORK_CHAIN_IDS.values():
+            raise OnchainTruthError(
+                f"stats.json report row {index} has invalid chain_id"
+            )
         note = record.get("note")
-        observed_at = record.get("observed_at")
         network = _NETWORK_NOTES.get(note)
-        if network is not None and isinstance(observed_at, str):
-            previous = network_at.setdefault(observed_at, network)
-            if previous != network:
+        if network is not None and _NETWORK_CHAIN_IDS[network] != chain_id:
+            raise OnchainTruthError(
+                f"stats.json report row {index} chain_id {chain_id} "
+                f"conflicts with note {note!r}"
+            )
+        observed_at = record.get("observed_at")
+        if isinstance(observed_at, str):
+            previous = chain_at.setdefault(observed_at, chain_id)
+            if previous != chain_id:
                 raise OnchainTruthError(
                     f"publication time {observed_at} maps to multiple chains"
                 )
+        publication_chains.append(chain_id)
 
     identities: list[tuple[int, str]] = []
-    network_ids = {"mainnet": 196, "testnet": 1952}
-    for record in reports:
+    for record, chain_id in zip(reports, publication_chains):
         epoch_id = record.get("epoch_id")
         if not isinstance(epoch_id, str) or "-" not in epoch_id:
             raise OnchainTruthError("publication epoch_id does not identify an asset")
@@ -191,16 +203,6 @@ def _derived_identities(document: Mapping[str, object]) -> list[tuple[int, str]]
         base_key = asset_keys.get(ticker)
         if base_key is None:
             raise OnchainTruthError(f"publication epoch {epoch_id} identifies no asset")
-
-        note = record.get("note")
-        network = _NETWORK_NOTES.get(note)
-        if network is None:
-            observed_at = record.get("observed_at")
-            network = network_at.get(str(observed_at))
-        if network is None:
-            raise OnchainTruthError(
-                f"publication epoch {epoch_id} has no derivable publication chain"
-            )
 
         policy = record.get("policy")
         key = base_key
@@ -210,7 +212,7 @@ def _derived_identities(document: Mapping[str, object]) -> list[tuple[int, str]]
                     f"publication epoch {epoch_id} has an unknown policy"
                 )
             key = f"{base_key}#policy:{policy}:{policy_versions[policy]}"
-        identities.append((network_ids[network], key))
+        identities.append((chain_id, key))
     return identities
 
 

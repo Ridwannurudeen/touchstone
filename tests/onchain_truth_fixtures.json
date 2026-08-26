@@ -18,6 +18,43 @@
     "site": {"sequence": 2, "status": "STALE"},
     "chain": {"sequence": 3, "status": "CONFIRMED"}
   },
+  "split_batch_stats": {
+    "reports_published": 2,
+    "reports": [
+      {
+        "chain_id": 196,
+        "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e",
+        "epoch_id": "ustb-2026-08-25",
+        "sequence": 1,
+        "state": "CONFIRMED",
+        "note": "xlayer-mainnet-v1",
+        "observed_at": "2026-08-25T15:10:25Z",
+        "policy": null
+      },
+      {
+        "chain_id": 196,
+        "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e#policy:nav-settlement:1",
+        "epoch_id": "ustb-2026-08-25",
+        "sequence": 1,
+        "state": "CONFIRMED",
+        "note": "policy:nav-settlement",
+        "observed_at": "2026-08-25T15:17:12Z",
+        "policy": "nav-settlement"
+      }
+    ],
+    "assets": [
+      {
+        "ticker": "USTB",
+        "asset_key": "eip155:1:0x43415eb6ff9db7e26a15b704e7a3edce97d31c4e"
+      }
+    ],
+    "policies": [
+      {
+        "policy_id": "nav-settlement",
+        "version": 1
+      }
+    ]
+  },
   "endpoint_disagreement": {
     "heads": [120, 121],
     "endpoint_reports": [
