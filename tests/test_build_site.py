@@ -28,18 +28,18 @@ def test_homepage_facts_come_from_stats_and_latest_mainnet_bundle() -> None:
     assert facts["homepage.live_assets"] == "2"
     assert facts["homepage.evidence_sources"] == "7"
     assert facts["homepage.networks"] == "2"
-    assert facts["homepage.confirmed_reports"] == "24"
+    assert facts["homepage.confirmed_reports"] == "35"
     assert facts["homepage.ustb.state"] == "CONFIRMED"
-    assert facts["homepage.ustb.nav"] == "11.18426200"
-    assert facts["homepage.ustb.nav_date"] == "2026-08-19"
-    assert facts["homepage.ustb.valid_until"] == "2026-08-23T23:59:59Z"
+    assert facts["homepage.ustb.nav"] == "11.18960700"
+    assert facts["homepage.ustb.nav_date"] == "2026-08-24"
+    assert facts["homepage.ustb.valid_until"] == "2026-08-26T23:59:59Z"
     assert facts["homepage.ustb.source_count"] == "3"
     assert facts["homepage.fobxx.state"] == "CONFIRMED"
-    assert facts["homepage.fobxx.evidence_as_of"] == "2026-08-23T05:02:57.854397Z"
-    assert facts["homepage.fobxx.valid_until"] == "2026-08-26T23:59:59Z"
+    assert facts["homepage.fobxx.evidence_as_of"] == "2026-08-26T14:01:12.882020Z"
+    assert facts["homepage.fobxx.valid_until"] == "2026-08-27T23:59:59Z"
     assert facts["homepage.fobxx.source_count"] == "4"
     assert facts["homepage.fobxx.history_summary"] == (
-        "2 publications on mainnet and 1 publication on testnet"
+        "4 publications on mainnet and 1 publication on testnet"
     )
     assert facts["homepage.ustb.gate_sentence"] == (
         "A configured admission contract may refuse USTB right now because the gate "
@@ -127,7 +127,7 @@ def test_homepage_numeric_truth_rejects_rendered_drift() -> None:
     build_site.assert_homepage_truth(rendered)
 
     altered = rendered.replace(
-        'data-homepage-fact="confirmed_reports">24<',
+        'data-homepage-fact="confirmed_reports">35<',
         'data-homepage-fact="confirmed_reports">19<',
     )
     with pytest.raises(SystemExit, match="homepage fact confirmed_reports"):
@@ -157,7 +157,7 @@ def test_check_calls_live_status_when_requested(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_live_status_gate_rejects_report_count_divergence() -> None:
-    with pytest.raises(SystemExit, match=r"local 29/24.*live /status 17/12"):
+    with pytest.raises(SystemExit, match=r"local 40/35.*live /status 17/12"):
         build_site.assert_live_status_counts(
             "<strong>17 reports</strong>, of which "
             "<strong>12 reached\n<code>CONFIRMED</code></strong>."

@@ -168,7 +168,7 @@ def test_committed_stats_identify_every_publication_and_all_eight_histories() ->
     )
 
     assert len(claims) == 8
-    assert sum(claim.sequence for claim in claims) == 29
+    assert sum(claim.sequence for claim in claims) == 40
 
 
 def test_split_batch_policy_row_anchors_by_chain_id(tmp_path: Path) -> None:

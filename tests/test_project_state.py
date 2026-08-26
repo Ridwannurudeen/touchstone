@@ -34,8 +34,8 @@ def test_project_state_is_assembled_from_verified_repository_facts(
     # zero right up until the product did the thing it was built to do, and the count
     # only moves when another confirmed policy bundle is retained — which is exactly
     # the event worth pinning.
-    assert state["reports"]["retained_verified_policy_bundle_count"] == 12
-    assert state["reports"]["confirmed_policy_bundle_count"] == 12
+    assert state["reports"]["retained_verified_policy_bundle_count"] == 18
+    assert state["reports"]["confirmed_policy_bundle_count"] == 18
     assert state["deployments"]
     output = tmp_path / "project-state.json"
     output.write_bytes(build.encode_state(state))

@@ -109,11 +109,15 @@ def test_live_rows_include_fobxx_on_both_networks_newest_first() -> None:
     rows = _module().load_rows()
 
     keyed = [(row.asset, row.chain_id, row.sequence) for row in rows]
-    # Newest first: the 2026-08-23 mainnet FOBXX publication leads, and the USTB
-    # rows published earlier that day sit between it and the testnet FOBXX row.
-    assert keyed[0] == ("FOBXX", 196, 2)
+    # Newest first is the ordering itself, not whichever row happens to lead today:
+    # pinning one row made this fail on every publication rather than on a real
+    # regression, and the property worth guarding is that the sort never inverts.
+    ordering = [(row.published_at, row.block) for row in rows]
+    assert ordering == sorted(ordering, reverse=True)
+    assert ("FOBXX", 196, 1) in keyed
     assert ("FOBXX", 1952, 1) in keyed
-    assert rows[0].transaction_url.startswith(
+    mainnet = rows[keyed.index(("FOBXX", 196, 1))]
+    assert mainnet.transaction_url.startswith(
         "https://web3.okx.com/explorer/xlayer/tx/"
     )
     testnet = rows[keyed.index(("FOBXX", 1952, 1))]

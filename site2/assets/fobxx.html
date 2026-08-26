@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FOBXX dossier &mdash; Touchstone</title>
-<meta name="description" content="The retained FOBXX evidence: 4 published controls with 4 satisfied results, 6 signed approvals, 2 approved but not yet published, and 6 declined controls.">
+<meta name="description" content="The retained FOBXX evidence: 6 published controls with 6 satisfied results, 6 signed approvals, 0 approved but not yet published, and 6 declined controls.">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 <link rel="canonical" href="https://touchstone.gudman.xyz/assets/fobxx">
 <link rel="stylesheet" href="/assets/style.css">
@@ -33,11 +33,12 @@
       <p class="eyebrow">Asset dossier · first publication</p>
       <h1>FOBXX</h1>
       <p class="t-lead prose">Franklin OnChain U.S. Government Money Fund has
-      2 retained <strong>CONFIRMED</strong>
+      4 retained <strong>CONFIRMED</strong>
       publications on mainnet and 1 retained
       <strong>CONFIRMED</strong> publication on testnet.
-      The latest rows below are sequence 2 and
-      1; this page does not imply a daily history.</p>
+      The latest rows below are sequence 4 and
+      1; this page does not imply a daily history.
+      The latest retained mainnet publication carries 6 controls, while the latest retained testnet publication carries 4 controls. Testnet is not on a publishing schedule.</p>
     </div>
   </section>
   <section class="section">
@@ -46,10 +47,10 @@
       <dl class="a-facts">
         <div><dt>Asset key</dt><dd><code class="wrap-code">eip155:1:0x3ddc84940ab509c11b20b76b466933f40b750dc9</code></dd></div>
         <div><dt>State</dt><dd><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>CONFIRMED</span></dd></div>
-        <div><dt>Mainnet evidence as of</dt><dd><code>2026-08-23T05:02:57.854397Z</code></dd></div>
-        <div><dt>Fresh through</dt><dd><code>2026-08-26T23:59:59Z</code></dd></div>
-        <div><dt>Control-set root</dt><dd><code class="wrap-code">a9e88c3559e1949e4810942378ae6dbe493a69310e108f09b2e9f6484cbd9ad7</code></dd></div>
-        <div><dt>Approval ledger</dt><dd><code class="wrap-code">b2d8ab788a0ac43b18d0438ba50daf7e3a098003ea0650d8561c0cbb475f5c91</code></dd></div>
+        <div><dt>Mainnet evidence as of</dt><dd><code>2026-08-26T14:01:12.882020Z</code></dd></div>
+        <div><dt>Fresh through</dt><dd><code>2026-08-27T23:59:59Z</code></dd></div>
+        <div><dt>Control-set root</dt><dd><code class="wrap-code">965b4a0a01e2c74981d1d6024b02ef6eb52eeba892f39bf2e37a14f0fe416f98</code></dd></div>
+        <div><dt>Approval ledger</dt><dd><code class="wrap-code">63d9c3d7b0b8c2498e2c3084355254272ed388739ba759e7de3df1b1b210adc2</code></dd></div>
       </dl>
       <div class="table-scroll">
         <table><caption class="sr">FOBXX publications by network</caption>
@@ -58,9 +59,9 @@
           <tr>
             <td>X Layer mainnet</td><td class="mono">196</td>
             <td><a href="https://web3.okx.com/explorer/xlayer/address/"><code></code></a></td>
-            <td class="mono">2</td>
-            <td><a href="https://web3.okx.com/explorer/xlayer/tx/0x5d5f71b1c29f3e1c17c0404d05dfb8423561c244128d57220a59394ccc97fea0">Transaction</a><span class="td-sub">block 68692613</span></td>
-            <td><a href="/data/eip155-196-fobxx-2026-08-23-2.json">Bundle</a></td>
+            <td class="mono">4</td>
+            <td><a href="https://web3.okx.com/explorer/xlayer/tx/0x17df04ec1596ddfea2a23013423c439bdd1996e5fb710b734ee9c303c92a2bab">Transaction</a><span class="td-sub">block 68983888</span></td>
+            <td><a href="/data/eip155-196-fobxx-2026-08-26-4.json">Bundle</a></td>
           </tr>
           <tr>
             <td>X Layer testnet</td><td class="mono">1952</td>
@@ -77,21 +78,22 @@
   <section class="section section--sunk">
     <div class="wrap">
       <p class="eyebrow">Approved and evaluated</p>
-      <h2>4 published controls, 4/4 SATISFIED</h2>
+      <h2>6 published controls, 6/6 SATISFIED</h2>
       <p class="prose">6 FOBXX controls are approved in the signed ledger.
-      The published mainnet and testnet bundles each carry 4 controls and
-      report 4/4 SATISFIED results.
-      2 approved controls are not yet published: <code>fobxx-issuer-price-history-freshness</code>, <code>fobxx-nmfp3-report-date-recency</code>.
-      The next publication will carry all 6 approved controls.</p>
+      The latest retained mainnet bundle carries 6
+      controls and reports
+      6/6 SATISFIED results. The latest retained testnet
+      bundle carries 4 controls and reports
+      4/4 SATISFIED results. All 6 approved controls appear in the latest retained mainnet publication.</p>
       <div class="persona-grid">
         <article class="persona">
           <p class="p-for"><code>fobxx-nav-std-stable-one</code></p>
           <h3>Franklin FOBXX latest published standard NAV per share equals 1.00</h3>
           <p><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>SATISFIED</span></p>
           <dl class="a-facts">
-            <div><dt>Observed</dt><dd><code>1.00000000</code> on 2026-08-21</dd></div>
+            <div><dt>Observed</dt><dd><code>1.00000000</code> on 2026-08-25</dd></div>
             <div><dt>Expected</dt><dd><code>{&quot;field&quot;:&quot;nav_std&quot;,&quot;value&quot;:&quot;1&quot;}</code> via <code>eq</code></dd></div>
-            <div><dt>Evidence deadline</dt><dd><code>2026-08-26</code></dd></div>
+            <div><dt>Evidence deadline</dt><dd><code>2026-08-27</code></dd></div>
             <div><dt>Source</dt><dd><code>franklin-fobxx-price-performance</code> · issuer-api</dd></div>
             <div><dt>Evidence span</dt><dd><code class="wrap-code">&quot;navdate&quot;:&quot;2026-08-21&quot;,&quot;navstd&quot;:&quot;1.00000000&quot;</code></dd></div>
           </dl>
@@ -130,6 +132,30 @@
             <div><dt>Evidence deadline</dt><dd><code>2026-09-14</code></dd></div>
             <div><dt>Source</dt><dd><code>sec-edgar-fobxx-nmfp3</code> · regulator-filing</dd></div>
             <div><dt>Evidence span</dt><dd><code class="wrap-code">&lt;percentageWeeklyLiquidAssets&gt;0.7305&lt;/percentageWeeklyLiquidAssets&gt;</code></dd></div>
+          </dl>
+        </article>
+        <article class="persona">
+          <p class="p-for"><code>fobxx-issuer-price-history-freshness</code></p>
+          <h3>Franklin OnChain U.S. Government Money Fund (FOBXX) issuer price-and-performance history publishes a NAV row within two business days</h3>
+          <p><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>SATISFIED</span></p>
+          <dl class="a-facts">
+            <div><dt>Observed</dt><dd><code>2026-08-25</code> on 2026-08-25</dd></div>
+            <div><dt>Expected</dt><dd><code>{&quot;business_days&quot;:2}</code> via <code>fresh_within</code></dd></div>
+            <div><dt>Evidence deadline</dt><dd><code>2026-08-27</code></dd></div>
+            <div><dt>Source</dt><dd><code>franklin-fobxx-price-performance</code> · issuer-api</dd></div>
+            <div><dt>Evidence span</dt><dd><code class="wrap-code">&quot;navdate&quot;:&quot;2026-08-21&quot;</code></dd></div>
+          </dl>
+        </article>
+        <article class="persona">
+          <p class="p-for"><code>fobxx-nmfp3-report-date-recency</code></p>
+          <h3>Franklin OnChain U.S. Government Money Fund N-MFP3 filing report date is recent</h3>
+          <p><span class="chip chip-live"><i class="dot" aria-hidden="true"></i>SATISFIED</span></p>
+          <dl class="a-facts">
+            <div><dt>Observed</dt><dd><code>2026-07-31</code> on 2026-08-06</dd></div>
+            <div><dt>Expected</dt><dd><code>{&quot;business_days&quot;:10}</code> via <code>fresh_within</code></dd></div>
+            <div><dt>Evidence deadline</dt><dd><code>2026-09-14</code></dd></div>
+            <div><dt>Source</dt><dd><code>sec-edgar-fobxx-nmfp3</code> · regulator-filing</dd></div>
+            <div><dt>Evidence span</dt><dd><code class="wrap-code">&lt;reportDate&gt;2026-07-31&lt;/reportDate&gt;</code></dd></div>
           </dl>
         </article>
       </div>
